@@ -110,6 +110,10 @@ def page_init(header_text: Optional[str] = "") -> None:
                 icon="help",
                 on_click=lambda: ui.navigate.to("/home"),
             ).props("flat color=white")
+            ui.button(
+                icon="logout",
+                on_click=lambda: ui.navigate.to("/logout"),
+            ).props("flat color=white")
 
             ui.timer(30, refresh)
             ui.add_head_html("<style>body {background-color: #ffffff;}</style>")
