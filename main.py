@@ -53,6 +53,8 @@ def logout() -> None:
     Logout page.
     """
 
+    app.storage.user.clear()
+
     with ui.card() as card:
         card.style("width: 50%; align-self: center; height: 50vh; margin-top: 10%;")
         ui.label("You have been logged out").classes("text-h5").style("margin: auto;")
