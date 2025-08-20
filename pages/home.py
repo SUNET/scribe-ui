@@ -1,12 +1,13 @@
-from nicegui import ui
+from nicegui import ui, events
 from utils.common import (
+    default_styles,
     page_init,
     jobs_get,
     jobs_columns,
     table_click,
-    table_transcribe,
     table_upload,
     table_delete,
+    table_transcribe,
 )
 
 
@@ -24,7 +25,6 @@ def create() -> None:
             Toggle the state of buttons based on selected rows.
             """
             delete.set_enabled(bool(selected))
-            transcribe.set_enabled(bool(selected))
 
         table = ui.table(
             on_select=lambda e: toggle_buttons(e.selection),
@@ -34,52 +34,56 @@ def create() -> None:
             pagination=10,
         )
 
-        ui.add_head_html(
-            """
-            <style>
-                .table-style td {
-                    background: #eeeeee;
-                }
-            </style>
-        """
+        def table_handle_row_click(e: events.GenericEventArguments) -> None:
+            if e.args.get("status") == "Completed":
+                table_click(e)
+            else:
+                table_transcribe(e.args)
+
+        ui.add_head_html(default_styles)
+
+        table.style(
+            "width: 100%; height: calc(100vh - 160px); box-shadow: none; font-size: 18px;"
         )
-        table.style("width: 100%; height: calc(100vh - 130px); box-shadow: none;")
-        table.on("rowClick", table_click)
-        table.classes("text-h2 table-style")
+        table.classes("table-style")
         table.add_slot(
             "body-cell-status",
             """
             <q-td key="status" :props="props">
-                <q-badge v-if="{Completed: 'green', Uploaded: 'orange', Failed: 'red', Transcribing: 'orange', Pending: 'blue'}[props.value]" :color="{Completed: 'green', Uploaded: 'orange', Failed: 'red', Transcribing: 'orange', Pending: 'blue'}[props.value]">
-                    {{props.value}}
-                </q-badge>
-                <p v-else>
-                    {{props.value}}
-                </p>
+                <p>{{ props.value }}</p>
             </q-td>
+            <q-td key="action" :props="props">
+                <q-btn
+                    v-if="props.row.status === 'Uploaded' || props.row.status === 'Completed'"
+                    :label="props.row.status === 'Completed' ? 'Edit' : 'Transcribe'"
+                    :color="props.row.status === 'Completed' ? 'white' : 'black'"
+                    :text-color="props.row.status === 'Completed' ? 'black' : 'white'"
+                    :outline="props.row.status === 'Completed'"
+                    style="width: 120px; height: 40px;"
+                    @click="$parent.$emit('table_handle_row_click', props.row)"
+                />
+            </q-td>            
             """,
         )
+        table.on("table_handle_row_click", table_handle_row_click)
 
         with table.add_slot("top-left"):
             ui.label("My files").classes("text-h5")
 
         with table.add_slot("top-right"):
             with ui.row().classes("items-center"):
-                with ui.input(placeholder="Search").props("type=search").bind_value(
-                    table, "filter"
-                ).add_slot("append"):
-                    ui.icon("search")
                 with ui.button("Upload", icon="upload") as upload:
-                    upload.props("color=primary flat")
+                    upload.props("color=black flat")
+                    upload.classes("default-style")
                     upload.on("click", lambda: table_upload(table))
-                with ui.button("Transcribe", icon="play_circle") as transcribe:
-                    transcribe.props("color=primary flat")
-                    transcribe.on("click", lambda: table_transcribe(table))
-                    transcribe.set_enabled(False)
-                with ui.button("Delete", icon="delete") as delete:
-                    delete.props("color=primary flat")
-                    delete.on("click", lambda: table_delete(table.selected))
-                    delete.set_enabled(False)
+
+        with ui.row().classes("items-center"):
+            with ui.button("Delete", icon="delete") as delete:
+                delete.props("color=black flat")
+                delete.classes("delete-style")
+                delete.on("click", lambda: table_delete(table.selected))
+                delete.set_enabled(False)
+                delete.visible = False
 
         def update_rows():
             """
@@ -89,11 +93,9 @@ def create() -> None:
 
             if not rows:
                 delete.set_enabled(False)
-                transcribe.set_enabled(False)
+            else:
+                delete.visible = True
 
-            upload.props("color=green flat") if not rows else upload.props(
-                "color=primary flat"
-            )
             table.selection = "multiple" if rows else "none"
             table.update_rows(rows, clear_selection=False)
 
