@@ -4,6 +4,7 @@ from nicegui import ui
 from utils.common import API_URL
 from utils.common import get_auth_header
 from utils.common import page_init
+from utils.common import default_styles
 from utils.video import create_video_proxy
 from utils.srt import SRTEditor
 
@@ -36,6 +37,8 @@ def create() -> None:
         """
         page_init()
 
+        ui.add_head_html(default_styles)
+
         try:
             response = requests.get(
                 f"{API_URL}/api/v1/transcriber/{uuid}/result/srt",
@@ -47,7 +50,7 @@ def create() -> None:
             ui.notify(f"Error: Failed to get result: {e}")
             return
 
-        with ui.row():
+        with ui.footer().style("background-color: #f5f5f5;"):
 
             def export(srt_format: str):
                 if srt_format == "srt":
@@ -58,35 +61,44 @@ def create() -> None:
                 ui.download(srt_content.encode(), filename=f"{filename}.{srt_format}")
                 ui.notify("File exported successfully", type="positive")
 
-            with ui.button("Save", icon="save").style("width: 150px;") as save_button:
-                save_button.on(
-                    "click",
-                    lambda: save_srt(uuid, editor.export_srt(), editor),
-                )
-                save_button.props("color=primary flat")
+            with ui.row().classes("justify-end w-full gap-2"):
+                with ui.button("Close", icon="close").props("flat") as close_button:
+                    close_button.classes("cancel-style")
+                    close_button.on("click", lambda: ui.open("/home"))
 
-            with ui.dropdown_button("Export", icon="share").props("color=primary flat"):
-                export_button_srt = ui.button("Export as SRT", icon="share").style(
-                    "width: 150px;"
-                )
-                export_button_srt.props("color=primary flat")
-                export_button_srt.on("click", lambda: export("srt"))
+                with ui.button("Save", icon="save") as save_button:
+                    save_button.classes("button-default-style")
+                    save_button.props("flat")
+                    save_button.on(
+                        "click",
+                        lambda: save_srt(uuid, editor.export_srt(), editor),
+                    )
+                    save_button.props("color=primary flat")
 
-                export_button_vtt = ui.button("Export as VTT", icon="share").style(
-                    "width: 150px;"
-                )
-                export_button_vtt.props("color=primary flat")
-                export_button_vtt.on("click", lambda: export("vtt"))
+                with ui.dropdown_button("Export", icon="share") as export_button:
+                    export_button.props("flat")
+                    export_button.classes("button-default-style")
 
-            with ui.button("Validate", icon="check").props(
-                "color=primary flat"
-            ) as validate_button:
-                validate_button.on(
-                    "click",
-                    lambda: editor.validate_captions(),
-                )
+                    export_button_srt = ui.button("Export as SRT", icon="share")
+                    export_button_srt.props("flat")
+                    export_button_srt.classes("button-default-style")
+                    export_button_srt.on("click", lambda: export("srt"))
 
-        ui.separator()
+                    export_button_vtt = ui.button("Export as VTT", icon="share").style(
+                        "width: 150px;"
+                    )
+                    export_button_vtt.props("flat")
+                    export_button_vtt.classes("button-default-style")
+                    export_button_vtt.on("click", lambda: export("vtt"))
+
+                with ui.button("Validate", icon="check").props(
+                    "flat"
+                ) as validate_button:
+                    validate_button.classes("button-default-style")
+                    validate_button.on(
+                        "click",
+                        lambda: editor.validate_captions(),
+                    )
 
         with ui.splitter(value=60).classes("w-full h-full") as splitter:
             with splitter.before:

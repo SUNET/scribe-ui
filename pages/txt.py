@@ -4,6 +4,8 @@ from nicegui import ui
 from utils.common import API_URL
 from utils.common import get_auth_header
 from utils.common import page_init
+from utils.common import default_styles
+
 from utils.video import create_video_proxy
 from utils.transcript import TranscriptEditor
 
@@ -37,6 +39,8 @@ def create() -> None:
     def result(uuid: str, filename: str, language: str, model: str) -> None:
         page_init()
 
+        ui.add_head_html(default_styles)
+
         try:
             response = requests.get(
                 f"{API_URL}/api/v1/transcriber/{uuid}/result/txt",
@@ -52,19 +56,21 @@ def create() -> None:
 
         ui.add_css(".q-editor__toolbar { display: none }")
 
-        with ui.row().classes("justify-between items-center mb-4"):
-            with ui.button_group().props("outline"):
-                ui.button("Save", icon="save").style("width: 150px;").on_click(
+        with ui.footer().style("background-color: #f5f5f5;"):
+            with ui.row().classes("justify-end w-full gap-2"):
+                with ui.button("Close", icon="close").props("flat") as close_button:
+                    close_button.classes("cancel-style")
+                    close_button.on("click", lambda: ui.open("/home"))
+
+                ui.button("Save", icon="save").on_click(
                     lambda: save_file(uuid, editor.get_json_data())
-                )
+                ).classes("button-default-style")
                 ui.button("Export", icon="share").style("width: 150px;").on_click(
                     lambda: export_file(
                         editor.get_export_data(),
                         f"{filename}.txt",
                     )
-                )
-
-        ui.separator()
+                ).classes("button-default-style")
 
         with ui.splitter(value=60).classes("w-full h-screen") as splitter:
             with splitter.before:
