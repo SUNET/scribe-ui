@@ -61,6 +61,7 @@ default_styles = """
             background-color: #ffffff;
             color: #721c24;
             border: 1px solid #000000;
+            width: 150px;
         }
         .table-style th {
             font-size: 14px;
@@ -71,7 +72,8 @@ default_styles = """
         .cancel-style {
             background-color: #ffffff;
             color: #721c24;
-            border: 1px solid #000000;                
+            border: 1px solid #000000;
+            width: 150px;
         }
         .upload-style {
             width: 100%;
