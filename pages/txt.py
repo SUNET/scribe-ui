@@ -60,7 +60,7 @@ def create() -> None:
             with ui.row().classes("justify-end w-full gap-2"):
                 with ui.button("Close", icon="close").props("flat") as close_button:
                     close_button.classes("cancel-style")
-                    close_button.on("click", lambda: ui.open("/home"))
+                    close_button.on("click", lambda: ui.navigate.to("/home"))
 
                 ui.button("Save", icon="save").on_click(
                     lambda: save_file(uuid, editor.get_json_data())
