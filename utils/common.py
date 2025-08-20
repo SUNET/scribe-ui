@@ -365,10 +365,14 @@ def table_transcribe(selected_row) -> None:
 
             with ui.row().classes("justify-between w-full"):
                 ui.label("Output format").classes("text-subtitle2 q-mb-sm")
-                output_format = ui.radio(
-                    ["Transcribed text", "Subtitles"],
-                    value="Transcribed text",
-                ).classes("w-full")
+                output_format = (
+                    ui.radio(
+                        ["Transcribed text", "Subtitles"],
+                        value="Transcribed text",
+                    )
+                    .classes("w-full")
+                    .props("inline")
+                )
 
             with ui.row().classes("justify-between w-full"):
                 with ui.button(
