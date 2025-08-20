@@ -111,8 +111,6 @@ def create() -> None:
                     editor.refresh_display()
                 with splitter.after:
                     with ui.card().classes("w-full h-full"):
-                        autoscroll = ui.switch("Autoscroll")
-                        ui.label("Video Preview").classes("text-lg font-bold mb-4")
                         video = ui.video(
                             f"/video/{uuid}",
                             controls=True,
@@ -124,12 +122,18 @@ def create() -> None:
                             "timeupdate",
                             lambda: editor.select_caption_from_video(autoscroll.value),
                         )
-                        ui.separator()
-                        ui.html(f"<b>UUID:</b> {uuid}").classes("text-sm")
-                        ui.html(f"<b>Filename:</b> {filename}").classes("text-sm")
-                        ui.html(f"<b>Language:</b> {language}").classes("text-sm")
-                        ui.html(f"<b>Model:</b> {model}").classes("text-sm")
-                        html_wpm = ui.html(
-                            f"<b>Words per minute:</b> {editor.get_words_per_minute():.2f}"
-                        ).classes("text-sm")
-                        editor.set_words_per_minute_element(html_wpm)
+                        autoscroll = ui.switch("Autoscroll")
+                        with ui.column().classes("bg-gray-100 p-4 w-full"):
+                            ui.label(filename).classes("text-h6").style(
+                                "align-self: center;"
+                            )
+                            ui.html(
+                                f"<b>Transcription language:</b> {language}"
+                            ).classes("text-sm")
+                            ui.html(f"<b>Transcription accuracy:</b> {model}").classes(
+                                "text-sm"
+                            )
+                            html_wpm = ui.html(
+                                f"<b>Words per minute:</b> {editor.get_words_per_minute():.2f}"
+                            ).classes("text-sm")
+                            editor.set_words_per_minute_element(html_wpm)

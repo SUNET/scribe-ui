@@ -79,8 +79,6 @@ def create() -> None:
 
             with splitter.after:
                 with ui.card().classes("w-full h-full"):
-                    autoscroll = ui.switch("Autoscroll")
-                    ui.label("Video Preview").classes("text-lg font-bold mb-4")
                     video = ui.video(
                         f"/video/{uuid}",
                         controls=True,
@@ -93,11 +91,13 @@ def create() -> None:
                         "timeupdate",
                         lambda: editor.select_segment_from_video(autoscroll.value),
                     )
-
+                    autoscroll = ui.switch("Autoscroll")
                     video.style("align-self: flex-start;")
 
-                    ui.separator()
-                    ui.html(f"<b>UUID:</b> {uuid}").classes("text-sm")
-                    ui.html(f"<b>Filename:</b> {filename}").classes("text-sm")
-                    ui.html(f"<b>Language:</b> {language}").classes("text-sm")
-                    ui.html(f"<b>Model:</b> {model}").classes("text-sm")
+                    ui.label(filename).classes("text-h6").style("align-self: center;")
+                    ui.html(f"<b>Transcription language:</b> {language}").classes(
+                        "text-sm"
+                    )
+                    ui.html(f"<b>Transcription accuracy:</b> {model}").classes(
+                        "text-sm"
+                    )
