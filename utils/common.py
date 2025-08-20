@@ -77,6 +77,31 @@ default_styles = """
             width: 100%;
             height: 200px;
         }
+        .button-default-style {
+            background-color: #082954 !important;
+            color: #ffffff !important;
+            width: 150px;
+        }
+        .button-replace {
+            background-color: #ffffff;
+            color: #082954 !important;
+            border : 1px solid #082954;
+            width: 150px;
+        }
+        .button-replace-current {
+            background-color: #d3ecbe;
+            color: #000000 !important;
+            width: 150px;
+        }
+        .button-replace-prev-next {
+            background-color: #ffffff;
+            color: #082954 !important;
+        }
+        .button-close {
+            background-color: #ffffff;
+            color: #000000 !important;
+            width: 150px;
+        }
     </style>
 """
 

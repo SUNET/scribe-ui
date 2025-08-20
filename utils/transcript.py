@@ -169,7 +169,7 @@ class TranscriptEditor:
         segment_class = "cursor-pointer border-0 transition-all duration-200 w-full"
 
         if segment.is_selected:
-            segment_class += " border-blue-500 bg-blue-50 shadow-none"
+            segment_class += "  shadow-none"
         elif segment.is_highlighted:
             segment_class += " border-yellow-400 bg-yellow-50 hover:border-yellow-500"
         else:

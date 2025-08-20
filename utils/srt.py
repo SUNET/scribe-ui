@@ -3,6 +3,7 @@ import re
 from nicegui import ui
 from typing import List
 from typing import Optional
+from utils.common import default_styles
 
 
 class SRTCaption:
@@ -481,7 +482,7 @@ class SRTEditor:
         """
 
         with ui.expansion("Search & Replace").classes("w-full").style(
-            "background-color: #eff4fb;"
+            "background-color: #ffffff;"
         ):
             with ui.row().classes("w-full gap-2 mb-2"):
                 search_input = (
@@ -492,9 +493,9 @@ class SRTEditor:
                     .props("outlined dense")
                 )
 
-                ui.button("Search", icon="search", color="primary").props("dense").on(
+                ui.button("Search", icon="search").props("flat dense").on(
                     "click", lambda: self.search_captions(search_input.value)
-                )
+                ).classes("button-replace")
 
                 ui.checkbox("Case sensitive").bind_value_to(self, "case_sensitive").on(
                     "update:model-value",
@@ -505,12 +506,14 @@ class SRTEditor:
 
             # Search navigation
             with ui.row().classes("w-full gap-2 mb-2"):
-                ui.button("Previous", icon="keyboard_arrow_up", color="grey").props(
-                    "dense flat"
-                ).on("click", lambda: self.navigate_search_results(-1))
+                ui.button("Previous", icon="keyboard_arrow_up").props("dense flat").on(
+                    "click", lambda: self.navigate_search_results(-1)
+                ).classes("button-replace-prev-next")
                 ui.button("Next", icon="keyboard_arrow_down", color="grey").props(
                     "dense flat"
-                ).on("click", lambda: self.navigate_search_results(1))
+                ).on("click", lambda: self.navigate_search_results(1)).classes(
+                    "button-replace-prev-next"
+                )
 
                 self.search_info_label = ui.label("").classes(
                     "text-sm text-gray-600 self-center"
@@ -526,13 +529,13 @@ class SRTEditor:
                     .props("outlined dense")
                 )
 
-                ui.button("Replace Current", color="orange").props("dense").on(
+                ui.button("Replace Current").props("flat dense").on(
                     "click",
                     lambda: self.replace_in_current_caption(replace_input.value),
-                )
-                ui.button("Replace All", color="red").props("dense").on(
+                ).classes("button-replace-current")
+                ui.button("Replace All").props("flat dense").on(
                     "click", lambda: self.replace_all(replace_input.value)
-                )
+                ).classes("button-replace")
 
             # Enter key support for search
             search_input.on(
@@ -574,41 +577,31 @@ class SRTEditor:
         card_class = "cursor-pointer border-0 transition-all duration-200 w-full"
 
         if caption.is_selected:
-            card_class += " border-blue-500 bg-blue-50 shadow-lg"
+            card_class += " shadow-lg"
         elif caption.is_highlighted:
             card_class += " border-yellow-400 bg-yellow-50 hover:border-yellow-500"
         else:
-            card_class += " hover:border-gray-300 hover:shadow-md shadow-none"
+            card_class += " hover:shadow-md shadow-none"
 
         with ui.card().classes(card_class) as card:
             with ui.row().classes("w-full items-center justify-between"):
-                ui.label(f"#{caption.index}").classes("font-bold text-sm text-gray-500")
                 ui.label(
                     f"{self.format_time_display(caption.start_time)} → {self.format_time_display(caption.end_time)}"
                 ).classes("text-xs text-gray-400 font-mono")
 
             # Caption text (editable when selected)
             if caption.is_selected:
-                text_area = (
-                    ui.textarea(value=caption.text)
-                    .classes("w-full")
-                    .props("outlined input-class=h-16")
-                )
-                text_area.on(
-                    "blur", lambda e: self.update_caption_text(caption, e.sender.value)
-                )
-
                 # Timing editors
-                with ui.row().classes("w-full gap-2 mt-2"):
-                    start_input = (
-                        ui.input("Start Time", value=caption.start_time)
-                        .classes("flex-1")
-                        .props("outlined dense")
+                with ui.row().classes("w-full"):
+                    ui.label(f"#{caption.index}").classes(
+                        "font-bold text-sm text-gray-500"
                     )
-                    end_input = (
-                        ui.input("End Time", value=caption.end_time)
-                        .classes("flex-1")
-                        .props("outlined dense")
+
+                    start_input = ui.input("", value=caption.start_time).props(
+                        "dense borderless"
+                    )
+                    end_input = ui.input("", value=caption.end_time).props(
+                        "dense borderless"
                     )
 
                 start_input.on(
@@ -624,20 +617,28 @@ class SRTEditor:
                     ),
                 )
 
+                text_area = (
+                    ui.textarea(value=caption.text)
+                    .classes("w-full")
+                    .props("outlined input-class=h-16")
+                )
+                text_area.on(
+                    "blur", lambda e: self.update_caption_text(caption, e.sender.value)
+                )
+
                 # Action buttons
-                with ui.row().classes("w-full gap-2 mt-3"):
+                with ui.row().classes("w-full items-center justify-between mt-3"):
                     ui.button("Split", icon="call_split", color="blue").props(
                         "flat dense"
-                    ).on("click", lambda: self.split_caption(caption))
-                    ui.button("Add After", icon="add", color="green").props(
-                        "flat dense"
-                    ).on("click", lambda: self.add_caption_after(caption))
-                    ui.button("Remove", icon="delete", color="red").props(
-                        "flat dense"
-                    ).on("click", lambda: self.remove_caption(caption))
-                    ui.button("Done", icon="check", color="grey").props(
-                        "flat dense"
-                    ).on("click", lambda: self.select_caption(caption))
+                    ).on("click", lambda: self.split_caption(caption, text_area))
+
+                    with ui.row().classes("gap-2"):
+                        ui.button("Close").props("flat dense").on(
+                            "click", lambda: self.select_caption(caption)
+                        ).classes("button-close")
+                        ui.button("Delete", color="red").props("flat dense").on(
+                            "click", lambda: self.remove_caption(caption)
+                        )
             else:
                 # Show text with search highlighting
                 if caption.is_highlighted and self.search_term:
