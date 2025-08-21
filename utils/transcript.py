@@ -14,6 +14,7 @@ class TranscriptSegment:
         self.duration = end - start
         self.is_selected = False
         self.is_highlighted = False
+        self.action_col = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -50,22 +51,40 @@ class TranscriptEditor:
 
         if caption:
             if self.selected_segment != caption:
-                self.select_segment(caption, None)
+                print(f"Selecting segment at time {current_time}")
+                self.select_segment(caption, "")
 
-    def select_segment(self, caption: TranscriptSegment, action_col: ui.column) -> None:
+    def select_segment(self, caption: TranscriptSegment, speaker: str) -> None:
         if self.selected_segment:
             self.selected_segment.is_selected = False
 
-        caption.is_selected = True
-        self.selected_segment = caption
+        if self.selected_segment == caption:
+            self.selected_segment = None
+        else:
+            caption.is_selected = True
+            self.selected_segment = caption
+
+        if speaker:
+            caption.speaker = speaker
+            self.speakers.add(speaker)
 
         if self.video_player:
             self.video_player.seek(caption.start)
 
-        if action_col:
-            action_col.visible = True
-
         self.refresh_ui()
+
+    def seconds_to_timestamp(self, seconds: float) -> str:
+        """
+        Convert seconds back to SRT timestamp format.
+        """
+
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        secs = seconds % 60
+        milliseconds = int((secs % 1) * 1000)
+        secs = int(secs)
+
+        return f"{hours:02d}:{minutes:02d}:{secs:02d},{milliseconds:03d}"
 
     def get_segment_from_time(self, time: float) -> TranscriptSegment:
         for segment in self.segments:
@@ -78,6 +97,7 @@ class TranscriptEditor:
         self.video_player = player
 
     def parse_segments(self):
+        print("Parsing segments")
         if not self.original_data.get("segments"):
             return
 
@@ -128,6 +148,9 @@ class TranscriptEditor:
             self.refresh_ui()
 
     def update_segment(self, index: int, speaker: str = None, text: str = None):
+        if speaker not in self.speakers and speaker is not None:
+            self.speakers.add(speaker)
+
         if 0 <= index < len(self.segments):
             if speaker is not None:
                 self.segments[index].speaker = speaker
@@ -166,6 +189,93 @@ class TranscriptEditor:
                 self._render_segments()
 
     def _create_segment_ui(self, segment: TranscriptSegment, index: int):
+        card_class = "cursor-pointer border-0 transition-all duration-200 w-full"
+
+        if segment.is_selected:
+            card_class += " shadow-lg"
+        elif segment.is_highlighted:
+            card_class += " border-yellow-400 bg-yellow-50 hover:border-yellow-500"
+        else:
+            card_class += " hover:shadow-md shadow-none"
+
+        with ui.card().classes(card_class) as card:
+            if segment.is_selected:
+                with ui.row().classes("w-full").classes("justify-between"):
+                    speaker_select = ui.select(
+                        options=list(self.speakers),
+                        value=segment.speaker,
+                        with_input=True,
+                        label="Speaker",
+                        new_value_mode="add",
+                    )
+
+                    ui.label(
+                        f"{self.seconds_to_timestamp(segment.start)} - {self.seconds_to_timestamp(segment.end)}"
+                    ).classes("text-sm text-gray-500")
+
+                text_area = (
+                    ui.textarea(value=segment.text)
+                    .classes("w-full")
+                    .props("outlined input-class=h-16")
+                )
+
+                text_area.on_value_change(
+                    lambda e, idx=index: self.update_segment(idx, text=e.value)
+                )
+
+                text_area.on(
+                    "click",
+                    lambda e, idx=index: (
+                        self.select_segment(segment, speaker_select.value),
+                    ),
+                )
+
+                with ui.row().classes("w-full items-center justify-between mt-3"):
+                    with ui.row().classes("gap-2"):
+                        ui.button("Close").props("flat dense").on(
+                            "click",
+                            lambda: self.select_segment(segment, speaker_select.value),
+                        ).classes("button-close")
+                        ui.button("Add", color="green").props("flat dense").on(
+                            "click", lambda: self._show_insert_dialog(index)
+                        )
+                        ui.button("Delete", color="red").props("flat dense").on(
+                            "click", lambda: self._confirm_delete(index)
+                        )
+            else:
+                if segment.is_highlighted and self.search_term:
+                    highlighted_text = self.get_highlighted_text(segment.text)
+
+                    with ui.row().classes("w-full").classes("justify-between"):
+                        ui.label(f"{segment.speaker}:").classes(
+                            "font-bold text-sm leading-relaxed"
+                        )
+                        ui.label(
+                            f"{self.seconds_to_timestamp(segment.start)} - {self.seconds_to_timestamp(segment.end)}"
+                        ).classes("text-sm text-gray-500")
+                    ui.html(highlighted_text).classes(
+                        "text-sm leading-relaxed whitespace-pre-wrap"
+                    )
+                else:
+                    with ui.row().classes("w-full").classes("justify-between"):
+                        ui.label(f"{segment.speaker}:").classes(
+                            "font-bold text-sm leading-relaxed"
+                        )
+                        ui.label(
+                            f"{self.seconds_to_timestamp(segment.start)} - {self.seconds_to_timestamp(segment.end)}"
+                        ).classes("text-sm text-gray-500")
+                    ui.label(segment.text).classes(
+                        "text-sm leading-relaxed whitespace-pre-wrap"
+                    )
+
+            card.on(
+                "click",
+                lambda: self.select_segment(segment, "")
+                if not segment.is_selected
+                else None,
+            )
+
+        """
         segment_class = "cursor-pointer border-0 transition-all duration-200 w-full"
 
         if segment.is_selected:
@@ -178,19 +288,6 @@ class TranscriptEditor:
         with ui.column().classes("w-full mb-4 p-4"):
             with ui.row().classes("w-full") as segment_row:
                 segment_row.classes(segment_class)
-
-                with ui.button(icon="add").props("flat round"):
-                    with ui.menu():
-                        with ui.column():
-                            new_speaker_input = ui.input("New Speaker")
-                            ui.button(
-                                "Add",
-                                on_click=lambda: self._add_new_speaker(
-                                    new_speaker_input.value,
-                                    speaker_select,
-                                    index,
-                                ),
-                            )
 
                 with ui.column().classes("flex-grow"):
                     with ui.row().classes("items-center gap-2 w-32"):
@@ -222,12 +319,11 @@ class TranscriptEditor:
 
                     text_row.on(
                         "click",
-                        lambda e, idx=index: (
-                            self.select_segment(segment, action_col),
-                        ),
+                        lambda e, idx=index: (self.select_segment(segment),),
                     )
-                with ui.column().classes("flex-shrink-0 gap-1") as action_col:
+                with ui.row().classes("flex-shrink-0 gap-1") as action_col:
                     action_col.visible = segment.is_selected
+                    segment.action_col = action_col
 
                     ui.button(
                         icon="keyboard_arrow_up",
@@ -251,6 +347,7 @@ class TranscriptEditor:
                         color="negative",
                         on_click=lambda idx=index: self._confirm_delete(idx),
                     ).props("flat round")
+        """
 
     def _add_new_speaker(self, speaker_name: str, speaker_select, segment_index: int):
         if speaker_name and speaker_name not in self.speakers:
@@ -289,7 +386,7 @@ class TranscriptEditor:
                     label="Position",
                 )
 
-                with ui.row():
+                with ui.row().classes("w-full justify-between"):
                     ui.button("Cancel", on_click=dialog.close)
                     ui.button(
                         "Insert",
