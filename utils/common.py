@@ -274,21 +274,17 @@ def table_upload(table) -> None:
                 "background-color: #f8f9fa; border: 1px solid #e9ecef; padding: 16px; margin-bottom: 20px; width: 100%;"
             ):
                 ui.label("How to upload:").style(
-                    "font-weight: 600; margin-bottom: 8px; color: #495057;"
+                    "font-weight: 600; margin-bottom: 8px;"
                 )
                 with ui.column().style("gap: 4px;"):
                     ui.label(
                         "• Click the '+' in the upload area below or drag and drop files"
-                    ).style("color: #6c757d;")
-                    ui.label("• You can select up to 5 files at once").style(
-                        "color: #6c757d;"
                     )
+                    ui.label("• You can select up to 5 files at once")
+                    ui.label("• Supported formats: MP3, WAV, FLAC, MP4, MKV, AVI")
                     ui.label(
-                        "• Supported formats: MP3, WAV, FLAC, MP4, MKV, AVI"
-                    ).style("color: #6c757d;")
-                    ui.label(
-                        "• When files are selected, click the button to the right of the upload button."
-                    ).style("color: #6c757d;")
+                        "• When files are selected, click the button (cloud an an arrow) to the right of the '+' button."
+                    )
 
             with ui.upload(
                 on_multi_upload=lambda files: handle_upload_with_feedback(
