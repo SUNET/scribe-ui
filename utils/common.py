@@ -270,6 +270,17 @@ def table_upload(table) -> None:
         ):
             ui.label("Select files").classes("text-h6")
 
+            with ui.upload(
+                on_multi_upload=lambda files: handle_upload_with_feedback(
+                    files, dialog
+                ),
+                multiple=True,
+                max_files=5,
+                label="",
+            ) as upload:
+                upload.classes("upload-style")
+                upload.props("accept=.mp3,.wav,.flac,.mp4,.mkv,.avi color=black")
+
             with ui.card().style(
                 "background-color: #f8f9fa; border: 1px solid #e9ecef; padding: 16px; margin-bottom: 20px; width: 100%;"
             ):
@@ -285,17 +296,6 @@ def table_upload(table) -> None:
                     ui.label(
                         "• When files are selected, click the button (cloud an an arrow) to the right of the '+' button."
                     )
-
-            with ui.upload(
-                on_multi_upload=lambda files: handle_upload_with_feedback(
-                    files, dialog
-                ),
-                multiple=True,
-                max_files=5,
-                label="",
-            ) as upload:
-                upload.classes("upload-style")
-                upload.props("accept=.mp3,.wav,.flac,.mp4,.mkv,.avi color=black")
 
             with ui.row().style("justify-content: flex-end; gap: 12px;"):
                 with ui.button(
