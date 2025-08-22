@@ -131,7 +131,7 @@ def page_init(header_text: Optional[str] = "") -> None:
 
     is_admin = get_admin_status()
     if is_admin:
-        header_text += " (ADMIN)"
+        header_text += " (Administrator)"
 
     with ui.header().style(
         "justify-content: space-between; background-color: #ffffff;"
