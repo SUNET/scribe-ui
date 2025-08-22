@@ -397,7 +397,7 @@ def table_transcribe(selected_row) -> None:
             dialog.open()
 
 
-def table_delete(selected_rows: list) -> None:
+def table_delete(table: ui.table) -> None:
     """
     Handle the click event on the Delete button.
     """
@@ -418,15 +418,15 @@ def table_delete(selected_rows: list) -> None:
                 ).props("color=black flat")
                 ui.button(
                     "Delete",
-                    on_click=lambda: __delete_files(selected_rows, dialog),
+                    on_click=lambda: __delete_files(table, dialog),
                 ).props("color=black flat").classes("delete-style")
 
         dialog.open()
 
 
-def __delete_files(rows: list, dialog: ui.dialog) -> bool:
+def __delete_files(table: ui.table, dialog: ui.dialog) -> bool:
     try:
-        for row in rows:
+        for row in table.selected:
             uuid = row["uuid"]
             response = requests.delete(
                 f"{API_URL}/api/v1/transcriber/{uuid}",
@@ -439,6 +439,8 @@ def __delete_files(rows: list, dialog: ui.dialog) -> bool:
             f"Error: Failed to delete files: {str(e)}", type="negative", position="top"
         )
         return False
+
+    table.selected = []
 
     dialog.close()
 

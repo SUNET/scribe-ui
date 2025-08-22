@@ -81,7 +81,7 @@ def create() -> None:
             with ui.button("Delete", icon="delete") as delete:
                 delete.props("color=black flat")
                 delete.classes("delete-style")
-                delete.on("click", lambda: table_delete(table.selected))
+                delete.on("click", lambda: table_delete(table))
                 delete.set_enabled(False)
                 delete.visible = False
 
