@@ -30,8 +30,8 @@ class SRTCaption:
         return {
             "speaker": self.speaker,
             "text": self.text,
-            "start": self.start_time,
-            "end": self.end_time,
+            "start": self.get_start_seconds(),
+            "end": self.get_end_seconds(),
             "duration": self.get_end_seconds() - self.get_start_seconds(),
         }
 
@@ -108,9 +108,6 @@ class SRTEditor:
         """
         Update the words per minute display.
         """
-
-        if self.data_format != "srt":
-            return None
 
         if self.words_per_minute_element:
             wpm = self.get_words_per_minute()

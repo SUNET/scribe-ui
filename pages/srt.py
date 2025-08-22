@@ -12,14 +12,20 @@ create_video_proxy()
 
 
 def save_srt(job_id: str, data: str, editor: SRTEditor, data_format: str) -> None:
-    jsondata = {"format": data_format, "data": data}
-    headers = get_auth_header()
-    headers["Content-Type"] = "application/json"
-    requests.put(
-        f"{API_URL}/api/v1/transcriber/{job_id}/result",
-        headers=headers,
-        json=jsondata,
-    )
+    try:
+        jsondata = {"format": data_format, "data": data}
+
+        headers = get_auth_header()
+        headers["Content-Type"] = "application/json"
+        res = requests.put(
+            f"{API_URL}/api/v1/transcriber/{job_id}/result",
+            headers=headers,
+            json=jsondata,
+        )
+        res.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        ui.notify(f"Error: Failed to save file: {e}", type="negative")
+        return
 
     ui.notify(
         "File saved successfully",
@@ -55,6 +61,7 @@ def create() -> None:
 
             response.raise_for_status()
             data = response.json()
+
         except requests.exceptions.RequestException as e:
             ui.notify(f"Error: Failed to get result: {e}")
             return
@@ -104,7 +111,7 @@ def create() -> None:
                                 uuid,
                                 editor.export_json(),
                                 editor,
-                                data_format,
+                                "json",
                             ),
                         )
 
