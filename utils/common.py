@@ -279,7 +279,9 @@ def table_upload(table) -> None:
                 label="",
             ) as upload:
                 upload.classes("upload-style")
-                upload.props("accept=.mp3,.wav,.flac,.mp4,.mkv,.avi color=black")
+                upload.props(
+                    "accept=.mp3,.wav,.flac,.mp4,.mkv,.avi,.m4a,.aiff,.aif,.mov,.ogg,.opus,.webm color=black"
+                )
 
             with ui.card().style(
                 "background-color: #f8f9fa; border: 1px solid #e9ecef; padding: 16px; margin-bottom: 20px; width: 100%;"
@@ -292,7 +294,6 @@ def table_upload(table) -> None:
                         "• Click the '+' in the upload area below or drag and drop files"
                     )
                     ui.label("• You can select up to 5 files at once")
-                    ui.label("• Supported formats: MP3, WAV, FLAC, MP4, MKV, AVI")
                     ui.label(
                         "• When files are selected, click the button (cloud an an arrow) to the right of the '+' button."
                     )
