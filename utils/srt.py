@@ -526,6 +526,7 @@ class SRTEditor:
 
         if speaker:
             self.speakers.add(speaker)
+            self.selected_caption.speaker = speaker
 
         if self.selected_caption:
             self.selected_caption.is_selected = False
