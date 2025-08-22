@@ -519,14 +519,16 @@ class SRTEditor:
 
         self.update_words_per_minute()
 
-    def select_caption(self, caption: SRTCaption, speaker: Optional[str] = "") -> None:
+    def select_caption(
+        self, caption: SRTCaption, speaker: Optional[ui.input] = None
+    ) -> None:
         """
         Select/deselect a caption.
         """
 
         if speaker:
-            self.speakers.add(speaker)
-            self.selected_caption.speaker = speaker
+            self.speakers.add(speaker.value)
+            self.selected_caption.speaker = speaker.value
 
         if self.selected_caption:
             self.selected_caption.is_selected = False
@@ -688,6 +690,8 @@ class SRTEditor:
                             label="Speaker",
                             new_value_mode="add",
                         )
+                    else:
+                        speaker_select = None
 
                     start_input = ui.input("", value=caption.start_time).props(
                         "dense borderless"
@@ -727,7 +731,7 @@ class SRTEditor:
                     with ui.row().classes("gap-2"):
                         ui.button("Close").props("flat dense").on(
                             "click",
-                            lambda: self.select_caption(caption, speaker_select.value),
+                            lambda: self.select_caption(caption, speaker_select),
                         ).classes("button-close")
 
                         if self.data_format == "txt":
