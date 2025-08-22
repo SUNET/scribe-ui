@@ -1,13 +1,19 @@
 import re
+import json
 
 from nicegui import ui
-from typing import List
-from typing import Optional
-from utils.common import default_styles
+from typing import Optional, Dict, Any, List
 
 
 class SRTCaption:
-    def __init__(self, index: int, start_time: str, end_time: str, text: str):
+    def __init__(
+        self,
+        index: int,
+        start_time: str,
+        end_time: str,
+        text: str,
+        speaker: Optional[str] = "",
+    ):
         """
         Initialize a caption with index, start time, end time, and text.
         """
@@ -18,6 +24,16 @@ class SRTCaption:
         self.text = text
         self.is_selected = False
         self.is_highlighted = False  # For search highlighting
+        self.speaker = speaker if speaker else "UNKNOWN"
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "speaker": self.speaker,
+            "text": self.text,
+            "start": self.start_time,
+            "end": self.end_time,
+            "duration": self.get_end_seconds() - self.get_start_seconds(),
+        }
 
     def to_srt_format(self) -> str:
         return f"{self.index}\n{self.start_time} --> {self.end_time}\n{self.text}\n"
@@ -39,7 +55,8 @@ class SRTCaption:
         Convert timestamp to seconds for calculations.
         """
 
-        time_parts = self.end_time.replace(",", ".").split(":")
+        time_parts = str(self.end_time).replace(",", ".").split(":")
+
         hours = float(time_parts[0])
         minutes = float(time_parts[1])
         seconds = float(time_parts[2])
@@ -77,6 +94,8 @@ class SRTEditor:
         self.__video_player = None
         self.autoscroll = False
         self.words_per_minute_element = None
+        self.speakers = set()
+        self.data_format = None
 
     def set_words_per_minute_element(self, element) -> None:
         """
@@ -89,6 +108,9 @@ class SRTEditor:
         """
         Update the words per minute display.
         """
+
+        if self.data_format != "srt":
+            return None
 
         if self.words_per_minute_element:
             wpm = self.get_words_per_minute()
@@ -119,12 +141,59 @@ class SRTEditor:
 
         self.__video_player = player
 
+    def parse_txt(self, data: dict) -> None:
+        """
+        Parse TXT content and populate captions list.
+        """
+
+        self.data_format = "txt"
+
+        original_data = json.loads(data)
+
+        if not original_data.get("segments"):
+            return
+
+        raw_segments = original_data["segments"]
+
+        if not raw_segments:
+            return
+
+        concatenated = []
+        current = raw_segments[0].copy()
+
+        for segment in raw_segments[1:]:
+            if segment["speaker"] == current["speaker"]:
+                current["text"] += " " + segment["text"]
+                current["end"] = segment["end"]
+                current["duration"] = current["end"] - current["start"]
+            else:
+                concatenated.append(current)
+                current = segment.copy()
+
+        concatenated.append(current)
+
+        for index, seg in enumerate(concatenated):
+            if seg.get("text", "").strip():
+                start_time = self.seconds_to_timestamp(seg.get("start", 0.0))
+                end_time = self.seconds_to_timestamp(seg.get("end", 0.0))
+
+                self.captions.append(
+                    SRTCaption(
+                        index,
+                        start_time,
+                        end_time,
+                        seg["text"],
+                        speaker=seg["speaker"],
+                    )
+                )
+                self.speakers.add(seg["speaker"])
+
     def parse_srt(self, srt_content: str) -> None:
         """
         Parse SRT content and populate captions list.
         """
 
-        self.captions = []
+        self.data_format = "srt"
 
         caption_blocks = re.split(r"\n\s*\n", srt_content.strip())
 
@@ -152,6 +221,25 @@ class SRTEditor:
                 continue
 
         self.renumber_captions()
+
+    def export_txt(self) -> str:
+        """
+        Export captions to TXT format.
+        """
+
+        txt_content = "\n\n".join(
+            f"{caption.speaker}: {caption.start_time} - {caption.end_time}\n{caption.text}"
+            for caption in self.captions
+        )
+
+        return txt_content.strip()
+
+    def export_json(self) -> str:
+        return {
+            "segments": [seg.to_dict() for seg in self.captions],
+            "speaker_count": len(self.speakers),
+            "full_transcription": " ".join(seg.text for seg in self.captions),
+        }
 
     def export_srt(self) -> str:
         """
@@ -186,7 +274,7 @@ class SRTEditor:
         Format timestamp for display.
         """
 
-        return timestamp.replace(",", ".")
+        return str(timestamp).replace(",", ".")
 
     def seconds_to_timestamp(self, seconds: float) -> str:
         """
@@ -434,10 +522,13 @@ class SRTEditor:
 
         self.update_words_per_minute()
 
-    def select_caption(self, caption: SRTCaption) -> None:
+    def select_caption(self, caption: SRTCaption, speaker: Optional[str] = "") -> None:
         """
         Select/deselect a caption.
         """
+
+        if speaker:
+            self.speakers.add(speaker)
 
         if self.selected_caption:
             self.selected_caption.is_selected = False
@@ -584,18 +675,21 @@ class SRTEditor:
             card_class += " hover:shadow-md shadow-none"
 
         with ui.card().classes(card_class) as card:
-            with ui.row().classes("w-full items-center justify-between"):
-                ui.label(
-                    f"{self.format_time_display(caption.start_time)} → {self.format_time_display(caption.end_time)}"
-                ).classes("text-xs text-gray-400 font-mono")
-
             # Caption text (editable when selected)
             if caption.is_selected:
-                # Timing editors
-                with ui.row().classes("w-full"):
+                with ui.row().classes("w-full justify-between"):
                     ui.label(f"#{caption.index}").classes(
                         "font-bold text-sm text-gray-500"
                     )
+
+                    if self.data_format == "txt":
+                        speaker_select = ui.select(
+                            options=list(self.speakers),
+                            value=caption.speaker,
+                            with_input=True,
+                            label="Speaker",
+                            new_value_mode="add",
+                        )
 
                     start_input = ui.input("", value=caption.start_time).props(
                         "dense borderless"
@@ -630,12 +724,19 @@ class SRTEditor:
                 with ui.row().classes("w-full items-center justify-between mt-3"):
                     ui.button("Split", icon="call_split", color="blue").props(
                         "flat dense"
-                    ).on("click", lambda: self.split_caption(caption, text_area))
+                    ).on("click", lambda: self.split_caption(caption))
 
                     with ui.row().classes("gap-2"):
                         ui.button("Close").props("flat dense").on(
-                            "click", lambda: self.select_caption(caption)
+                            "click",
+                            lambda: self.select_caption(caption, speaker_select.value),
                         ).classes("button-close")
+
+                        if self.data_format == "txt":
+                            ui.button("Add", color="green").props("flat dense").on(
+                                "click", lambda: self.add_caption_after(caption)
+                            )
+
                         ui.button("Delete", color="red").props("flat dense").on(
                             "click", lambda: self.remove_caption(caption)
                         )
@@ -643,10 +744,32 @@ class SRTEditor:
                 # Show text with search highlighting
                 if caption.is_highlighted and self.search_term:
                     highlighted_text = self.get_highlighted_text(caption.text)
+
+                    with ui.row():
+                        ui.label(f"#{caption.index}").classes("font-bold text-sm")
+
+                        if self.data_format == "txt":
+                            ui.label(f"{caption.speaker}:").classes("font-bold text-sm")
+                    ui.label(f"{caption.start_time} - {caption.end_time}").classes(
+                        "text-sm text-gray-500"
+                    )
+
                     ui.html(highlighted_text).classes(
                         "text-sm leading-relaxed whitespace-pre-wrap"
                     )
                 else:
+                    with ui.row().classes("w-full justify-between"):
+                        with ui.row():
+                            ui.label(f"#{caption.index}").classes("font-bold text-sm")
+
+                            if self.data_format == "txt":
+                                ui.label(f"{caption.speaker}:").classes(
+                                    "font-bold text-sm"
+                                )
+                        ui.label(f"{caption.start_time} - {caption.end_time}").classes(
+                            "text-sm text-gray-500"
+                        )
+
                     ui.label(caption.text).classes(
                         "text-sm leading-relaxed whitespace-pre-wrap"
                     )

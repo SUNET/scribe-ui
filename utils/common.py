@@ -229,11 +229,11 @@ def table_click(event) -> None:
 
     if output_format == "TXT":
         ui.navigate.to(
-            f"/txt?uuid={uuid}&filename={filename}&model={model_type}&language={language}"
+            f"/srt?uuid={uuid}&filename={filename}&model={model_type}&language={language}&data_format=txt"
         )
     else:
         ui.navigate.to(
-            f"/srt?uuid={uuid}&filename={filename}&model={model_type}&language={language}"
+            f"/srt?uuid={uuid}&filename={filename}&model={model_type}&language={language}&data_format=srt"
         )
 
 

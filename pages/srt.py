@@ -11,8 +11,8 @@ from utils.srt import SRTEditor
 create_video_proxy()
 
 
-def save_srt(job_id: str, data: str, editor: SRTEditor) -> None:
-    jsondata = {"format": "srt", "data": data}
+def save_srt(job_id: str, data: str, editor: SRTEditor, data_format: str) -> None:
+    jsondata = {"format": data_format, "data": data}
     headers = get_auth_header()
     headers["Content-Type"] = "application/json"
     requests.put(
@@ -31,7 +31,9 @@ def save_srt(job_id: str, data: str, editor: SRTEditor) -> None:
 
 def create() -> None:
     @ui.page("/srt")
-    def result(uuid: str, filename: str, model: str, language: str) -> None:
+    def result(
+        uuid: str, filename: str, model: str, language: str, data_format: str
+    ) -> None:
         """
         Display the result of the transcription job.
         """
@@ -40,10 +42,17 @@ def create() -> None:
         ui.add_head_html(default_styles)
 
         try:
-            response = requests.get(
-                f"{API_URL}/api/v1/transcriber/{uuid}/result/srt",
-                headers=get_auth_header(),
-            )
+            if data_format == "srt":
+                response = requests.get(
+                    f"{API_URL}/api/v1/transcriber/{uuid}/result/srt",
+                    headers=get_auth_header(),
+                )
+            else:
+                response = requests.get(
+                    f"{API_URL}/api/v1/transcriber/{uuid}/result/txt",
+                    headers=get_auth_header(),
+                )
+
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
@@ -53,12 +62,20 @@ def create() -> None:
         with ui.footer().style("background-color: #f5f5f5;"):
 
             def export(srt_format: str):
-                if srt_format == "srt":
-                    srt_content = editor.export_srt()
-                elif srt_format == "vtt":
-                    srt_content = editor.export_vtt()
+                match srt_format:
+                    case "srt":
+                        srt_content = editor.export_srt()
+                    case "vtt":
+                        srt_content = editor.export_vtt()
+                    case "txt":
+                        srt_content = editor.export_txt()
+                    case "json":
+                        srt_content = editor.export_json()
 
-                ui.download(srt_content.encode(), filename=f"{filename}.{srt_format}")
+                ui.download(
+                    str(srt_content).encode(), filename=f"{filename}.{srt_format}"
+                )
+
                 ui.notify("File exported successfully", type="positive")
 
             with ui.row().classes("justify-end w-full gap-2"):
@@ -69,36 +86,66 @@ def create() -> None:
                 with ui.button("Save", icon="save") as save_button:
                     save_button.classes("button-default-style")
                     save_button.props("flat")
-                    save_button.on(
-                        "click",
-                        lambda: save_srt(uuid, editor.export_srt(), editor),
-                    )
+
+                    if data_format == "srt":
+                        save_button.on(
+                            "click",
+                            lambda: save_srt(
+                                uuid,
+                                editor.export_srt(),
+                                editor,
+                                data_format,
+                            ),
+                        )
+                    else:
+                        save_button.on(
+                            "click",
+                            lambda: save_srt(
+                                uuid,
+                                editor.export_json(),
+                                editor,
+                                data_format,
+                            ),
+                        )
+
                     save_button.props("color=primary flat")
 
                 with ui.dropdown_button("Export", icon="share") as export_button:
                     export_button.props("flat")
                     export_button.classes("button-default-style")
 
-                    export_button_srt = ui.button("Export as SRT", icon="share")
-                    export_button_srt.props("flat")
-                    export_button_srt.classes("button-default-style")
-                    export_button_srt.on("click", lambda: export("srt"))
+                    if data_format == "srt":
+                        export_button_srt = ui.button("Export as SRT", icon="share")
+                        export_button_srt.props("flat")
+                        export_button_srt.classes("button-default-style")
+                        export_button_srt.on("click", lambda: export("srt"))
 
-                    export_button_vtt = ui.button("Export as VTT", icon="share").style(
-                        "width: 150px;"
-                    )
-                    export_button_vtt.props("flat")
-                    export_button_vtt.classes("button-default-style")
-                    export_button_vtt.on("click", lambda: export("vtt"))
+                        export_button_vtt = ui.button(
+                            "Export as VTT", icon="share"
+                        ).style("width: 150px;")
+                        export_button_vtt.props("flat")
+                        export_button_vtt.classes("button-default-style")
+                        export_button_vtt.on("click", lambda: export("vtt"))
+                    else:
+                        export_button_txt = ui.button("Export as TXT", icon="share")
+                        export_button_txt.props("flat")
+                        export_button_txt.classes("button-default-style")
+                        export_button_txt.on("click", lambda: export("txt"))
 
-                with ui.button("Validate", icon="check").props(
-                    "flat"
-                ) as validate_button:
-                    validate_button.classes("button-default-style")
-                    validate_button.on(
-                        "click",
-                        lambda: editor.validate_captions(),
-                    )
+                        export_button_json = ui.button("Export as JSON", icon="share")
+                        export_button_json.props("flat")
+                        export_button_json.classes("button-default-style")
+                        export_button_json.on("click", lambda: export("json"))
+
+                if data_format == "srt":
+                    with ui.button("Validate", icon="check").props(
+                        "flat"
+                    ) as validate_button:
+                        validate_button.classes("button-default-style")
+                        validate_button.on(
+                            "click",
+                            lambda: editor.validate_captions(),
+                        )
 
         with ui.splitter(value=60).classes("w-full h-full") as splitter:
             with splitter.before:
@@ -107,7 +154,12 @@ def create() -> None:
                     editor.create_search_panel()
                     with ui.scroll_area().style("height: calc(100vh - 200px);"):
                         editor.main_container = ui.column().classes("w-full h-full")
-                    editor.parse_srt(data["result"])
+
+                    if data_format == "srt":
+                        editor.parse_srt(data["result"])
+                    else:
+                        editor.parse_txt(data["result"])
+
                     editor.refresh_display()
                 with splitter.after:
                     with ui.card().classes("w-full h-full"):

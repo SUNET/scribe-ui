@@ -2,7 +2,6 @@ from fastapi import Request
 from nicegui import ui, app
 from pages.srt import create as create_srt
 from pages.home import create as create_files_table
-from pages.txt import create as create_txt
 from pages.admin import create as create_admin
 from pages.user import create as create_user_page
 from utils.settings import get_settings
@@ -12,7 +11,6 @@ settings = get_settings()
 
 create_files_table()
 create_srt()
-create_txt()
 create_admin()
 create_user_page()
 
