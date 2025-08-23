@@ -606,6 +606,12 @@ class SRTEditor:
         self.update_words_per_minute()
         self.refresh_display()
 
+        ui.run_javascript(
+            """
+            document.getElementById("action_row").scrollIntoView();
+            """
+        )
+
     def update_caption_text(self, caption: SRTCaption, new_text: str) -> None:
         """
         Update caption text.
@@ -736,7 +742,8 @@ class SRTEditor:
         with ui.card().classes(card_class) as card:
             # Caption text (editable when selected)
             if caption.is_selected:
-                with ui.row().classes("w-full justify-between"):
+                with ui.row().classes("w-full justify-between") as action_row:
+                    action_row.props("id=action_row")
                     ui.label(f"#{caption.index}").classes(
                         "font-bold text-sm text-gray-500"
                     )
