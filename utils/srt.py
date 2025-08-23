@@ -121,6 +121,8 @@ class SRTEditor:
                 self.remove_caption(self.selected_caption)
             case "c":
                 self.select_caption(self.selected_caption)
+            case "v":
+                self.validate_captions()
             case _:
                 pass
 
