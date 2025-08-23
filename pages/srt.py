@@ -44,8 +44,10 @@ def create() -> None:
         Display the result of the transcription job.
         """
         page_init()
+        editor = SRTEditor()
 
         ui.add_head_html(default_styles)
+        ui.keyboard(on_key=editor.handle_key_event)
 
         try:
             if data_format == "srt":
@@ -157,7 +159,6 @@ def create() -> None:
         with ui.splitter(value=60).classes("w-full h-full") as splitter:
             with splitter.before:
                 with ui.card().classes("w-full h-full"):
-                    editor = SRTEditor()
                     editor.create_search_panel()
                     with ui.scroll_area().style("height: calc(100vh - 200px);"):
                         editor.main_container = ui.column().classes("w-full h-full")
