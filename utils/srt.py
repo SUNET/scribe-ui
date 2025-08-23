@@ -1,7 +1,7 @@
 import re
 import json
 
-from nicegui import ui
+from nicegui import ui, events
 from typing import Optional, Dict, Any, List
 
 
@@ -81,7 +81,6 @@ class SRTEditor:
         """
         Initialize the SRT editor with empty captions and other properties.
         """
-
         self.captions: List[SRTCaption] = []
         self.selected_caption: Optional[SRTCaption] = None
         self.caption_cards = {}
@@ -96,6 +95,63 @@ class SRTEditor:
         self.words_per_minute_element = None
         self.speakers = set()
         self.data_format = None
+        self.keypresses = 0
+
+    def handle_key_event(self, event: events.KeyEventArguments) -> None:
+        self.keypresses += 1
+
+        if self.keypresses > 1:
+            self.keypresses = 0
+            return
+
+        match event.key:
+            case "n":
+                self.select_next_caption()
+            case "arrow_down":
+                self.select_next_caption()
+            case "p":
+                self.select_prev_caption()
+            case "arrow_up":
+                self.select_prev_caption()
+            case "i":
+                self.add_caption_after(self.selected_caption)
+            case "s":
+                self.split_caption(self.selected_caption)
+            case "d":
+                self.remove_caption(self.selected_caption)
+            case "c":
+                self.select_caption(self.selected_caption)
+            case _:
+                pass
+
+    def select_next_caption(self) -> None:
+        """
+        Select the next caption in the list.
+        """
+
+        if not self.captions:
+            return
+
+        if self.selected_caption:
+            current_index = self.captions.index(self.selected_caption)
+            self.select_caption(self.captions[current_index + 1])
+        else:
+            self.select_caption(self.captions[0])
+
+    def select_prev_caption(self) -> None:
+        """
+        Select the previous caption in the list.
+        """
+
+        if not self.captions:
+            return
+
+        if self.selected_caption:
+            current_index = self.captions.index(self.selected_caption)
+            if current_index > 0:
+                self.select_caption(self.captions[current_index - 1])
+            else:
+                self.select_caption(self.captions[0])
 
     def set_words_per_minute_element(self, element) -> None:
         """
