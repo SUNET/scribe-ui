@@ -160,7 +160,7 @@ def create() -> None:
             with splitter.before:
                 with ui.card().classes("w-full h-full"):
                     editor.create_search_panel()
-                    with ui.scroll_area().style("height: calc(100vh - 200px);"):
+                    with ui.scroll_area().style("height: calc(90vh - 200px);"):
                         editor.main_container = ui.column().classes("w-full h-full")
 
                     if data_format == "srt":
