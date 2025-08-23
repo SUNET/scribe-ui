@@ -775,7 +775,7 @@ class SRTEditor:
                 text_area = (
                     ui.textarea(value=caption.text)
                     .classes("w-full")
-                    .props("outlined input-class=h-16")
+                    .props("outlined input-class=h-32")
                 )
                 text_area.on(
                     "blur", lambda e: self.update_caption_text(caption, e.sender.value)
