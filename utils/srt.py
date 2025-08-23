@@ -107,11 +107,7 @@ class SRTEditor:
         match event.key:
             case "n":
                 self.select_next_caption()
-            case "arrow_down":
-                self.select_next_caption()
             case "p":
-                self.select_prev_caption()
-            case "arrow_up":
                 self.select_prev_caption()
             case "i":
                 self.add_caption_after(self.selected_caption)
@@ -125,6 +121,11 @@ class SRTEditor:
                 self.validate_captions()
             case _:
                 pass
+
+        if event.key.arrow_up:
+            self.select_prev_caption()
+        if event.key.arrow_down:
+            self.select_next_caption()
 
     def select_next_caption(self) -> None:
         """
