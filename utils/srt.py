@@ -608,7 +608,7 @@ class SRTEditor:
 
         ui.run_javascript(
             """
-            document.getElementById("action_row").scrollIntoView();
+            document.getElementById("action_row").scrollIntoView({ behavior: "smooth", block: "center" });
             """
         )
 
