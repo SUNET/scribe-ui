@@ -56,6 +56,7 @@ default_styles = """
     <style>
         .default-style {
             background-color: #d3ecbe;
+            border: 1px solid #000000;
         }
         .delete-style {
             background-color: #ffffff;
