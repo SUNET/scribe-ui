@@ -263,6 +263,11 @@ def post_file(file: str, filename: str) -> None:
             f"{API_URL}/api/v1/transcriber", files=files_json, headers=get_auth_header()
         )
         response.raise_for_status()
+
+        if response.status_code != 201:
+            raise requests.exceptions.RequestException(
+                f"Upload failed, status code: {response.status_code}"
+            )
     except requests.exceptions.RequestException as e:
         ui.notify(
             f"Error when uploading file: {str(e)}", type="negative", position="top"
