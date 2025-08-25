@@ -732,7 +732,9 @@ class SRTEditor:
 
         card_class = "cursor-pointer border-0 transition-all duration-200 w-full"
 
-        if caption.is_selected:
+        if caption.is_selected and caption.is_highlighted:
+            card_class += " border-yellow-400 bg-yellow-50 hover:border-yellow-500"
+        elif caption.is_selected:
             card_class += " shadow-lg"
         elif caption.is_highlighted:
             card_class += " border-yellow-400 bg-yellow-50 hover:border-yellow-500"
