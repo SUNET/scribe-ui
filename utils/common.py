@@ -26,6 +26,13 @@ jobs_columns = [
         "classes": "text-weight-medium",
     },
     {
+        "name": "job_type",
+        "label": "Type",
+        "field": "job_type",
+        "align": "left",
+        "classes": "text-weight-medium",
+    },
+    {
         "name": "created_at",
         "label": "Created",
         "field": "created_at",
@@ -192,6 +199,12 @@ def jobs_get() -> list:
         else:
             deletion_date = "N/A"
 
+        job_type = "N/A"
+        if job["output_format"] == "txt":
+            job_type = "Transcription"
+        else:
+            job_type = "Subtitles"
+
         job_data = {
             "id": idx,
             "uuid": job["uuid"],
@@ -203,6 +216,7 @@ def jobs_get() -> list:
             "status": job["status"].capitalize(),
             "model_type": job["model_type"].capitalize(),
             "output_format": job["output_format"].upper(),
+            "job_type": job_type
         }
 
         jobs.append(job_data)
