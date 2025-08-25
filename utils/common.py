@@ -321,7 +321,9 @@ def table_upload(table) -> None:
                                 border-2 border-dashed border-gray-400
                                 rounded-2xl bg-gray-50
                                 hover:bg-gray-100 cursor-pointer text-gray-600">
-                        Drag & drop files here or click to upload
+                        Drag & drop files here or click to upload.
+                        <br/><br/>
+                        5 files at a maximum of 4GB can be uploaded at once.
                     </div>
                 """
                 )
