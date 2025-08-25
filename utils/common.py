@@ -290,6 +290,7 @@ def table_upload(table) -> None:
                 ui.label("Uploading files, please wait...").style(
                     "width: 100%;"
                 ).classes("text-h6 q-mb-xl text-black")
+                ui.spinner(size="50px", color="black")
             status_column.visible = False
             with ui.column().classes("w-full items-center mt-10") as upload_column:
                 upload = ui.upload(
