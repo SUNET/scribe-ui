@@ -280,39 +280,61 @@ def table_upload(table) -> None:
     ui.add_head_html(default_styles)
 
     with ui.dialog() as dialog:
-        with ui.card().style(
-            "background-color: white; align-self: center; border: 0; width: 90%; max-width: 600px; min-height: 400px; padding: 24px;"
-        ):
-            ui.label("Select files").classes("text-h6")
-
-            with ui.upload(
-                on_multi_upload=lambda files: handle_upload_with_feedback(
-                    files, dialog
-                ),
-                multiple=True,
-                max_files=5,
-                label="",
-            ) as upload:
-                upload.classes("upload-style")
-                upload.props(
-                    "accept=.mp3,.wav,.flac,.mp4,.mkv,.avi,.m4a,.aiff,.aif,.mov,.ogg,.opus,.webm color=black"
+        with ui.card():
+            with ui.column().classes("w-full items-center mt-10"):
+                ui.upload(
+                    label="hidden",
+                    on_upload=lambda e: handle_upload_with_feedback(e, dialog),
+                    auto_upload=True,
+                    multiple=True,
+                    max_files=5,
+                ).props(
+                    "hidden accept=.mp3,.wav,.flac,.mp4,.mkv,.avi,.m4a,.aiff,.aif,.mov,.ogg,.opus,.webm"
                 )
 
-            with ui.card().style(
-                "background-color: #f8f9fa; border: 1px solid #e9ecef; padding: 16px; margin-bottom: 20px; width: 100%;"
-            ):
-                ui.label("How to upload:").style(
-                    "font-weight: 600; margin-bottom: 8px;"
+                ui.html(
+                    """
+                    <div id="dropzone"
+                         class="w-96 h-40 flex items-center justify-center
+                                border-2 border-dashed border-gray-400
+                                rounded-2xl bg-gray-50
+                                hover:bg-gray-100 cursor-pointer text-gray-600">
+                        Drag & drop files here or click to upload
+                    </div>
+                """
                 )
-                with ui.column().style("gap: 4px;"):
-                    ui.label(
-                        "• Click the '+' in the upload area below or drag and drop files"
-                    )
-                    ui.label("• You can select up to 5 files at once")
-                    ui.label(
-                        "• When files are selected, click the button (cloud an an arrow) to the right of the '+' button."
-                    )
 
+            ui.run_javascript(
+                """
+                    const dz = document.getElementById('dropzone');
+                    const hiddenInput = document.querySelector('input[type=file][multiple]'); 
+
+                    dz.addEventListener('click', () => hiddenInput.click());
+
+                    dz.addEventListener('dragover', e => {
+                        e.preventDefault();
+                        dz.classList.add('bg-gray-200');
+                    });
+
+                    dz.addEventListener('dragleave', () => {
+                        dz.classList.remove('bg-gray-200');
+                    });
+
+                    dz.addEventListener('drop', e => {
+                        e.preventDefault();
+                        dz.classList.remove('bg-gray-200');
+
+                        // Create a DataTransfer to set multiple files
+                        const dt = new DataTransfer();
+                        for (const file of e.dataTransfer.files) {
+                            dt.items.add(file);
+                        }
+                        hiddenInput.files = dt.files;
+
+                        hiddenInput.dispatchEvent(new Event('change', { bubbles: true }));
+                    });
+                """
+            )
             with ui.row().style("justify-content: flex-end; gap: 12px;"):
                 with ui.button(
                     "Cancel",
@@ -325,22 +347,21 @@ def table_upload(table) -> None:
         dialog.open()
 
 
-async def handle_upload_with_feedback(files, dialog):
+async def handle_upload_with_feedback(file, dialog):
     """
     Handle file uploads with user feedback and validation.
     """
 
     dialog.close()
 
-    for file, name in zip(files.contents, files.names):
-        try:
-            await asyncio.to_thread(post_file, file, name)
+    try:
+        await asyncio.to_thread(post_file, file.content, file.name)
 
-            ui.notify(f"Successfully uploaded {name}", type="positive", timeout=3000)
-        except Exception as e:
-            ui.notify(
-                f"Failed to upload {name}: {str(e)}", type="negative", timeout=5000
-            )
+        ui.notify(f"Successfully uploaded {file.name}", type="positive", timeout=3000)
+    except Exception as e:
+        ui.notify(
+            f"Failed to upload {file.name}: {str(e)}", type="negative", timeout=5000
+        )
 
 
 def table_transcribe(selected_row) -> None:

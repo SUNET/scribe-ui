@@ -178,11 +178,13 @@ def create() -> None:
                             loop=False,
                         ).classes("w-full h-full")
                         editor.set_video_player(video)
+                        autoscroll = ui.switch("Autoscroll")
                         video.on(
                             "timeupdate",
-                            lambda: editor.select_caption_from_video(autoscroll.value),
+                            lambda: editor.select_caption_from_video_timeupdate(),
                         )
-                        autoscroll = ui.switch("Autoscroll")
+                        video.on("click", lambda: editor.select_caption_from_video())
+                        autoscroll.on("change", editor.set_autoscroll)
                         with ui.column().classes("bg-gray-100 p-4 w-full"):
                             ui.label(filename).classes("text-h6").style(
                                 "align-self: center;"
@@ -197,3 +199,14 @@ def create() -> None:
                                 f"<b>Words per minute:</b> {editor.get_words_per_minute():.2f}"
                             ).classes("text-sm")
                             editor.set_words_per_minute_element(html_wpm)
+
+                        # Help text for keyboard shortcuts
+                        ui.html(
+                            "<b>Keyboard Shortcuts:</b><br>"
+                            "<code>Up/Down Arrow</code> - Previous and next caption<br>"
+                            "<code>s - Split caption</code><br>"
+                            "<code>d - Delete caption</code><br>"
+                            "<code>i - Insert caption</code><br>"
+                            "<code>c - Close caption</code><br>"
+                            "<code>v - Validate captions</code><br>"
+                        ).classes("text-sm text-gray-600 mt-2")
