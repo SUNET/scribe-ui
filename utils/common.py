@@ -264,7 +264,7 @@ def post_file(file: str, filename: str) -> None:
         )
         response.raise_for_status()
 
-        if response.status_code != 201:
+        if response.status_code != 200:
             raise requests.exceptions.RequestException(
                 f"Upload failed, status code: {response.status_code}"
             )
@@ -296,7 +296,8 @@ def table_upload(table) -> None:
                     "width: 100%;"
                 ).classes("text-h6 q-mb-xl text-black")
                 ui.spinner(size="50px", color="black")
-            status_column.visible = False
+                status_column.visible = False
+
             with ui.column().classes("w-full items-center mt-10") as upload_column:
                 upload = ui.upload(
                     label="hidden",
@@ -331,8 +332,7 @@ def table_upload(table) -> None:
                 ui.run_javascript(
                     """
                         const dz = document.getElementById('dropzone');
-                        const hiddenInput = document.querySelector('input[type=file][multiple]'); 
-
+                        const hiddenInput = dz.closest('body').querySelector('input[type=file][multiple]');
                         dz.addEventListener('click', () => hiddenInput.click());
 
                         dz.addEventListener('dragover', e => {
@@ -376,6 +376,8 @@ async def handle_upload_with_feedback(files, dialog):
     Handle file uploads with user feedback and validation.
     """
 
+    dialog.close()
+
     for file, name in zip(files.contents, files.names):
         try:
             await asyncio.to_thread(post_file, file, name)
@@ -385,8 +387,6 @@ async def handle_upload_with_feedback(files, dialog):
             ui.notify(
                 f"Failed to upload {name}: {str(e)}", type="negative", timeout=5000
             )
-
-    dialog.close()
 
 
 def table_transcribe(selected_row) -> None:
