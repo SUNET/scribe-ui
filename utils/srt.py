@@ -373,11 +373,7 @@ class SRTEditor:
         self.update_search_info()
 
         if self.search_results:
-            # Scroll to first result
             self.scroll_to_result(0)
-            ui.notify(f"Found {len(self.search_results)} matches", type="positive")
-        else:
-            ui.notify("No matches found", type="info")
 
     def navigate_search_results(self, direction: int) -> None:
         """
