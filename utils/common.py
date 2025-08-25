@@ -258,6 +258,11 @@ def post_file(file: str, filename: str) -> None:
     return True
 
 
+def toggle_upload_status(upload_column, status_column):
+    upload_column.visible = False
+    status_column.visible = True
+
+
 def table_upload(table) -> None:
     """
     Handle the click event on the Upload button with improved UX.
@@ -267,16 +272,27 @@ def table_upload(table) -> None:
 
     with ui.dialog() as dialog:
         with ui.card():
-            with ui.column().classes("w-full items-center mt-10"):
-                ui.upload(
+            with ui.column().classes("w-full items-center mt-10") as status_column:
+                ui.label("Uploading files, please wait...").style(
+                    "width: 100%;"
+                ).classes("text-h6 q-mb-xl text-black")
+            status_column.visible = False
+            with ui.column().classes("w-full items-center mt-10") as upload_column:
+                upload = ui.upload(
                     label="hidden",
-                    on_upload=lambda e: handle_upload_with_feedback(e, dialog),
+                    on_multi_upload=lambda e: handle_upload_with_feedback(e, dialog),
                     auto_upload=True,
                     multiple=True,
                     max_files=5,
                 ).props(
                     "hidden accept=.mp3,.wav,.flac,.mp4,.mkv,.avi,.m4a,.aiff,.aif,.mov,.ogg,.opus,.webm"
                 )
+
+                upload.on(
+                    "start",
+                    lambda _: toggle_upload_status(upload_column, status_column),
+                )
+                upload.on("finish", lambda _: dialog.close())
 
                 ui.html(
                     """
@@ -290,64 +306,65 @@ def table_upload(table) -> None:
                 """
                 )
 
-            ui.run_javascript(
-                """
-                    const dz = document.getElementById('dropzone');
-                    const hiddenInput = document.querySelector('input[type=file][multiple]'); 
+                ui.run_javascript(
+                    """
+                        const dz = document.getElementById('dropzone');
+                        const hiddenInput = document.querySelector('input[type=file][multiple]'); 
 
-                    dz.addEventListener('click', () => hiddenInput.click());
+                        dz.addEventListener('click', () => hiddenInput.click());
 
-                    dz.addEventListener('dragover', e => {
-                        e.preventDefault();
-                        dz.classList.add('bg-gray-200');
-                    });
+                        dz.addEventListener('dragover', e => {
+                            e.preventDefault();
+                            dz.classList.add('bg-gray-200');
+                        });
 
-                    dz.addEventListener('dragleave', () => {
-                        dz.classList.remove('bg-gray-200');
-                    });
+                        dz.addEventListener('dragleave', () => {
+                            dz.classList.remove('bg-gray-200');
+                        });
 
-                    dz.addEventListener('drop', e => {
-                        e.preventDefault();
-                        dz.classList.remove('bg-gray-200');
+                        dz.addEventListener('drop', e => {
+                            e.preventDefault();
+                            dz.classList.remove('bg-gray-200');
 
-                        // Create a DataTransfer to set multiple files
-                        const dt = new DataTransfer();
-                        for (const file of e.dataTransfer.files) {
-                            dt.items.add(file);
-                        }
-                        hiddenInput.files = dt.files;
+                            // Create a DataTransfer to set multiple files
+                            const dt = new DataTransfer();
+                            for (const file of e.dataTransfer.files) {
+                                dt.items.add(file);
+                            }
+                            hiddenInput.files = dt.files;
 
-                        hiddenInput.dispatchEvent(new Event('change', { bubbles: true }));
-                    });
-                """
-            )
-            with ui.row().style("justify-content: flex-end; gap: 12px;"):
-                with ui.button(
-                    "Cancel",
-                    icon="cancel",
-                    on_click=lambda: dialog.close(),
-                ) as cancel:
-                    cancel.props("color=black flat")
-                    cancel.classes("cancel-style")
+                            hiddenInput.dispatchEvent(new Event('change', { bubbles: true }));
+                        });
+                    """
+                )
+                with ui.row().style("justify-content: flex-end; gap: 12px;"):
+                    with ui.button(
+                        "Cancel",
+                        icon="cancel",
+                        on_click=lambda: dialog.close(),
+                    ) as cancel:
+                        cancel.props("color=black flat")
+                        cancel.classes("cancel-style")
 
         dialog.open()
 
 
-async def handle_upload_with_feedback(file, dialog):
+async def handle_upload_with_feedback(files, dialog):
     """
     Handle file uploads with user feedback and validation.
     """
 
+    for file, name in zip(files.contents, files.names):
+        try:
+            await asyncio.to_thread(post_file, file, name)
+
+            ui.notify(f"Successfully uploaded {name}", type="positive", timeout=3000)
+        except Exception as e:
+            ui.notify(
+                f"Failed to upload {name}: {str(e)}", type="negative", timeout=5000
+            )
+
     dialog.close()
-
-    try:
-        await asyncio.to_thread(post_file, file.content, file.name)
-
-        ui.notify(f"Successfully uploaded {file.name}", type="positive", timeout=3000)
-    except Exception as e:
-        ui.notify(
-            f"Failed to upload {file.name}: {str(e)}", type="negative", timeout=5000
-        )
 
 
 def table_transcribe(selected_row) -> None:
