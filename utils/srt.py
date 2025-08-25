@@ -709,12 +709,20 @@ class SRTEditor:
 
         return None
 
-    async def select_caption_from_video(self, autoscroll: bool) -> None:
-        if not autoscroll:
+    def set_autoscroll(self, enabled: bool) -> None:
+        """
+        Set autoscroll behavior for the editor.
+        """
+
+        self.autoscroll = enabled
+
+    async def select_caption_from_video_timeupdate(self) -> None:
+        if not self.autoscroll:
             return
 
-        self.autoscroll = autoscroll
+        self.select_caption_from_video()
 
+    async def select_caption_from_video(self) -> None:
         current_time = await ui.run_javascript(
             """(() => { return document.querySelector("video").currentTime })()"""
         )
