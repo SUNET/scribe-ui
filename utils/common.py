@@ -199,7 +199,7 @@ def jobs_get() -> list:
         else:
             deletion_date = "N/A"
 
-        if job["status"] == "uploaded":
+        if job["status"] != "completed":
             job_type = ""
         elif job["output_format"] == "txt":
             job_type = "Transcription"
