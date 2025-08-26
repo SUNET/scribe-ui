@@ -721,6 +721,56 @@ class SRTEditor:
             if self.selected_caption != caption:
                 self.select_caption(caption)
 
+    def merge_with_next(self, caption: SRTCaption) -> None:
+        """
+        Merge the current caption with the next one.
+        Update the current cation with the text and end_time from
+        the next caption and remove the next caption.
+        """
+
+        caption_index = self.captions.index(caption)
+        if caption_index == len(self.captions) - 1:
+            ui.notify("No next caption to merge with", type="warning")
+            return
+
+        next_caption = self.captions[caption_index + 1]
+
+        # Merge text and update end time
+        caption.text += "\n" + next_caption.text
+        caption.end_time = next_caption.end_time
+
+        # Remove next caption
+        self.captions.remove(next_caption)
+
+        self.renumber_captions()
+        self.update_words_per_minute()
+        self.refresh_display()
+
+    def merge_with_previous(self, caption: SRTCaption) -> None:
+        """
+        Merge the current caption with the previous one.
+        Update the current cation with the text and end_time from
+        the previous caption and remove the previous caption.
+        """
+
+        caption_index = self.captions.index(caption)
+        if caption_index == 0:
+            ui.notify("No previous caption to merge with", type="warning")
+            return
+
+        previous_caption = self.captions[caption_index - 1]
+
+        # Merge text and update end time
+        previous_caption.text += "\n" + caption.text
+        previous_caption.end_time = caption.end_time
+
+        # Remove current caption
+        self.captions.remove(caption)
+
+        self.renumber_captions()
+        self.update_words_per_minute()
+        self.refresh_display()
+
     def create_caption_card(self, caption: SRTCaption) -> ui.card:
         """
         Create a visual card for a caption.
@@ -790,10 +840,27 @@ class SRTEditor:
                 )
 
                 # Action buttons
-                with ui.row().classes("w-full items-center justify-between mt-3"):
+                # Row with buttons to the left
+                with ui.row().classes("w-full justify-between"):
                     ui.button("Split", icon="call_split", color="blue").props(
                         "flat dense"
                     ).on("click", lambda: self.split_caption(caption))
+                    ui.button("Merge with previous", icon="merge_type").props(
+                        "flat dense"
+                    ).on(
+                        "click",
+                        lambda: self.merge_with_previous(caption)
+                        if self.captions.index(caption) > 0
+                        else None,
+                    )
+                    ui.button("Merge with next", icon="merge_type").props(
+                        "flat dense"
+                    ).on(
+                        "click",
+                        lambda: self.merge_with_next(caption)
+                        if self.captions.index(caption) < len(self.captions) - 1
+                        else None,
+                    )
 
                     with ui.row().classes("gap-2"):
                         ui.button("Close").props("flat dense").on(
