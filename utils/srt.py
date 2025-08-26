@@ -24,6 +24,7 @@ class SRTCaption:
         self.text = text
         self.is_selected = False
         self.is_highlighted = False  # For search highlighting
+        self.is_valid = True  # For validation
         self.speaker = speaker if speaker else "UNKNOWN"
 
     def to_dict(self) -> Dict[str, Any]:
@@ -778,7 +779,9 @@ class SRTEditor:
 
         card_class = "cursor-pointer border-0 transition-all duration-200 w-full"
 
-        if caption.is_selected and caption.is_highlighted:
+        if not caption.is_valid:
+            card_class += " border-red-400 bg-red-50 hover:border-red-500"
+        elif caption.is_selected and caption.is_highlighted:
             # Slightly darker yellow background
             card_class += (
                 " shadow-lg border-yellow-400 bg-yellow-100 hover:border-yellow-500"
@@ -939,6 +942,7 @@ class SRTEditor:
         errors = []
         seen_times = set()
         start_times = {}
+        errorenous_captions = []
 
         for caption in self.captions:
             if not caption.text.strip():
@@ -956,6 +960,8 @@ class SRTEditor:
                 start_times[caption.start_time] = [caption.index]
 
             if caption.get_end_seconds() < caption.get_start_seconds():
+                caption.is_valid = False
+                errorenous_captions.append(caption)
                 errors.append(
                     f"Caption #{caption.index} has end time before start time."
                 )
@@ -966,6 +972,8 @@ class SRTEditor:
             next_caption = self.captions[i + 1]
 
             if current.get_end_seconds() > next_caption.get_start_seconds():
+                current.is_valid = False
+                errorenous_captions.append(current)
                 errors.append(
                     f"Caption #{current.index} overlaps with caption #{next_caption.index}."
                 )
@@ -977,6 +985,11 @@ class SRTEditor:
                     f"Multiple captions start at the same time: {', '.join(map(str, indices))}."
                 )
 
+                for cap in self.captions:
+                    if cap.index in indices:
+                        errorenous_captions.append(cap)
+                        cap.is_valid = False
+
         with ui.dialog() as dialog:
             with ui.card().style(
                 "background-color: white; align-self: center; border: 0; width: 100%;"
@@ -987,6 +1000,11 @@ class SRTEditor:
                     ).classes("text-bold")
                     ui.html("<br>".join(errors)).classes("text-red-600")
                 else:
+                    for caption in self.captions:
+                        caption.is_valid = True
+
                     ui.label("All captions are valid!").classes("text-green-600")
                 ui.button("Close", on_click=dialog.close).props("color=primary flat")
             dialog.open()
+
+        self.refresh_display()
