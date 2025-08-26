@@ -199,10 +199,11 @@ def jobs_get() -> list:
         else:
             deletion_date = "N/A"
 
-        job_type = "N/A"
-        if job["output_format"] == "txt":
+        if job["status"] == "uploaded":
+            job_type = ""
+        elif job["output_format"] == "txt":
             job_type = "Transcription"
-        else:
+        elif job["output_format"] == "srt":
             job_type = "Subtitles"
 
         job_data = {
