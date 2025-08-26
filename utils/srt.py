@@ -901,6 +901,7 @@ class SRTEditor:
                         with ui.row():
                             ui.label(f"#{caption.index}").classes("font-bold text-sm")
 
+
                             if self.data_format == "txt":
                                 ui.label(f"{caption.speaker}:").classes(
                                     "font-bold text-sm"
@@ -908,10 +909,13 @@ class SRTEditor:
                         ui.label(f"{caption.start_time} - {caption.end_time}").classes(
                             "text-sm text-gray-500"
                         )
+                    with ui.row().classes('w-full justify-between items-end'):
+                        ui.label(caption.text).classes(
+                            "text-sm leading-relaxed whitespace-pre-wrap"
+                        )
 
-                    ui.label(caption.text).classes(
-                        "text-sm leading-relaxed whitespace-pre-wrap"
-                    )
+                        ui.label(f"({len(caption.text)})").classes("text-sm text-right text-gray-500")
+
 
             card.on(
                 "click",
