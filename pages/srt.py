@@ -183,6 +183,11 @@ def create() -> None:
                             lambda: editor.select_caption_from_video(autoscroll.value),
                         )
                         autoscroll = ui.switch("Autoscroll")
+                        show_score = ui.switch("Show confidence")
+                        show_score.on(
+                            "click", lambda: editor.toggle_confidence(show_score.value)
+                        )
+
                         with ui.column().classes("bg-gray-100 p-4 w-full"):
                             ui.label(filename).classes("text-h6").style(
                                 "align-self: center;"

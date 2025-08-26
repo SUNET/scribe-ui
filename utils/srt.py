@@ -27,6 +27,10 @@ class SRTCaption:
         self.is_valid = True  # For validation
         self.speaker = speaker if speaker else "UNKNOWN"
 
+    def set_text_confidence(self, confidence: str) -> None:
+        print("Setting confidence:", confidence)
+        self.text_confidence = confidence
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "speaker": self.speaker,
@@ -97,6 +101,15 @@ class SRTEditor:
         self.speakers = set()
         self.data_format = None
         self.keypresses = 0
+        self.show_confidence = False
+
+    def toggle_confidence(self, on: bool) -> None:
+        """
+        Toggle confidence score display.
+        """
+
+        self.show_confidence = on
+        self.refresh_display()
 
     def handle_key_event(self, event: events.KeyEventArguments) -> None:
         self.keypresses += 1
@@ -219,6 +232,13 @@ class SRTEditor:
         current = raw_segments[0].copy()
 
         for segment in raw_segments[1:]:
+            if current["avg_score"] < 0.3:
+                current["text_confidence"] = f"<div style='color: red;'>{current["text"]}</div>"
+            elif current["avg_score"] > 0.3 and current["avg_score"] < 0.7:
+                current["text_confidence"] = f"<div style='color: orange;'>{current["text"]}</div>"
+            else:
+                current["text_confidence"] = f"<div>{current["text"]}</div>"
+
             if segment["speaker"] == current["speaker"]:
                 current["text"] += " " + segment["text"]
                 current["end"] = segment["end"]
@@ -233,15 +253,17 @@ class SRTEditor:
             if seg.get("text", "").strip():
                 start_time = self.seconds_to_timestamp(seg.get("start", 0.0))
                 end_time = self.seconds_to_timestamp(seg.get("end", 0.0))
+                caption = SRTCaption(
+                    index,
+                    start_time,
+                    end_time,
+                    seg["text"],
+                    speaker=seg["speaker"],
+                )
+                caption.set_text_confidence(seg["text_confidence"])
 
                 self.captions.append(
-                    SRTCaption(
-                        index,
-                        start_time,
-                        end_time,
-                        seg["text"],
-                        speaker=seg["speaker"],
-                    )
+                    caption
                 )
                 self.speakers.add(seg["speaker"])
 
@@ -909,9 +931,14 @@ class SRTEditor:
                             "text-sm text-gray-500"
                         )
 
-                    ui.label(caption.text).classes(
-                        "text-sm leading-relaxed whitespace-pre-wrap"
-                    )
+                    if self.show_confidence:
+                        ui.html(caption.text_confidence).classes(
+                            "text-sm leading-relaxed whitespace-pre-wrap"
+                        )
+                    else:
+                        ui.label(caption.text).classes(
+                            "text-sm leading-relaxed whitespace-pre-wrap"
+                        )
 
             card.on(
                 "click",
