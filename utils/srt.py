@@ -251,31 +251,27 @@ class SRTEditor:
         """
 
         self.data_format = "srt"
+        self.captions = []
 
-        caption_blocks = re.split(r"\n\s*\n", srt_content.strip())
+        re_block = re.compile(
+            r"(?:^|\n)(\d+)\s*\n"
+            r"(\d{2}:\d{2}:\d{2},\d{3}\s-->\s\d{2}:\d{2}:\d{2},\d{3})\s*\n",
+            re.MULTILINE,
+        )
 
-        for block in caption_blocks:
-            if not block.strip():
-                continue
+        matches = list(re_block.finditer(srt_content))
 
-            lines = block.strip().split("\n")
-            if len(lines) < 3:
-                continue
+        for i, match in enumerate(matches):
+            start = match.end()
+            end = matches[i + 1].start() if i + 1 < len(matches) else len(srt_content)
+            text = srt_content[start:end].strip()
 
-            try:
-                index = int(lines[0])
-                timestamp_line = lines[1]
-                text = "\n".join(lines[2:])
+            index = int(match.group(1))
+            start_time, end_time = match.group(2).split(" --> ")
 
-                # Parse timestamp
-                if " --> " in timestamp_line:
-                    start_time, end_time = timestamp_line.split(" --> ")
-                    caption = SRTCaption(
-                        index, start_time.strip(), end_time.strip(), text
-                    )
-                    self.captions.append(caption)
-            except (ValueError, IndexError):
-                continue
+            self.captions.append(
+                SRTCaption(index, start_time.strip(), end_time.strip(), text)
+            )
 
         self.renumber_captions()
 
