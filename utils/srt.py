@@ -98,6 +98,12 @@ class SRTEditor:
         self.data_format = None
         self.keypresses = 0
 
+    def set_autoscroll(self, autoscroll: bool) -> None:
+        """
+        Set autoscroll property.
+        """
+        self.autoscroll = autoscroll
+
     def handle_key_event(self, event: events.KeyEventArguments) -> None:
         self.keypresses += 1
 
@@ -706,11 +712,9 @@ class SRTEditor:
 
         return None
 
-    async def select_caption_from_video(self, autoscroll: bool) -> None:
-        if not autoscroll:
+    async def select_caption_from_video(self) -> None:
+        if not self.autoscroll:
             return
-
-        self.autoscroll = autoscroll
 
         current_time = await ui.run_javascript(
             """(() => { return document.querySelector("video").currentTime })()"""

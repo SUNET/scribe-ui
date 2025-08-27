@@ -180,9 +180,12 @@ def create() -> None:
                         editor.set_video_player(video)
                         video.on(
                             "timeupdate",
-                            lambda: editor.select_caption_from_video(autoscroll.value),
+                            lambda: editor.select_caption_from_video(),
                         )
                         autoscroll = ui.switch("Autoscroll")
+                        autoscroll.on(
+                            "click", lambda: editor.set_autoscroll(autoscroll.value)
+                        )
                         with ui.column().classes("bg-gray-100 p-4 w-full"):
                             ui.label(filename).classes("text-h6").style(
                                 "align-self: center;"
