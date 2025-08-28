@@ -717,6 +717,9 @@ class SRTEditor:
         return None
 
     async def select_caption_from_video(self) -> None:
+        if not self.autoscroll:
+            return
+
         current_time = await ui.run_javascript(
             """(() => { return document.querySelector("video").currentTime })()"""
         )
@@ -913,7 +916,7 @@ class SRTEditor:
                         ui.label(f"{caption.start_time} - {caption.end_time}").classes(
                             "text-sm text-gray-500"
                         )
-                    with ui.row().classes('w-full justify-between items-end'):
+                    with ui.row().classes("w-full justify-between items-end"):
                         ui.label(caption.text).classes(
                             "text-sm leading-relaxed whitespace-pre-wrap"
                         )
@@ -925,7 +928,9 @@ class SRTEditor:
                             text_color = CHARACTER_LIMIT_EXCEEDED_COLOR
                             tooltip_text = "Too many characters."
 
-                        with ui.label(f"({len(caption.text)})").classes(f"text-sm text-right {text_color}"):
+                        with ui.label(f"({len(caption.text)})").classes(
+                            f"text-sm text-right {text_color}"
+                        ):
                             ui.tooltip(tooltip_text)
 
             card.on(
