@@ -10,6 +10,9 @@ from utils.token import token_refresh
 from utils.token import get_admin_status
 from starlette.formparsers import MultiPartParser
 
+import re
+import unicodedata as ud
+
 
 MultiPartParser.spool_max_size = 1024 * 1024 * 4096
 
@@ -505,6 +508,17 @@ def __delete_files(table: ui.table, dialog: ui.dialog) -> bool:
     table.selected = []
 
     dialog.close()
+
+def get_line_length(s: str) -> int:
+
+    # Regex to match zero-width and BOM characters
+    zw_and_bom = re.compile(r'[\u200B-\u200D\uFEFF]')
+
+    s = ud.normalize('NFC', s)          # compose accents
+    s = s.replace('\u00A0', ' ')        # non-breaking space -> space
+    s = zw_and_bom.sub('', s)           # remove zero-width chars
+    s = s.rstrip('\r')                  # clean up CR if present
+    return len(s)
 
 
 def start_transcription(

@@ -4,6 +4,8 @@ import json
 from nicegui import ui, events
 from typing import Optional, Dict, Any, List
 
+from utils.common import get_line_length
+
 
 CHARACTER_LIMIT_EXCEEDED_COLOR = "text-red"
 CHARACTER_LIMIT = 42
@@ -16,6 +18,7 @@ class SRTCaption:
         start_time: str,
         end_time: str,
         text: str,
+        line_lengths: [int],
         speaker: Optional[str] = "",
     ):
         """
@@ -26,6 +29,7 @@ class SRTCaption:
         self.start_time = start_time
         self.end_time = end_time
         self.text = text
+        self.line_lengths = line_lengths
         self.is_selected = False
         self.is_highlighted = False  # For search highlighting
         self.is_valid = True  # For validation
@@ -269,13 +273,18 @@ class SRTEditor:
             try:
                 index = int(lines[0])
                 timestamp_line = lines[1]
+                line_lengths = []
+
+                for line in lines[2:]:
+                    line_lengths.append(get_line_length(line))
+
                 text = "\n".join(lines[2:])
 
                 # Parse timestamp
                 if " --> " in timestamp_line:
                     start_time, end_time = timestamp_line.split(" --> ")
                     caption = SRTCaption(
-                        index, start_time.strip(), end_time.strip(), text
+                        index, start_time.strip(), end_time.strip(), text, line_lengths
                     )
                     self.captions.append(caption)
             except (ValueError, IndexError):
@@ -837,14 +846,27 @@ class SRTEditor:
                     ),
                 )
 
-                text_area = (
-                    ui.textarea(value=caption.text)
-                    .classes("w-full")
-                    .props("outlined input-class=h-32")
-                )
-                text_area.on(
-                    "blur", lambda e: self.update_caption_text(caption, e.sender.value)
-                )
+                with ui.row().classes('w-full items-start'):
+                    text_area = (
+                        ui.textarea(value=caption.text)
+                        .classes("flex-1 min-w-0")
+                        .props("outlined input-class=h-32")
+                    )
+                    text_area.on(
+                        "blur", lambda e: self.update_caption_text(caption, e.sender.value)
+                    )
+
+                    with ui.column().classes('w-12 justify-between items-end'):
+                        for length in caption.line_lengths:
+                            if length <= 42:
+                                ui.label(f"({length})").classes('text-sm text-gray')
+                                ui.tooltip("Character count. Max 42 per line (guideline)")
+                            else:
+                                ui.label(f"({length})").classes('text-sm text-red')
+                                ui.tooltip("Too many characters")
+
+
+
 
                 # Action buttons
                 # Row with buttons to the left
@@ -912,20 +934,26 @@ class SRTEditor:
                         ui.label(f"{caption.start_time} - {caption.end_time}").classes(
                             "text-sm text-gray-500"
                         )
-                    with ui.row().classes('w-full justify-between items-end'):
-                        ui.label(caption.text).classes(
-                            "text-sm leading-relaxed whitespace-pre-wrap"
-                        )
-                        text_length = len(caption.text)
-                        text_color = "text-gray-500"
-                        tooltip_text = "Character count. Max 42 per line (guideline)."
 
-                        if text_length > CHARACTER_LIMIT:
-                            text_color = CHARACTER_LIMIT_EXCEEDED_COLOR
-                            tooltip_text = "Too many characters."
 
-                        with ui.label(f"({len(caption.text)})").classes(f"text-sm text-right {text_color}"):
-                            ui.tooltip(tooltip_text)
+                        lines = caption.text.splitlines()
+
+                        for line in lines:
+                            with ui.row().classes('w-full justify-between items-end'):
+                                ui.label(line).classes(
+                                    "text-sm leading-relaxed whitespace-pre-wrap"
+                                )
+
+                                text_length = get_line_length(line)
+                                text_color = "text-gray-500"
+                                tooltip_text = "Character count. Max 42 per line (guideline)."
+
+                                if text_length > CHARACTER_LIMIT:
+                                    text_color = CHARACTER_LIMIT_EXCEEDED_COLOR
+                                    tooltip_text = "Too many characters."
+
+                                with ui.label(f"({text_length})").classes(f"text-sm text-right {text_color}"):
+                                    ui.tooltip(tooltip_text)
 
             card.on(
                 "click",
