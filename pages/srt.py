@@ -45,7 +45,9 @@ def create() -> None:
         """
         page_init()
         editor = SRTEditor()
-
+        ui.add_head_html(
+            f"<link rel='preload' as='video' href='/video/{uuid}' type='video/mp4'>"
+        )
         ui.add_head_html(default_styles)
         ui.keyboard(on_key=editor.handle_key_event)
 
