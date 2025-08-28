@@ -178,6 +178,7 @@ def create() -> None:
                             loop=False,
                         ).classes("w-full h-full")
                         editor.set_video_player(video)
+                        video.props("preload='auto'")
                         video.on(
                             "timeupdate",
                             lambda: editor.select_caption_from_video(),
