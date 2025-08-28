@@ -275,6 +275,8 @@ class SRTEditor:
             try:
                 index = int(lines[0])
                 timestamp_line = lines[1]
+
+                lines[2:] = [line.lstrip() for line in lines[2:]]
                 text = "\n".join(lines[2:])
 
                 # Parse timestamp
