@@ -6,6 +6,7 @@ from pages.admin import create as create_admin
 from pages.user import create as create_user_page
 from utils.settings import get_settings
 from utils.common import default_styles
+from utils.common import detect_timezone
 
 settings = get_settings()
 
@@ -67,8 +68,10 @@ def logout() -> None:
             "width: 200px; height: auto; margin: auto; magin-top: auto;"
         )
 
-
 app.add_static_files(url_path="/static", local_directory="static/")
+
+
+app.on_connect(detect_timezone)
 ui.run(
     storage_secret="very_secret",
     title="SUNET Transcriber",

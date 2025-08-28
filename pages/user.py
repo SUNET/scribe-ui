@@ -5,6 +5,8 @@ from utils.common import (
 from utils.token import get_user_data
 from datetime import datetime
 
+from utils.common import format_datetime, format_date
+
 
 def create() -> None:
     @ui.refreshable
@@ -96,7 +98,7 @@ def create() -> None:
                         },
                         {
                             "name": "deletion_date",
-                            "label": "Expires",
+                            "label": "Scheduled deletion",
                             "field": "deletion_date",
                             "align": "center",
                         },
@@ -104,19 +106,15 @@ def create() -> None:
 
                     jobs_data = []
                     for job in userdata["jobs"]["jobs"]:
-                        created_date = datetime.fromisoformat(
-                            job["created_at"].replace(" ", "T")
-                        )
-                        deletion_date = datetime.fromisoformat(
-                            job["deletion_date"].replace(" ", "T")
-                        )
+                        created_date = format_datetime(job["created_at"])
+                        deletion_date = format_date(job["deletion_date"])
 
                         jobs_data.append(
                             {
                                 "filename": job["filename"],
                                 "job_type": job["job_type"].capitalize(),
-                                "created_at": created_date.strftime("%m/%d/%Y %H:%M"),
-                                "deletion_date": deletion_date.strftime("%m/%d/%Y"),
+                                "created_at": created_date,
+                                "deletion_date": deletion_date,
                             }
                         )
 

@@ -9,10 +9,13 @@ from utils.token import get_auth_header
 from utils.token import token_refresh
 from utils.token import get_admin_status
 from starlette.formparsers import MultiPartParser
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 
 MultiPartParser.spool_max_size = 1024 * 1024 * 4096
 
+USER_TIMEZONE = 'UTC'
 
 settings = get_settings()
 API_URL = settings.API_URL
@@ -195,7 +198,7 @@ def jobs_get() -> list:
         deletion_date = job["deletion_date"]
 
         if deletion_date:
-            deletion_date = deletion_date.split(" ")[0]
+            deletion_date = datetime.fromisoformat(deletion_date).strftime("%d/%m/%Y")
         else:
             deletion_date = "N/A"
 
@@ -210,8 +213,8 @@ def jobs_get() -> list:
             "id": idx,
             "uuid": job["uuid"],
             "filename": job["filename"],
-            "created_at": job["created_at"].rsplit(":", 1)[0],
-            "updated_at": job["updated_at"].rsplit(":", 1)[0],
+            "created_at": format_datetime(job["created_at"]),
+            "updated_at": format_datetime(job["updated_at"]),
             "deletion_date": deletion_date,
             "language": job["language"].capitalize(),
             "status": job["status"].capitalize(),
@@ -485,6 +488,11 @@ def table_delete(table: ui.table) -> None:
 
         dialog.open()
 
+async def detect_timezone():
+    global USER_TIMEZONE
+    USER_TIMEZONE = await ui.run_javascript(
+        'Intl.DateTimeFormat().resolvedOptions().timeZone'
+    )
 
 def __delete_files(table: ui.table, dialog: ui.dialog) -> bool:
     try:
@@ -553,3 +561,16 @@ def start_transcription(
 
     except Exception as e:
         ui.notify(f"Error: {str(e)}", type="negative", position="top")
+
+
+def format_datetime(datetime_str):
+        time_in_local_tz = datetime.fromisoformat(datetime_str).astimezone(ZoneInfo(USER_TIMEZONE))
+        print(time_in_local_tz)
+
+        return "{} ({})".format(time_in_local_tz.strftime("%d/%m/%Y %H:%M"), USER_TIMEZONE.split('/')[-1])
+
+def format_date(datetime_str):
+        time_in_local_tz = datetime.fromisoformat(datetime_str).astimezone(ZoneInfo(USER_TIMEZONE))
+        print(time_in_local_tz)
+
+        return time_in_local_tz.strftime("%d/%m/%Y")
