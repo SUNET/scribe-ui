@@ -5,6 +5,10 @@ from nicegui import ui, events
 from typing import Optional, Dict, Any, List
 
 
+CHARACTER_LIMIT_EXCEEDED_COLOR = "text-red"
+CHARACTER_LIMIT = 42
+
+
 class SRTCaption:
     def __init__(
         self,
@@ -901,7 +905,6 @@ class SRTEditor:
                         with ui.row():
                             ui.label(f"#{caption.index}").classes("font-bold text-sm")
 
-
                             if self.data_format == "txt":
                                 ui.label(f"{caption.speaker}:").classes(
                                     "font-bold text-sm"
@@ -913,9 +916,16 @@ class SRTEditor:
                         ui.label(caption.text).classes(
                             "text-sm leading-relaxed whitespace-pre-wrap"
                         )
+                        text_length = len(caption.text)
+                        text_color = "text-gray-500"
+                        tooltip_text = "Character count. Max 42 per line (guideline)."
 
-                        ui.label(f"({len(caption.text)})").classes("text-sm text-right text-gray-500")
+                        if text_length > CHARACTER_LIMIT:
+                            text_color = CHARACTER_LIMIT_EXCEEDED_COLOR
+                            tooltip_text = "Too many characters."
 
+                        with ui.label(f"({len(caption.text)})").classes(f"text-sm text-right {text_color}"):
+                            ui.tooltip(tooltip_text)
 
             card.on(
                 "click",
