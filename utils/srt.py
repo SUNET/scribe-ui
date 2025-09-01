@@ -608,7 +608,7 @@ class SRTEditor:
             self.selected_caption = caption
 
             # Get caption start time
-            if self.__video_player:
+            if self.__video_player and not self.autoscroll:
                 start_seconds = caption.get_start_seconds()
                 self.__video_player.seek(start_seconds)
 

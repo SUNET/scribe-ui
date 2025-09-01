@@ -123,3 +123,13 @@ def get_admin_status() -> bool:
         return get_user_data()["user"]["admin"]
     except (KeyError, TypeError):
         return False
+
+
+def get_user_status() -> bool:
+    """
+    Check if the user is a normal user based on the token.
+    """
+    try:
+        return get_user_data()["user"]["active"]
+    except (KeyError, TypeError):
+        return False

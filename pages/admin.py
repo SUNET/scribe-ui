@@ -1,13 +1,15 @@
+import requests
+
 from nicegui import ui
+from datetime import datetime
 from utils.common import (
     page_init,
+    default_styles,
 )
 from utils.token import get_admin_status
-import requests
 from utils.settings import get_settings
 from utils.token import get_auth_header
-from datetime import datetime, timedelta
-import json
+
 
 settings = get_settings()
 
@@ -17,7 +19,7 @@ def get_statistics() -> dict:
     Get statistics from the API.
     """
     response = requests.get(
-        f"{settings.API_URL}/api/v1/statistics", headers=get_auth_header()
+        f"{settings.API_URL}/api/v1/admin", headers=get_auth_header()
     )
     response.raise_for_status()
     data = response.json()
@@ -67,50 +69,70 @@ def format_last_login(last_login_str: str) -> str:
         return last_login_str
 
 
-def create_chart_data(active_users: list) -> dict:
-    """
-    Create chart data from active users.
-    """
-    transcription_data = []
-    for user in active_users:
-        seconds = int(user.get("transcribed_seconds", 0))
-        transcription_data.append(
-            {
-                "user": user["username"].split("@")[0],  # Show username without domain
-                "seconds": seconds,
-                "formatted": format_seconds_to_duration(seconds),
-            }
-        )
+def get_table_data() -> list:
+    table_data = []
 
-    admin_count = sum(1 for user in active_users if user.get("admin", False))
-    regular_count = len(active_users) - admin_count
-    recent_activity = []
-    now = datetime.now()
+    try:
+        statistics = get_statistics()
+        result = statistics.get("result", {})
 
-    for user in active_users:
-        try:
-            last_login = datetime.fromisoformat(
-                user["last_login"].replace("Z", "+00:00")
+        total_users = result.get("total_users", 0)
+        active_users = result.get("active_users", [])
+        total_transcribed_seconds = result.get("total_transcribed_seconds", 0)
+
+        for index, user in enumerate(active_users):
+            table_data.append(
+                {
+                    "id": index,
+                    "username": user.get("username", "N/A"),
+                    "realm": user.get("realm", "N/A"),
+                    "active": "Yes" if user.get("active", False) else "No",
+                    "admin": "Admin" if user.get("admin", False) else "User",
+                    "transcribed_seconds": format_seconds_to_duration(
+                        int(user.get("transcribed_seconds", 0))
+                    ),
+                    "last_login": format_last_login(user.get("last_login", "Never")),
+                }
             )
-            days_ago = (now - last_login).days
-            if days_ago <= 7:
-                recent_activity.append(
-                    {
-                        "day": f"{days_ago} days ago" if days_ago > 0 else "Today",
-                        "user": user["username"].split("@")[0],
-                    }
-                )
-        except:
-            pass
+    except Exception:
+        return None
 
-    return {
-        "transcription": transcription_data,
-        "user_types": [
-            {"type": "Admin", "count": admin_count},
-            {"type": "Regular", "count": regular_count},
-        ],
-        "recent_activity": recent_activity,
-    }
+    return total_users, active_users, total_transcribed_seconds, table_data
+
+
+def handle_user_action(table: ui.table, action: str) -> None:
+    """
+    Handle user actions: enable, disable, toggle_admin.
+    """
+    if not table.selected:
+        ui.notify("No users selected", type="warning")
+        return
+
+    for user in table.selected:
+        username = user["username"]
+
+        match action:
+            case "enable":
+                json_data = {"username": username, "active": True}
+            case "disable":
+                json_data = {"username": username, "active": False}
+            case "enable_admin":
+                json_data = {"username": username, "admin": True}
+            case "disable_admin":
+                json_data = {"username": username, "admin": False}
+
+        try:
+            response = requests.put(
+                settings.API_URL + f"/api/v1/admin/{username}",
+                headers=get_auth_header(),
+                json=json_data,
+            )
+            response.raise_for_status()
+            ui.notify(f"User {username} {action}d successfully", type="positive")
+        except requests.exceptions.RequestException as e:
+            ui.notify(f"Error {action}ing user {username}: {e}", type="error")
+
+    table.update_rows(get_table_data()[-1])
 
 
 def create() -> None:
@@ -125,78 +147,153 @@ def create() -> None:
             return
 
         page_init()
+        ui.add_head_html(default_styles)
 
-        try:
-            statistics = get_statistics()
-            result = statistics.get("result", {})
+        columns = [
+            {
+                "name": "username",
+                "label": "Username",
+                "field": "username",
+                "align": "left",
+            },
+            {
+                "name": "realm",
+                "label": "Realm",
+                "field": "realm",
+                "align": "left",
+            },
+            {
+                "name": "active",
+                "label": "Active",
+                "field": "active",
+                "align": "left",
+            },
+            {
+                "name": "admin",
+                "label": "Role",
+                "field": "admin",
+                "align": "left",
+            },
+            {
+                "name": "transcribed_seconds",
+                "label": "Total Transcription Time",
+                "field": "transcribed_seconds",
+                "align": "left",
+            },
+        ]
 
-            total_users = result.get("total_users", 0)
-            active_users = result.get("active_users", [])
-            total_transcribed_seconds = result.get("total_transcribed_seconds", 0)
+        (
+            total_users,
+            active_users,
+            total_transcribed_seconds,
+            table_data,
+        ) = get_table_data()
 
-            with ui.row().classes("w-full gap-6 mb-8"):
-                with ui.card().classes("metric-card flex-1"):
-                    ui.html(f'<div class="metric-value">{total_users}</div>')
-                    ui.html('<div class="metric-label">Total Users</div>')
+        with ui.tabs() as tabs:
+            tabs.classes("w-full h-full")
+            ui.tab("users", label="Users", icon="people")
+            ui.tab("transcriptions", label="Transcriptions", icon="credit_card")
 
-                with ui.card().classes("metric-card flex-1"):
-                    ui.html(
-                        f'<div class="metric-value">{format_seconds_to_duration(total_transcribed_seconds)}</div>'
+        with ui.tab_panels(tabs, value="users").classes("w-full h-full"):
+            with ui.tab_panel("users").classes("w-full h-full"):
+                with ui.table(
+                    columns=columns,
+                    rows=table_data,
+                    pagination=10,
+                    selection="multiple",
+                ) as table:
+                    table.style(
+                        "width: 100%; height: calc(100vh - 350px); box-shadow: none; font-size: 18px;"
                     )
-                    ui.html('<div class="metric-label">Total Transcription Time</div>')
 
-            columns = [
-                {
-                    "name": "username",
-                    "label": "Username",
-                    "field": "username",
-                    "align": "left",
-                },
-                {
-                    "name": "realm",
-                    "label": "Realm",
-                    "field": "realm",
-                    "align": "left",
-                },
-                {
-                    "name": "admin",
-                    "label": "Role",
-                    "field": "admin",
-                    "align": "center",
-                },
-                {
-                    "name": "transcribed_seconds",
-                    "label": "Total Transcription Time",
-                    "field": "transcribed_seconds",
-                    "align": "right",
-                },
-            ]
+                    with table.add_slot("top-right"):
+                        with ui.input(placeholder="Search users...") as search:
+                            search.bind_value_to(table, "filter")
+                            search.classes("q-ma-md")
+                            search.style("width: 500px;")
 
-            table_data = []
-            for user in active_users:
-                table_data.append(
-                    {
-                        "username": user.get("username", "N/A"),
-                        "realm": user.get("realm", "N/A"),
-                        "admin": "👑 Admin" if user.get("admin", False) else "👤 User",
-                        "transcribed_seconds": format_seconds_to_duration(
-                            int(user.get("transcribed_seconds", 0))
-                        ),
-                        "last_login": format_last_login(
-                            user.get("last_login", "Never")
-                        ),
-                    }
-                )
+                with ui.row().classes("w-full mt-8 justify-end"):
+                    with ui.button("Enable user") as button_enable:
+                        button_enable.props("color=black flat")
+                        button_enable.classes("button-user-status")
+                        button_enable.on(
+                            "click", lambda: handle_user_action(table, "enable")
+                        )
 
-            ui.table(columns=columns, rows=table_data, pagination=10).classes(
-                "w-full h-full"
-            )
+                    with ui.button("Disable user") as button_disable:
+                        button_disable.props("color=black flat")
+                        button_disable.classes("button-user-status")
+                        button_disable.on(
+                            "click", lambda: handle_user_action(table, "disable")
+                        )
 
-        except Exception as e:
-            with ui.column().classes("w-full items-center justify-center min-h-96"):
-                ui.html('<div class="text-6xl mb-4">⚠️</div>')
-                ui.html(
-                    '<div class="text-2xl text-red-600 mb-2">Error Loading Dashboard</div>'
-                )
-                ui.html(f'<div class="text-gray-600">{str(e)}</div>')
-                ui.button("🔄 Retry", on_click=home.refresh).classes("refresh-btn mt-4")
+                    with ui.button("Make admin") as button_make_admin:
+                        button_make_admin.props("color=black flat")
+                        button_make_admin.classes("button-user-status")
+                        button_make_admin.on(
+                            "click",
+                            lambda: handle_user_action(table, "enable_admin"),
+                        )
+
+                    with ui.button("Remove admin") as button_remove_admin:
+                        button_remove_admin.props("color=black flat")
+                        button_remove_admin.classes("button-user-status")
+                        button_remove_admin.on(
+                            "click",
+                            lambda: handle_user_action(table, "disable_admin"),
+                        )
+
+            with ui.tab_panel("transcriptions").classes("w-full h-full"):
+                statistics = get_statistics()
+
+                with ui.row().classes("w-full mt-4 mb-4 no-wrap"):
+                    transcriptions_per_day = statistics.get("result", {}).get(
+                        "transcribed_seconds_per_day", {}
+                    )
+
+                    ui.echart(
+                        {
+                            "tooltip": {"trigger": "axis"},
+                            "xAxis": {
+                                "type": "category",
+                                "data": list(transcriptions_per_day.keys()),
+                            },
+                            "yAxis": {"type": "value"},
+                            "series": [
+                                {
+                                    "data": list(transcriptions_per_day.values()),
+                                    "type": "bar",
+                                    "smooth": True,
+                                }
+                            ],
+                        }
+                    ).classes("w-1/2 h-96")
+
+                    transcriptions_per_day_and_user = statistics.get("result", {}).get(
+                        "transcribed_seconds_per_day_and_user", {}
+                    )
+
+                    ui.echart(
+                        {
+                            "tooltip": {"trigger": "axis"},
+                            "legend": {},
+                            "xAxis": {
+                                "type": "category",
+                                "data": list(
+                                    next(
+                                        iter(transcriptions_per_day_and_user.values())
+                                    ).keys()
+                                ),
+                            },
+                            "yAxis": {"type": "value"},
+                            "series": [
+                                {
+                                    "name": user,
+                                    "data": list(user_data.values()),
+                                    "type": "bar",
+                                    "smooth": True,
+                                }
+                                for user, user_data in transcriptions_per_day_and_user.items()
+                            ],
+                        }
+                    ).classes("w-1/2 h-96")

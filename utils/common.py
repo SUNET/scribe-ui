@@ -111,6 +111,11 @@ default_styles = """
             color: #000000 !important;
             width: 150px;
         }
+        .button-user-status {
+            background-color: #ffffff;
+            width: 150px;
+            border: 1px solid #000000;
+        }
     </style>
 """
 
