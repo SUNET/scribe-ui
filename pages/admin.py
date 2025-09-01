@@ -277,7 +277,7 @@ def create() -> None:
                     ui.echart(
                         {
                             "tooltip": {"trigger": "axis"},
-                            "legend": {},
+                            "legend": {"bottom": 0},
                             "xAxis": {
                                 "type": "category",
                                 "data": list(
