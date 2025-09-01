@@ -246,7 +246,7 @@ def create() -> None:
             with ui.tab_panel("transcriptions").classes("w-full h-full"):
                 statistics = get_statistics()
 
-                with ui.row().classes("w-full mt-4 mb-4 no-wrap"):
+                with ui.row().classes("w-full"):
                     transcriptions_per_day = statistics.get("result", {}).get(
                         "transcribed_seconds_per_day", {}
                     )
@@ -266,8 +266,9 @@ def create() -> None:
                                     "smooth": True,
                                 }
                             ],
+                            "title": {"text": "Transcriptions per day"},
                         }
-                    ).classes("w-1/2 h-96")
+                    ).classes("w-full h-96")
 
                     transcriptions_per_day_and_user = statistics.get("result", {}).get(
                         "transcribed_seconds_per_day_and_user", {}
@@ -295,5 +296,6 @@ def create() -> None:
                                 }
                                 for user, user_data in transcriptions_per_day_and_user.items()
                             ],
+                            "title": {"text": "Transcriptions per day and user"},
                         }
-                    ).classes("w-1/2 h-96")
+                    ).classes("w-full h-96")
