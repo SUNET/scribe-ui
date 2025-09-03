@@ -269,33 +269,3 @@ def create() -> None:
                             "title": {"text": "Transcriptions per day"},
                         }
                     ).classes("w-full h-96")
-
-                    transcriptions_per_day_and_user = statistics.get("result", {}).get(
-                        "transcribed_seconds_per_day_and_user", {}
-                    )
-
-                    ui.echart(
-                        {
-                            "tooltip": {"trigger": "axis"},
-                            "legend": {"bottom": 0},
-                            "xAxis": {
-                                "type": "category",
-                                "data": list(
-                                    next(
-                                        iter(transcriptions_per_day_and_user.values())
-                                    ).keys()
-                                ),
-                            },
-                            "yAxis": {"type": "value"},
-                            "series": [
-                                {
-                                    "name": user,
-                                    "data": list(user_data.values()),
-                                    "type": "bar",
-                                    "smooth": True,
-                                }
-                                for user, user_data in transcriptions_per_day_and_user.items()
-                            ],
-                            "title": {"text": "Transcriptions per day and user"},
-                        }
-                    ).classes("w-full h-96")
