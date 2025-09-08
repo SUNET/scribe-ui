@@ -15,7 +15,6 @@ from zoneinfo import ZoneInfo
 MultiPartParser.spool_max_size = 1024 * 1024 * 4096
 
 settings = get_settings()
-API_URL = settings.API_URL
 
 jobs_columns = [
     {
@@ -112,6 +111,11 @@ default_styles = """
             color: #000000 !important;
             width: 150px;
         }
+        .button-user-status {
+            background-color: #ffffff;
+            width: 150px;
+            border: 1px solid #000000;
+        }
     </style>
 """
 
@@ -181,7 +185,7 @@ def jobs_get() -> list:
 
     try:
         response = requests.get(
-            f"{API_URL}/api/v1/transcriber", headers=get_auth_header()
+            f"{settings.API_URL}/api/v1/transcriber", headers=get_auth_header()
         )
         response.raise_for_status()
     except requests.exceptions.RequestException:
@@ -217,7 +221,7 @@ def jobs_get() -> list:
             "status": job["status"].capitalize(),
             "model_type": job["model_type"].capitalize(),
             "output_format": job["output_format"].upper(),
-            "job_type": job_type
+            "job_type": job_type,
         }
 
         jobs.append(job_data)
@@ -261,7 +265,9 @@ def post_file(file: str, filename: str) -> None:
 
     try:
         response = requests.post(
-            f"{API_URL}/api/v1/transcriber", files=files_json, headers=get_auth_header()
+            f"{settings.API_URL}/api/v1/transcriber",
+            files=files_json,
+            headers=get_auth_header(),
         )
         response.raise_for_status()
 
@@ -511,7 +517,7 @@ def __delete_files(table: ui.table, dialog: ui.dialog) -> bool:
         for row in table.selected:
             uuid = row["uuid"]
             response = requests.delete(
-                f"{API_URL}/api/v1/transcriber/{uuid}",
+                f"{settings.API_URL}/api/v1/transcriber/{uuid}",
                 headers=get_auth_header(),
             )
             response.raise_for_status()
@@ -550,7 +556,7 @@ def start_transcription(
 
             try:
                 response = requests.put(
-                    f"{API_URL}/api/v1/transcriber/{uuid}",
+                    f"{settings.API_URL}/api/v1/transcriber/{uuid}",
                     json={
                         "language": f"{selected_language}",
                         "model": f"{selected_model}",
