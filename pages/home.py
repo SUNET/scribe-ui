@@ -1,6 +1,8 @@
 from nicegui import ui, events
+import asyncio
 from utils.common import (
     default_styles,
+    detect_timezone,
     page_init,
     jobs_get,
     jobs_columns,
@@ -8,7 +10,6 @@ from utils.common import (
     table_upload,
     table_delete,
     table_transcribe,
-    USER_TIMEZONE
 )
 
 
@@ -20,6 +21,10 @@ def create() -> None:
         Main page of the application.
         """
         page_init()
+
+        # Run only once, shortly after page load
+        def run_once():
+            ui.timer(0, lambda: asyncio.create_task(detect_timezone()), once=True)
 
         def toggle_buttons(selected: list) -> None:
             """

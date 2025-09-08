@@ -12,10 +12,7 @@ from starlette.formparsers import MultiPartParser
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
-
 MultiPartParser.spool_max_size = 1024 * 1024 * 4096
-
-USER_TIMEZONE = 'UTC'
 
 settings = get_settings()
 API_URL = settings.API_URL
@@ -489,10 +486,25 @@ def table_delete(table: ui.table) -> None:
         dialog.open()
 
 async def detect_timezone():
-    global USER_TIMEZONE
-    USER_TIMEZONE = await ui.run_javascript(
+    user_timezone = await ui.run_javascript(
         'Intl.DateTimeFormat().resolvedOptions().timeZone'
     )
+
+    try:
+        response = requests.put(
+            f"{API_URL}/api/v1/transcriber/me/timezone",
+            data={'timezone' : user_timezone},
+            headers=get_auth_header(),
+        )
+        response.raise_for_status()
+        ui.notify("Files deleted successfully", type="positive", position="top")
+    except requests.exceptions.RequestException as e:
+        ui.notify(
+            f"Error: Failed to update user timezone: {str(e)}", type="negative", position="top"
+        )
+    return False
+
+
 
 def __delete_files(table: ui.table, dialog: ui.dialog) -> bool:
     try:
