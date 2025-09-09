@@ -20,13 +20,20 @@ class Settings(BaseSettings):
     OIDC_APP_LOGOUT_ROUTE: str = ""
     OIDC_APP_REFRESH_ROUTE: str = ""
 
-    WHISPER_MODELS: list[str] = ["Tiny", "Base", "Small", "Medium", "Large"]
+    WHISPER_MODELS: list[str] = [
+        "Fast transcription (normal accuracy)",
+        "Slower transcription (higher accuracy)",
+    ]
     WHISPER_LANGUAGES: list[str] = [
         "Swedish",
         "English",
         "Finnish",
         "Danish",
         "Norwegian",
+        "French",
+        "Spanish",
+        "German",
+        "Italian",
     ]
 
 
