@@ -615,11 +615,12 @@ class SRTEditor:
         self.update_words_per_minute()
         self.refresh_display()
 
-        ui.run_javascript(
-            """
-            document.getElementById("action_row").scrollIntoView({ behavior: "smooth", block: "center" });
-            """
-        )
+        if self.selected_caption:
+            ui.run_javascript(
+                """
+                document.getElementById("action_row").scrollIntoView({ behavior: "smooth", block: "center" });
+                """
+            )
 
     def update_caption_text(self, caption: SRTCaption, new_text: str) -> None:
         """
