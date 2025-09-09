@@ -106,6 +106,12 @@ class SRTEditor:
         self.data_format = None
         self.keypresses = 0
 
+    def set_autoscroll(self, autoscroll: bool) -> None:
+        """
+        Set autoscroll property.
+        """
+        self.autoscroll = autoscroll
+
     def handle_key_event(self, event: events.KeyEventArguments) -> None:
         self.keypresses += 1
 
@@ -273,10 +279,12 @@ class SRTEditor:
             try:
                 index = int(lines[0])
                 timestamp_line = lines[1]
+
                 line_lengths = []
 
                 for line in lines[2:]:
                     line_lengths.append(get_line_length(line))
+                lines[2:] = [line.lstrip() for line in lines[2:]]
 
                 text = "\n".join(lines[2:])
 
@@ -719,11 +727,9 @@ class SRTEditor:
 
         return None
 
-    async def select_caption_from_video(self, autoscroll: bool) -> None:
-        if not autoscroll:
+    async def select_caption_from_video(self) -> None:
+        if not self.autoscroll:
             return
-
-        self.autoscroll = autoscroll
 
         current_time = await ui.run_javascript(
             """(() => { return document.querySelector("video").currentTime })()"""
@@ -935,18 +941,23 @@ class SRTEditor:
                             "text-sm text-gray-500"
                         )
 
+                    with ui.row().classes("w-full justify-between items-end"):
+                        text_color = "text-gray-500"
+                        tooltip_text = "Character count. Max 42 per line (guideline)."
 
                         lines = caption.text.splitlines()
-
+                        index = 0
                         for line in lines:
+                            text_length = caption.line_lengths[index]
+                            index +=1
                             with ui.row().classes('w-full justify-between items-end'):
                                 ui.label(line).classes(
                                     "text-sm leading-relaxed whitespace-pre-wrap"
                                 )
 
-                                text_length = get_line_length(line)
+                                # For some reason this adds a character that is not present outside the editor.
                                 text_color = "text-gray-500"
-                                tooltip_text = "Character count. Max 42 per line (guideline)."
+                                tooltip_text = f"Character count. Max {CHARACTER_LIMIT} per line (guideline)."
 
                                 if text_length > CHARACTER_LIMIT:
                                     text_color = CHARACTER_LIMIT_EXCEEDED_COLOR

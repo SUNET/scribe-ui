@@ -1,14 +1,16 @@
 import requests
 
 from nicegui import ui
-from utils.common import API_URL
 from utils.common import get_auth_header
 from utils.common import page_init
 from utils.common import default_styles
 from utils.video import create_video_proxy
 from utils.srt import SRTEditor
+from utils.settings import get_settings
 
 create_video_proxy()
+
+settings = get_settings()
 
 
 def save_srt(job_id: str, data: str, editor: SRTEditor, data_format: str) -> None:
@@ -18,7 +20,7 @@ def save_srt(job_id: str, data: str, editor: SRTEditor, data_format: str) -> Non
         headers = get_auth_header()
         headers["Content-Type"] = "application/json"
         res = requests.put(
-            f"{API_URL}/api/v1/transcriber/{job_id}/result",
+            f"{settings.API_URL}/api/v1/transcriber/{job_id}/result",
             headers=headers,
             json=jsondata,
         )
@@ -45,19 +47,21 @@ def create() -> None:
         """
         page_init()
         editor = SRTEditor()
-
+        ui.add_head_html(
+            f"<link rel='preload' as='video' href='/video/{uuid}' type='video/mp4'>"
+        )
         ui.add_head_html(default_styles)
         ui.keyboard(on_key=editor.handle_key_event)
 
         try:
             if data_format == "srt":
                 response = requests.get(
-                    f"{API_URL}/api/v1/transcriber/{uuid}/result/srt",
+                    f"{settings.API_URL}/api/v1/transcriber/{uuid}/result/srt",
                     headers=get_auth_header(),
                 )
             else:
                 response = requests.get(
-                    f"{API_URL}/api/v1/transcriber/{uuid}/result/txt",
+                    f"{settings.API_URL}/api/v1/transcriber/{uuid}/result/txt",
                     headers=get_auth_header(),
                 )
 
@@ -178,11 +182,15 @@ def create() -> None:
                             loop=False,
                         ).classes("w-full h-full")
                         editor.set_video_player(video)
+                        video.props("preload='auto'")
                         video.on(
                             "timeupdate",
-                            lambda: editor.select_caption_from_video(autoscroll.value),
+                            lambda: editor.select_caption_from_video(),
                         )
                         autoscroll = ui.switch("Autoscroll")
+                        autoscroll.on(
+                            "click", lambda: editor.set_autoscroll(autoscroll.value)
+                        )
                         with ui.column().classes("bg-gray-100 p-4 w-full"):
                             ui.label(filename).classes("text-h6").style(
                                 "align-self: center;"

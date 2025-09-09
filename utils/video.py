@@ -3,8 +3,10 @@ import requests
 from fastapi import Request
 from fastapi.responses import Response
 from nicegui import app
-from utils.common import API_URL
 from utils.common import get_auth_header
+from utils.settings import get_settings
+
+settings = get_settings()
 
 
 def create_vtt_proxy() -> Response:
@@ -22,7 +24,7 @@ def create_vtt_proxy() -> Response:
 
         headers["Authorization"] = headers_auth.get("Authorization", "")
         response = requests.get(
-            f"{API_URL}/api/v1/transcriber/{job_id}/vtt",
+            f"{settings.API_URL}/api/v1/transcriber/{job_id}/vtt",
             headers=headers,
         )
 
@@ -56,7 +58,7 @@ def create_video_proxy() -> Response:
 
         headers["Authorization"] = headers_auth.get("Authorization", "")
         response = requests.get(
-            f"{API_URL}/api/v1/transcriber/{job_id}/videostream",
+            f"{settings.API_URL}/api/v1/transcriber/{job_id}/videostream",
             headers=headers,
         )
 
