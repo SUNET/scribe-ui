@@ -27,9 +27,9 @@ class Settings(BaseSettings):
     WHISPER_LANGUAGES: list[str] = [
         "Swedish",
         "English",
+        "Norwegian",
         "Finnish",
         "Danish",
-        "Norwegian",
         "French",
         "Spanish",
         "German",
