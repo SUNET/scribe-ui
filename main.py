@@ -83,6 +83,15 @@ def inactive() -> None:
         ui.label("Please contact your administrator to activate your account.").classes(
             "text-subtitle1"
         ).style("margin: auto; margin-top: 20px;")
+        ui.button(
+            "Login with SSO",
+            icon="login",
+            on_click=lambda: ui.navigate.to(settings.OIDC_APP_LOGIN_ROUTE),
+        ).style("margin-top: auto; margin-bottom: 5px; align-self: center;").props(
+            "flat"
+        ).classes(
+            "button-default-style"
+        )
 
 
 @ui.page("/logout")
