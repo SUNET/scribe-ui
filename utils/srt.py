@@ -593,7 +593,6 @@ class SRTEditor:
         """
         Select/deselect a caption.
         """
-
         if speaker:
             self.speakers.add(speaker.value)
             self.selected_caption.speaker = speaker.value
@@ -608,10 +607,9 @@ class SRTEditor:
             self.selected_caption = caption
 
             # Get caption start time
-            if self.__video_player and not self.autoscroll:
+            if self.__video_player:
                 start_seconds = caption.get_start_seconds()
                 self.__video_player.seek(start_seconds)
-
         self.update_words_per_minute()
         self.refresh_display()
 
@@ -936,12 +934,12 @@ class SRTEditor:
                         ):
                             ui.tooltip(tooltip_text)
 
-            card.on(
-                "click",
-                lambda: self.select_caption(caption)
-                if not caption.is_selected
-                else None,
-            )
+                card.on(
+                    "click",
+                    lambda: self.select_caption(caption)
+                    if not caption.is_selected
+                    else None,
+                )
 
         return card
 
