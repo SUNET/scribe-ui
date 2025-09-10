@@ -45,12 +45,6 @@ def index(request: Request) -> None:
         and app.storage.user.get("refresh_token")
         and not get_user_status()
     ):
-        ui.navigate.to(settings.OIDC_APP_LOGIN_ROUTE)
-    elif (
-        app.storage.user.get("token")
-        and app.storage.user.get("refresh_token")
-        and not get_user_status()
-    ):
         ui.navigate.to("/inactive")
     else:
         with ui.card() as card:
