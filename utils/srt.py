@@ -148,6 +148,10 @@ class SRTEditor:
 
         if self.selected_caption:
             current_index = self.captions.index(self.selected_caption)
+
+            if current_index + 1 >= len(self.captions):
+                return
+
             self.select_caption(self.captions[current_index + 1])
         else:
             self.select_caption(self.captions[0])
@@ -497,6 +501,10 @@ class SRTEditor:
         """
         Split a caption into two parts.
         """
+
+        if not caption:
+            return
+
         text_lines = caption.text.split("\n")
 
         if len(text_lines) == 1:
@@ -577,6 +585,9 @@ class SRTEditor:
         """
         Remove a caption.
         """
+
+        if not caption:
+            return
 
         if len(self.captions) > 1:  # Don't remove if it's the only caption
             self.captions.remove(caption)
