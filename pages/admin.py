@@ -266,6 +266,6 @@ def create() -> None:
                                     "smooth": True,
                                 }
                             ],
-                            "title": {"text": "Transcriptions per day"},
+                            "title": {"text": "Transcribed seconds per day"},
                         }
                     ).classes("w-full h-96")
