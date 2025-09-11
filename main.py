@@ -111,4 +111,5 @@ ui.run(
     storage_secret="very_secret",
     title="SUNET Transcriber",
     port=8888,
+    favicon="static/favicon.ico",
 )
