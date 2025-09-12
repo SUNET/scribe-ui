@@ -410,6 +410,10 @@ def table_transcribe(selected_row) -> None:
                 )
 
                 with ui.column().classes("col-12 col-sm-24"):
+                    ui.label("Filename:").classes("text-subtitle2 q-mb-sm")
+                    ui.label(f"{selected_row['filename']}")
+
+                with ui.column().classes("col-12 col-sm-24"):
                     ui.label("Language").classes("text-subtitle2 q-mb-sm")
                     language = ui.select(
                         settings.WHISPER_LANGUAGES,
