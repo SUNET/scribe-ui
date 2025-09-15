@@ -280,11 +280,11 @@ class SRTEditor:
                 index = int(lines[0])
                 timestamp_line = lines[1]
 
+                lines[2:] = [line.lstrip() for line in lines[2:]]
                 line_lengths = []
 
                 for line in lines[2:]:
                     line_lengths.append(get_line_length(line))
-                lines[2:] = [line.lstrip() for line in lines[2:]]
 
                 text = "\n".join(lines[2:])
 
@@ -862,7 +862,7 @@ class SRTEditor:
                         "blur", lambda e: self.update_caption_text(caption, e.sender.value)
                     )
 
-                    with ui.column().classes('w-12 justify-between items-end'):
+                    with ui.column().classes('w-4 justify-between items-end'):
                         for length in caption.line_lengths:
                             if length <= 42:
                                 ui.label(f"({length})").classes('text-sm text-gray')
