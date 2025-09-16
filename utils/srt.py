@@ -1,8 +1,8 @@
-import re
 import json
+import re
 
-from nicegui import ui, events
-from typing import Optional, Dict, Any, List
+from nicegui import events, ui
+from typing import Any, Dict, List, Optional
 
 
 CHARACTER_LIMIT_EXCEEDED_COLOR = "text-red"

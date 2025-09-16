@@ -1,11 +1,11 @@
 from fastapi import Request
-from nicegui import ui, app
-from pages.srt import create as create_srt
-from pages.home import create as create_files_table
+from nicegui import app, ui
 from pages.admin import create as create_admin
+from pages.home import create as create_files_table
+from pages.srt import create as create_srt
 from pages.user import create as create_user_page
-from utils.settings import get_settings
 from utils.common import default_styles
+from utils.settings import get_settings
 from utils.token import get_user_status
 
 settings = get_settings()

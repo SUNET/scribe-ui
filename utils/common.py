@@ -1,14 +1,11 @@
 import asyncio
 import requests
 
-from nicegui import app
-from nicegui import ui
+from nicegui import app, ui
+from starlette.formparsers import MultiPartParser
 from typing import Optional
 from utils.settings import get_settings
-from utils.token import get_auth_header
-from utils.token import token_refresh
-from utils.token import get_admin_status
-from starlette.formparsers import MultiPartParser
+from utils.token import get_admin_status, get_auth_header, token_refresh
 
 
 MultiPartParser.spool_max_size = 1024 * 1024 * 4096
