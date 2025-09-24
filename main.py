@@ -59,7 +59,7 @@ def index(request: Request) -> None:
                 "Login with SSO",
                 icon="login",
                 on_click=lambda: ui.navigate.to(settings.OIDC_APP_LOGIN_ROUTE),
-            ).style("margin-top: auto; margin-bottom: 5px; align-self: center;").props(
+            ).style("margin-top: auto; margin-bottom: 5px; align-self: center; width: 200px;").props(
                 "flat"
             ).classes(
                 "button-default-style"
