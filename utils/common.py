@@ -145,7 +145,7 @@ def page_init(header_text: Optional[str] = "") -> None:
     with ui.header().style(
         "justify-content: space-between; background-color: #ffffff;"
     ).classes("drop-shadow-md"):
-        ui.label("Sunet Transcriber" + header_text).classes("text-h5 text-black")
+        ui.label("Sunet Scribe" + header_text).classes("text-h5 text-black")
 
         with ui.element("div").style("display: flex; gap: 0px;"):
             if is_admin:

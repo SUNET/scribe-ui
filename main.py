@@ -49,7 +49,7 @@ def index(request: Request) -> None:
     else:
         with ui.card() as card:
             card.style("width: 50%; align-self: center; height: 50vh; margin-top: 10%;")
-            ui.label("Welcome to Sunet Transcriber").classes("text-h5").style(
+            ui.label("Welcome to Sunet Scribe").classes("text-h5").style(
                 "margin: auto;"
             )
             ui.image("static/sunet_logo.svg").style(
