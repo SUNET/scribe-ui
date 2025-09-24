@@ -52,7 +52,7 @@ def index(request: Request) -> None:
             ui.label("Welcome to Sunet Scribe").classes("text-h5").style(
                 "margin: auto;"
             )
-            ui.image("static/sunet_logo.svg").style(
+            ui.image("static/sunet_logo.png").style(
                 "width: 25%; height: auto; margin: auto; magin-top: auto;"
             )
             ui.button(
