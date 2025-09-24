@@ -59,7 +59,9 @@ def index(request: Request) -> None:
                 "Login with SSO",
                 icon="login",
                 on_click=lambda: ui.navigate.to(settings.OIDC_APP_LOGIN_ROUTE),
-            ).style("margin-top: auto; margin-bottom: 5px; align-self: center; width: 200px;").props(
+            ).style(
+                "margin-top: auto; margin-bottom: 5px; align-self: center; width: 200px;"
+            ).props(
                 "flat"
             ).classes(
                 "button-default-style"
@@ -77,7 +79,7 @@ def inactive() -> None:
     with ui.card() as card:
         card.style("width: 50%; align-self: center; height: 50vh; margin-top: 10%;")
         ui.label("Your account is inactive").classes("text-h5").style("margin: auto;")
-        ui.image("static/sunet_logo.svg").style(
+        ui.image("static/sunet_logo.png").style(
             "width: 25%; height: auto; margin: auto; magin-top: auto;"
         )
         ui.label("Please contact your administrator to activate your account.").classes(
