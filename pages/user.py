@@ -16,11 +16,6 @@ def create() -> None:
         page_init()
         userdata = get_user_data()
 
-        with ui.row().classes("w-full justify-center"):
-            ui.label("User Dashboard").classes("text-3xl font-bold text-blue-600")
-
-        ui.separator().classes("my-6")
-
         with ui.card().classes("w-full max-w-4xl mx-auto mb-6 no-shadow"):
             with ui.card_section():
                 ui.label("User Information").classes("text-xl font-semibold mb-4")
