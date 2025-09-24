@@ -145,7 +145,11 @@ def page_init(header_text: Optional[str] = "") -> None:
     with ui.header().style(
         "justify-content: space-between; background-color: #ffffff;"
     ).classes("drop-shadow-md"):
-        ui.label("Sunet Scribe" + header_text).classes("text-h5 text-black")
+        with ui.element("div").style("display: flex; gap: 0px;"):
+            ui.image("static/sunet_small.png").classes("q-mr-sm").style(
+                "height: 30px; width: 30px;"
+            )
+            ui.label("Sunet Scribe" + header_text).classes("text-h6 text-black")
 
         with ui.element("div").style("display: flex; gap: 0px;"):
             if is_admin:
