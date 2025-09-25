@@ -34,6 +34,8 @@ class Settings(BaseSettings):
         "Spanish",
         "German",
         "Italian",
+        "Russian",
+        "Ukrainian",
     ]
 
 
