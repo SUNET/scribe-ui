@@ -295,6 +295,29 @@ class SRTEditor:
 
         self.renumber_captions()
 
+    def export_rtf(self) -> str:
+        """
+        Export captions to RTF format.
+        """
+
+        rtf_content = (
+            r"{\rtf1\ansi\deff0{\fonttbl{\f0 Arial;}}" r"\viewkind4\uc1\pard\f0\fs20"
+        )
+
+        for caption in self.captions:
+            rtf_content += (
+                r"\b "
+                + f"{caption.speaker}: "
+                + r"\b0 "
+                + f"{caption.start_time} - {caption.end_time}\line "
+                + caption.text.replace("\n", r"\line ")
+                + r"\line\line "
+            )
+
+        rtf_content += "}"
+
+        return rtf_content.strip()
+
     def export_txt(self) -> str:
         """
         Export captions to TXT format.
