@@ -40,18 +40,15 @@ def index(request: Request) -> None:
     ):
         ui.navigate.to("/home")
 
-    if (
-        app.storage.user.get("token")
-        and app.storage.user.get("refresh_token")
-        and not get_user_status()
-    ):
-        ui.navigate.to("/inactive")
     else:
         with ui.card() as card:
             card.style("width: 50%; align-self: center; height: 50vh; margin-top: 10%;")
             ui.label("Welcome to Sunet Scribe").classes("text-h5").style(
                 "margin: auto;"
             )
+            ui.label(
+                "You must ask your administrator for access before you can login."
+            ).classes("text-subtitle2").style("margin: auto; margin-bottom: 10px;")
             ui.image("static/sunet_logo.png").style(
                 "width: 25%; height: auto; margin: auto; magin-top: auto;"
             )
@@ -66,34 +63,6 @@ def index(request: Request) -> None:
             ).classes(
                 "button-default-style"
             )
-
-
-@ui.page("/inactive")
-def inactive() -> None:
-    """
-    Inactive user page.
-    """
-
-    ui.add_head_html(default_styles)
-
-    with ui.card() as card:
-        card.style("width: 50%; align-self: center; height: 50vh; margin-top: 10%;")
-        ui.label("Your account is inactive").classes("text-h5").style("margin: auto;")
-        ui.image("static/sunet_logo.png").style(
-            "width: 25%; height: auto; margin: auto; magin-top: auto;"
-        )
-        ui.label("Please contact your administrator to activate your account.").classes(
-            "text-subtitle1"
-        ).style("margin: auto; margin-top: 20px;")
-        ui.button(
-            "Login with SSO",
-            icon="login",
-            on_click=lambda: ui.navigate.to(settings.OIDC_APP_LOGIN_ROUTE),
-        ).style("margin-top: auto; margin-bottom: 5px; align-self: center;").props(
-            "flat"
-        ).classes(
-            "button-default-style"
-        )
 
 
 @ui.page("/logout")
