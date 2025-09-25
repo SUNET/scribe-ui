@@ -934,15 +934,23 @@ class SRTEditor:
                         ui.label(caption.text).classes(
                             "text-sm leading-relaxed whitespace-pre-wrap"
                         )
-                        text_length = len(caption.text)
                         text_color = "text-gray-500"
                         tooltip_text = "Character count. Max 42 per line (guideline)."
 
-                        if text_length > CHARACTER_LIMIT:
-                            text_color = CHARACTER_LIMIT_EXCEEDED_COLOR
-                            tooltip_text = "Too many characters."
+                        character_label = ""
 
-                        with ui.label(f"({len(caption.text)})").classes(
+                        for x in caption.text.split("\n"):
+                            if len(x) > CHARACTER_LIMIT:
+                                text_color = CHARACTER_LIMIT_EXCEEDED_COLOR
+                                tooltip_text = (
+                                    "One or more lines exceed the character limit!"
+                                )
+                            character_label += f"{len(x)}/"
+
+                        if character_label.endswith("/"):
+                            character_label = character_label[:-1]
+
+                        with ui.label(f"({character_label})").classes(
                             f"text-sm text-right {text_color}"
                         ):
                             ui.tooltip(tooltip_text)
@@ -1026,19 +1034,33 @@ class SRTEditor:
 
         with ui.dialog() as dialog:
             with ui.card().style(
-                "background-color: white; align-self: center; border: 0; width: 100%;"
-            ):
-                if errors:
-                    ui.label(
-                        "The following issues were found with the captions:"
-                    ).classes("text-bold")
-                    ui.html("<br>".join(errors)).classes("text-red-600")
-                else:
-                    for caption in self.captions:
-                        caption.is_valid = True
+                "background-color: white; align-self: center; border: 0; width: 80%;"
+            ).classes("w-full no-shadow no-border"):
+                ui.label("Subtitles validation").style("width: 100%;").classes(
+                    "text-h6 q-mb-xl text-black"
+                )
 
-                    ui.label("All captions are valid!").classes("text-green-600")
-                ui.button("Close", on_click=dialog.close).props("color=primary flat")
+                with ui.row().classes("w-full"):
+                    if errors:
+                        ui.label(
+                            "The following issues were found with the captions:"
+                        ).classes("text-bold")
+                        ui.html("<br>".join(errors))
+                    else:
+                        for caption in self.captions:
+                            caption.is_valid = True
+
+                        ui.label("All captions are valid, no errors found!")
+
+                with ui.row().classes("justify-between w-full"):
+                    with ui.button(
+                        "Close",
+                        icon="cancel",
+                    ) as cancel:
+                        cancel.on("click", lambda: dialog.close())
+                        cancel.props("color=black flat")
+                        cancel.classes("cancel-style")
+
             dialog.open()
 
         self.refresh_display()
