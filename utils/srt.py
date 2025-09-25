@@ -297,20 +297,35 @@ class SRTEditor:
 
     def export_rtf(self) -> str:
         """
-        Export captions to RTF format.
+        Export captions to RTF format with proper Unicode handling.
         """
 
+        def to_rtf_unicode(text: str) -> str:
+            result = []
+            for ch in text:
+                code = ord(ch)
+                if code < 128:
+                    if ch in ["\\", "{", "}"]:
+                        result.append("\\" + ch)
+                    else:
+                        result.append(ch)
+                else:
+                    signed_code = code if code <= 0x7FFF else code - 0x10000
+                    result.append(f"\\u{signed_code}?")
+            return "".join(result)
+
         rtf_content = (
-            r"{\rtf1\ansi\deff0{\fonttbl{\f0 Arial;}}" r"\viewkind4\uc1\pard\f0\fs20"
+            r"{\rtf1\ansi\deff0{\fonttbl{\f0 Arial;}}" r"\viewkind4\uc1\pard\f0\fs20 "
         )
 
         for caption in self.captions:
             rtf_content += (
                 r"\b "
-                + f"{caption.speaker}: "
+                + to_rtf_unicode(f"{caption.speaker}: ")
                 + r"\b0 "
-                + f"{caption.start_time} - {caption.end_time}\line "
-                + caption.text.replace("\n", r"\line ")
+                + to_rtf_unicode(f"{caption.start_time} - {caption.end_time}")
+                + r"\line "
+                + to_rtf_unicode(caption.text).replace("\n", r"\line ")
                 + r"\line\line "
             )
 
