@@ -1,271 +1,316 @@
 import requests
 
 from nicegui import ui
-from datetime import datetime
-from utils.common import (
-    page_init,
-    default_styles,
-)
-from utils.token import get_admin_status
+from utils.common import default_styles, page_init
 from utils.settings import get_settings
 from utils.token import get_auth_header
-
 
 settings = get_settings()
 
 
-def get_statistics() -> dict:
+def groups_get() -> list:
     """
-    Get statistics from the API.
+    Fetch all groups from backend.
     """
-    response = requests.get(
-        f"{settings.API_URL}/api/v1/admin", headers=get_auth_header()
-    )
-    response.raise_for_status()
-    data = response.json()
-    return data
-
-
-def format_seconds_to_duration(seconds: int) -> str:
-    """
-    Convert seconds to human readable duration.
-    """
-    if seconds == 0:
-        return "0 minutes"
-
-    hours = seconds // 3600
-    minutes = (seconds % 3600) // 60
-    remaining_seconds = seconds % 60
-
-    parts = []
-    if hours > 0:
-        parts.append(f"{hours}h")
-    if minutes > 0:
-        parts.append(f"{minutes}m")
-    if remaining_seconds > 0:
-        parts.append(f"{remaining_seconds}s")
-
-    return " ".join(parts)
-
-
-def format_last_login(last_login_str: str) -> str:
-    """
-    Format last login time to relative time.
-    """
-    try:
-        last_login = datetime.fromisoformat(last_login_str.replace("Z", "+00:00"))
-        now = datetime.now(last_login.tzinfo)
-        diff = now - last_login
-
-        if diff.days > 0:
-            return f"{diff.days} days ago"
-        elif diff.seconds > 3600:
-            return f"{diff.seconds // 3600} hours ago"
-        elif diff.seconds > 60:
-            return f"{diff.seconds // 60} minutes ago"
-        else:
-            return "Just now"
-    except Exception:
-        return last_login_str
-
-
-def get_table_data() -> list:
-    table_data = []
 
     try:
-        statistics = get_statistics()
-        result = statistics.get("result", {})
+        res = requests.get(
+            settings.API_URL + "/api/v1/admin/groups", headers=get_auth_header()
+        )
+        res.raise_for_status()
 
-        total_users = result.get("total_users", 0)
-        active_users = result.get("active_users", [])
-        total_transcribed_seconds = result.get("total_transcribed_seconds", 0)
+        return res.json()
+    except requests.RequestException as e:
+        print(f"Error fetching groups: {e}")
+        return []
 
-        for index, user in enumerate(active_users):
-            table_data.append(
-                {
-                    "id": index,
-                    "username": user.get("username", "N/A"),
-                    "realm": user.get("realm", "N/A"),
-                    "active": "Yes" if user.get("active", False) else "No",
-                    "admin": "Admin" if user.get("admin", False) else "User",
-                    "transcribed_seconds": format_seconds_to_duration(
-                        int(user.get("transcribed_seconds", 0))
-                    ),
-                    "last_login": format_last_login(user.get("last_login", "Never")),
-                }
+def create_group_dialog(page: callable) -> None:
+    with ui.dialog() as create_group_dialog:
+        with ui.card().style("width: 500px; max-width: 90vw;"):
+            ui.label("Create new group").classes("text-2xl font-bold")
+            name_input = ui.input("Group name").classes("w-full").props("outlined")
+            description_input = (
+                ui.textarea("Group description").classes("w-full").props("outlined")
             )
-    except Exception:
-        return None
+            with ui.row().style("justify-content: flex-end; width: 100%;"):
+                ui.button("Cancel").classes("button-close").props(
+                    "color=black flat"
+                ).on("click", lambda: create_group_dialog.close())
+                ui.button("Create").classes("default-style").props(
+                    "color=black flat"
+                ).on(
+                    "click",
+                    lambda: (
+                        requests.post(
+                            settings.API_URL + "/api/v1/admin/groups",
+                            headers=get_auth_header(),
+                            json={
+                                "name": name_input.value,
+                                "description": description_input.value,
+                            },
+                        ),
+                        create_group_dialog.close(),
+                        ui.navigate.to("/admin"))
+                )
+            
+        create_group_dialog.open()
 
-    return total_users, active_users, total_transcribed_seconds, table_data
 
+class Group:
+    def __init__(self, group_id: str, name: str, description: str, created_at: str, users: dict, nr_users: int, stats: dict) -> None:
+        self.group_id = group_id
+        self.name = name
+        self.description = description
+        self.created_at = created_at.split(".")[0]
+        self.users = users
+        self.nr_users = nr_users
+        self.stats = stats
 
-def handle_user_action(table: ui.table, action: str) -> None:
+    def edit_group(self) -> None:
+        ui.navigate.to(f"/admin/edit/{self.name}")
+
+    def delete_group_dialog(self) -> None:
+        with ui.dialog() as delete_group_dialog:
+            with ui.card().style("width: 400px; max-width: 90vw;"):
+                ui.label("Delete group").classes("text-2xl font-bold")
+                ui.label("Are you sure you want to delete this group? This action cannot be undone.").classes("my-4")
+                with ui.row().style("justify-content: flex-end; width: 100%;"):
+                    ui.button("Cancel").classes("button-close").props(
+                        "color=black flat"
+                    ).on("click", lambda: delete_group_dialog.close())
+                    ui.button("Delete").classes("button-close").props(
+                        "color=red flat"
+                    ).on(
+                        "click",
+                        lambda: (
+                            requests.delete(
+                                settings.API_URL + f"/api/v1/admin/groups/{self.group_id}",
+                                headers=get_auth_header(),
+                            ),
+                            delete_group_dialog.close(),
+                            ui.navigate.to("/admin")
+                        ),
+                    )
+
+            delete_group_dialog.open()
+
+    def create_card(self):
+        month_hours = str(self.stats['month_seconds'] // 3600).split(".")[0]
+        month_minutes = str((self.stats['month_seconds'] % 3600) // 60).split(".")[0]
+
+        year_hours = str(self.stats['year_seconds'] // 3600).split(".")[0]
+        year_minutes = str((self.stats['year_seconds'] % 3600) // 60).split(".")[0]
+
+        month_time = f"{month_hours}h {month_minutes}m"
+        year_time = f"{year_hours}h {year_minutes}m"
+
+        with ui.card().classes("my-2").style("width: 100%; box-shadow: none; border: 1px solid #e0e0e0; padding: 16px;"):
+            with ui.row().style(
+                "justify-content: space-between; align-items: center; width: 100%;"
+            ):
+                with ui.column().style("flex: 0 0 auto; min-width: 25%;"):
+                    ui.label(f"{self.name}").classes("text-h5 font-bold")
+                    ui.label(self.description).classes("text-md")
+    
+                    if self.name != "All users":
+                        ui.label(f"Created {self.created_at}").classes("text-sm text-gray-500")
+    
+                    ui.label(f"{self.nr_users} members").classes("text-sm text-gray-500")
+                with ui.column().style("flex: 1;"):
+                    ui.label("Statistics").classes("text-h6 font-bold")
+
+                    with ui.row().classes("w-full gap-8"):
+                        with ui.column().style("min-width: 30%;"):
+                            ui.label("This month").classes("font-semibold")
+                            ui.label(f"Total files: {self.stats["month_files"]}").classes("text-sm")
+                            ui.label(f"Total transcription time: {month_time}").classes("text-sm")
+                        with ui.column():
+                            ui.label("This year").classes("font-semibold")
+                            ui.label(f"Total files: {self.stats["year_files"]}").classes("text-sm")
+                            ui.label(f"Total transcription time: {year_time}").classes("text-sm")
+
+                with ui.column().style("flex: 0 0 auto;"):
+
+                    statistics = ui.button("Statistics").classes("button-edit").props(
+                        "color=white flat"
+                    ).style("width: 100%")
+
+                    statistics.on(
+                        "click",
+                        lambda: ui.navigate.to(f"/admin/stats/{self.name}")
+                    )
+
+                    if self.name == "All users":
+                        return
+
+                    edit = ui.button("Edit").classes("button-edit").props(
+                        "color=white flat"
+                    ).style("width: 100%")
+                    delete = ui.button("Delete").classes("button-close").props(
+                        "color=black flat"
+                    ).style("width: 100%")
+
+                    edit.on(
+                        "click",
+                        lambda e: self.edit_group()
+                    )
+                    delete.on(
+                        "click",
+                        lambda e: self.delete_group_dialog()
+                    )
+
+def save_group(selected_rows: list, name: str, description: str, group_id: str) -> None:
+    usernames = [row["username"] for row in selected_rows]
+
+    try:
+        res = requests.put(
+            settings.API_URL + f"/api/v1/admin/groups/{group_id}",
+            headers=get_auth_header(),
+            json={
+                "name": name,
+                "description": description,
+                "usernames": usernames
+            }
+        )
+        res.raise_for_status()
+        ui.navigate.to("/admin")
+    except requests.RequestException as e:
+        ui.notify(f"Error saving group: {e}", type="negative")
+
+@ui.refreshable
+@ui.page("/admin/edit/{groupname}")
+def edit_group(groupname: str) -> None:
     """
-    Handle user actions: enable, disable, toggle_admin.
+    Page to edit a group.
     """
-    if not table.selected:
-        ui.notify("No users selected", type="warning")
+    page_init()
+
+    ui.add_head_html(default_styles)
+    ui.add_head_html(
+        """
+        <style>
+            body {
+                background-color: #f5f5f5;
+            }
+        </style>
+        """
+    )
+
+    try:
+        res = requests.get(
+            settings.API_URL + f"/api/v1/admin/groups/{groupname}", headers=get_auth_header()
+        )
+        res.raise_for_status()
+        group = res.json()["result"]
+
+        # Add an id field to each user for table selection
+        for index, user in enumerate(group["users"]):
+            user["id"] = index
+
+    except requests.RequestException as e:
+        ui.label(f"Error fetching group: {e}").classes("text-lg text-red-500")
         return
 
-    for user in table.selected:
-        username = user["username"]
 
-        match action:
-            case "enable":
-                json_data = {"username": username, "active": True}
-            case "disable":
-                json_data = {"username": username, "active": False}
-            case "enable_admin":
-                json_data = {"username": username, "admin": True}
-            case "disable_admin":
-                json_data = {"username": username, "admin": False}
-
-        try:
-            response = requests.put(
-                settings.API_URL + f"/api/v1/admin/{username}",
-                headers=get_auth_header(),
-                json=json_data,
+    with ui.card().style("width: 100%; box-shadow: none; border: 1px solid #e0e0e0; align-self: center;"):
+        ui.label(f"Edit group: {group['name']}").classes("text-3xl font-bold mb-4")
+        with ui.row().classes("gap-4 w-full"):
+            name_input = ui.input("Group name", value=group["name"]).props("outlined").classes("w-1/3")
+            description_input = (
+                ui.input("Group description", value=group["description"]).props("outlined").classes("w-1/2")
             )
-            response.raise_for_status()
-            ui.notify(f"User {username} {action}d successfully", type="positive")
-        except requests.exceptions.RequestException as e:
-            ui.notify(f"Error {action}ing user {username}: {e}", type="error")
 
-    table.update_rows(get_table_data()[-1])
+        users_table = ui.table(
+            columns=[
+                {"name": "username", "label": "Username", "field": "username", "align": "left"},
+                {"name": "role", "label": "Role", "field": "admin", "align": "left"},
+                {"name": "last_login", "label": "Last login", "field": "last_login", "align": "left"},
+            ],
+            rows=group["users"],
+            selection="multiple",
+            pagination=20,
+            on_select=lambda e: None,
+        ).style("width: 100%; box-shadow: none; font-size: 18px;")
+
+        users_table.selected = [user for user in group["users"] if user.get("in_group", True)]
+
+    with ui.footer().style("background-color: #ffffff;"):
+        with ui.row().style("justify-content: flex-left; width: 100%; padding: 16px; gap: 8px;"):
+            ui.button("Save group").classes("default-style").props(
+                "color=black flat"
+            ).style("width: 150px").on("click", lambda: save_group(users_table.selected, name_input.value, description_input.value, groupname))
+            ui.button("Remove user(s)").classes("button-close").props(
+                "color=black flat"
+            ).style("width: 150px")
+            ui.button("Cancel").classes("button-close").props(
+                "color=black flat"
+            ).style("width: 150px;").on("click", lambda: ui.navigate.to("/admin"))
+
+@ui.refreshable
+@ui.page("/admin/stats/{groupname}")
+def statistics(groupname: str) -> None:
+    """
+    Page to show statistics of a group.
+    """
+    page_init()
+
+    ui.add_head_html(default_styles)
+    ui.add_head_html(
+        """
+        <style>
+            body {
+                background-color: #f5f5f5;
+            }
+        </style>
+        """
+    )
 
 
 def create() -> None:
     @ui.refreshable
     @ui.page("/admin")
-    def home() -> None:
+    def admin() -> None:
         """
-        Admin dashboard page with statistics and charts.
+        Main page of the application.
         """
-        if not get_admin_status():
-            ui.navigate.to("/home")
-            return
-
         page_init()
+
         ui.add_head_html(default_styles)
+        ui.add_head_html(
+            """
+            <style>
+                body {
+                    background-color: #f5f5f5;
+                }
+            </style>
+            """
+        )
 
-        columns = [
-            {
-                "name": "username",
-                "label": "Username",
-                "field": "username",
-                "align": "left",
-            },
-            {
-                "name": "realm",
-                "label": "Realm",
-                "field": "realm",
-                "align": "left",
-            },
-            {
-                "name": "active",
-                "label": "Active",
-                "field": "active",
-                "align": "left",
-            },
-            {
-                "name": "admin",
-                "label": "Role",
-                "field": "admin",
-                "align": "left",
-            },
-            {
-                "name": "transcribed_seconds",
-                "label": "Total Transcription Time",
-                "field": "transcribed_seconds",
-                "align": "left",
-            },
-        ]
 
-        (
-            total_users,
-            active_users,
-            total_transcribed_seconds,
-            table_data,
-        ) = get_table_data()
+        with ui.row().style(
+            "justify-content: space-between; align-items: center; width: 100%;"
+        ):
+            ui.label("Admin controls").classes("text-3xl font-bold")
+            create = (
+                ui.button("Create new group")
+                .classes("default-style")
+                .props("color=black flat")
+            )
+            create.on("click", lambda: create_group_dialog(page=admin))
+            groups = groups_get()
 
-        with ui.tabs() as tabs:
-            tabs.classes("w-full h-full")
-            ui.tab("users", label="Users", icon="people")
-            ui.tab("transcriptions", label="Transcriptions", icon="credit_card")
+            if not groups:
+                ui.label("No groups found. Create a new group to get started.").classes("text-lg")
+                return
 
-        with ui.tab_panels(tabs, value="users").classes("w-full h-full"):
-            with ui.tab_panel("users").classes("w-full h-full"):
-                with ui.table(
-                    columns=columns,
-                    rows=table_data,
-                    pagination=10,
-                    selection="multiple",
-                ) as table:
-                    table.style(
-                        "width: 100%; height: calc(100vh - 350px); box-shadow: none; font-size: 18px;"
-                    )
-
-                    with table.add_slot("top-right"):
-                        with ui.input(placeholder="Search users...") as search:
-                            search.bind_value_to(table, "filter")
-                            search.classes("q-ma-md")
-                            search.style("width: 500px;")
-
-                with ui.row().classes("w-full mt-8 justify-end"):
-                    with ui.button("Enable user") as button_enable:
-                        button_enable.props("color=black flat")
-                        button_enable.classes("button-user-status")
-                        button_enable.on(
-                            "click", lambda: handle_user_action(table, "enable")
-                        )
-
-                    with ui.button("Disable user") as button_disable:
-                        button_disable.props("color=black flat")
-                        button_disable.classes("button-user-status")
-                        button_disable.on(
-                            "click", lambda: handle_user_action(table, "disable")
-                        )
-
-                    with ui.button("Make admin") as button_make_admin:
-                        button_make_admin.props("color=black flat")
-                        button_make_admin.classes("button-user-status")
-                        button_make_admin.on(
-                            "click",
-                            lambda: handle_user_action(table, "enable_admin"),
-                        )
-
-                    with ui.button("Remove admin") as button_remove_admin:
-                        button_remove_admin.props("color=black flat")
-                        button_remove_admin.classes("button-user-status")
-                        button_remove_admin.on(
-                            "click",
-                            lambda: handle_user_action(table, "disable_admin"),
-                        )
-
-            with ui.tab_panel("transcriptions").classes("w-full h-full"):
-                statistics = get_statistics()
-
-                with ui.row().classes("w-full"):
-                    transcriptions_per_day = statistics.get("result", {}).get(
-                        "transcribed_seconds_per_day", {}
-                    )
-
-                    ui.echart(
-                        {
-                            "tooltip": {"trigger": "axis"},
-                            "xAxis": {
-                                "type": "category",
-                                "data": list(transcriptions_per_day.keys()),
-                            },
-                            "yAxis": {"type": "value"},
-                            "series": [
-                                {
-                                    "data": list(transcriptions_per_day.values()),
-                                    "type": "bar",
-                                    "smooth": True,
-                                }
-                            ],
-                            "title": {"text": "Transcribed seconds per day"},
-                        }
-                    ).classes("w-full h-96")
+            for group in groups_get()["result"]:
+                g = Group(
+                    group_id=group["id"],
+                    name=group["name"],
+                    description=group["description"],
+                    created_at=group["created_at"],
+                    users=group["users"],
+                    nr_users=group["nr_users"],
+                    stats=group["stats"]
+                )
+                g.create_card()

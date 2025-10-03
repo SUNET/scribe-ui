@@ -107,11 +107,17 @@ default_styles = """
             background-color: #ffffff;
             color: #000000 !important;
             width: 150px;
+            border: 1px solid #000000;
         }
         .button-user-status {
             background-color: #ffffff;
             width: 150px;
             border: 1px solid #000000;
+        }
+        .button-edit {
+            background-color: #082954;
+            color: #ffffff !important;
+            width: 150px;
         }
     </style>
 """
