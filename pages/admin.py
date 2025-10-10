@@ -1,3 +1,4 @@
+import plotly.graph_objects as go
 import requests
 
 from nicegui import ui
@@ -23,6 +24,22 @@ def groups_get() -> list:
     except requests.RequestException as e:
         print(f"Error fetching groups: {e}")
         return []
+
+def user_statistics_get(groupname: str) -> dict:
+    """
+    Fetch user statistics for a group from backend.
+    """
+
+    try:
+        res = requests.get(
+            settings.API_URL + f"/api/v1/admin/groups/{groupname}/stats", headers=get_auth_header()
+        )
+        res.raise_for_status()
+
+        return res.json()
+    except requests.RequestException as e:
+        print(f"Error fetching user statistics: {e}")
+        return {}
 
 def create_group_dialog(page: callable) -> None:
     with ui.dialog() as create_group_dialog:
@@ -246,6 +263,7 @@ def edit_group(groupname: str) -> None:
                 "color=black flat"
             ).style("width: 150px;").on("click", lambda: ui.navigate.to("/admin"))
 
+
 @ui.refreshable
 @ui.page("/admin/stats/{groupname}")
 def statistics(groupname: str) -> None:
@@ -264,6 +282,52 @@ def statistics(groupname: str) -> None:
         </style>
         """
     )
+
+    stats = user_statistics_get(groupname=groupname)
+
+    if not stats or "result" not in stats:
+        ui.label("Error fetching statistics.").classes("text-lg text-red-500")
+        return
+
+    result = stats["result"]
+    per_day = result.get("transcribed_seconds_per_day", {})
+    total_users = result.get("total_users", 0)
+    total_transcribed = result.get("total_transcribed_seconds", 0)
+
+    # --- Basic summary ---
+    with ui.card().classes("p-4 mb-6 shadow-md bg-white rounded-2xl"):
+        ui.label(f"Group: {groupname}").classes("text-2xl font-bold")
+        ui.label(f"Total users: {total_users}")
+        ui.label(f"Total transcribed time: {total_transcribed:.0f} seconds")
+
+    # --- Daily chart ---
+    if per_day:
+        dates = list(per_day.keys())
+        values = list(per_day.values())
+
+        fig = go.Figure(
+            data=[
+                go.Bar(
+                    x=dates,
+                    y=values,
+                    marker=dict(line=dict(width=0)),
+                    hovertemplate="%{x}<br>%{y:.1f} seconds<extra></extra>",
+                )
+            ]
+        )
+        fig.update_layout(
+            title="Transcribed seconds per day",
+            xaxis_title="Date",
+            yaxis_title="Seconds",
+            template="plotly_white",
+            margin=dict(l=40, r=20, t=60, b=40),
+            height=400,
+        )
+
+        ui.plotly(fig).classes("w-full max-w-4xl mx-auto")
+    else:
+        ui.label("No daily transcription data available.").classes("text-gray-500 italic")
+
 
 
 def create() -> None:
