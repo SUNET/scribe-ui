@@ -27,8 +27,11 @@ jwt==1.4.0
 markdown2==2.5.4
 MarkupSafe==3.0.2
 multidict==6.6.4
+narwhals==2.7.0
 nicegui==2.23.3
 orjson==3.11.3
+packaging==25.0
+plotly==6.3.1
 propcache==0.3.2
 pscript==0.7.7
 pycparser==2.22
@@ -40,6 +43,7 @@ python-dotenv==1.1.1
 python-engineio==4.12.2
 python-multipart==0.0.20
 python-socketio==5.13.0
+pytz==2025.2
 PyYAML==6.0.2
 requests==2.32.5
 simple-websocket==1.1.0
