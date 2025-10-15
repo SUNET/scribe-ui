@@ -268,7 +268,7 @@ def edit_group(groupname: str) -> None:
 @ui.page("/admin/stats/{groupname}")
 def statistics(groupname: str) -> None:
     """
-    Page to show statistics of a group.
+    Page to show statistics of a group with improved layout and design.
     """
     page_init()
 
@@ -279,6 +279,48 @@ def statistics(groupname: str) -> None:
             body {
                 background-color: #f5f5f5;
             }
+            .stats-container {
+                max-width: 900px;
+                margin: 0 auto;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 2rem;
+                padding: 2rem 1rem;
+            }
+            .stats-card {
+                width: 100%;
+                background-color: #ffffff;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+                border-radius: 1rem;
+                padding: 1.5rem 2rem;
+                text-align: center;
+            }
+            .stats-card h1 {
+                font-size: 1.8rem;
+                font-weight: 700;
+                margin-bottom: 1rem;
+                color: #111827;
+            }
+            .stats-card p {
+                margin: 0.25rem 0;
+                font-size: 1.1rem;
+                color: #374151;
+            }
+            .chart-container {
+                width: 100%;
+                background-color: #ffffff;
+                border-radius: 1rem;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+                padding: 1.5rem 2rem;
+            }
+            .table-container {
+                width: 100%;
+                background-color: #ffffff;
+                border-radius: 1rem;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+                padding: 1.5rem 2rem;
+            }
         </style>
         """
     )
@@ -286,50 +328,69 @@ def statistics(groupname: str) -> None:
     stats = user_statistics_get(groupname=groupname)
 
     if not stats or "result" not in stats:
-        ui.label("Error fetching statistics.").classes("text-lg text-red-500")
+        ui.label("Error fetching statistics.").classes("text-lg text-red-500 text-center mt-6")
         return
 
     result = stats["result"]
-    per_day = result.get("transcribed_seconds_per_day", {})
+
+    per_day = result.get("transcribed_minutes_per_day", {})
+    per_user = result.get("transcribed_minutes_per_user", {})
+
     total_users = result.get("total_users", 0)
-    total_transcribed = result.get("total_transcribed_seconds", 0)
+    total_transcribed = result.get("total_transcribed_minutes", 0)
 
-    # --- Basic summary ---
-    with ui.card().classes("p-4 mb-6 shadow-md bg-white rounded-2xl"):
-        ui.label(f"Group: {groupname}").classes("text-2xl font-bold")
-        ui.label(f"Total users: {total_users}")
-        ui.label(f"Total transcribed time: {total_transcribed:.0f} seconds")
+    with ui.element("div").classes("stats-container w-full"):
+        with ui.element("div").classes("stats-card w-full"):
+            ui.label(f"Group Statistics: {groupname}").classes("text-3xl font-bold mb-3 text-gray-800")
+            ui.label(f"Total users: {total_users}").classes("text-lg text-gray-600")
+            ui.label(f"Total transcribed time: {total_transcribed:.0f} minutes").classes("text-lg text-gray-600")
 
-    # --- Daily chart ---
-    if per_day:
-        dates = list(per_day.keys())
-        values = list(per_day.values())
+        # Chart Section
+        if per_day:
+            dates = list(per_day.keys())
+            values = list(per_day.values())
 
-        fig = go.Figure(
-            data=[
-                go.Bar(
-                    x=dates,
-                    y=values,
-                    marker=dict(line=dict(width=0)),
-                    hovertemplate="%{x}<br>%{y:.1f} seconds<extra></extra>",
-                )
-            ]
-        )
-        fig.update_layout(
-            title="Transcribed seconds per day",
-            xaxis_title="Date",
-            yaxis_title="Seconds",
-            template="plotly_white",
-            margin=dict(l=40, r=20, t=60, b=40),
-            height=400,
-        )
+            fig = go.Figure(
+                data=[
+                    go.Bar(
+                        x=dates,
+                        y=values,
+                        marker=dict(color="#4F46E5", line=dict(width=0)),
+                        hovertemplate="%{x} - %{y:.1f} minutes<extra></extra>",
+                    )
+                ]
+            )
+            fig.update_layout(
+                title="Transcribed Minutes per Day",
+                xaxis_title="Date",
+                yaxis_title="Minutes",
+                template="plotly_white",
+                margin=dict(l=40, r=20, t=60, b=40),
+                height=400,
+            )
 
-        ui.plotly(fig).classes("w-full max-w-4xl mx-auto")
-    else:
-        ui.label("No daily transcription data available.").classes("text-gray-500 italic")
+            with ui.element("div").classes("chart-container"):
+                ui.plotly(fig).classes("w-full")
 
+        # Table Section
+        if per_user:
+            with ui.element("div").classes("table-container"):
+                ui.label("Transcribed Minutes per User").classes("text-2xl font-bold mb-4 text-gray-800")
+                user_rows = [
+                    {"username": username, "minutes": f"{minutes:.1f}"}
+                    for username, minutes in per_user.items()
+                ]
 
+                user_columns = [
+                    {"name": "username", "label": "Username", "field": "username", "align": "left"},
+                    {"name": "minutes", "label": "Minutes", "field": "minutes", "align": "left"},
+                ]
 
+                ui.table(
+                    columns=user_columns,
+                    rows=user_rows,
+                    pagination=20,
+                ).style("width: 100%; box-shadow: none; font-size: 16px; margin: auto;")
 def create() -> None:
     @ui.refreshable
     @ui.page("/admin")
