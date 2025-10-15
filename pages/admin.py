@@ -194,6 +194,77 @@ def save_group(selected_rows: list, name: str, description: str, group_id: str) 
     except requests.RequestException as e:
         ui.notify(f"Error saving group: {e}", type="negative")
 
+def set_active_status(selected_rows: list, make_active: bool) -> None:
+    """
+    Set or remove active status for selected users.
+    """
+
+    for user in selected_rows:
+        try:
+            res = requests.put(
+                settings.API_URL + f"/api/v1/admin/{user['username']}",
+                headers=get_auth_header(),
+                json={"active": make_active}
+            )
+            res.raise_for_status()
+            ui.navigate.to("/admin/users")
+        except requests.RequestException as e:
+            ui.notify(f"Error updating active status for {user['username']}: {e}", type="negative")
+
+def set_admin_status(selected_rows: list, make_admin: bool, dialog: ui.dialog, groupname: str) -> None:
+    """
+    Set or remove admin status for selected users.
+    """
+
+    for user in selected_rows:
+        try:
+            res = requests.put(
+                settings.API_URL + f"/api/v1/admin/{user['username']}",
+                headers=get_auth_header(),
+                json={"admin": make_admin}
+            )
+            res.raise_for_status()
+            dialog.close()
+            ui.navigate.to(f"/admin/edit/{groupname}")
+        except requests.RequestException as e:
+            ui.notify(f"Error updating admin status for {user['username']}: {e}", type="negative")
+
+def admin_dialog(users: list, groupname: str) -> None:
+    """
+    Show a dialog with a table of users and buttons to ether make users administrator or remove administrator rights.
+    """
+
+    with ui.dialog() as dialog:
+        with ui.card().style("width: 600px; max-width: 90vw;"):
+            ui.label("Administrators").classes("text-2xl font-bold")
+            admin_table = ui.table(
+                columns=[
+                    {"name": "username", "label": "Username", "field": "username", "align": "left"},
+                    {"name": "role", "label": "Admin", "field": "admin", "align": "left"},
+                ],
+                rows=users,
+                selection="multiple",
+                pagination=20,
+                on_select=lambda e: None,
+            ).style("width: 100%; box-shadow: none; font-size: 18px;")
+
+            with ui.row().style("justify-content: flex-end; width: 100%; padding-top: 16px; gap: 8px;"):
+                ui.button("Close").classes("button-close").props(
+                    "color=black flat"
+                ).on("click", lambda: dialog.close())
+                ui.button("Make admin").classes("default-style").props(
+                    "color=black flat"
+                ).on(
+                    "click", lambda: set_admin_status(admin_table.selected, True, dialog, groupname)
+                )
+                ui.button("Remove admin").classes("button-close").props(
+                    "color=black flat"
+                ).on(
+                    "click", lambda: set_admin_status(admin_table.selected, False, dialog, groupname)
+                )
+        dialog.open()
+
+
 @ui.refreshable
 @ui.page("/admin/edit/{groupname}")
 def edit_group(groupname: str) -> None:
@@ -223,6 +294,8 @@ def edit_group(groupname: str) -> None:
         # Add an id field to each user for table selection
         for index, user in enumerate(group["users"]):
             user["id"] = index
+            user["admin"] = "Yes" if user.get("admin", True) else "No"
+            user["active"] = "Yes" if user.get("active", True) else "No"
 
     except requests.RequestException as e:
         ui.label(f"Error fetching group: {e}").classes("text-lg text-red-500")
@@ -237,11 +310,12 @@ def edit_group(groupname: str) -> None:
                 ui.input("Group description", value=group["description"]).props("outlined").classes("w-1/2")
             )
 
+        ui.label("Select users to be included in group:").classes("text-xl font-semibold mt-4 mb-2")
         users_table = ui.table(
             columns=[
                 {"name": "username", "label": "Username", "field": "username", "align": "left"},
-                {"name": "role", "label": "Role", "field": "admin", "align": "left"},
-                {"name": "last_login", "label": "Last login", "field": "last_login", "align": "left"},
+                {"name": "role", "label": "Admin", "field": "admin", "align": "left"},
+                {"name": "active", "label": "Active", "field": "active", "align": "left"},
             ],
             rows=group["users"],
             selection="multiple",
@@ -256,9 +330,9 @@ def edit_group(groupname: str) -> None:
             ui.button("Save group").classes("default-style").props(
                 "color=black flat"
             ).style("width: 150px").on("click", lambda: save_group(users_table.selected, name_input.value, description_input.value, groupname))
-            ui.button("Remove user(s)").classes("button-close").props(
+            ui.button("Administrators").classes("button-close").props(
                 "color=black flat"
-            ).style("width: 150px")
+            ).style("width: 150px").on("click", lambda: admin_dialog(group["users"], groupname))
             ui.button("Cancel").classes("button-close").props(
                 "color=black flat"
             ).style("width: 150px;").on("click", lambda: ui.navigate.to("/admin"))
@@ -415,14 +489,23 @@ def create() -> None:
         with ui.row().style(
             "justify-content: space-between; align-items: center; width: 100%;"
         ):
-            ui.label("Admin controls").classes("text-3xl font-bold")
-            create = (
-                ui.button("Create new group")
-                .classes("default-style")
-                .props("color=black flat")
-            )
-            create.on("click", lambda: create_group_dialog(page=admin))
-            groups = groups_get()
+            with ui.element("div").style("display: flex; gap: 0px;"):
+                ui.label("Admin controls").classes("text-3xl font-bold")
+
+            with ui.element("div").style("display: flex; gap: 10px;"):
+                create = (
+                    ui.button("Create new group")
+                    .classes("default-style")
+                    .props("color=black flat")
+                )
+                create.on("click", lambda: create_group_dialog(page=admin))
+                users = (
+                    ui.button("Users")
+                    .classes("button-edit")
+                    .props("color=black flat")
+                )
+                users.on("click", lambda: ui.navigate.to("/admin/users"))
+                groups = groups_get()
 
             if not groups:
                 ui.label("No groups found. Create a new group to get started.").classes("text-lg")
@@ -439,3 +522,68 @@ def create() -> None:
                     stats=group["stats"]
                 )
                 g.create_card()
+
+@ui.page("/admin/users")
+def users() -> None:
+    """
+    Page to show all users.
+    """
+    page_init()
+
+    ui.add_head_html(default_styles)
+    ui.add_head_html(
+        """
+        <style>
+            body {
+                background-color: #f5f5f5;
+            }
+        </style>
+        """
+    )
+
+    try:
+        res = requests.get(
+            settings.API_URL + "/api/v1/admin/users", headers=get_auth_header()
+        )
+        res.raise_for_status()
+        users = res.json()["result"]
+
+        # Add an id field to each user for table selection
+        for index, user in enumerate(users):
+            user["id"] = index
+            user["admin"] = "Yes" if user.get("admin", True) else "No"
+            user["active"] = "Yes" if user.get("active", True) else "No"
+
+    except requests.RequestException as e:
+        ui.label(f"Error fetching users: {e}").classes("text-lg text-red-500")
+        return
+
+    with ui.card().style("width: 100%; box-shadow: none; border: 1px solid #e0e0e0; align-self: center;"):
+        ui.label("All users").classes("text-3xl font-bold mb-4")
+        users_table = ui.table(
+            columns=[
+                {"name": "username", "label": "Username", "field": "username", "align": "left"},
+                {"name": "role", "label": "Admin", "field": "admin", "align": "left"},
+                {"name": "active", "label": "Active", "field": "active", "align": "left"},
+            ],
+            rows=users,
+            selection="multiple",
+            pagination=20,
+            on_select=lambda e: None,
+        ).style("width: 100%; box-shadow: none; font-size: 18px;")
+
+    with ui.footer().style("background-color: #ffffff;"):
+        with ui.row().style("justify-content: flex-left; width: 100%; padding: 16px; gap: 8px;"):
+            ui.button("Back to groups").classes("button-close").props(
+                "color=black flat"
+            ).style("width: 150px ").on("click", lambda: ui.navigate.to("/admin"))
+            ui.button("Enable").classes("default-style").props(
+                "color=black flat"
+            ).style("width: 150px").on(
+                "click", lambda: set_active_status(users_table.selected, True)
+            )
+            ui.button("Disable").classes("button-close").props(
+                "color=black flat"
+            ).style("width: 150px").on(
+                "click", lambda: set_active_status(users_table.selected, False)
+            )
