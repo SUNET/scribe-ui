@@ -295,6 +295,19 @@ class SRTEditor:
 
         self.renumber_captions()
 
+    def export_csv(self) -> str:
+        """
+        Export to CSV format.
+        Fields: Start time, stop time, speaker, text
+        """
+
+        csv_content = ""
+        for caption in self.captions:
+            escaped_text = caption.text.replace('"', '""')
+            csv_content += f'"{caption.start_time}","{caption.end_time}","{caption.speaker}","{escaped_text}"\n'
+
+        return csv_content.strip()
+
     def export_rtf(self) -> str:
         """
         Export captions to RTF format with proper Unicode handling.
