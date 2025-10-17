@@ -308,6 +308,19 @@ class SRTEditor:
 
         return csv_content.strip()
 
+    def export_tsv(self) -> str:
+        """
+        Export to TSV format.
+        Fields: Start time, stop time, speaker, text
+        """
+
+        tsv_content = ""
+        for caption in self.captions:
+            escaped_text = caption.text.replace("\t", "    ").replace("\n", " ")
+            tsv_content += f"{caption.start_time}\t{caption.end_time}\t{caption.speaker}\t{escaped_text}\n"
+
+        return tsv_content.strip()
+
     def export_rtf(self) -> str:
         """
         Export captions to RTF format with proper Unicode handling.
