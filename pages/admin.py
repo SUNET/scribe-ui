@@ -729,11 +729,17 @@ def health() -> None:
 
                     status_color = (
                         "bg-red-500"
-                        if (datetime.now().timestamp() - seen) > 300
+                        if (datetime.now().timestamp() - seen) > 30
                         else "bg-green-500"
                     )
 
-                    ui.html(f'<span class="status-dot {status_color}"></span>Online')
+                    status = (
+                        "Offline"
+                        if (datetime.now().timestamp() - seen) > 30
+                        else "Online"
+                    )
+
+                    ui.html(f'<span class="status-dot {status_color}"></span>{status}')
 
                 ui.separator()
                 ui.label(
