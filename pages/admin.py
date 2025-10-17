@@ -702,9 +702,14 @@ def health() -> None:
         ui.label("Backend is not reachable").classes("text-lg text-red-500")
         return
 
+
     with ui.element("div").style(
         "display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; width: 100%;"
     ):
+        if not data:
+            ui.label("No workers online.").classes("text-lg text-gray-600")
+            return
+
         for host, samples in data.items():
             if not samples:
                 continue
