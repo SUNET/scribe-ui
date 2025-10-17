@@ -220,6 +220,12 @@ def page_init(header_text: Optional[str] = "") -> None:
                     icon="settings",
                     on_click=lambda: ui.navigate.to("/admin"),
                 ).props("flat color=red")
+
+                # Button for health page
+                ui.button(
+                    icon="health_and_safety",
+                    on_click=lambda: ui.navigate.to("/health"),
+                ).props("flat color=red")
             ui.button(
                 icon="home",
                 on_click=lambda: ui.navigate.to("/home"),

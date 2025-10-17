@@ -1,6 +1,8 @@
 import plotly.graph_objects as go
 import requests
 
+from datetime import datetime
+
 from nicegui import ui
 from utils.common import default_styles, page_init
 from utils.settings import get_settings
@@ -641,3 +643,113 @@ def users() -> None:
             ).style("width: 150px").on(
                 "click", lambda: set_active_status(users_table.selected, False)
             )
+
+
+
+@ui.page("/health")
+def health() -> None:
+    """
+    Health check dashboard displaying backend system metrics.
+    """
+
+    page_init()
+
+    ui.add_head_html(default_styles)
+    ui.add_head_html(
+        """
+        <style>
+            body {
+                background-color: #f5f5f5;
+            }
+            .card {
+                background-color: white;
+                border-radius: 1rem;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                padding: 1.5rem;
+                width: 100%;
+                max-width: 50%;
+                display: flex;
+                flex-direction: column;
+                justify-content: space-between;
+            }
+            .status-dot {
+                width: 12px;
+                height: 12px;
+                border-radius: 50%;
+                display: inline-block;
+                margin-right: 6px;
+            }
+        </style>
+        """
+    )
+
+    try:
+        res = requests.get(
+            settings.API_URL + "/api/v1/healthcheck",
+            headers=get_auth_header(),
+            timeout=5,
+        )
+        res.raise_for_status()
+        data = res.json()["result"]
+        backend_reachable = True
+    except Exception:
+        data = {}
+        backend_reachable = False
+
+    ui.label("System Health Overview").classes("text-2xl font-semibold mb-4")
+
+    if not backend_reachable:
+        ui.label("Backend is not reachable").classes("text-lg text-red-500")
+        return
+
+    with ui.element("div").style(
+        "display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; width: 100%;"
+    ):
+        for host, samples in data.items():
+            if not samples:
+                continue
+
+            seen = samples[-1]["seen"]
+            latest = samples[-1]
+            load_vals = [s["load_avg"] for s in samples]
+            mem_vals = [s["memory_usage"] for s in samples]
+            times = [
+                datetime.fromtimestamp(s["seen"]).strftime("%H:%M:%S")
+                for s in samples
+            ]
+
+            with ui.card().classes("card").classes("w-full"):
+                with ui.row().classes("items-center justify-between w-full"):
+                    ui.label(host).classes("text-lg font-medium")
+
+                    status_color = (
+                        "bg-red-500"
+                        if (datetime.now().timestamp() - seen) > 300
+                        else "bg-green-500"
+                    )
+
+                    ui.html(f'<span class="status-dot {status_color}"></span>Online')
+
+                ui.separator()
+                ui.label(
+                    f"Load Avg: {latest['load_avg']:.1f} | Memory Usage: {latest['memory_usage']:.1f}%"
+                ).classes("text-sm text-gray-600 mb-2")
+
+                with ui.echart(
+                    {
+                        "xAxis": {"type": "category", "data": times},
+                        "yAxis": {"type": "value"},
+                        "series": [
+                            {"data": load_vals, "type": "line", "smooth": True, "name": "Load Avg"},
+                            {"data": mem_vals, "type": "line", "smooth": True, "name": "Memory %"},
+                        ],
+                        "legend": {"data": ["Load Avg", "Memory %"]},
+                        "tooltip": {"trigger": "axis"},
+                    }
+                ).classes("h-48 w-full"):
+                    pass
+
+                ui.label(
+                    f"Last updated: {times[-1]}"
+                ).classes("text-xs text-gray-400 mt-1")
+
