@@ -185,7 +185,6 @@ def logout() -> None:
     Log out the user by clearing the token and navigating to the logout endpoint.
     """
 
-    app.storage.user.clear()
     ui.navigate.to(settings.OIDC_APP_LOGOUT_ROUTE)
 
 
@@ -197,6 +196,8 @@ def page_init(header_text: Optional[str] = "") -> None:
     def refresh():
         if not token_refresh():
             ui.navigate.to(settings.OIDC_APP_LOGOUT_ROUTE)
+
+    ui.timer(30, refresh)
 
     if header_text:
         header_text = f" - {header_text}"
@@ -242,8 +243,6 @@ def page_init(header_text: Optional[str] = "") -> None:
                 icon="logout",
                 on_click=lambda: ui.navigate.to("/logout"),
             ).props("flat color=black")
-
-            ui.timer(30, refresh)
             ui.add_head_html("<style>body {background-color: #ffffff;}</style>")
 
 
@@ -279,6 +278,8 @@ def jobs_get() -> list:
             job_type = "Transcription"
         elif job["output_format"] == "srt":
             job_type = "Subtitles"
+        else:
+            job_type = "Transcription"
 
         job_data = {
             "id": idx,
