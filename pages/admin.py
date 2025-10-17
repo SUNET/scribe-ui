@@ -69,7 +69,7 @@ def create_group_dialog(page: callable) -> None:
                         create_group_dialog.close(),
                         ui.navigate.to("/admin"))
                 )
-            
+
         create_group_dialog.open()
 
 
@@ -128,10 +128,10 @@ class Group:
                 with ui.column().style("flex: 0 0 auto; min-width: 25%;"):
                     ui.label(f"{self.name}").classes("text-h5 font-bold")
                     ui.label(self.description).classes("text-md")
-    
+
                     if self.name != "All users":
                         ui.label(f"Created {self.created_at}").classes("text-sm text-gray-500")
-    
+
                     ui.label(f"{self.nr_users} members").classes("text-sm text-gray-500")
                 with ui.column().style("flex: 1;"):
                     ui.label("Statistics").classes("text-h6 font-bold")
@@ -235,7 +235,7 @@ def admin_dialog(users: list, groupname: str) -> None:
     """
 
     with ui.dialog() as dialog:
-        with ui.card().style("width: 600px; max-width: 90vw;"):
+        with ui.card().style("width: 600px; max-width: 90vw; height: 75%;"):
             ui.label("Administrators").classes("text-2xl font-bold")
             admin_table = ui.table(
                 columns=[
@@ -247,6 +247,12 @@ def admin_dialog(users: list, groupname: str) -> None:
                 pagination=20,
                 on_select=lambda e: None,
             ).style("width: 100%; box-shadow: none; font-size: 18px;")
+
+            with admin_table.add_slot("top-right"):
+                with ui.input(placeholder="Search").props("type=search").bind_value(
+                    admin_table, "filter"
+                ).add_slot("append"):
+                    ui.icon("search")
 
             with ui.row().style("justify-content: flex-end; width: 100%; padding-top: 16px; gap: 8px;"):
                 ui.button("Close").classes("button-close").props(
@@ -324,6 +330,13 @@ def edit_group(groupname: str) -> None:
         ).style("width: 100%; box-shadow: none; font-size: 18px;")
 
         users_table.selected = [user for user in group["users"] if user.get("in_group", True)]
+
+        with users_table.add_slot("top-right"):
+            with ui.input(placeholder="Search").props("type=search").bind_value(
+                users_table, "filter"
+            ).add_slot("append"):
+                ui.icon("search")
+
 
     with ui.footer().style("background-color: #ffffff;"):
         with ui.row().style("justify-content: flex-left; width: 100%; padding: 16px; gap: 8px;"):
@@ -460,11 +473,18 @@ def statistics(groupname: str) -> None:
                     {"name": "minutes", "label": "Minutes", "field": "minutes", "align": "left"},
                 ]
 
-                ui.table(
+                stats_table = ui.table(
                     columns=user_columns,
                     rows=user_rows,
                     pagination=20,
                 ).style("width: 100%; box-shadow: none; font-size: 16px; margin: auto;")
+
+                with stats_table.add_slot("top-right"):
+                    with ui.input(placeholder="Search").props("type=search").bind_value(
+                        stats_table, "filter"
+                    ).add_slot("append"):
+                        ui.icon("search")
+
 def create() -> None:
     @ui.refreshable
     @ui.page("/admin")
@@ -571,6 +591,13 @@ def users() -> None:
             pagination=20,
             on_select=lambda e: None,
         ).style("width: 100%; box-shadow: none; font-size: 18px;")
+
+        with users_table.add_slot("top-right"):
+            with ui.input(placeholder="Search").props("type=search").bind_value(
+                users_table, "filter"
+            ).add_slot("append"):
+                ui.icon("search")
+
 
     with ui.footer().style("background-color: #ffffff;"):
         with ui.row().style("justify-content: flex-left; width: 100%; padding: 16px; gap: 8px;"):
