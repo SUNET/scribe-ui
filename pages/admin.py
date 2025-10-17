@@ -497,7 +497,7 @@ def statistics(groupname: str) -> None:
 
                 user_columns = [
                     {"name": "username", "label": "Username", "field": "username", "align": "left", "sortable": True},
-                    {"name": "minutes", "label": "Minutes", "field": "minutes", "align": "left", "sortable": True},
+                    {"name": "minutes", "label": "Minutes", "field": "minutes", "align": "left", "sortable": True, ":sort": "minutes"},
                 ]
 
                 stats_table = ui.table(
