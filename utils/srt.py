@@ -304,7 +304,7 @@ class SRTEditor:
         csv_content = ""
         for caption in self.captions:
             escaped_text = caption.text.replace('"', '""')
-            csv_content += f"{caption.start_time},{caption.end_time},{caption.speaker},{escaped_text}\n"
+            csv_content += f'"{caption.start_time}","{caption.end_time}","{caption.speaker}","{escaped_text}"\n'
 
         return csv_content.strip()
 
