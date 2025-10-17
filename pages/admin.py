@@ -239,8 +239,8 @@ def admin_dialog(users: list, groupname: str) -> None:
             ui.label("Administrators").classes("text-2xl font-bold")
             admin_table = ui.table(
                 columns=[
-                    {"name": "username", "label": "Username", "field": "username", "align": "left"},
-                    {"name": "role", "label": "Admin", "field": "admin", "align": "left"},
+                    {"name": "username", "label": "Username", "field": "username", "align": "left", "sortable": True},
+                    {"name": "role", "label": "Admin", "field": "admin", "align": "left", "sortable": True},
                 ],
                 rows=users,
                 selection="multiple",
@@ -319,9 +319,9 @@ def edit_group(groupname: str) -> None:
         ui.label("Select users to be included in group:").classes("text-xl font-semibold mt-4 mb-2")
         users_table = ui.table(
             columns=[
-                {"name": "username", "label": "Username", "field": "username", "align": "left"},
-                {"name": "role", "label": "Admin", "field": "admin", "align": "left"},
-                {"name": "active", "label": "Active", "field": "active", "align": "left"},
+                {"name": "username", "label": "Username", "field": "username", "align": "left", "sortable": True},
+                {"name": "role", "label": "Admin", "field": "admin", "align": "left", "sortable": True},
+                {"name": "active", "label": "Active", "field": "active", "align": "left", "sortable": True},
             ],
             rows=group["users"],
             selection="multiple",
@@ -469,8 +469,8 @@ def statistics(groupname: str) -> None:
                 ]
 
                 user_columns = [
-                    {"name": "username", "label": "Username", "field": "username", "align": "left"},
-                    {"name": "minutes", "label": "Minutes", "field": "minutes", "align": "left"},
+                    {"name": "username", "label": "Username", "field": "username", "align": "left", "sortable": True},
+                    {"name": "minutes", "label": "Minutes", "field": "minutes", "align": "left", "sortable": True},
                 ]
 
                 stats_table = ui.table(
@@ -582,9 +582,9 @@ def users() -> None:
         ui.label("All users").classes("text-3xl font-bold mb-4")
         users_table = ui.table(
             columns=[
-                {"name": "username", "label": "Username", "field": "username", "align": "left"},
-                {"name": "role", "label": "Admin", "field": "admin", "align": "left"},
-                {"name": "active", "label": "Active", "field": "active", "align": "left"},
+                {"name": "username", "label": "Username", "field": "username", "align": "left", "sortable": True},
+                {"name": "role", "label": "Admin", "field": "admin", "align": "left", "sortable": True},
+                {"name": "active", "label": "Active", "field": "active", "align": "left", "sortable": True},
             ],
             rows=users,
             selection="multiple",
