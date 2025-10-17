@@ -421,6 +421,7 @@ def statistics(groupname: str) -> None:
     result = stats["result"]
 
     per_day = result.get("transcribed_minutes_per_day", {})
+    per_day_previous_month = result.get("transcribed_minutes_per_day_previous_month", {})
     per_user = result.get("transcribed_minutes_per_user", {})
 
     total_users = result.get("total_users", 0)
@@ -448,7 +449,7 @@ def statistics(groupname: str) -> None:
                 ]
             )
             fig.update_layout(
-                title="Transcribed Minutes per Day",
+                title="Transcribed minutes per day (current month)",
                 xaxis_title="Date",
                 yaxis_title="Minutes",
                 template="plotly_white",
@@ -458,6 +459,32 @@ def statistics(groupname: str) -> None:
 
             with ui.element("div").classes("chart-container"):
                 ui.plotly(fig).classes("w-full")
+
+        if per_day_previous_month:
+            dates_prev = list(per_day_previous_month.keys())
+            values_prev = list(per_day_previous_month.values())
+
+            fig_prev = go.Figure(
+                data=[
+                    go.Bar(
+                        x=dates_prev,
+                        y=values_prev,
+                        marker=dict(color="#10B981", line=dict(width=0)),
+                        hovertemplate="%{x} - %{y:.1f} minutes<extra></extra>",
+                    )
+                ]
+            )
+            fig_prev.update_layout(
+                title="Transcribed minutes per day (previous month)",
+                xaxis_title="Date",
+                yaxis_title="Minutes",
+                template="plotly_white",
+                margin=dict(l=40, r=20, t=60, b=40),
+                height=400,
+            )
+
+            with ui.element("div").classes("chart-container"):
+                ui.plotly(fig_prev).classes("w-full")
 
         # Table Section
         if per_user:
