@@ -746,7 +746,7 @@ def health() -> None:
                         "legend": {"data": ["Load Avg", "Memory %"]},
                         "tooltip": {"trigger": "axis"},
                     }
-                ).classes("h-48 w-full"):
+                ).classes("h-50 w-full"):
                     pass
 
                 ui.label(
