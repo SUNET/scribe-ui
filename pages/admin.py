@@ -645,6 +645,11 @@ def users() -> None:
             )
 
 
+import plotly.graph_objects as go
+import requests
+
+from datetime import datetime
+from nicegui import ui
 
 @ui.page("/health")
 def health() -> None:
@@ -683,84 +688,117 @@ def health() -> None:
         """
     )
 
-    try:
-        res = requests.get(
-            settings.API_URL + "/api/v1/healthcheck",
-            headers=get_auth_header(),
-            timeout=5,
-        )
-        res.raise_for_status()
-        data = res.json()["result"]
-        backend_reachable = True
-    except Exception:
-        data = {}
-        backend_reachable = False
-
     ui.label("System Health Overview").classes("text-2xl font-semibold mb-4")
 
-    if not backend_reachable:
-        ui.label("Backend is not reachable").classes("text-lg text-red-500")
-        return
+    @ui.refreshable
+    def render_health():
+        try:
+            res = requests.get(
+                settings.API_URL + "/api/v1/healthcheck",
+                headers=get_auth_header(),
+                timeout=5,
+            )
+            res.raise_for_status()
+            data = res.json()["result"]
+            backend_reachable = True
+        except Exception:
+            data = {}
+            backend_reachable = False
 
-
-    with ui.element("div").style(
-        "display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; width: 100%;"
-    ):
-        if not data:
-            ui.label("No workers online.").classes("text-lg text-gray-600")
+        if not backend_reachable:
+            ui.label("Backend is not reachable").classes("text-lg text-red-500")
             return
 
-        for host, samples in data.items():
-            if not samples:
-                continue
+        with ui.element("div").style(
+            "display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; width: 100%;"
+        ):
+            if not data:
+                ui.label("No workers online.").classes("text-lg text-gray-600")
+                return
 
-            seen = samples[-1]["seen"]
-            latest = samples[-1]
-            load_vals = [s["load_avg"] for s in samples]
-            mem_vals = [s["memory_usage"] for s in samples]
-            times = [
-                datetime.fromtimestamp(s["seen"]).strftime("%H:%M:%S")
-                for s in samples
-            ]
+            for host, samples in data.items():
+                if not samples:
+                    continue
 
-            with ui.card().classes("card").classes("w-full"):
-                with ui.row().classes("items-center justify-between w-full"):
-                    ui.label(host).classes("text-lg font-medium")
+                seen = samples[-1]["seen"]
+                latest = samples[-1]
 
-                    status_color = (
-                        "bg-red-500"
-                        if (datetime.now().timestamp() - seen) > 30
-                        else "bg-green-500"
+                load_vals = [s["load_avg"] for s in samples]
+                mem_vals = [s["memory_usage"] for s in samples]
+                gpu_vals = [s["gpu_usage"] for s in samples if "gpu_usage" in s]
+
+                times = [
+                    datetime.fromtimestamp(s["seen"]).strftime("%H:%M:%S")
+                    for s in samples
+                ]
+
+                with ui.card().classes("card"):
+                    with ui.row().classes("items-center justify-between w-full"):
+                        ui.label(host).classes("text-lg font-medium")
+
+                        status_color = (
+                            "bg-red-500"
+                            if (datetime.now().timestamp() - seen) > 30
+                            else "bg-green-500"
+                        )
+                        status = (
+                            "Offline"
+                            if (datetime.now().timestamp() - seen) > 30
+                            else "Online"
+                        )
+
+                        ui.html(
+                            f'<span class="status-dot {status_color}"></span>{status}'
+                        )
+
+                    ui.separator()
+                    ui.label(
+                        f"Load Avg: {latest['load_avg']:.1f} | Memory Usage: {latest['memory_usage']:.1f}%"
+                    ).classes("text-sm text-gray-600 mb-2")
+
+                    fig = go.Figure()
+                    fig.add_trace(
+                        go.Scatter(
+                            x=times,
+                            y=load_vals,
+                            mode="lines+markers",
+                            name="Load Avg",
+                            line=dict(shape="spline"),
+                        )
+                    )
+                    fig.add_trace(
+                        go.Scatter(
+                            x=times,
+                            y=mem_vals,
+                            mode="lines+markers",
+                            name="Memory %",
+                            line=dict(shape="spline"),
+                        )
+                    )
+                    fig.add_trace(
+                        go.Scatter(
+                            x=times[-len(gpu_vals):],
+                            y=gpu_vals,
+                            mode="lines+markers",
+                            name="GPU %",
+                            line=dict(shape="spline"),
+                        )
                     )
 
-                    status = (
-                        "Offline"
-                        if (datetime.now().timestamp() - seen) > 30
-                        else "Online"
+                    fig.update_layout(
+                        margin=dict(l=20, r=20, t=20, b=20),
+                        legend=dict(orientation="h", yanchor="bottom", y=1.1, xanchor="center", x=0.5),
+                        height=250,
+                        template="plotly_white",
+                        xaxis_title="Time",
+                        yaxis_title="%",
                     )
 
-                    ui.html(f'<span class="status-dot {status_color}"></span>{status}')
+                    ui.plotly(fig).classes("w-full h-64")
+                    ui.label(f"Last updated: {times[-1]}").classes(
+                        "text-xs text-gray-400 mt-1"
+                    )
 
-                ui.separator()
-                ui.label(
-                    f"Load Avg: {latest['load_avg']:.1f} | Memory Usage: {latest['memory_usage']:.1f}%"
-                ).classes("text-sm text-gray-600 mb-2")
+    render_health()
 
-                with ui.echart(
-                    {
-                        "xAxis": {"type": "category", "data": times},
-                        "yAxis": {"type": "value"},
-                        "series": [
-                            {"data": load_vals, "type": "line", "smooth": True, "name": "Load Avg"},
-                            {"data": mem_vals, "type": "line", "smooth": True, "name": "Memory %"},
-                        ],
-                        "legend": {"data": ["Load Avg", "Memory %"]},
-                        "tooltip": {"trigger": "axis"},
-                    }
-                ).classes("h-50 w-full"):
-                    pass
-
-                ui.label(
-                    f"Last updated: {times[-1]}"
-                ).classes("text-xs text-gray-400 mt-1")
-
+    ui.timer(10.0, render_health.refresh)
