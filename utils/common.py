@@ -1,11 +1,16 @@
 import asyncio
 import requests
 
-from nicegui import app, ui
+from nicegui import ui
 from starlette.formparsers import MultiPartParser
 from typing import Optional
 from utils.settings import get_settings
-from utils.token import get_admin_status, get_auth_header, token_refresh
+from utils.token import (
+    get_admin_status,
+    get_auth_header,
+    get_bofh_status,
+    token_refresh,
+)
 
 
 MultiPartParser.spool_max_size = 1024 * 1024 * 4096
@@ -206,6 +211,8 @@ def page_init(header_text: Optional[str] = "") -> None:
     if is_admin:
         header_text += " (Administrator)"
 
+    is_bofh = get_bofh_status()
+
     with ui.header().style(
         "justify-content: space-between; background-color: #ffffff;"
     ).classes("drop-shadow-md"):
@@ -222,6 +229,7 @@ def page_init(header_text: Optional[str] = "") -> None:
                     on_click=lambda: ui.navigate.to("/admin"),
                 ).props("flat color=red")
 
+            if is_bofh:
                 # Button for health page
                 ui.button(
                     icon="health_and_safety",

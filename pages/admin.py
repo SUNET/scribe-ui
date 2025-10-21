@@ -2,11 +2,12 @@ import plotly.graph_objects as go
 import requests
 
 from datetime import datetime
-
 from nicegui import ui
 from utils.common import default_styles, page_init
 from utils.settings import get_settings
 from utils.token import get_auth_header
+
+
 
 settings = get_settings()
 
@@ -27,14 +28,14 @@ def groups_get() -> list:
         print(f"Error fetching groups: {e}")
         return []
 
-def user_statistics_get(groupname: str) -> dict:
+def user_statistics_get(group_id: str) -> dict:
     """
     Fetch user statistics for a group from backend.
     """
 
     try:
         res = requests.get(
-            settings.API_URL + f"/api/v1/admin/groups/{groupname}/stats", headers=get_auth_header()
+            settings.API_URL + f"/api/v1/admin/groups/{group_id}/stats", headers=get_auth_header()
         )
         res.raise_for_status()
 
@@ -86,7 +87,7 @@ class Group:
         self.stats = stats
 
     def edit_group(self) -> None:
-        ui.navigate.to(f"/admin/edit/{self.name}")
+        ui.navigate.to(f"/admin/edit/{self.group_id}")
 
     def delete_group_dialog(self) -> None:
         with ui.dialog() as delete_group_dialog:
@@ -156,7 +157,7 @@ class Group:
 
                     statistics.on(
                         "click",
-                        lambda: ui.navigate.to(f"/admin/stats/{self.name}")
+                        lambda: ui.navigate.to(f"/admin/stats/{self.group_id}")
                     )
 
                     if self.name == "All users":
@@ -213,7 +214,7 @@ def set_active_status(selected_rows: list, make_active: bool) -> None:
         except requests.RequestException as e:
             ui.notify(f"Error updating active status for {user['username']}: {e}", type="negative")
 
-def set_admin_status(selected_rows: list, make_admin: bool, dialog: ui.dialog, groupname: str) -> None:
+def set_admin_status(selected_rows: list, make_admin: bool, dialog: ui.dialog, group_id: str) -> None:
     """
     Set or remove admin status for selected users.
     """
@@ -227,11 +228,11 @@ def set_admin_status(selected_rows: list, make_admin: bool, dialog: ui.dialog, g
             )
             res.raise_for_status()
             dialog.close()
-            ui.navigate.to(f"/admin/edit/{groupname}")
+            ui.navigate.to(f"/admin/edit/{group_id}")
         except requests.RequestException as e:
             ui.notify(f"Error updating admin status for {user['username']}: {e}", type="negative")
 
-def admin_dialog(users: list, groupname: str) -> None:
+def admin_dialog(users: list, group_id: str) -> None:
     """
     Show a dialog with a table of users and buttons to ether make users administrator or remove administrator rights.
     """
@@ -248,7 +249,7 @@ def admin_dialog(users: list, groupname: str) -> None:
                 selection="multiple",
                 pagination=20,
                 on_select=lambda e: None,
-            ).style("width: 100%; box-shadow: none; font-size: 18px;")
+            ).style("width: 100%; box-shadow: none; font-size: 18px; height: calc(100vh - 500px);")
 
             with admin_table.add_slot("top-right"):
                 with ui.input(placeholder="Search").props("type=search").bind_value(
@@ -263,19 +264,19 @@ def admin_dialog(users: list, groupname: str) -> None:
                 ui.button("Make admin").classes("default-style").props(
                     "color=black flat"
                 ).on(
-                    "click", lambda: set_admin_status(admin_table.selected, True, dialog, groupname)
+                    "click", lambda: set_admin_status(admin_table.selected, True, dialog, group_id)
                 )
                 ui.button("Remove admin").classes("button-close").props(
                     "color=black flat"
                 ).on(
-                    "click", lambda: set_admin_status(admin_table.selected, False, dialog, groupname)
+                    "click", lambda: set_admin_status(admin_table.selected, False, dialog, group_id)
                 )
         dialog.open()
 
 
 @ui.refreshable
-@ui.page("/admin/edit/{groupname}")
-def edit_group(groupname: str) -> None:
+@ui.page("/admin/edit/{group_id}")
+def edit_group(group_id: str) -> None:
     """
     Page to edit a group.
     """
@@ -294,7 +295,7 @@ def edit_group(groupname: str) -> None:
 
     try:
         res = requests.get(
-            settings.API_URL + f"/api/v1/admin/groups/{groupname}", headers=get_auth_header()
+            settings.API_URL + f"/api/v1/admin/groups/{group_id}", headers=get_auth_header()
         )
         res.raise_for_status()
         group = res.json()["result"]
@@ -329,7 +330,7 @@ def edit_group(groupname: str) -> None:
             selection="multiple",
             pagination=20,
             on_select=lambda e: None,
-        ).style("width: 100%; box-shadow: none; font-size: 18px;")
+        ).style("width: 100%; box-shadow: none; font-size: 18px; height: calc(100vh - 400px);")
 
         users_table.selected = [user for user in group["users"] if user.get("in_group", True)]
 
@@ -344,18 +345,18 @@ def edit_group(groupname: str) -> None:
         with ui.row().style("justify-content: flex-left; width: 100%; padding: 16px; gap: 8px;"):
             ui.button("Save group").classes("default-style").props(
                 "color=black flat"
-            ).style("width: 150px").on("click", lambda: save_group(users_table.selected, name_input.value, description_input.value, groupname))
+            ).style("width: 150px").on("click", lambda: save_group(users_table.selected, name_input.value, description_input.value, group_id))
             ui.button("Administrators").classes("button-close").props(
                 "color=black flat"
-            ).style("width: 150px").on("click", lambda: admin_dialog(group["users"], groupname))
+            ).style("width: 150px").on("click", lambda: admin_dialog(group["users"], group_id))
             ui.button("Cancel").classes("button-close").props(
                 "color=black flat"
             ).style("width: 150px;").on("click", lambda: ui.navigate.to("/admin"))
 
 
 @ui.refreshable
-@ui.page("/admin/stats/{groupname}")
-def statistics(groupname: str) -> None:
+@ui.page("/admin/stats/{group_id}")
+def statistics(group_id: str) -> None:
     """
     Page to show statistics of a group with improved layout and design.
     """
@@ -414,7 +415,7 @@ def statistics(groupname: str) -> None:
         """
     )
 
-    stats = user_statistics_get(groupname=groupname)
+    stats = user_statistics_get(group_id=group_id)
 
     if not stats or "result" not in stats:
         ui.label("Error fetching statistics.").classes("text-lg text-red-500 text-center mt-6")
@@ -431,7 +432,7 @@ def statistics(groupname: str) -> None:
 
     with ui.element("div").classes("stats-container w-full"):
         with ui.element("div").classes("stats-card w-full"):
-            ui.label(f"Group Statistics: {groupname}").classes("text-3xl font-bold mb-3 text-gray-800")
+            ui.label(f"Group Statistics: {group_id}").classes("text-3xl font-bold mb-3 text-gray-800")
             ui.label(f"Total users: {total_users}").classes("text-lg text-gray-600")
             ui.label(f"Total transcribed time: {total_transcribed:.0f} minutes").classes("text-lg text-gray-600")
 
@@ -506,7 +507,7 @@ def statistics(groupname: str) -> None:
                     columns=user_columns,
                     rows=user_rows,
                     pagination=20,
-                ).style("width: 100%; box-shadow: none; font-size: 16px; margin: auto;")
+                ).style("width: 100%; box-shadow: none; font-size: 16px; margin: auto; height: calc(100vh - 160px);")
 
                 with stats_table.add_slot("top-right"):
                     with ui.input(placeholder="Search").props("type=search").bind_value(
@@ -612,6 +613,7 @@ def users() -> None:
         users_table = ui.table(
             columns=[
                 {"name": "username", "label": "Username", "field": "username", "align": "left", "sortable": True},
+                {"name": "realm", "label": "Realm", "field": "realm", "align": "left", "sortable": True},
                 {"name": "role", "label": "Admin", "field": "admin", "align": "left", "sortable": True},
                 {"name": "active", "label": "Active", "field": "active", "align": "left", "sortable": True},
             ],
@@ -619,7 +621,7 @@ def users() -> None:
             selection="multiple",
             pagination=20,
             on_select=lambda e: None,
-        ).style("width: 100%; box-shadow: none; font-size: 18px;")
+        ).style("width: 100%; box-shadow: none; font-size: 18px; height: calc(100vh - 300px);")
 
         with users_table.add_slot("top-right"):
             with ui.input(placeholder="Search").props("type=search").bind_value(
@@ -644,12 +646,6 @@ def users() -> None:
                 "click", lambda: set_active_status(users_table.selected, False)
             )
 
-
-import plotly.graph_objects as go
-import requests
-
-from datetime import datetime
-from nicegui import ui
 
 @ui.page("/health")
 def health() -> None:
