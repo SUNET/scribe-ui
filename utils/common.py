@@ -148,7 +148,7 @@ def show_help_dialog() -> None:
 
                 ### Features
 
-                - Upload audio and video files in various formats (mp3, wav, flac, mp4, mkv, avi, m4a, aiff, aif, mov, ogg, opus, webm).
+                - Upload audio and video files in various formats (mp3, wav, flac, mp4, mkv, avi, m4a, aiff, aif, mov, ogg, opus, webm, wma).
                 - Choose transcription language from a wide range of supported languages.
                 - Select transcription accuracy (model size) based on your needs.
                 - Option to specify the number of speakers for better diarization.
@@ -392,7 +392,7 @@ def table_upload(table) -> None:
                     multiple=True,
                     max_files=5,
                 ).props(
-                    "hidden accept=.mp3,.wav,.flac,.mp4,.mkv,.avi,.m4a,.aiff,.aif,.mov,.ogg,.opus,.webm"
+                    "hidden accept=.mp3,.wav,.flac,.mp4,.mkv,.avi,.m4a,.aiff,.aif,.mov,.ogg,.opus,.webm,.wma"
                 )
 
                 upload.on(
