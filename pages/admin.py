@@ -52,6 +52,8 @@ def create_group_dialog(page: callable) -> None:
             description_input = (
                 ui.textarea("Group description").classes("w-full").props("outlined")
             )
+            quota = ui.input("Monthly transcription limit (minutes, 0 = unlimited)", value=0).classes("w-full").props("outlined type=number min=0")
+
             with ui.row().style("justify-content: flex-end; width: 100%;"):
                 ui.button("Cancel").classes("button-close").props(
                     "color=black flat"
@@ -67,6 +69,7 @@ def create_group_dialog(page: callable) -> None:
                             json={
                                 "name": name_input.value,
                                 "description": description_input.value,
+                                "quota_seconds": int(quota.value) * 60,
                             },
                         ),
                         create_group_dialog.close(),
@@ -77,7 +80,7 @@ def create_group_dialog(page: callable) -> None:
 
 
 class Group:
-    def __init__(self, group_id: str, name: str, description: str, created_at: str, users: dict, nr_users: int, stats: dict) -> None:
+    def __init__(self, group_id: str, name: str, description: str, created_at: str, users: dict, nr_users: int, stats: dict, quota_seconds: int) -> None:
         self.group_id = group_id
         self.name = name
         self.description = description
@@ -85,6 +88,7 @@ class Group:
         self.users = users
         self.nr_users = nr_users
         self.stats = stats
+        self.quota_seconds = quota_seconds
 
     def edit_group(self) -> None:
         ui.navigate.to(f"/admin/edit/{self.group_id}")
@@ -136,6 +140,7 @@ class Group:
                         ui.label(f"Created {self.created_at}").classes("text-sm text-gray-500")
 
                     ui.label(f"{self.nr_users} members").classes("text-sm text-gray-500")
+                    ui.label(f"Monthly transcription limit: {'Unlimited' if self.quota_seconds == 0 else str(self.quota_seconds // 60) + ' minutes'}").classes("text-sm text-gray-500")
                 with ui.column().style("flex: 1;"):
                     ui.label("Statistics").classes("text-h6 font-bold")
 
@@ -179,7 +184,7 @@ class Group:
                         lambda e: self.delete_group_dialog()
                     )
 
-def save_group(selected_rows: list, name: str, description: str, group_id: str) -> None:
+def save_group(selected_rows: list, name: str, description: str, group_id: str, quota_seconds: int) -> None:
     usernames = [row["username"] for row in selected_rows]
 
     try:
@@ -189,7 +194,8 @@ def save_group(selected_rows: list, name: str, description: str, group_id: str) 
             json={
                 "name": name,
                 "description": description,
-                "usernames": usernames
+                "usernames": usernames,
+                "quota_seconds": int(quota_seconds) * 60,
             }
         )
         res.raise_for_status()
@@ -318,8 +324,10 @@ def edit_group(group_id: str) -> None:
             description_input = (
                 ui.input("Group description", value=group["description"]).props("outlined").classes("w-1/2")
             )
+            quota = ui.input("Monthly transcription limit (minutes, 0 = unlimited)", value=group["quota_seconds"] // 60).props("outlined type=number min=0").classes("w-1/2")
 
         ui.label("Select users to be included in group:").classes("text-xl font-semibold mt-4 mb-2")
+
         users_table = ui.table(
             columns=[
                 {"name": "username", "label": "Username", "field": "username", "align": "left", "sortable": True},
@@ -345,7 +353,7 @@ def edit_group(group_id: str) -> None:
         with ui.row().style("justify-content: flex-left; width: 100%; padding: 16px; gap: 8px;"):
             ui.button("Save group").classes("default-style").props(
                 "color=black flat"
-            ).style("width: 150px").on("click", lambda: save_group(users_table.selected, name_input.value, description_input.value, group_id))
+            ).style("width: 150px").on("click", lambda: save_group(users_table.selected, name_input.value, description_input.value, group_id, quota.value))
             ui.button("Administrators").classes("button-close").props(
                 "color=black flat"
             ).style("width: 150px").on("click", lambda: admin_dialog(group["users"], group_id))
@@ -560,18 +568,23 @@ def create() -> None:
             if not groups:
                 ui.label("No groups found. Create a new group to get started.").classes("text-lg")
                 return
-
-            for group in groups_get()["result"]:
-                g = Group(
-                    group_id=group["id"],
-                    name=group["name"],
-                    description=group["description"],
-                    created_at=group["created_at"],
-                    users=group["users"],
-                    nr_users=group["nr_users"],
-                    stats=group["stats"]
-                )
-                g.create_card()
+            with ui.scroll_area().style("height: calc(100vh - 160px); width: 100%;"):
+                groups = sorted(
+                    groups_get()["result"],
+                    key=lambda x: (x["name"].lower() != "all users", x["name"].lower())
+                )                
+                for group in groups:
+                    g = Group(
+                        group_id=group["id"],
+                        name=group["name"],
+                        description=group["description"],
+                        created_at=group["created_at"],
+                        users=group["users"],
+                        nr_users=group["nr_users"],
+                        stats=group["stats"],
+                        quota_seconds=group["quota_seconds"],
+                    )
+                    g.create_card()
 
 @ui.page("/admin/users")
 def users() -> None:
@@ -644,6 +657,11 @@ def users() -> None:
                 "color=black flat"
             ).style("width: 150px").on(
                 "click", lambda: set_active_status(users_table.selected, False)
+            )
+            ui.button("Change realm").classes("button-close").props(
+                "color=black flat"
+            ).style("width: 150px").on(
+                "click", lambda: ui.notify("Not implemented yet.", type="warning")
             )
 
 

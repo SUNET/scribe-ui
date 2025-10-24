@@ -607,38 +607,45 @@ def start_transcription(
     # Get selected values
     selected_language = language
     selected_model = model
+    error = ""
 
     if output_format == "Subtitles":
         output_format = "SRT"
     else:
         output_format = "TXT"
 
-    try:
-        for row in rows:
-            uuid = row["uuid"]
+    for row in rows:
+        uuid = row["uuid"]
 
-            try:
-                response = requests.put(
-                    f"{settings.API_URL}/api/v1/transcriber/{uuid}",
-                    json={
-                        "language": f"{selected_language}",
-                        "model": f"{selected_model}",
-                        "speakers": int(speakers),
-                        "status": "pending",
-                        "output_format": output_format,
-                    },
-                    headers=get_auth_header(),
-                )
-                response.raise_for_status()
-            except requests.exceptions.RequestException:
-                ui.notify(
-                    "Error: Failed to start transcription.",
-                    type="negative",
-                    position="top",
-                )
-                return
+        try:
+            response = requests.put(
+                f"{settings.API_URL}/api/v1/transcriber/{uuid}",
+                json={
+                    "language": f"{selected_language}",
+                    "model": f"{selected_model}",
+                    "speakers": int(speakers),
+                    "status": "pending",
+                    "output_format": output_format,
+                },
+                headers=get_auth_header(),
+            )
+            response.raise_for_status()
+        except requests.exceptions.RequestException:
+            if response.status_code == 403:
+                error = response.json()["result"]["error"]
+            else:
+                error = "Error: Failed to start transcription."
 
-        dialog.close()
-
-    except Exception as e:
-        ui.notify(f"Error: {str(e)}", type="negative", position="top")
+        if error:
+            with ui.dialog() as error_dialog:
+                with ui.card().style(
+                    "background-color: white; align-self: center; border: 0; width: 50%;"
+                ):
+                    ui.label(error).classes("text-h6 q-mb-md text-black")
+                    ui.button(
+                        "Close",
+                    ).on(
+                        "click", lambda: error_dialog.close()
+                    ).classes("button-close").props("color=black flat")
+                error_dialog.open()
+        return
