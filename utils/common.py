@@ -230,7 +230,6 @@ def page_init(header_text: Optional[str] = "") -> None:
                 ).props("flat color=red")
 
             if is_bofh:
-                # Button for health page
                 ui.button(
                     icon="health_and_safety",
                     on_click=lambda: ui.navigate.to("/health"),

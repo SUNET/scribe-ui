@@ -238,6 +238,49 @@ def set_admin_status(selected_rows: list, make_admin: bool, dialog: ui.dialog, g
         except requests.RequestException as e:
             ui.notify(f"Error updating admin status for {user['username']}: {e}", type="negative")
 
+def save_domains(selected_rows: list, domains: str, dialog: ui.dialog) -> None:
+    """
+    Save allowed domains for selected users.
+    """
+
+    for user in selected_rows:
+        try:
+            res = requests.put(
+                settings.API_URL + f"/api/v1/admin/{user['username']}",
+                headers=get_auth_header(),
+                json={"admin_domains": domains}
+            )
+            res.raise_for_status()
+            ui.navigate.to("/admin/users")
+        except requests.RequestException as e:
+            ui.notify(f"Error updating domains for {user['username']}: {e}", type="negative")
+
+    dialog.close()
+
+def set_domains(selected_rows: list) -> None:
+    """
+    Show a dialog with an input to set allowed domains.
+    Domains should be separated by commas.
+    """
+
+    with ui.dialog() as domain_dialog:
+        with ui.card().style("width: 500px; max-width: 90vw;"):
+            ui.label("Set domains the user can administer").classes("text-2xl font-bold")
+            domain_input = ui.textarea("Allowed domains (separated by commas)", value=selected_rows[0]["admin_domains"]).classes("w-full").props("outlined")
+
+            with ui.row().style("justify-content: flex-end; width: 100%;"):
+                ui.button("Cancel").classes("button-close").props(
+                    "color=black flat"
+                ).on("click", lambda: domain_dialog.close())
+                ui.button("Save").classes("default-style").props(
+                    "color=black flat"
+                ).on(
+                    "click",
+                    lambda: save_domains(selected_rows, domain_input.value, domain_dialog)
+                )
+
+        domain_dialog.open()
+
 def admin_dialog(users: list, group_id: str) -> None:
     """
     Show a dialog with a table of users and buttons to ether make users administrator or remove administrator rights.
@@ -338,7 +381,7 @@ def edit_group(group_id: str) -> None:
             selection="multiple",
             pagination=20,
             on_select=lambda e: None,
-        ).style("width: 100%; box-shadow: none; font-size: 18px; height: calc(100vh - 400px);")
+        ).style("width: 100%; box-shadow: none; font-size: 18px; height: calc(100vh - 550px);")
 
         users_table.selected = [user for user in group["users"] if user.get("in_group", True)]
 
@@ -356,7 +399,7 @@ def edit_group(group_id: str) -> None:
             ).style("width: 150px").on("click", lambda: save_group(users_table.selected, name_input.value, description_input.value, group_id, quota.value))
             ui.button("Administrators").classes("button-close").props(
                 "color=black flat"
-            ).style("width: 150px").on("click", lambda: admin_dialog(group["users"], group_id))
+            ).style("width: 150px").on("click", lambda: admin_dialog(users_table.selected, group_id))
             ui.button("Cancel").classes("button-close").props(
                 "color=black flat"
             ).style("width: 150px;").on("click", lambda: ui.navigate.to("/admin"))
@@ -628,10 +671,13 @@ def users() -> None:
                 {"name": "username", "label": "Username", "field": "username", "align": "left", "sortable": True},
                 {"name": "realm", "label": "Realm", "field": "realm", "align": "left", "sortable": True},
                 {"name": "role", "label": "Admin", "field": "admin", "align": "left", "sortable": True},
+
+                # Make sure the domains field is wide enough to show multiple domains
+                {"name": "domains", "label": "Domains", "field": "admin_domains", "align": "left", "sortable": False, "style": "max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"},
                 {"name": "active", "label": "Active", "field": "active", "align": "left", "sortable": True},
             ],
             rows=users,
-            selection="multiple",
+            selection="single",
             pagination=20,
             on_select=lambda e: None,
         ).style("width: 100%; box-shadow: none; font-size: 18px; height: calc(100vh - 300px);")
@@ -658,10 +704,10 @@ def users() -> None:
             ).style("width: 150px").on(
                 "click", lambda: set_active_status(users_table.selected, False)
             )
-            ui.button("Change realm").classes("button-close").props(
+            ui.button("Domains").classes("button-close").props(
                 "color=black flat"
             ).style("width: 150px").on(
-                "click", lambda: ui.notify("Not implemented yet.", type="warning")
+                "click", lambda: set_domains(users_table.selected)
             )
 
 
