@@ -973,12 +973,11 @@ class SRTEditor:
                             "text-sm leading-relaxed whitespace-pre-wrap"
                         )
                         text_color = "text-gray-500"
-                        tooltip_text = "Character count. Max 42 per line (guideline)."
+                        tooltip_text = "Character count."
 
                         character_label = ""
-
                         for x in caption.text.split("\n"):
-                            if len(x) > CHARACTER_LIMIT:
+                            if len(x) > CHARACTER_LIMIT && self.data_format != "txt":
                                 text_color = CHARACTER_LIMIT_EXCEEDED_COLOR
                                 tooltip_text = (
                                     "One or more lines exceed the character limit!"
