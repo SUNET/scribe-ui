@@ -785,7 +785,10 @@ def health() -> None:
 
                 load_vals = [s["load_avg"] for s in samples]
                 mem_vals = [s["memory_usage"] for s in samples]
-                gpu_vals = [s["gpu_usage"] for s in samples if "gpu_usage" in s]
+
+                if "gpu_usage" in samples[-1] and samples[-1]["gpu_usage"]:
+                    gpu_cpu_vals = [s["gpu_usage"][0]["utilization"] for s in samples if "gpu_usage" in s]
+                    gpu_mem_vals = [(s["gpu_usage"][0]["memory_used"] / s["gpu_usage"][0]["memory_total"]) * 100 for s in samples if "gpu_usage" in s]
 
                 times = [
                     datetime.fromtimestamp(s["seen"]).strftime("%H:%M:%S")
@@ -816,8 +819,8 @@ def health() -> None:
                         f"Load Avg: {latest['load_avg']:.1f} | Memory Usage: {latest['memory_usage']:.1f}%"
                     ).classes("text-sm text-gray-600 mb-2")
 
-                    fig = go.Figure()
-                    fig.add_trace(
+                    fig_cpu = go.Figure()
+                    fig_cpu.add_trace(
                         go.Scatter(
                             x=times,
                             y=load_vals,
@@ -826,7 +829,7 @@ def health() -> None:
                             line=dict(shape="spline"),
                         )
                     )
-                    fig.add_trace(
+                    fig_cpu.add_trace(
                         go.Scatter(
                             x=times,
                             y=mem_vals,
@@ -835,17 +838,7 @@ def health() -> None:
                             line=dict(shape="spline"),
                         )
                     )
-                    fig.add_trace(
-                        go.Scatter(
-                            x=times[-len(gpu_vals):],
-                            y=gpu_vals,
-                            mode="lines+markers",
-                            name="GPU %",
-                            line=dict(shape="spline"),
-                        )
-                    )
-
-                    fig.update_layout(
+                    fig_cpu.update_layout(
                         margin=dict(l=20, r=20, t=20, b=20),
                         legend=dict(orientation="h", yanchor="bottom", y=1.1, xanchor="center", x=0.5),
                         height=250,
@@ -853,8 +846,39 @@ def health() -> None:
                         xaxis_title="Time",
                         yaxis_title="%",
                     )
+                    ui.plotly(fig_cpu).classes("w-full h-64")
 
-                    ui.plotly(fig).classes("w-full h-64")
+                    if "gpu_usage" in samples[-1] and samples[-1]["gpu_usage"]:
+                        fig_gpu = go.Figure()
+                        fig_gpu.add_trace(
+                            go.Scatter(
+                                x=times[-len(gpu_cpu_vals):],
+                                y=gpu_cpu_vals,
+                                mode="lines+markers",
+                                name="GPU CPU%",
+                                line=dict(shape="spline"),
+                            )
+                        )
+                        fig_gpu.add_trace(
+                            go.Scatter(
+                                x=times[-len(gpu_mem_vals):],
+                                y=gpu_mem_vals,
+                                mode="lines+markers",
+                                name="GPU RAM%",
+                                line=dict(shape="spline"),
+                            )
+                        )
+
+                        fig_gpu.update_layout(
+                            margin=dict(l=20, r=20, t=20, b=20),
+                            legend=dict(orientation="h", yanchor="bottom", y=1.1, xanchor="center", x=0.5),
+                            height=250,
+                            template="plotly_white",
+                            xaxis_title="Time",
+                            yaxis_title="%",
+                        )
+                        ui.plotly(fig_gpu).classes("w-full h-64")
+
                     ui.label(f"Last updated: {times[-1]}").classes(
                         "text-xs text-gray-400 mt-1"
                     )
