@@ -122,10 +122,14 @@ class Group:
         month_hours = str(self.stats['month_seconds'] // 3600).split(".")[0]
         month_minutes = str((self.stats['month_seconds'] % 3600) // 60).split(".")[0]
 
+        last_month_hours = str(self.stats['last_month_seconds'] // 3600).split(".")[0]
+        last_month_minutes = str((self.stats['last_month_seconds'] % 3600) // 60).split(".")[0]
+
         year_hours = str(self.stats['year_seconds'] // 3600).split(".")[0]
         year_minutes = str((self.stats['year_seconds'] % 3600) // 60).split(".")[0]
 
         month_time = f"{month_hours}h {month_minutes}m"
+        last_month_time = f"{last_month_hours}h {last_month_minutes}m"
         year_time = f"{year_hours}h {year_minutes}m"
 
         with ui.card().classes("my-2").style("width: 100%; box-shadow: none; border: 1px solid #e0e0e0; padding: 16px;"):
@@ -147,12 +151,16 @@ class Group:
                     with ui.row().classes("w-full gap-8"):
                         with ui.column().style("min-width: 30%;"):
                             ui.label("This month").classes("font-semibold")
-                            ui.label(f"Total files: {self.stats["month_files"]}").classes("text-sm")
-                            ui.label(f"Total transcription time: {month_time}").classes("text-sm")
+                            ui.label(f"Transcribed files current month: {self.stats["month_files"]}").classes("text-sm")
+                            ui.label(f"Transcription time current month: {month_time}").classes("text-sm")
+                        with ui.column():
+                            ui.label("Last month").classes("font-semibold")
+                            ui.label(f"Transcribed files last month: {self.stats["last_month_files"]}").classes("text-sm")
+                            ui.label(f"Transcription time last month: {last_month_time}m").classes("text-sm")
                         with ui.column():
                             ui.label("This year").classes("font-semibold")
-                            ui.label(f"Total files: {self.stats["year_files"]}").classes("text-sm")
-                            ui.label(f"Total transcription time: {year_time}").classes("text-sm")
+                            ui.label(f"Transcribed files this year: {self.stats["year_files"]}").classes("text-sm")
+                            ui.label(f"Transcription time this year: {year_time}").classes("text-sm")
 
                 with ui.column().style("flex: 0 0 auto;"):
 
@@ -615,7 +623,7 @@ def create() -> None:
                 groups = sorted(
                     groups_get()["result"],
                     key=lambda x: (x["name"].lower() != "all users", x["name"].lower())
-                )                
+                )
                 for group in groups:
                     g = Group(
                         group_id=group["id"],
@@ -671,13 +679,11 @@ def users() -> None:
                 {"name": "username", "label": "Username", "field": "username", "align": "left", "sortable": True},
                 {"name": "realm", "label": "Realm", "field": "realm", "align": "left", "sortable": True},
                 {"name": "role", "label": "Admin", "field": "admin", "align": "left", "sortable": True},
-
-                # Make sure the domains field is wide enough to show multiple domains
                 {"name": "domains", "label": "Domains", "field": "admin_domains", "align": "left", "sortable": False, "style": "max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"},
                 {"name": "active", "label": "Active", "field": "active", "align": "left", "sortable": True},
             ],
             rows=users,
-            selection="single",
+            selection="multiple",
             pagination=20,
             on_select=lambda e: None,
         ).style("width: 100%; box-shadow: none; font-size: 18px; height: calc(100vh - 300px);")
