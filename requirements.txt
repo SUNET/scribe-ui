@@ -28,7 +28,7 @@ markdown2==2.5.4
 MarkupSafe==3.0.2
 multidict==6.6.4
 narwhals==2.7.0
-nicegui==2.23.3
+nicegui==3.0.0
 orjson==3.11.3
 packaging==25.0
 plotly==6.3.1
