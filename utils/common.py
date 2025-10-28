@@ -1,11 +1,16 @@
 import asyncio
 import requests
 
-from nicegui import app, ui
+from nicegui import ui
 from starlette.formparsers import MultiPartParser
 from typing import Optional
 from utils.settings import get_settings
-from utils.token import get_admin_status, get_auth_header, token_refresh
+from utils.token import (
+    get_admin_status,
+    get_auth_header,
+    get_bofh_status,
+    token_refresh,
+)
 
 
 MultiPartParser.spool_max_size = 1024 * 1024 * 4096
@@ -107,11 +112,17 @@ default_styles = """
             background-color: #ffffff;
             color: #000000 !important;
             width: 150px;
+            border: 1px solid #000000;
         }
         .button-user-status {
             background-color: #ffffff;
             width: 150px;
             border: 1px solid #000000;
+        }
+        .button-edit {
+            background-color: #082954;
+            color: #ffffff !important;
+            width: 150px;
         }
     </style>
 """
@@ -179,7 +190,6 @@ def logout() -> None:
     Log out the user by clearing the token and navigating to the logout endpoint.
     """
 
-    app.storage.user.clear()
     ui.navigate.to(settings.OIDC_APP_LOGOUT_ROUTE)
 
 
@@ -192,12 +202,16 @@ def page_init(header_text: Optional[str] = "") -> None:
         if not token_refresh():
             ui.navigate.to(settings.OIDC_APP_LOGOUT_ROUTE)
 
+    ui.timer(30, refresh)
+
     if header_text:
         header_text = f" - {header_text}"
 
     is_admin = get_admin_status()
     if is_admin:
         header_text += " (Administrator)"
+
+    is_bofh = get_bofh_status()
 
     with ui.header().style(
         "justify-content: space-between; background-color: #ffffff;"
@@ -213,6 +227,12 @@ def page_init(header_text: Optional[str] = "") -> None:
                 ui.button(
                     icon="settings",
                     on_click=lambda: ui.navigate.to("/admin"),
+                ).props("flat color=red")
+
+            if is_bofh:
+                ui.button(
+                    icon="health_and_safety",
+                    on_click=lambda: ui.navigate.to("/health"),
                 ).props("flat color=red")
             ui.button(
                 icon="home",
@@ -230,8 +250,6 @@ def page_init(header_text: Optional[str] = "") -> None:
                 icon="logout",
                 on_click=lambda: ui.navigate.to("/logout"),
             ).props("flat color=black")
-
-            ui.timer(30, refresh)
             ui.add_head_html("<style>body {background-color: #ffffff;}</style>")
 
 
@@ -267,6 +285,8 @@ def jobs_get() -> list:
             job_type = "Transcription"
         elif job["output_format"] == "srt":
             job_type = "Subtitles"
+        else:
+            job_type = "Transcription"
 
         job_data = {
             "id": idx,
@@ -583,41 +603,52 @@ def start_transcription(
     output_format: str,
     dialog: ui.dialog,
 ) -> None:
-    # Get selected values
     selected_language = language
     selected_model = model
+    error = ""
 
     if output_format == "Subtitles":
         output_format = "SRT"
     else:
         output_format = "TXT"
 
-    try:
-        for row in rows:
-            uuid = row["uuid"]
+    for row in rows:
+        uuid = row["uuid"]
 
-            try:
-                response = requests.put(
-                    f"{settings.API_URL}/api/v1/transcriber/{uuid}",
-                    json={
-                        "language": f"{selected_language}",
-                        "model": f"{selected_model}",
-                        "speakers": int(speakers),
-                        "status": "pending",
-                        "output_format": output_format,
-                    },
-                    headers=get_auth_header(),
-                )
-                response.raise_for_status()
-            except requests.exceptions.RequestException:
-                ui.notify(
-                    "Error: Failed to start transcription.",
-                    type="negative",
-                    position="top",
-                )
-                return
+        try:
+            response = requests.put(
+                f"{settings.API_URL}/api/v1/transcriber/{uuid}",
+                json={
+                    "language": f"{selected_language}",
+                    "model": f"{selected_model}",
+                    "speakers": int(speakers),
+                    "status": "pending",
+                    "output_format": output_format,
+                },
+                headers=get_auth_header(),
+            )
+            response.raise_for_status()
+        except requests.exceptions.RequestException:
+            if response.status_code == 403:
+                error = response.json()["result"]["error"]
+            else:
+                error = "Error: Failed to start transcription."
 
-        dialog.close()
+        if error:
+            with dialog:
+                dialog.clear()
 
-    except Exception as e:
-        ui.notify(f"Error: {str(e)}", type="negative", position="top")
+                with ui.card().style(
+                    "background-color: white; align-self: center; border: 0; width: 50%;"
+                ):
+                    ui.label(error).classes("text-h6 q-mb-md text-black")
+                    ui.button(
+                        "Close",
+                    ).on("click", lambda: dialog.close()).classes(
+                        "button-close"
+                    ).props("color=black flat")
+                dialog.open()
+        else:
+            dialog.close()
+
+        return

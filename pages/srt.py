@@ -86,6 +86,10 @@ def create() -> None:
                         srt_content = editor.export_json()
                     case "rtf":
                         srt_content = editor.export_rtf()
+                    case "csv":
+                        srt_content = editor.export_csv()
+                    case "tsv":
+                        srt_content = editor.export_tsv()
 
                 ui.download(
                     str(srt_content).encode(), filename=f"{filename}.{srt_format}"
@@ -156,6 +160,16 @@ def create() -> None:
                         export_button_rtf.props("flat")
                         export_button_rtf.classes("button-default-style")
                         export_button_rtf.on("click", lambda: export("rtf"))
+
+                        export_button_csv = ui.button("Export as CSV", icon="share")
+                        export_button_csv.props("flat")
+                        export_button_csv.classes("button-default-style")
+                        export_button_csv.on("click", lambda: export("csv"))
+
+                        export_button_tsv = ui.button("Export as TSV", icon="share")
+                        export_button_tsv.props("flat")
+                        export_button_tsv.classes("button-default-style")
+                        export_button_tsv.on("click", lambda: export("tsv"))
 
                 if data_format == "srt":
                     with ui.button("Validate", icon="check").props(
