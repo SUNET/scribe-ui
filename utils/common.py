@@ -603,7 +603,6 @@ def start_transcription(
     output_format: str,
     dialog: ui.dialog,
 ) -> None:
-    # Get selected values
     selected_language = language
     selected_model = model
     error = ""
@@ -636,15 +635,20 @@ def start_transcription(
                 error = "Error: Failed to start transcription."
 
         if error:
-            with ui.dialog() as error_dialog:
+            with dialog:
+                dialog.clear()
+
                 with ui.card().style(
                     "background-color: white; align-self: center; border: 0; width: 50%;"
                 ):
                     ui.label(error).classes("text-h6 q-mb-md text-black")
                     ui.button(
                         "Close",
-                    ).on(
-                        "click", lambda: error_dialog.close()
-                    ).classes("button-close").props("color=black flat")
-                error_dialog.open()
+                    ).on("click", lambda: dialog.close()).classes(
+                        "button-close"
+                    ).props("color=black flat")
+                dialog.open()
+        else:
+            dialog.close()
+
         return
