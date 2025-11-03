@@ -491,7 +491,7 @@ def statistics(group_id: str) -> None:
 
     with ui.element("div").classes("stats-container w-full"):
         with ui.element("div").classes("stats-card w-full"):
-            ui.label(f"Group Statistics: {group_id}").classes("text-3xl font-bold mb-3 text-gray-800")
+            ui.label("Group Statistics").classes("text-3xl font-bold mb-3 text-gray-800")
             ui.label(f"Total users: {total_users}").classes("text-lg text-gray-600")
             ui.label(f"Total transcribed time: {total_transcribed:.0f} minutes").classes("text-lg text-gray-600")
 
