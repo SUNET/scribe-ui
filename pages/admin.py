@@ -119,19 +119,6 @@ class Group:
             delete_group_dialog.open()
 
     def create_card(self):
-        month_hours = str(self.stats['month_seconds'] // 3600).split(".")[0]
-        month_minutes = str((self.stats['month_seconds'] % 3600) // 60).split(".")[0]
-
-        last_month_hours = str(self.stats['last_month_seconds'] // 3600).split(".")[0]
-        last_month_minutes = str((self.stats['last_month_seconds'] % 3600) // 60).split(".")[0]
-
-        year_hours = str(self.stats['year_seconds'] // 3600).split(".")[0]
-        year_minutes = str((self.stats['year_seconds'] % 3600) // 60).split(".")[0]
-
-        month_time = f"{month_hours}h {month_minutes}m"
-        last_month_time = f"{last_month_hours}h {last_month_minutes}m"
-        year_time = f"{year_hours}h {year_minutes}m"
-
         with ui.card().classes("my-2").style("width: 100%; box-shadow: none; border: 1px solid #e0e0e0; padding: 16px;"):
             with ui.row().style(
                 "justify-content: space-between; align-items: center; width: 100%;"
@@ -151,16 +138,12 @@ class Group:
                     with ui.row().classes("w-full gap-8"):
                         with ui.column().style("min-width: 30%;"):
                             ui.label("This month").classes("font-semibold")
-                            ui.label(f"Transcribed files current month: {self.stats["month_files"]}").classes("text-sm")
-                            ui.label(f"Transcription time current month: {month_time}").classes("text-sm")
+                            ui.label(f"Transcribed files current month: {self.stats["transcribed_files"]}").classes("text-sm")
+                            ui.label(f"Transcribed minutes current month: {self.stats["total_transcribed_minutes"]}").classes("text-sm")
                         with ui.column():
                             ui.label("Last month").classes("font-semibold")
-                            ui.label(f"Transcribed files last month: {self.stats["last_month_files"]}").classes("text-sm")
-                            ui.label(f"Transcription time last month: {last_month_time}m").classes("text-sm")
-                        with ui.column():
-                            ui.label("This year").classes("font-semibold")
-                            ui.label(f"Transcribed files this year: {self.stats["year_files"]}").classes("text-sm")
-                            ui.label(f"Transcription time this year: {year_time}").classes("text-sm")
+                            ui.label(f"Transcribed files last month: {self.stats["transcribed_files_last_month"]}").classes("text-sm")
+                            ui.label(f"Transcribed minutes last month: {self.stats["total_transcribed_minutes_last_month"]}m").classes("text-sm")
 
                 with ui.column().style("flex: 0 0 auto;"):
 
@@ -483,7 +466,7 @@ def statistics(group_id: str) -> None:
     result = stats["result"]
 
     per_day = result.get("transcribed_minutes_per_day", {})
-    per_day_previous_month = result.get("transcribed_minutes_per_day_previous_month", {})
+    per_day_previous_month = result.get("transcribed_minutes_per_day_last_month", {})
     per_user = result.get("transcribed_minutes_per_user", {})
 
     total_users = result.get("total_users", 0)
@@ -492,9 +475,11 @@ def statistics(group_id: str) -> None:
     with ui.element("div").classes("stats-container w-full"):
         with ui.element("div").classes("stats-card w-full"):
             ui.label("Group Statistics").classes("text-3xl font-bold mb-3 text-gray-800")
-            ui.label(f"Total users: {total_users}").classes("text-lg text-gray-600")
-            ui.label(f"Total transcribed time: {total_transcribed:.0f} minutes").classes("text-lg text-gray-600")
-
+            ui.label(f"Number of users: {total_users}").classes("text-lg text-gray-600")
+            ui.label(f"Transcribed files this month: {result.get('transcribed_files', 0)} files").classes("text-lg text-gray-600")
+            ui.label(f"Transcribed files last month: {result.get('transcribed_files_last_month', 0)} files").classes("text-lg text-gray-600")
+            ui.label(f"Transcribed minutes this month: {total_transcribed:.0f} minutes").classes("text-lg text-gray-600")
+            ui.label(f"Transcribed minutes last month: {result.get('total_transcribed_minutes_last_month', 0):.0f} minutes").classes("text-lg text-gray-600")
         # Chart Section
         if per_day:
             dates = list(per_day.keys())
@@ -551,7 +536,7 @@ def statistics(group_id: str) -> None:
         # Table Section
         if per_user:
             with ui.element("div").classes("table-container"):
-                ui.label("Transcribed Minutes per User").classes("text-2xl font-bold mb-4 text-gray-800")
+                ui.label("Transcribed minutes per user this month").classes("text-2xl font-bold mb-4 text-gray-800")
                 user_rows = [
                     {"username": username, "minutes": f"{minutes:.1f}"}
                     for username, minutes in per_user.items()
