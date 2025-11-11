@@ -934,10 +934,12 @@ class SRTEditor:
                         ):
                             ui.tooltip(tooltip_text)
 
-                card.on(
-                    "click",
-                    lambda: self.select_caption(caption) if not caption.is_selected else None,
-                )
+            card.on(
+                "click",
+                lambda: self.select_caption(caption)
+                if not caption.is_selected
+                else None,
+            )
 
         return card
 
