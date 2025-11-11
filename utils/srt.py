@@ -1,8 +1,8 @@
-import re
 import json
+import re
 
-from nicegui import ui, events
-from typing import Optional, Dict, Any, List
+from nicegui import events, ui
+from typing import Any, Dict, List, Optional
 
 from utils.common import get_line_length
 
@@ -152,6 +152,10 @@ class SRTEditor:
 
         if self.selected_caption:
             current_index = self.captions.index(self.selected_caption)
+
+            if current_index + 1 >= len(self.captions):
+                return
+
             self.select_caption(self.captions[current_index + 1])
         else:
             self.select_caption(self.captions[0])
@@ -299,6 +303,70 @@ class SRTEditor:
                 continue
 
         self.renumber_captions()
+
+    def export_csv(self) -> str:
+        """
+        Export to CSV format.
+        Fields: Start time, stop time, speaker, text
+        """
+
+        csv_content = ""
+        for caption in self.captions:
+            escaped_text = caption.text.replace('"', '""')
+            csv_content += f'"{caption.start_time}","{caption.end_time}","{caption.speaker}","{escaped_text}"\n'
+
+        return csv_content.strip()
+
+    def export_tsv(self) -> str:
+        """
+        Export to TSV format.
+        Fields: Start time, stop time, speaker, text
+        """
+
+        tsv_content = ""
+        for caption in self.captions:
+            escaped_text = caption.text.replace("\t", "    ").replace("\n", " ")
+            tsv_content += f"{caption.start_time}\t{caption.end_time}\t{caption.speaker}\t{escaped_text}\n"
+
+        return tsv_content.strip()
+
+    def export_rtf(self) -> str:
+        """
+        Export captions to RTF format with proper Unicode handling.
+        """
+
+        def to_rtf_unicode(text: str) -> str:
+            result = []
+            for ch in text:
+                code = ord(ch)
+                if code < 128:
+                    if ch in ["\\", "{", "}"]:
+                        result.append("\\" + ch)
+                    else:
+                        result.append(ch)
+                else:
+                    signed_code = code if code <= 0x7FFF else code - 0x10000
+                    result.append(f"\\u{signed_code}?")
+            return "".join(result)
+
+        rtf_content = (
+            r"{\rtf1\ansi\deff0{\fonttbl{\f0 Arial;}}" r"\viewkind4\uc1\pard\f0\fs20 "
+        )
+
+        for caption in self.captions:
+            rtf_content += (
+                r"\b "
+                + to_rtf_unicode(f"{caption.speaker}: ")
+                + r"\b0 "
+                + to_rtf_unicode(f"{caption.start_time} - {caption.end_time}")
+                + r"\line "
+                + to_rtf_unicode(caption.text).replace("\n", r"\line ")
+                + r"\line\line "
+            )
+
+        rtf_content += "}"
+
+        return rtf_content.strip()
 
     def export_txt(self) -> str:
         """
@@ -506,6 +574,10 @@ class SRTEditor:
         """
         Split a caption into two parts.
         """
+
+        if not caption:
+            return
+
         text_lines = caption.text.split("\n")
 
         if len(text_lines) == 1:
@@ -587,6 +659,9 @@ class SRTEditor:
         Remove a caption.
         """
 
+        if not caption:
+            return
+
         if len(self.captions) > 1:  # Don't remove if it's the only caption
             self.captions.remove(caption)
             self.renumber_captions()
@@ -624,11 +699,12 @@ class SRTEditor:
         self.update_words_per_minute()
         self.refresh_display()
 
-        ui.run_javascript(
-            """
-            document.getElementById("action_row").scrollIntoView({ behavior: "smooth", block: "center" });
-            """
-        )
+        if self.selected_caption:
+            ui.run_javascript(
+                """
+                document.getElementById("action_row").scrollIntoView({ behavior: "smooth", block: "center" });
+                """
+            )
 
     def update_caption_text(self, caption: SRTCaption, new_text: str) -> None:
         """
@@ -911,23 +987,6 @@ class SRTEditor:
                         ui.button("Delete", color="red").props("flat dense").on(
                             "click", lambda: self.remove_caption(caption)
                         )
-            else:
-                # Show text with search highlighting
-                if caption.is_highlighted and self.search_term:
-                    highlighted_text = self.get_highlighted_text(caption.text)
-
-                    with ui.row():
-                        ui.label(f"#{caption.index}").classes("font-bold text-sm")
-
-                        if self.data_format == "txt":
-                            ui.label(f"{caption.speaker}:").classes("font-bold text-sm")
-                    ui.label(f"{caption.start_time} - {caption.end_time}").classes(
-                        "text-sm text-gray-500"
-                    )
-
-                    ui.html(highlighted_text).classes(
-                        "text-sm leading-relaxed whitespace-pre-wrap"
-                    )
                 else:
                     with ui.row().classes("w-full justify-between"):
                         with ui.row():
@@ -940,31 +999,30 @@ class SRTEditor:
                         ui.label(f"{caption.start_time} - {caption.end_time}").classes(
                             "text-sm text-gray-500"
                         )
-
                     with ui.row().classes("w-full justify-between items-end"):
+                        ui.label(caption.text).classes(
+                            "text-sm leading-relaxed whitespace-pre-wrap"
+                        )
                         text_color = "text-gray-500"
-                        tooltip_text = "Character count. Max 42 per line (guideline)."
 
-                        lines = caption.text.splitlines()
-                        index = 0
-                        for line in lines:
-                            text_length = caption.line_lengths[index]
-                            index +=1
-                            with ui.row().classes('w-full justify-between items-end'):
-                                ui.label(line).classes(
-                                    "text-sm leading-relaxed whitespace-pre-wrap"
+                        tooltip_text = "Character count." if self.data_format == "txt" else "Character count. Max 42 per line (guideline)."
+
+                        character_label = ""
+                        for x in caption.text.split("\n"):
+                            if len(x) > CHARACTER_LIMIT and self.data_format != "txt":
+                                text_color = CHARACTER_LIMIT_EXCEEDED_COLOR
+                                tooltip_text = (
+                                    f"Character limit of {CHARACTER_LIMIT} exceeded in one or more lines."
                                 )
+                            character_label += f"{len(x)}/"
 
-                                # For some reason this adds a character that is not present outside the editor.
-                                text_color = "text-gray-500"
-                                tooltip_text = f"Character count. Max {CHARACTER_LIMIT} per line (guideline)."
+                        if character_label.endswith("/"):
+                            character_label = character_label[:-1]
 
-                                if text_length > CHARACTER_LIMIT:
-                                    text_color = CHARACTER_LIMIT_EXCEEDED_COLOR
-                                    tooltip_text = "Too many characters."
-
-                                with ui.label(f"({text_length})").classes(f"text-sm text-right {text_color}"):
-                                    ui.tooltip(tooltip_text)
+                        with ui.label(f"({character_label})").classes(
+                            f"text-sm text-right {text_color}"
+                        ):
+                            ui.tooltip(tooltip_text)
 
             card.on(
                 "click",
@@ -1045,19 +1103,33 @@ class SRTEditor:
 
         with ui.dialog() as dialog:
             with ui.card().style(
-                "background-color: white; align-self: center; border: 0; width: 100%;"
-            ):
-                if errors:
-                    ui.label(
-                        "The following issues were found with the captions:"
-                    ).classes("text-bold")
-                    ui.html("<br>".join(errors)).classes("text-red-600")
-                else:
-                    for caption in self.captions:
-                        caption.is_valid = True
+                "background-color: white; align-self: center; border: 0; width: 80%;"
+            ).classes("w-full no-shadow no-border"):
+                ui.label("Subtitles validation").style("width: 100%;").classes(
+                    "text-h6 q-mb-xl text-black"
+                )
 
-                    ui.label("All captions are valid!").classes("text-green-600")
-                ui.button("Close", on_click=dialog.close).props("color=primary flat")
+                with ui.row().classes("w-full"):
+                    if errors:
+                        ui.label(
+                            "The following issues were found with the captions:"
+                        ).classes("text-bold")
+                        ui.html("<br>".join(errors))
+                    else:
+                        for caption in self.captions:
+                            caption.is_valid = True
+
+                        ui.label("All captions are valid, no errors found!")
+
+                with ui.row().classes("justify-between w-full"):
+                    with ui.button(
+                        "Close",
+                        icon="cancel",
+                    ) as cancel:
+                        cancel.on("click", lambda: dialog.close())
+                        cancel.props("color=black flat")
+                        cancel.classes("cancel-style")
+
             dialog.open()
 
         self.refresh_display()

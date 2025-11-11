@@ -133,3 +133,13 @@ def get_user_status() -> bool:
         return get_user_data()["user"]["active"]
     except (KeyError, TypeError):
         return False
+
+
+def get_bofh_status():
+    """
+    Check if the user has BOFH status based on the token.
+    """
+    try:
+        return get_user_data()["user"]["bofh"]
+    except (KeyError, TypeError):
+        return False

@@ -16,12 +16,7 @@ def create() -> None:
         page_init()
         userdata = get_user_data()
 
-        with ui.row().classes("w-full justify-center"):
-            ui.label("User Dashboard").classes("text-3xl font-bold text-blue-600")
-
-        ui.separator().classes("my-6")
-
-        with ui.card().classes("w-full max-w-4xl mx-auto mb-6 no-shadow"):
+        with ui.card().classes("w-full mx-auto mb-6 no-shadow"):
             with ui.card_section():
                 ui.label("User Information").classes("text-xl font-semibold mb-4")
 
@@ -39,12 +34,6 @@ def create() -> None:
                             ui.label("Realm:").classes("font-medium")
                             ui.label(userdata["user"]["realm"]).classes("text-gray-700")
 
-                        with ui.row().classes("items-center gap-2"):
-                            ui.icon("admin_panel_settings").classes("text-purple-500")
-                            ui.label("Admin:").classes("font-medium")
-                            admin_status = "Yes" if userdata["user"]["admin"] else "No"
-                            ui.label(admin_status).classes("text-gray-700")
-
                     with ui.column():
                         with ui.row().classes("items-center gap-2"):
                             ui.icon("schedule").classes("text-orange-500")
@@ -54,15 +43,6 @@ def create() -> None:
                             ui.label(f"{minutes}min {seconds}s").classes(
                                 "text-gray-700"
                             )
-
-                        with ui.row().classes("items-center gap-2"):
-                            ui.icon("login").classes("text-teal-500")
-                            ui.label("Last Login:").classes("font-medium")
-                            last_login = datetime.fromisoformat(
-                                userdata["user"]["last_login"].replace(" ", "T")
-                            )
-                            formatted_date = last_login.strftime("%B %d, %Y at %H:%M")
-                            ui.label(formatted_date).classes("text-gray-700")
 
                         with ui.row().classes("items-center gap-2"):
                             ui.icon("fingerprint").classes("text-gray-600")
@@ -100,6 +80,18 @@ def create() -> None:
                             "field": "deletion_date",
                             "align": "center",
                         },
+                        {
+                            "name": "status",
+                            "label": "Status",
+                            "field": "status",
+                            "align": "center",
+                        },
+                        {
+                            "name": "length",
+                            "label": "Length",
+                            "field": "length",
+                            "align": "center",
+                        },
                     ]
 
                     jobs_data = []
@@ -117,6 +109,10 @@ def create() -> None:
                                 "job_type": job["job_type"].capitalize(),
                                 "created_at": created_date.strftime("%m/%d/%Y %H:%M"),
                                 "deletion_date": deletion_date.strftime("%m/%d/%Y"),
+                                "status": job["status"].capitalize(),
+                                "length": f"{int(job['transcribed_seconds'] // 60)}min {int(job['transcribed_seconds'] % 60)}s"
+                                if job["transcribed_seconds"]
+                                else "0s",
                             }
                         )
 

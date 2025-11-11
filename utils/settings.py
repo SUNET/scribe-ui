@@ -1,5 +1,5 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -20,13 +20,22 @@ class Settings(BaseSettings):
     OIDC_APP_LOGOUT_ROUTE: str = ""
     OIDC_APP_REFRESH_ROUTE: str = ""
 
-    WHISPER_MODELS: list[str] = ["Tiny", "Base", "Small", "Medium", "Large"]
+    WHISPER_MODELS: list[str] = [
+        "Fast transcription (normal accuracy)",
+        "Slower transcription (higher accuracy)",
+    ]
     WHISPER_LANGUAGES: list[str] = [
         "Swedish",
         "English",
+        "Norwegian",
         "Finnish",
         "Danish",
-        "Norwegian",
+        "French",
+        "Spanish",
+        "German",
+        "Italian",
+        "Russian",
+        "Ukrainian",
     ]
 
 
