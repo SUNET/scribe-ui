@@ -588,7 +588,7 @@ class SRTEditor:
         self.update_words_per_minute()
 
     def select_caption(
-        self, caption: SRTCaption, speaker: Optional[ui.input] = None
+        self, caption: SRTCaption, speaker: Optional[ui.input] = None, seek: Optional[bool] = True
     ) -> None:
         """
         Select/deselect a caption.
@@ -607,7 +607,7 @@ class SRTEditor:
             self.selected_caption = caption
 
             # Get caption start time
-            if self.__video_player:
+            if self.__video_player and seek:
                 start_seconds = caption.get_start_seconds()
                 self.__video_player.seek(start_seconds)
         self.update_words_per_minute()
@@ -729,7 +729,7 @@ class SRTEditor:
 
         if caption:
             if self.selected_caption != caption:
-                self.select_caption(caption)
+                self.select_caption(caption, seek = False)
 
     def merge_with_next(self, caption: SRTCaption) -> None:
         """
@@ -936,9 +936,7 @@ class SRTEditor:
 
                 card.on(
                     "click",
-                    lambda: self.select_caption(caption)
-                    if not caption.is_selected
-                    else None,
+                    lambda: self.select_caption(caption) if not caption.is_selected else None,
                 )
 
         return card
