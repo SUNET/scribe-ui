@@ -412,7 +412,7 @@ def statistics(group_id: str) -> None:
                 background-color: #f5f5f5;
             }
             .stats-container {
-                max-width: 900px;
+                max-width: 1500px;
                 margin: 0 auto;
                 display: flex;
                 flex-direction: column;
@@ -468,7 +468,7 @@ def statistics(group_id: str) -> None:
     per_day = result.get("transcribed_minutes_per_day", {})
     per_day_previous_month = result.get("transcribed_minutes_per_day_last_month", {})
     per_user = result.get("transcribed_minutes_per_user", {})
-
+    job_queue = result.get("job_queue", [])
     total_users = result.get("total_users", 0)
     total_transcribed = result.get("total_transcribed_minutes", 0)
 
@@ -480,7 +480,7 @@ def statistics(group_id: str) -> None:
             ui.label(f"Transcribed files last month: {result.get('transcribed_files_last_month', 0)} files").classes("text-lg text-gray-600")
             ui.label(f"Transcribed minutes this month: {total_transcribed:.0f} minutes").classes("text-lg text-gray-600")
             ui.label(f"Transcribed minutes last month: {result.get('total_transcribed_minutes_last_month', 0):.0f} minutes").classes("text-lg text-gray-600")
-        # Chart Section
+
         if per_day:
             dates = list(per_day.keys())
             values = list(per_day.values())
@@ -533,7 +533,6 @@ def statistics(group_id: str) -> None:
             with ui.element("div").classes("chart-container"):
                 ui.plotly(fig_prev).classes("w-full")
 
-        # Table Section
         if per_user:
             with ui.element("div").classes("table-container"):
                 ui.label("Transcribed minutes per user this month").classes("text-2xl font-bold mb-4 text-gray-800")
@@ -558,6 +557,29 @@ def statistics(group_id: str) -> None:
                         stats_table, "filter"
                     ).add_slot("append"):
                         ui.icon("search")
+
+        if job_queue:
+            with ui.element("div").classes("table-container"):
+                ui.label("Job queue for group").classes("text-2xl font-bold mb-4 text-gray-800")
+                queue_columns = [
+                    {"name": "job_id", "label": "Job ID", "field": "job_id", "align": "left", "sortable": True},
+                    {"name": "username", "label": "Username", "field": "username", "align": "left", "sortable": True},
+                    {"name": "status", "label": "Status", "field": "status", "align": "left", "sortable": True},
+                    {"name": "created_at", "label": "Created at", "field": "created_at", "align": "left", "sortable": True},
+                ]
+
+                stats_table = ui.table(
+                    columns=queue_columns,
+                    rows=job_queue,
+                    pagination=20,
+                ).style("width: 100%; box-shadow: none; font-size: 16px; margin: auto; height: calc(100vh - 160px);")
+
+                with stats_table.add_slot("top-right"):
+                    with ui.input(placeholder="Search").props("type=search").bind_value(
+                        stats_table, "filter"
+                    ).add_slot("append"):
+                        ui.icon("search")
+
 
 def create() -> None:
     @ui.refreshable
