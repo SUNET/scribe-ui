@@ -601,6 +601,9 @@ def create() -> None:
             """
         )
 
+        with ui.footer().style("background-color: #ffffff; color: black;"):
+            with ui.row().style("justify-content: flex-left; width: 100%; padding: 16px; gap: 8px;"):
+                ui.link("API Documentation", settings.API_URL + "/api/docs", new_tab=True)
 
         with ui.row().style(
             "justify-content: space-between; align-items: center; width: 100%;"
