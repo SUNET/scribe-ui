@@ -18,7 +18,7 @@ class SRTCaption:
         start_time: str,
         end_time: str,
         text: str,
-        line_lengths: [int],
+        line_lengths: Optional[int] = [],
         speaker: Optional[str] = "",
     ):
         """
@@ -987,6 +987,25 @@ class SRTEditor:
                         ui.button("Delete", color="red").props("flat dense").on(
                             "click", lambda: self.remove_caption(caption)
                         )
+
+
+            else:
+                # Show text with search highlighting
+                if caption.is_highlighted and self.search_term:
+                    highlighted_text = self.get_highlighted_text(caption.text)
+
+                    with ui.row():
+                        ui.label(f"#{caption.index}").classes("font-bold text-sm")
+
+                        if self.data_format == "txt":
+                            ui.label(f"{caption.speaker}:").classes("font-bold text-sm")
+                    ui.label(f"{caption.start_time} - {caption.end_time}").classes(
+                        "text-sm text-gray-500"
+                    )
+
+                    ui.html(highlighted_text).classes(
+                        "text-sm leading-relaxed whitespace-pre-wrap"
+                    )
                 else:
                     with ui.row().classes("w-full justify-between"):
                         with ui.row():
