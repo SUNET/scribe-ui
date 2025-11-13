@@ -5,7 +5,7 @@ WORKDIR /app
 COPY . .
 
 # Expose port
-EXPOSE 8080
+EXPOSE 8888
 
 # Run FastAPI
 CMD ["uv", "run", "main.py"]
