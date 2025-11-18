@@ -104,7 +104,6 @@ def create() -> None:
 
                 with ui.button("Save", icon="save") as save_button:
                     save_button.classes("button-default-style")
-                    save_button.props("flat")
 
                     if data_format == "srt":
                         save_button.on(
@@ -127,10 +126,10 @@ def create() -> None:
                             ),
                         )
 
-                    save_button.props("color=primary flat")
+                    save_button.props("color=white flat")
 
                 with ui.dropdown_button("Export", icon="share") as export_button:
-                    export_button.props("flat")
+                    export_button.props("flat color=white")
                     export_button.classes("button-default-style")
 
                     if data_format == "srt":
@@ -173,7 +172,7 @@ def create() -> None:
 
                 if data_format == "srt":
                     with ui.button("Validate", icon="check").props(
-                        "flat"
+                        "flat color=white"
                     ) as validate_button:
                         validate_button.classes("button-default-style")
                         validate_button.on(
@@ -217,12 +216,15 @@ def create() -> None:
                                 "align-self: center;"
                             )
                             ui.html(
-                                f"<b>Transcription language:</b> {language}"
+                                f"<b>Transcription language:</b> {language}",
+                                sanitize=False,
                             ).classes("text-sm")
-                            ui.html(f"<b>Transcription accuracy:</b> {model}").classes(
-                                "text-sm"
-                            )
+                            ui.html(
+                                f"<b>Transcription accuracy:</b> {model}",
+                                sanitize=False,
+                            ).classes("text-sm")
                             html_wpm = ui.html(
-                                f"<b>Words per minute:</b> {editor.get_words_per_minute():.2f}"
+                                f"<b>Words per minute:</b> {editor.get_words_per_minute():.2f}",
+                                sanitize=False,
                             ).classes("text-sm")
                             editor.set_words_per_minute_element(html_wpm)

@@ -335,11 +335,12 @@ def table_click(event) -> None:
         )
 
 
-def post_file(file: str, filename: str) -> None:
+def post_file(filedata: bytes, filename: str) -> None:
     """
     Post a file to the API.
     """
-    files_json = {"file": (filename, file.read())}
+
+    files_json = {"file": (filename, filedata)}
 
     try:
         response = requests.post(
@@ -411,7 +412,8 @@ def table_upload(table) -> None:
                         <br/><br/>
                         5 files at a maximum of 4GB can be uploaded at once.
                     </div>
-                """
+                    """,
+                    sanitize=False,
                 )
 
                 ui.run_javascript(
@@ -463,14 +465,19 @@ async def handle_upload_with_feedback(files, dialog):
 
     dialog.close()
 
-    for file, name in zip(files.contents, files.names):
+    for file in files.files:
         try:
-            await asyncio.to_thread(post_file, file, name)
+            file_name = file.name
+            file_data = await file.read()
 
-            ui.notify(f"Successfully uploaded {name}", type="positive", timeout=3000)
+            await asyncio.to_thread(post_file, file_data, file_name)
+
+            ui.notify(
+                f"Successfully uploaded {file_name}", type="positive", timeout=3000
+            )
         except Exception as e:
             ui.notify(
-                f"Failed to upload {name}: {str(e)}", type="negative", timeout=5000
+                f"Error uploading {file_name}: {str(e)}", type="negative", timeout=5000
             )
 
 

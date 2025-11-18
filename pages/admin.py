@@ -621,9 +621,15 @@ def create() -> None:
                 users = (
                     ui.button("Users")
                     .classes("button-edit")
-                    .props("color=black flat")
+                    .props("color=white flat")
                 )
                 users.on("click", lambda: ui.navigate.to("/admin/users"))
+                customers = (
+                    ui.button("Customers")
+                    .classes("button-edit")
+                    .props("color=white flat")
+                )
+                customers.on("click", lambda: ui.navigate.to("/admin/customers"))
                 groups = groups_get()
 
             if not groups:
@@ -827,7 +833,7 @@ def health() -> None:
                         )
 
                         ui.html(
-                            f'<span class="status-dot {status_color}"></span>{status}'
+                            f'<span class="status-dot {status_color}"></span>{status}', sanitize=False
                         )
 
                     ui.separator()
@@ -902,3 +908,57 @@ def health() -> None:
     render_health()
 
     ui.timer(10.0, render_health.refresh)
+
+@ui.page("/admin/customers")
+def customers() -> None:
+    """
+    Page to show all customers.
+    """
+    page_init()
+
+    ui.add_head_html(default_styles)
+    ui.add_head_html(
+        """
+        <style>
+            body {
+                background-color: #f5f5f5;
+            }
+        </style>
+        """
+    )
+
+    try:
+        res = requests.get(
+            settings.API_URL + "/api/v1/admin/customers", headers=get_auth_header()
+        )
+        res.raise_for_status()
+        customers = res.json()["result"]
+
+    except requests.RequestException as e:
+        ui.label(f"Error fetching customers: {e}").classes("text-lg text-red-500")
+        return
+
+    with ui.card().style("width: 100%; box-shadow: none; border: 1px solid #e0e0e0; align-self: center;"):
+        ui.label("All customers").classes("text-3xl font-bold mb-4")
+        customers_table = ui.table(
+            columns=[
+                {"name": "partner_id", "label": "Partner ID", "field": "customer_id", "align": "left", "sortable": True},
+                {"name": "name", "label": "Name", "field": "name", "align": "left", "sortable": True},
+                {"name": "created_at", "label": "Created at", "field": "created_at", "align": "left", "sortable": True},
+            ],
+            rows=customers,
+            pagination=20,
+        ).style("width: 100%; box-shadow: none; font-size: 18px; height: calc(100vh - 300px);")
+
+        with customers_table.add_slot("top-right"):
+            with ui.input(placeholder="Search").props("type=search").bind_value(
+                customers_table, "filter"
+            ).add_slot("append"):
+                ui.icon("search")
+
+
+    with ui.footer().style("background-color: #ffffff;"):
+        with ui.row().style("justify-content: flex-left; width: 100%; padding: 16px; gap: 8px;"):
+            ui.button("Back to groups").classes("button-close").props(
+                "color=black flat"
+            ).style("width: 150px ").on("click", lambda: ui.navigate.to("/admin"))

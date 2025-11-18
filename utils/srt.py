@@ -980,7 +980,7 @@ class SRTEditor:
                     )
 
                     ui.html(highlighted_text).classes(
-                        "text-sm leading-relaxed whitespace-pre-wrap"
+                        "text-sm leading-relaxed whitespace-pre-wrap", sanitize=False
                     )
                 else:
                     with ui.row().classes("w-full justify-between"):
@@ -1000,15 +1000,17 @@ class SRTEditor:
                         )
                         text_color = "text-gray-500"
 
-                        tooltip_text = "Character count." if self.data_format == "txt" else "Character count. Max 42 per line (guideline)."
+                        tooltip_text = (
+                            "Character count."
+                            if self.data_format == "txt"
+                            else "Character count. Max 42 per line (guideline)."
+                        )
 
                         character_label = ""
                         for x in caption.text.split("\n"):
                             if len(x) > CHARACTER_LIMIT and self.data_format != "txt":
                                 text_color = CHARACTER_LIMIT_EXCEEDED_COLOR
-                                tooltip_text = (
-                                    f"Character limit of {CHARACTER_LIMIT} exceeded in one or more lines."
-                                )
+                                tooltip_text = f"Character limit of {CHARACTER_LIMIT} exceeded in one or more lines."
                             character_label += f"{len(x)}/"
 
                         if character_label.endswith("/"):
@@ -1109,7 +1111,7 @@ class SRTEditor:
                         ui.label(
                             "The following issues were found with the captions:"
                         ).classes("text-bold")
-                        ui.html("<br>".join(errors))
+                        ui.html("<br>".join(errors), sanitize=False)
                     else:
                         for caption in self.captions:
                             caption.is_valid = True
