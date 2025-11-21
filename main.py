@@ -59,7 +59,7 @@ def index(request: Request) -> None:
             ).style(
                 "margin-top: auto; margin-bottom: 5px; align-self: center; width: 200px;"
             ).props(
-                "flat"
+                "flat color=white"
             ).classes(
                 "button-default-style"
             )
