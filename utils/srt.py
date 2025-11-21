@@ -1,12 +1,16 @@
 import json
 import re
+import requests
 
 from nicegui import events, ui
 from typing import Any, Dict, List, Optional
-
+from utils.common import get_auth_header
+from utils.settings import get_settings
 
 CHARACTER_LIMIT_EXCEEDED_COLOR = "text-red"
 CHARACTER_LIMIT = 42
+
+settings = get_settings()
 
 
 class SRTCaption:
@@ -82,10 +86,13 @@ class SRTCaption:
 
 
 class SRTEditor:
-    def __init__(self):
+    def __init__(self, uuid: str, srt_format: str):
         """
         Initialize the SRT editor with empty captions and other properties.
         """
+
+        self.uuid = uuid
+        self.srt_format = srt_format
         self.captions: List[SRTCaption] = []
         self.selected_caption: Optional[SRTCaption] = None
         self.caption_cards = {}
@@ -101,6 +108,33 @@ class SRTEditor:
         self.speakers = set()
         self.data_format = None
         self.keypresses = 0
+
+    def save_srt_changes(self) -> None:
+        try:
+            if self.srt_format == "srt":
+                data = self.export_srt()
+            else:
+                data = self.export_json()
+
+            jsondata = {"format": self.srt_format, "data": data}
+            headers = get_auth_header()
+            headers["Content-Type"] = "application/json"
+            res = requests.put(
+                f"{settings.API_URL}/api/v1/transcriber/{self.uuid}/result",
+                headers=headers,
+                json=jsondata,
+            )
+            res.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            ui.notify(f"Error: Failed to save file: {e}", type="negative")
+            return
+
+        ui.notify(
+            "File saved successfully",
+            type="positive",
+            position="bottom",
+            icon="check_circle",
+        )
 
     def set_autoscroll(self, autoscroll: bool) -> None:
         """
@@ -675,6 +709,7 @@ class SRTEditor:
 
         if self.selected_caption:
             self.selected_caption.is_selected = False
+            self.save_srt_changes()
 
         if self.selected_caption == caption:
             self.selected_caption = None

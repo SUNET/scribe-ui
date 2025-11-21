@@ -46,7 +46,7 @@ def create() -> None:
         Display the result of the transcription job.
         """
         page_init()
-        editor = SRTEditor()
+        editor = SRTEditor(uuid, data_format)
         ui.add_head_html(
             f"<link rel='preload' as='video' href='/video/{uuid}' type='video/mp4'>"
         )
