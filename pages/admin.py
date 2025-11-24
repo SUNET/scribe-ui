@@ -5,7 +5,7 @@ from datetime import datetime
 from nicegui import ui
 from utils.common import default_styles, page_init
 from utils.settings import get_settings
-from utils.token import get_auth_header, get_bofh_status
+from utils.token import get_admin_status, get_auth_header, get_bofh_status
 
 
 settings = get_settings()
@@ -624,7 +624,7 @@ def create() -> None:
                 )
                 users.on("click", lambda: ui.navigate.to("/admin/users"))
 
-                if get_bofh_status():
+                if get_admin_status():
                     customers = (
                         ui.button("Customers")
                         .classes("button-edit")
@@ -1167,21 +1167,22 @@ class Customer:
                         ),
                     )
 
-                    edit = (
-                        ui.button("Edit")
-                        .classes("button-edit")
-                        .props("color=white flat")
-                        .style("width: 100%")
-                    )
-                    delete = (
-                        ui.button("Delete")
-                        .classes("button-close")
-                        .props("color=black flat")
-                        .style("width: 100%")
-                    )
+                    if get_bofh_status():
+                        edit = (
+                            ui.button("Edit")
+                            .classes("button-edit")
+                            .props("color=white flat")
+                            .style("width: 100%")
+                        )
+                        delete = (
+                            ui.button("Delete")
+                            .classes("button-close")
+                            .props("color=black flat")
+                            .style("width: 100%")
+                        )
 
-                    edit.on("click", lambda e: self.edit_customer())
-                    delete.on("click", lambda e: self.delete_customer_dialog())
+                        edit.on("click", lambda e: self.edit_customer())
+                        delete.on("click", lambda e: self.delete_customer_dialog())
 
 
 def save_customer(
@@ -1288,7 +1289,7 @@ def edit_customer(customer_id: str) -> None:
                     blocks_input.set_visibility(False)
 
             priceplan_select.on("update:model-value", lambda: update_blocks_visibility())
-            update_blocks_visibility()  # Set initial visibility
+            update_blocks_visibility()
 
             realm_select = ui.select(
                 realms,
@@ -1384,12 +1385,13 @@ def customers() -> None:
             ui.label("Customer Management").classes("text-3xl font-bold")
 
         with ui.element("div").style("display: flex; gap: 10px;"):
-            create = (
-                ui.button("Create new customer")
-                .classes("default-style")
-                .props("color=black flat")
-            )
-            create.on("click", lambda: create_customer_dialog(page=customers))
+            if get_bofh_status():
+                create = (
+                    ui.button("Create new customer")
+                    .classes("default-style")
+                    .props("color=black flat")
+                )
+                create.on("click", lambda: create_customer_dialog(page=customers))
 
             # Export CSV button
             export_csv = (
@@ -1494,15 +1496,12 @@ def customer_statistics(customer_id: str) -> None:
     )
 
     try:
-        # Get customer info
         customer_res = requests.get(
             settings.API_URL + f"/api/v1/admin/customers/{customer_id}",
             headers=get_auth_header()
         )
         customer_res.raise_for_status()
         customer = customer_res.json()["result"]
-
-        # Get customer statistics
         stats_res = requests.get(
             settings.API_URL + f"/api/v1/admin/customers/{customer_id}/stats",
             headers=get_auth_header()
