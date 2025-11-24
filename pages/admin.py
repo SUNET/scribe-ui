@@ -289,7 +289,7 @@ def admin_dialog(users: list, group_id: str) -> None:
                 selection="multiple",
                 pagination=20,
                 on_select=lambda e: None,
-            ).style("width: 100%; box-shadow: none; font-size: 18px; height: calc(100vh - 500px);")
+            ).style("width: 100%; box-shadow: none; font-size: 18px; height: calc(100vh - 550px);")
 
             with admin_table.add_slot("top-right"):
                 with ui.input(placeholder="Search").props("type=search").bind_value(
