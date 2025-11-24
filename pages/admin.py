@@ -1391,7 +1391,12 @@ def customers() -> None:
         "justify-content: space-between; align-items: center; width: 100%;"
     ):
         with ui.element("div").style("display: flex; gap: 0px;"):
-            ui.label("Customer Management").classes("text-3xl font-bold")
+            if get_bofh_status():
+                ui.label("Customer Management").classes("text-3xl font-bold")
+            elif get_admin_status():
+                ui.label("Account Information").classes("text-3xl font-bold")
+            else:
+                pass
 
         with ui.element("div").style("display: flex; gap: 10px;"):
             if get_bofh_status():
