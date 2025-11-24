@@ -624,13 +624,22 @@ def create() -> None:
                 )
                 users.on("click", lambda: ui.navigate.to("/admin/users"))
 
-                if get_admin_status():
+                if get_bofh_status():
                     customers = (
                         ui.button("Customers")
                         .classes("button-edit")
                         .props("color=white flat")
                     )
                     customers.on("click", lambda: ui.navigate.to("/admin/customers"))
+                elif get_admin_status():
+                    customers = (
+                        ui.button("Account")
+                        .classes("button-edit")
+                        .props("color=white flat")
+                    )
+                    customers.on("click", lambda: ui.navigate.to("/admin/customers"))
+                else:
+                    pass
 
                 groups = groups_get()
 
