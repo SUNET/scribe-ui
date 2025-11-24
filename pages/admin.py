@@ -5,8 +5,7 @@ from datetime import datetime
 from nicegui import ui
 from utils.common import default_styles, page_init
 from utils.settings import get_settings
-from utils.token import get_auth_header
-
+from utils.token import get_auth_header, get_bofh_status
 
 
 settings = get_settings()
@@ -624,12 +623,15 @@ def create() -> None:
                     .props("color=white flat")
                 )
                 users.on("click", lambda: ui.navigate.to("/admin/users"))
-                customers = (
-                    ui.button("Customers")
-                    .classes("button-edit")
-                    .props("color=white flat")
-                )
-                customers.on("click", lambda: ui.navigate.to("/admin/customers"))
+
+                if get_bofh_status():
+                    customers = (
+                        ui.button("Customers")
+                        .classes("button-edit")
+                        .props("color=white flat")
+                    )
+                    customers.on("click", lambda: ui.navigate.to("/admin/customers"))
+
                 groups = groups_get()
 
             if not groups:
