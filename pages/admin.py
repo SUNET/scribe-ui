@@ -58,7 +58,7 @@ def priceplan_get() -> dict:
         return res.json()
     except requests.RequestException as e:
         print(f"Error fetching price plan: {e}")
-        return None
+        return {}
 
 def create_group_dialog(page: callable) -> None:
     with ui.dialog() as create_group_dialog:
@@ -698,31 +698,33 @@ def create() -> None:
                     .props("color=white flat")
                 )
                 customers.on("click", lambda: ui.navigate.to("/admin/customers"))
-                groups = groups_get()
 
-            # Display price plan information
-            create_priceplan_card()
+        # Display price plan information
+        create_priceplan_card()
+        
+        groups = groups_get()
 
-            if not groups:
-                ui.label("No groups found. Create a new group to get started.").classes("text-lg")
-                return
-            with ui.scroll_area().style("height: calc(100vh - 160px); width: 100%;"):
-                groups = sorted(
-                    groups_get()["result"],
-                    key=lambda x: (x["name"].lower() != "all users", x["name"].lower())
+        if not groups:
+            ui.label("No groups found. Create a new group to get started.").classes("text-lg")
+            return
+        
+        with ui.scroll_area().style("height: calc(100vh - 160px); width: 100%;"):
+            groups = sorted(
+                groups_get()["result"],
+                key=lambda x: (x["name"].lower() != "all users", x["name"].lower())
+            )
+            for group in groups:
+                g = Group(
+                    group_id=group["id"],
+                    name=group["name"],
+                    description=group["description"],
+                    created_at=group["created_at"],
+                    users=group["users"],
+                    nr_users=group["nr_users"],
+                    stats=group["stats"],
+                    quota_seconds=group["quota_seconds"],
                 )
-                for group in groups:
-                    g = Group(
-                        group_id=group["id"],
-                        name=group["name"],
-                        description=group["description"],
-                        created_at=group["created_at"],
-                        users=group["users"],
-                        nr_users=group["nr_users"],
-                        stats=group["stats"],
-                        quota_seconds=group["quota_seconds"],
-                    )
-                    g.create_card()
+                g.create_card()
 
 @ui.page("/admin/users")
 def users() -> None:
