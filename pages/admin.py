@@ -909,7 +909,6 @@ def health() -> None:
 
     ui.timer(10.0, render_health.refresh)
 
-# Add these functions to admin.py
 
 def customers_get() -> list:
     """
@@ -948,7 +947,7 @@ def create_customer_dialog(page: callable) -> None:
         with ui.card().style("width: 600px; max-width: 90vw;"):
             ui.label("Create new customer").classes("text-2xl font-bold")
 
-            partner_id_input = ui.input("Partner ID").classes("w-full").props("outlined")
+            partner_id_input = ui.input("Kaltura Partner ID").classes("w-full").props("outlined")
             name_input = ui.input("Customer name").classes("w-full").props("outlined")
             contact_email_input = ui.input("Contact email").classes("w-full").props("outlined")
 
@@ -1089,7 +1088,7 @@ class Customer:
             ):
                 with ui.column().style("flex: 0 0 auto; min-width: 25%;"):
                     ui.label(f"{self.name}").classes("text-h5 font-bold")
-                    ui.label(f"Partner ID: {self.partner_id}").classes("text-md")
+                    ui.label(f"Kaltura Partner ID: {self.partner_id}").classes("text-md")
                     ui.label(f"Plan: {self.priceplan.capitalize()}").classes(
                         "text-sm text-gray-500"
                     )
@@ -1259,7 +1258,7 @@ def edit_customer(customer_id: str) -> None:
         ui.label(f"Edit customer: {customer['name']}").classes("text-3xl font-bold mb-4")
         with ui.column().classes("gap-4 w-full"):
             partner_id_input = ui.input(
-                "Partner ID", value=customer["partner_id"]
+                "Kaltura Partner ID", value=customer["partner_id"]
             ).props("outlined").classes("w-full")
             name_input = ui.input("Customer name", value=customer["name"]).props(
                 "outlined"
@@ -1516,7 +1515,7 @@ def customer_statistics(customer_id: str) -> None:
     with ui.element("div").classes("stats-container w-full"):
         with ui.element("div").classes("stats-card w-full"):
             ui.label(f"Customer Statistics: {customer['name']}").classes("text-3xl font-bold mb-3 text-gray-800")
-            ui.label(f"Partner ID: {customer['partner_id']}").classes("text-lg text-gray-600")
+            ui.label(f"Kaltura Partner ID: {customer['partner_id']}").classes("text-lg text-gray-600")
             ui.label(f"Price Plan: {customer['priceplan'].capitalize()}").classes("text-lg text-gray-600")
             ui.label(f"Realms: {customer['realms']}").classes("text-lg text-gray-600")
 
