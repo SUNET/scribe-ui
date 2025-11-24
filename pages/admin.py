@@ -632,8 +632,18 @@ def create_priceplan_card() -> None:
                         # Add a progress bar for visual representation
                         if total_blocks is not None and total_blocks > 0:
                             percentage = (blocks_remaining / total_blocks) * 100
-                            with ui.column().style("width: 100%; mt-2;"):
+                            with ui.column().style("width: 100%; margin-top: 8px;"):
                                 ui.linear_progress(value=percentage/100).props(f"color={'positive' if percentage > 50 else 'warning' if percentage > 20 else 'negative'}")
+                            
+                            # Show warning if blocks are running low
+                            if percentage <= 20 and blocks_remaining > 0:
+                                with ui.row().classes("items-center gap-2 mt-2"):
+                                    ui.icon("warning").classes("text-xl").style("color: #f57c00;")
+                                    ui.label("Warning: Blocks running low!").classes("text-sm font-medium").style("color: #f57c00;")
+                            elif blocks_remaining == 0:
+                                with ui.row().classes("items-center gap-2 mt-2"):
+                                    ui.icon("error").classes("text-xl").style("color: #d32f2f;")
+                                    ui.label("No blocks remaining!").classes("text-sm font-medium").style("color: #d32f2f;")
                                 
     except (KeyError, TypeError) as e:
         print(f"Error displaying price plan: {e}")
