@@ -44,6 +44,22 @@ def user_statistics_get(group_id: str) -> dict:
         print(f"Error fetching user statistics: {e}")
         return {}
 
+def priceplan_get() -> dict:
+    """
+    Fetch price plan information from backend.
+    """
+
+    try:
+        res = requests.get(
+            settings.API_URL + "/api/v1/admin/priceplan", headers=get_auth_header()
+        )
+        res.raise_for_status()
+
+        return res.json()
+    except requests.RequestException as e:
+        print(f"Error fetching price plan: {e}")
+        return None
+
 def create_group_dialog(page: callable) -> None:
     with ui.dialog() as create_group_dialog:
         with ui.card().style("width: 500px; max-width: 90vw;"):
@@ -581,6 +597,48 @@ def statistics(group_id: str) -> None:
                         ui.icon("search")
 
 
+def create_priceplan_card() -> None:
+    """
+    Create a card to display price plan information for admins.
+    """
+    priceplan_data = priceplan_get()
+    
+    if not priceplan_data:
+        return
+    
+    try:
+        result = priceplan_data.get("result", {})
+        plan_type = result.get("plan_type", "Unknown")
+        plan_name = result.get("plan_name", "Unknown")
+        blocks_remaining = result.get("blocks_remaining")
+        total_blocks = result.get("total_blocks")
+        
+        with ui.card().classes("my-2").style("width: 100%; box-shadow: none; border: 2px solid #082954; padding: 16px; background-color: #f8f9fa;"):
+            with ui.row().style("justify-content: space-between; align-items: center; width: 100%;"):
+                with ui.column().style("flex: 1;"):
+                    ui.label("Current Price Plan").classes("text-h5 font-bold").style("color: #082954;")
+                    ui.label(f"Plan: {plan_name}").classes("text-lg font-medium")
+                    ui.label(f"Type: {plan_type}").classes("text-md")
+                    
+                    # Display blocks remaining if it's a fixed plan
+                    if plan_type.lower() == "fixed" and blocks_remaining is not None:
+                        with ui.row().classes("items-center gap-2 mt-2"):
+                            ui.icon("inventory_2").classes("text-2xl").style("color: #082954;")
+                            if total_blocks is not None:
+                                ui.label(f"Blocks remaining: {blocks_remaining} / {total_blocks}").classes("text-lg font-semibold").style("color: #082954;")
+                            else:
+                                ui.label(f"Blocks remaining: {blocks_remaining}").classes("text-lg font-semibold").style("color: #082954;")
+                        
+                        # Add a progress bar for visual representation
+                        if total_blocks is not None and total_blocks > 0:
+                            percentage = (blocks_remaining / total_blocks) * 100
+                            with ui.column().style("width: 100%; mt-2;"):
+                                ui.linear_progress(value=percentage/100).props(f"color={'positive' if percentage > 50 else 'warning' if percentage > 20 else 'negative'}")
+                                
+    except (KeyError, TypeError) as e:
+        print(f"Error displaying price plan: {e}")
+
+
 def create() -> None:
     @ui.refreshable
     @ui.page("/admin")
@@ -631,6 +689,9 @@ def create() -> None:
                 )
                 customers.on("click", lambda: ui.navigate.to("/admin/customers"))
                 groups = groups_get()
+
+            # Display price plan information
+            create_priceplan_card()
 
             if not groups:
                 ui.label("No groups found. Create a new group to get started.").classes("text-lg")
