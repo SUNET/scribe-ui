@@ -223,8 +223,12 @@ def set_admin_status(selected_rows: list, make_admin: bool, dialog: ui.dialog, g
                 json={"admin": make_admin}
             )
             res.raise_for_status()
-            dialog.close()
-            ui.navigate.to(f"/admin/edit/{group_id}")
+
+            if dialog:
+                dialog.close()
+                ui.navigate.to(f"/admin/edit/{group_id}")
+            else:
+                ui.navigate.to("/admin/users")
         except requests.RequestException as e:
             ui.notify(f"Error updating admin status for {user['username']}: {e}", type="negative")
 
@@ -727,7 +731,7 @@ def users() -> None:
             ui.button("Back to groups").classes("button-close").props(
                 "color=black flat"
             ).style("width: 150px ").on("click", lambda: ui.navigate.to("/admin"))
-            ui.button("Enable").classes("default-style").props(
+            ui.button("Enable").classes("button-close").props(
                 "color=black flat"
             ).style("width: 150px").on(
                 "click", lambda: set_active_status(users_table.selected, True)
@@ -741,6 +745,16 @@ def users() -> None:
                 "color=black flat"
             ).style("width: 150px").on(
                 "click", lambda: set_domains(users_table.selected)
+            )
+            ui.button("Make admin").classes("button-close").props(
+                "color=black flat"
+            ).style("width: 150px").on(
+                "click", lambda: set_admin_status(users_table.selected, True, None, "")
+            )
+            ui.button("Remove admin").classes("button-close").props(
+                "color=black flat"
+            ).style("width: 150px").on(
+                "click", lambda: set_admin_status(users_table.selected, False, None, "")
             )
 
 
