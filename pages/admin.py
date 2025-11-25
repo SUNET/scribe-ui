@@ -281,7 +281,7 @@ def admin_dialog(users: list, group_id: str) -> None:
     """
 
     with ui.dialog() as dialog:
-        with ui.card().style("width: 600px; max-width: 90vw; height: 75%;"):
+        with ui.card().style("width: 600px; max-width: 90vw; "):
             ui.label("Administrators").classes("text-2xl font-bold")
             admin_table = ui.table(
                 columns=[
@@ -292,7 +292,7 @@ def admin_dialog(users: list, group_id: str) -> None:
                 selection="multiple",
                 pagination=20,
                 on_select=lambda e: None,
-            ).style("width: 100%; box-shadow: none; font-size: 18px; height: calc(100vh - 550px);")
+            ).style("width: 100%; box-shadow: none; font-size: 18px;")
 
             with admin_table.add_slot("top-right"):
                 with ui.input(placeholder="Search").props("type=search").bind_value(
