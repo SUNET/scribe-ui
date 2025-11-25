@@ -232,17 +232,22 @@ def set_admin_status(selected_rows: list, make_admin: bool, dialog: ui.dialog, g
         except requests.RequestException as e:
             ui.notify(f"Error updating admin status for {user['username']}: {e}", type="negative")
 
-def save_domains(selected_rows: list, domains: str, dialog: ui.dialog) -> None:
+def save_domains(selected_rows: list, domains: list, domains_str: str, dialog: ui.dialog) -> None:
     """
     Save allowed domains for selected users.
     """
+
+    selected_domains = domains if domains else []
+    new_domains = [r.strip() for r in domains_str.split(",") if r.strip()]
+    all_domains = list(set(selected_domains + new_domains))
+    domains_str = ",".join(all_domains)
 
     for user in selected_rows:
         try:
             res = requests.put(
                 settings.API_URL + f"/api/v1/admin/{user['username']}",
                 headers=get_auth_header(),
-                json={"admin_domains": domains}
+                json={"admin_domains": domains_str}
             )
             res.raise_for_status()
             ui.navigate.to("/admin/users")
@@ -257,10 +262,32 @@ def set_domains(selected_rows: list) -> None:
     Domains should be separated by commas.
     """
 
+    realms = realms_get()
+    domains = []
+    domains_str = ""
+
+    for user in selected_rows:
+        if not user.get("admin_domains"):
+            continue
+        for domain in user["admin_domains"].split(","):
+            if domain.strip() in realms:
+                domains.append(domain.strip())
+            else:
+                domains_str += domain.strip() + ", "
+
     with ui.dialog() as domain_dialog:
         with ui.card().style("width: 500px; max-width: 90vw;"):
             ui.label("Set domains the user can administer").classes("text-2xl font-bold")
-            domain_input = ui.textarea("Allowed domains (separated by commas)", value=selected_rows[0]["admin_domains"]).classes("w-full").props("outlined")
+            domains_select = ui.select(
+                realms,
+                label="Allowed domains (existing domains)",
+                multiple=True,
+                value=domains
+            ).classes("w-full").props("outlined")
+
+            domains_input = ui.input(
+                "Add new domains (comma-separated)", value=domains_str.strip()
+            ).classes("w-full").props("outlined")
 
             with ui.row().style("justify-content: flex-end; width: 100%;"):
                 ui.button("Cancel").classes("button-close").props(
@@ -270,7 +297,7 @@ def set_domains(selected_rows: list) -> None:
                     "color=black flat"
                 ).on(
                     "click",
-                    lambda: save_domains(selected_rows, domain_input.value, domain_dialog)
+                    lambda: save_domains(selected_rows, domains_select.value, domains_input.value, domain_dialog)
                 )
 
         domain_dialog.open()
@@ -998,7 +1025,6 @@ def create_customer_dialog(page: callable) -> None:
             priceplan_select.on("update:model-value", lambda: update_blocks_visibility())
             blocks_input.set_visibility(False)  # Initially hidden
 
-            # Multi-select for existing realms
             realm_select = ui.select(
                 realms,
                 label="Select existing realms",
@@ -1006,7 +1032,6 @@ def create_customer_dialog(page: callable) -> None:
                 value=[]
             ).classes("w-full").props("outlined")
 
-            # Input for new realms
             new_realms_input = ui.input(
                 "Add new realms (comma-separated)"
             ).classes("w-full").props("outlined")
