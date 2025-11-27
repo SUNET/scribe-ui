@@ -737,6 +737,7 @@ def users() -> None:
                 {"name": "username", "label": "Username", "field": "username", "align": "left", "sortable": True},
                 {"name": "realm", "label": "Realm", "field": "realm", "align": "left", "sortable": True},
                 {"name": "role", "label": "Admin", "field": "admin", "align": "left", "sortable": True},
+                {"name": "groups", "label": "Groups", "field": "groups", "align": "left", "sortable": True},
                 {"name": "domains", "label": "Domains", "field": "admin_domains", "align": "left", "sortable": False, "style": "max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"},
                 {"name": "active", "label": "Active", "field": "active", "align": "left", "sortable": True},
             ],
