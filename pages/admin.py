@@ -999,7 +999,7 @@ def create_customer_dialog(page: callable) -> None:
         with ui.card().style("width: 600px; max-width: 90vw;"):
             ui.label("Create new customer").classes("text-2xl font-bold")
 
-            partner_id_input = ui.input("Kaltura Partner ID").classes("w-full").props("outlined")
+            partner_id_input = ui.input("Kaltura Partner ID", value="N/A").classes("w-full").props("outlined")
             name_input = ui.input("Customer name").classes("w-full").props("outlined")
             contact_email_input = ui.input("Contact email").classes("w-full").props("outlined")
 
@@ -1044,27 +1044,45 @@ def create_customer_dialog(page: callable) -> None:
                 ).on("click", lambda: create_customer_dialog.close())
 
                 def create_customer():
-                    # Combine selected and new realms
+                    if not partner_id_input.value.strip():
+                        ui.notify("Kaltura Partner ID is required.", color="red")
+                        return
+                    if not name_input.value.strip():
+                        ui.notify("Customer name is required.", color="red")
+                        return
+
                     selected_realms = realm_select.value if realm_select.value else []
                     new_realms = [r.strip() for r in new_realms_input.value.split(",") if r.strip()]
                     all_realms = list(set(selected_realms + new_realms))
                     realms_str = ",".join(all_realms)
 
-                    requests.post(
-                        settings.API_URL + "/api/v1/admin/customers",
-                        headers=get_auth_header(),
-                        json={
-                            "partner_id": partner_id_input.value,
-                            "name": name_input.value,
-                            "contact_email": contact_email_input.value,
-                            "priceplan": priceplan_select.value,
-                            "blocks_purchased": int(blocks_input.value) if blocks_input.value else 0,
-                            "realms": realms_str,
-                            "notes": notes_input.value,
-                        },
-                    )
-                    create_customer_dialog.close()
-                    ui.navigate.to("/admin/customers")
+                    try:
+                        res = requests.post(
+                            settings.API_URL + "/api/v1/admin/customers",
+                            headers=get_auth_header(),
+                            json={
+                                "partner_id": partner_id_input.value,
+                                "name": name_input.value,
+                                "contact_email": contact_email_input.value,
+                                "priceplan": priceplan_select.value,
+                                "blocks_purchased": int(blocks_input.value) if blocks_input.value else 0,
+                                "realms": realms_str,
+                                "notes": notes_input.value,
+                            },
+                        )
+
+                        res.raise_for_status()
+                    except requests.RequestException as e:
+                        if res.status_code == 400:
+                            error_msg = res.json().get("error", "Unknown error")
+                            ui.notify(f"Error creating customer: {error_msg}", color="red")
+                            return
+                        else:
+                            ui.notify(f"Error creating customer: {e}", color="red")
+                            return
+                    else:
+                        create_customer_dialog.close()
+                        ui.navigate.to("/admin/customers")
 
                 ui.button("Create").classes("default-style").props(
                     "color=black flat"
