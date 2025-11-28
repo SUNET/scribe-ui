@@ -135,9 +135,13 @@ def show_help_dialog() -> None:
 
     with ui.dialog() as dialog:
         dialog.style("max-width: 75%; max-width: none;")
-        with ui.card().style(
-            "background-color: white; align-self: center; border: 0; width: 75%; max-width: none;"
-        ).classes("w-full no-shadow no-border"):
+        with (
+            ui.card()
+            .style(
+                "background-color: white; align-self: center; border: 0; width: 75%; max-width: none;"
+            )
+            .classes("w-full no-shadow no-border")
+        ):
             ui.label("Help").style("width: 100%;").classes("text-h6 q-mb-xl text-black")
 
             ui.markdown(
@@ -213,9 +217,11 @@ def page_init(header_text: Optional[str] = "") -> None:
 
     is_bofh = get_bofh_status()
 
-    with ui.header().style(
-        "justify-content: space-between; background-color: #ffffff;"
-    ).classes("drop-shadow-md"):
+    with (
+        ui.header()
+        .style("justify-content: space-between; background-color: #ffffff;")
+        .classes("drop-shadow-md")
+    ):
         with ui.element("div").style("display: flex; gap: 0px;"):
             ui.image("static/sunet_small.png").classes("q-mr-sm").style(
                 "height: 30px; width: 30px;"
@@ -392,7 +398,7 @@ def table_upload(table) -> None:
                     multiple=True,
                     max_files=5,
                 ).props(
-                    "hidden accept=.mp3,.wav,.flac,.mp4,.mkv,.avi,.m4a,.aiff,.aif,.mov,.ogg,.opus,.webm,.wma"
+                    "hidden accept=.mp3,.wav,.flac,.mp4,.mkv,.avi,.m4a,.aiff,.aif,.mov,.ogg,.opus,.webm,.wma,.mpg,.mpeg"
                 )
 
                 upload.on(
@@ -486,9 +492,13 @@ def table_transcribe(selected_row) -> None:
     Handle the click event on the Transcribe button.
     """
     with ui.dialog() as dialog:
-        with ui.card().style(
-            "background-color: white; align-self: center; border: 0; width: 80%;"
-        ).classes("w-full no-shadow no-border"):
+        with (
+            ui.card()
+            .style(
+                "background-color: white; align-self: center; border: 0; width: 80%;"
+            )
+            .classes("w-full no-shadow no-border")
+        ):
             with ui.row().classes("w-full"):
                 ui.label("Transcription Settings").style("width: 100%;").classes(
                     "text-h6 q-mb-xl text-black"
