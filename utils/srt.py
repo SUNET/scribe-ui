@@ -697,7 +697,10 @@ class SRTEditor:
         self.update_words_per_minute()
 
     def select_caption(
-        self, caption: SRTCaption, speaker: Optional[ui.input] = None
+        self,
+        caption: SRTCaption,
+        speaker: Optional[ui.input] = None,
+        button: Optional[bool] = False,
     ) -> None:
         """
         Select/deselect a caption.
@@ -709,7 +712,9 @@ class SRTEditor:
 
         if self.selected_caption:
             self.selected_caption.is_selected = False
-            self.save_srt_changes()
+
+            if button:
+                self.save_srt_changes()
 
         if self.selected_caption == caption:
             self.selected_caption = None
@@ -757,8 +762,10 @@ class SRTEditor:
         Create the search panel UI.
         """
 
-        with ui.expansion("Search & Replace").classes("w-full").style(
-            "background-color: #ffffff;"
+        with (
+            ui.expansion("Search & Replace")
+            .classes("w-full")
+            .style("background-color: #ffffff;")
         ):
             with ui.row().classes("w-full gap-2 mb-2"):
                 search_input = (
@@ -775,9 +782,11 @@ class SRTEditor:
 
                 ui.checkbox("Case sensitive").bind_value_to(self, "case_sensitive").on(
                     "update:model-value",
-                    lambda: self.search_captions(search_input.value)
-                    if self.search_term
-                    else None,
+                    lambda: (
+                        self.search_captions(search_input.value)
+                        if self.search_term
+                        else None
+                    ),
                 )
 
             # Search navigation
@@ -973,23 +982,27 @@ class SRTEditor:
                         "flat dense"
                     ).on(
                         "click",
-                        lambda: self.merge_with_previous(caption)
-                        if self.captions.index(caption) > 0
-                        else None,
+                        lambda: (
+                            self.merge_with_previous(caption)
+                            if self.captions.index(caption) > 0
+                            else None
+                        ),
                     )
                     ui.button("Merge with next", icon="merge_type").props(
                         "flat dense"
                     ).on(
                         "click",
-                        lambda: self.merge_with_next(caption)
-                        if self.captions.index(caption) < len(self.captions) - 1
-                        else None,
+                        lambda: (
+                            self.merge_with_next(caption)
+                            if self.captions.index(caption) < len(self.captions) - 1
+                            else None
+                        ),
                     )
 
                     with ui.row().classes("gap-2"):
                         ui.button("Close").props("flat dense").on(
                             "click",
-                            lambda: self.select_caption(caption, speaker_select),
+                            lambda: self.select_caption(caption, speaker_select, True),
                         ).classes("button-close")
 
                         if self.data_format == "txt":
@@ -1058,9 +1071,9 @@ class SRTEditor:
 
             card.on(
                 "click",
-                lambda: self.select_caption(caption)
-                if not caption.is_selected
-                else None,
+                lambda: (
+                    self.select_caption(caption) if not caption.is_selected else None
+                ),
             )
 
         return card
@@ -1134,9 +1147,13 @@ class SRTEditor:
                         cap.is_valid = False
 
         with ui.dialog() as dialog:
-            with ui.card().style(
-                "background-color: white; align-self: center; border: 0; width: 80%;"
-            ).classes("w-full no-shadow no-border"):
+            with (
+                ui.card()
+                .style(
+                    "background-color: white; align-self: center; border: 0; width: 80%;"
+                )
+                .classes("w-full no-shadow no-border")
+            ):
                 ui.label("Subtitles validation").style("width: 100%;").classes(
                     "text-h6 q-mb-xl text-black"
                 )
