@@ -1010,6 +1010,11 @@ def create_customer_dialog(page: callable) -> None:
                 value="variable"
             ).classes("w-full").props("outlined")
 
+            base_fee = ui.input(
+                "Base fee",
+                value="0"
+            ).classes("w-full").props("outlined type=number min=0")
+
             blocks_input = ui.input(
                 "Blocks purchased (4000 min/block)",
                 value="0"
@@ -1066,6 +1071,7 @@ def create_customer_dialog(page: callable) -> None:
                                 "name": name_input.value,
                                 "contact_email": contact_email_input.value,
                                 "priceplan": priceplan_select.value,
+                                "base_fee": int(base_fee.value) if base_fee.value else 0,
                                 "blocks_purchased": int(blocks_input.value) if blocks_input.value else 0,
                                 "realms": realms_str,
                                 "notes": notes_input.value,
@@ -1100,6 +1106,7 @@ class Customer:
         name: str,
         contact_email: str,
         priceplan: str,
+        base_fee: int,
         realms: str,
         notes: str,
         created_at: str,
@@ -1111,11 +1118,15 @@ class Customer:
         self.name = name
         self.contact_email = contact_email
         self.priceplan = priceplan
+        self.base_fee = base_fee,
         self.realms = realms
         self.notes = notes
         self.created_at = created_at.split(".")[0]
         self.stats = stats
         self.blocks_purchased = blocks_purchased
+
+        if isinstance(self.base_fee, tuple):
+            self.base_fee = self.base_fee[0]
 
     def edit_customer(self) -> None:
         ui.navigate.to(f"/admin/customers/edit/{self.customer_id}")
@@ -1165,6 +1176,9 @@ class Customer:
                         ui.label(f"Blocks: {self.blocks_purchased} ({self.blocks_purchased * 4000} minutes)").classes(
                             "text-sm text-gray-500"
                         )
+                    ui.label(f"Base fee: {self.base_fee}").classes(
+                        "text-sm text-gray-500"
+                    )
                     if self.contact_email:
                         ui.label(f"Contact: {self.contact_email}").classes(
                             "text-sm text-gray-500"
@@ -1258,6 +1272,7 @@ def save_customer(
     name: str,
     contact_email: str,
     priceplan: str,
+    base_fee: int,
     selected_realms: list,
     new_realms: str,
     notes: str,
@@ -1277,6 +1292,7 @@ def save_customer(
                 "name": name,
                 "contact_email": contact_email,
                 "priceplan": priceplan,
+                "base_fee": int(base_fee) if base_fee else 0,
                 "realms": realms_str,
                 "notes": notes,
                 "blocks_purchased": int(blocks_purchased) if blocks_purchased else 0,
@@ -1342,7 +1358,10 @@ def edit_customer(customer_id: str) -> None:
                 label="Price plan",
                 value=customer["priceplan"],
             ).classes("w-full").props("outlined")
-
+            base_fee = ui.input(
+                "Base fee",
+                value=str(customer.get("base_fee", 0))
+            ).classes("w-full").props("outlined type=number min=0")
             blocks_input = ui.input(
                 "Blocks purchased (4000 min/block)",
                 value=str(customer.get("blocks_purchased", 0))
@@ -1387,6 +1406,7 @@ def edit_customer(customer_id: str) -> None:
                     name_input.value,
                     contact_email_input.value,
                     priceplan_select.value,
+                    base_fee.value,
                     realm_select.value if realm_select.value else [],
                     new_realms_input.value,
                     notes_input.value,
@@ -1497,6 +1517,7 @@ def customers() -> None:
                 created_at=customer["created_at"],
                 stats=customer.get("stats", {}),
                 blocks_purchased=customer.get("blocks_purchased", 0),
+                base_fee=customer["base_fee"],
             )
             c.create_card()
 
@@ -1590,6 +1611,7 @@ def customer_statistics(customer_id: str) -> None:
             ui.label(f"Customer Statistics: {customer['name']}").classes("text-3xl font-bold mb-3 text-gray-800")
             ui.label(f"Kaltura Partner ID: {customer['partner_id']}").classes("text-lg text-gray-600")
             ui.label(f"Price Plan: {customer['priceplan'].capitalize()}").classes("text-lg text-gray-600")
+            ui.label(f"Base fee: {customer['base_fee']}").classes("text-lg text-gray-600")
             ui.label(f"Realms: {customer['realms']}").classes("text-lg text-gray-600")
 
             # Show block information for fixed plan customers
