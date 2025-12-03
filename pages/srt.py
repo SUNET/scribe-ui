@@ -1,12 +1,12 @@
 import requests
 
 from nicegui import ui
+from utils.common import default_styles
 from utils.common import get_auth_header
 from utils.common import page_init
-from utils.common import default_styles
-from utils.video import create_video_proxy
-from utils.srt import SRTEditor
 from utils.settings import get_settings
+from utils.srt import SRTEditor
+from utils.video import create_video_proxy
 
 create_video_proxy()
 
@@ -46,7 +46,7 @@ def create() -> None:
         Display the result of the transcription job.
         """
         page_init()
-        editor = SRTEditor()
+        editor = SRTEditor(uuid, data_format)
         ui.add_head_html(
             f"<link rel='preload' as='video' href='/video/{uuid}' type='video/mp4'>"
         )
@@ -84,6 +84,12 @@ def create() -> None:
                         srt_content = editor.export_txt()
                     case "json":
                         srt_content = editor.export_json()
+                    case "rtf":
+                        srt_content = editor.export_rtf()
+                    case "csv":
+                        srt_content = editor.export_csv()
+                    case "tsv":
+                        srt_content = editor.export_tsv()
 
                 ui.download(
                     str(srt_content).encode(), filename=f"{filename}.{srt_format}"
@@ -98,7 +104,6 @@ def create() -> None:
 
                 with ui.button("Save", icon="save") as save_button:
                     save_button.classes("button-default-style")
-                    save_button.props("flat")
 
                     if data_format == "srt":
                         save_button.on(
@@ -121,10 +126,10 @@ def create() -> None:
                             ),
                         )
 
-                    save_button.props("color=primary flat")
+                    save_button.props("color=white flat")
 
                 with ui.dropdown_button("Export", icon="share") as export_button:
-                    export_button.props("flat")
+                    export_button.props("flat color=white")
                     export_button.classes("button-default-style")
 
                     if data_format == "srt":
@@ -150,9 +155,24 @@ def create() -> None:
                         export_button_json.classes("button-default-style")
                         export_button_json.on("click", lambda: export("json"))
 
+                        export_button_rtf = ui.button("Export as RTF", icon="share")
+                        export_button_rtf.props("flat")
+                        export_button_rtf.classes("button-default-style")
+                        export_button_rtf.on("click", lambda: export("rtf"))
+
+                        export_button_csv = ui.button("Export as CSV", icon="share")
+                        export_button_csv.props("flat")
+                        export_button_csv.classes("button-default-style")
+                        export_button_csv.on("click", lambda: export("csv"))
+
+                        export_button_tsv = ui.button("Export as TSV", icon="share")
+                        export_button_tsv.props("flat")
+                        export_button_tsv.classes("button-default-style")
+                        export_button_tsv.on("click", lambda: export("tsv"))
+
                 if data_format == "srt":
                     with ui.button("Validate", icon="check").props(
-                        "flat"
+                        "flat color=white"
                     ) as validate_button:
                         validate_button.classes("button-default-style")
                         validate_button.on(
@@ -196,12 +216,15 @@ def create() -> None:
                                 "align-self: center;"
                             )
                             ui.html(
-                                f"<b>Transcription language:</b> {language}"
+                                f"<b>Transcription language:</b> {language}",
+                                sanitize=False,
                             ).classes("text-sm")
-                            ui.html(f"<b>Transcription accuracy:</b> {model}").classes(
-                                "text-sm"
-                            )
+                            ui.html(
+                                f"<b>Transcription accuracy:</b> {model}",
+                                sanitize=False,
+                            ).classes("text-sm")
                             html_wpm = ui.html(
-                                f"<b>Words per minute:</b> {editor.get_words_per_minute():.2f}"
+                                f"<b>Words per minute:</b> {editor.get_words_per_minute():.2f}",
+                                sanitize=False,
                             ).classes("text-sm")
                             editor.set_words_per_minute_element(html_wpm)

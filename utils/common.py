@@ -1,14 +1,16 @@
 import asyncio
 import requests
 
-from nicegui import app
 from nicegui import ui
+from starlette.formparsers import MultiPartParser
 from typing import Optional
 from utils.settings import get_settings
-from utils.token import get_auth_header
-from utils.token import token_refresh
-from utils.token import get_admin_status
-from starlette.formparsers import MultiPartParser
+from utils.token import (
+    get_admin_status,
+    get_auth_header,
+    get_bofh_status,
+    token_refresh,
+)
 
 
 MultiPartParser.spool_max_size = 1024 * 1024 * 4096
@@ -110,14 +112,81 @@ default_styles = """
             background-color: #ffffff;
             color: #000000 !important;
             width: 150px;
+            border: 1px solid #000000;
         }
         .button-user-status {
             background-color: #ffffff;
             width: 150px;
             border: 1px solid #000000;
         }
+        .button-edit {
+            background-color: #082954;
+            color: #ffffff !important;
+            width: 150px;
+        }
     </style>
 """
+
+
+def show_help_dialog() -> None:
+    """
+    Show a help dialog with information about the application.
+    """
+
+    with ui.dialog() as dialog:
+        dialog.style("max-width: 75%; max-width: none;")
+        with (
+            ui.card()
+            .style(
+                "background-color: white; align-self: center; border: 0; width: 75%; max-width: none;"
+            )
+            .classes("w-full no-shadow no-border")
+        ):
+            ui.label("Help").style("width: 100%;").classes("text-h6 q-mb-xl text-black")
+
+            ui.markdown(
+                """
+                ## About Sunet Scribe
+
+                Sunet Scribe is a web application that allows users to upload audio and video files for transcription using OpenAI's Whisper model. The application supports multiple languages and provides options for transcription accuracy and output formats.
+
+                ### Features
+
+                - Upload audio and video files in various formats (mp3, wav, flac, mp4, mkv, avi, m4a, aiff, aif, mov, ogg, opus, webm, wma).
+                - Choose transcription language from a wide range of supported languages.
+                - Select transcription accuracy (model size) based on your needs.
+                - Option to specify the number of speakers for better diarization.
+                - Download transcriptions as plain text or subtitles (SRT format).
+                - User authentication and role-based access control.
+
+                ### Usage
+
+                1. Log in using your institutional credentials.
+                2. Upload your audio or video files using the upload button or drag-and-drop area.
+                3. Select the desired transcription settings (language, model, speakers, output format).
+                4. Start the transcription process and monitor the job status on the dashboard.
+                5. Once completed, edit your transcriptions from the job list.
+
+                ### Support
+
+                For support or inquiries, please contact the IT department at your institution.
+
+                ### Privacy
+
+                All uploaded files and transcriptions are stored securely and are only accessible to the user who uploaded them. Files are automatically deleted after a specified retention period.
+
+                ---
+                """
+            ).classes("text-body1 q-mb-xl text-black")
+
+            with ui.row().classes("justify-end w-full"):
+                with ui.button(
+                    "Close",
+                    on_click=lambda: dialog.close(),
+                ) as close:
+                    close.props("color=black flat")
+                    close.classes("button-close")
+        dialog.open()
 
 
 def logout() -> None:
@@ -125,7 +194,6 @@ def logout() -> None:
     Log out the user by clearing the token and navigating to the logout endpoint.
     """
 
-    app.storage.user.clear()
     ui.navigate.to(settings.OIDC_APP_LOGOUT_ROUTE)
 
 
@@ -138,6 +206,8 @@ def page_init(header_text: Optional[str] = "") -> None:
         if not token_refresh():
             ui.navigate.to(settings.OIDC_APP_LOGOUT_ROUTE)
 
+    ui.timer(30, refresh)
+
     if header_text:
         header_text = f" - {header_text}"
 
@@ -145,16 +215,30 @@ def page_init(header_text: Optional[str] = "") -> None:
     if is_admin:
         header_text += " (Administrator)"
 
-    with ui.header().style(
-        "justify-content: space-between; background-color: #ffffff;"
-    ).classes("drop-shadow-md"):
-        ui.label("Sunet Transcriber" + header_text).classes("text-h5 text-black")
+    is_bofh = get_bofh_status()
+
+    with (
+        ui.header()
+        .style("justify-content: space-between; background-color: #ffffff;")
+        .classes("drop-shadow-md")
+    ):
+        with ui.element("div").style("display: flex; gap: 0px;"):
+            ui.image("static/sunet_small.png").classes("q-mr-sm").style(
+                "height: 30px; width: 30px;"
+            )
+            ui.label("Sunet Scribe" + header_text).classes("text-h6 text-black")
 
         with ui.element("div").style("display: flex; gap: 0px;"):
             if is_admin:
                 ui.button(
                     icon="settings",
                     on_click=lambda: ui.navigate.to("/admin"),
+                ).props("flat color=red")
+
+            if is_bofh:
+                ui.button(
+                    icon="health_and_safety",
+                    on_click=lambda: ui.navigate.to("/health"),
                 ).props("flat color=red")
             ui.button(
                 icon="home",
@@ -166,14 +250,12 @@ def page_init(header_text: Optional[str] = "") -> None:
             ).props("flat color=black")
             ui.button(
                 icon="help",
-                on_click=lambda: ui.navigate.to("/home"),
+                on_click=lambda: show_help_dialog(),
             ).props("flat color=black")
             ui.button(
                 icon="logout",
                 on_click=lambda: ui.navigate.to("/logout"),
             ).props("flat color=black")
-
-            ui.timer(30, refresh)
             ui.add_head_html("<style>body {background-color: #ffffff;}</style>")
 
 
@@ -209,6 +291,8 @@ def jobs_get() -> list:
             job_type = "Transcription"
         elif job["output_format"] == "srt":
             job_type = "Subtitles"
+        else:
+            job_type = "Transcription"
 
         job_data = {
             "id": idx,
@@ -257,11 +341,12 @@ def table_click(event) -> None:
         )
 
 
-def post_file(file: str, filename: str) -> None:
+def post_file(filedata: bytes, filename: str) -> None:
     """
     Post a file to the API.
     """
-    files_json = {"file": (filename, file.read())}
+
+    files_json = {"file": (filename, filedata)}
 
     try:
         response = requests.post(
@@ -313,7 +398,7 @@ def table_upload(table) -> None:
                     multiple=True,
                     max_files=5,
                 ).props(
-                    "hidden accept=.mp3,.wav,.flac,.mp4,.mkv,.avi,.m4a,.aiff,.aif,.mov,.ogg,.opus,.webm"
+                    "hidden accept=.mp3,.wav,.flac,.mp4,.mkv,.avi,.m4a,.aiff,.aif,.mov,.ogg,.opus,.webm,.wma,.mpg,.mpeg"
                 )
 
                 upload.on(
@@ -333,7 +418,8 @@ def table_upload(table) -> None:
                         <br/><br/>
                         5 files at a maximum of 4GB can be uploaded at once.
                     </div>
-                """
+                    """,
+                    sanitize=False,
                 )
 
                 ui.run_javascript(
@@ -385,14 +471,19 @@ async def handle_upload_with_feedback(files, dialog):
 
     dialog.close()
 
-    for file, name in zip(files.contents, files.names):
+    for file in files.files:
         try:
-            await asyncio.to_thread(post_file, file, name)
+            file_name = file.name
+            file_data = await file.read()
 
-            ui.notify(f"Successfully uploaded {name}", type="positive", timeout=3000)
+            await asyncio.to_thread(post_file, file_data, file_name)
+
+            ui.notify(
+                f"Successfully uploaded {file_name}", type="positive", timeout=3000
+            )
         except Exception as e:
             ui.notify(
-                f"Failed to upload {name}: {str(e)}", type="negative", timeout=5000
+                f"Error uploading {file_name}: {str(e)}", type="negative", timeout=5000
             )
 
 
@@ -401,13 +492,21 @@ def table_transcribe(selected_row) -> None:
     Handle the click event on the Transcribe button.
     """
     with ui.dialog() as dialog:
-        with ui.card().style(
-            "background-color: white; align-self: center; border: 0; width: 80%;"
-        ).classes("w-full no-shadow no-border"):
+        with (
+            ui.card()
+            .style(
+                "background-color: white; align-self: center; border: 0; width: 80%;"
+            )
+            .classes("w-full no-shadow no-border")
+        ):
             with ui.row().classes("w-full"):
                 ui.label("Transcription Settings").style("width: 100%;").classes(
                     "text-h6 q-mb-xl text-black"
                 )
+
+                with ui.column().classes("col-12 col-sm-24"):
+                    ui.label("Filename:").classes("text-subtitle2 q-mb-sm")
+                    ui.label(f"{selected_row['filename']}")
 
                 with ui.column().classes("col-12 col-sm-24"):
                     ui.label("Language").classes("text-subtitle2 q-mb-sm")
@@ -521,41 +620,52 @@ def start_transcription(
     output_format: str,
     dialog: ui.dialog,
 ) -> None:
-    # Get selected values
     selected_language = language
     selected_model = model
+    error = ""
 
     if output_format == "Subtitles":
         output_format = "SRT"
     else:
         output_format = "TXT"
 
-    try:
-        for row in rows:
-            uuid = row["uuid"]
+    for row in rows:
+        uuid = row["uuid"]
 
-            try:
-                response = requests.put(
-                    f"{settings.API_URL}/api/v1/transcriber/{uuid}",
-                    json={
-                        "language": f"{selected_language}",
-                        "model": f"{selected_model}",
-                        "speakers": int(speakers),
-                        "status": "pending",
-                        "output_format": output_format,
-                    },
-                    headers=get_auth_header(),
-                )
-                response.raise_for_status()
-            except requests.exceptions.RequestException:
-                ui.notify(
-                    "Error: Failed to start transcription.",
-                    type="negative",
-                    position="top",
-                )
-                return
+        try:
+            response = requests.put(
+                f"{settings.API_URL}/api/v1/transcriber/{uuid}",
+                json={
+                    "language": f"{selected_language}",
+                    "model": f"{selected_model}",
+                    "speakers": int(speakers),
+                    "status": "pending",
+                    "output_format": output_format,
+                },
+                headers=get_auth_header(),
+            )
+            response.raise_for_status()
+        except requests.exceptions.RequestException:
+            if response.status_code == 403:
+                error = response.json()["result"]["error"]
+            else:
+                error = "Error: Failed to start transcription."
 
-        dialog.close()
+        if error:
+            with dialog:
+                dialog.clear()
 
-    except Exception as e:
-        ui.notify(f"Error: {str(e)}", type="negative", position="top")
+                with ui.card().style(
+                    "background-color: white; align-self: center; border: 0; width: 50%;"
+                ):
+                    ui.label(error).classes("text-h6 q-mb-md text-black")
+                    ui.button(
+                        "Close",
+                    ).on("click", lambda: dialog.close()).classes(
+                        "button-close"
+                    ).props("color=black flat")
+                dialog.open()
+        else:
+            dialog.close()
+
+        return
