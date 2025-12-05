@@ -1214,7 +1214,7 @@ class Customer:
                                 f"Transcribed minutes via Sunet Play: {self.stats.get('transcribed_minutes_external', 0)}"
                             ).classes("text-sm")
                             ui.label(
-                                f"Transcribed minutes via web service: {self.stats.get('total_transcribed_minutes', 0)}"
+                                f"Transcribed minutes via Sunet Scribe: {self.stats.get('total_transcribed_minutes', 0)}"
                             )
 
                             # Show block usage for fixed plan
@@ -1242,7 +1242,7 @@ class Customer:
                                 f"Total transcribed minutes: {self.stats.get('total_transcribed_minutes_last_month', 0)}"
                             ).classes("text-sm")
                             ui.label(f"Transcribed minutes via Sunet Play: {self.stats.get('transcribed_minutes_external_last_month', 0)}").classes("text-sm")
-                            ui.label(f"Transcribed minutes via web service: {self.stats.get('total_transcribed_minutes_last_month', 0)}").classes("text-sm")
+                            ui.label(f"Transcribed minutes via Sunet Scribe: {self.stats.get('total_transcribed_minutes_last_month', 0)}").classes("text-sm")
 
                 with ui.column().style("flex: 0 0 auto;"):
                     statistics = (
