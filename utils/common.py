@@ -206,16 +206,15 @@ def page_init(header_text: Optional[str] = "") -> None:
         if not token_refresh():
             ui.navigate.to(settings.OIDC_APP_LOGOUT_ROUTE)
 
+    is_admin = get_admin_status()
+    is_bofh = get_bofh_status()
     ui.timer(30, refresh)
 
     if header_text:
         header_text = f" - {header_text}"
 
-    is_admin = get_admin_status()
     if is_admin:
         header_text += " (Administrator)"
-
-    is_bofh = get_bofh_status()
 
     with (
         ui.header()
@@ -230,32 +229,38 @@ def page_init(header_text: Optional[str] = "") -> None:
 
         with ui.element("div").style("display: flex; gap: 0px;"):
             if is_admin:
-                ui.button(
+                with ui.button(
                     icon="settings",
                     on_click=lambda: ui.navigate.to("/admin"),
-                ).props("flat color=red")
+                ).props("flat color=red"):
+                    ui.tooltip("Admin settings")
 
             if is_bofh:
-                ui.button(
+                with ui.button(
                     icon="health_and_safety",
                     on_click=lambda: ui.navigate.to("/health"),
-                ).props("flat color=red")
-            ui.button(
+                ).props("flat color=red"):
+                    ui.tooltip("System status")
+            with ui.button(
                 icon="home",
                 on_click=lambda: ui.navigate.to("/home"),
-            ).props("flat color=black")
-            ui.button(
+            ).props("flat color=black"):
+                ui.tooltip("Home")
+            with ui.button(
                 icon="person",
                 on_click=lambda: ui.navigate.to("/user"),
-            ).props("flat color=black")
-            ui.button(
+            ).props("flat color=black"):
+                ui.tooltip("User settings")
+            with ui.button(
                 icon="help",
                 on_click=lambda: show_help_dialog(),
-            ).props("flat color=black")
-            ui.button(
+            ).props("flat color=black"):
+                ui.tooltip("Help")
+            with ui.button(
                 icon="logout",
                 on_click=lambda: ui.navigate.to("/logout"),
-            ).props("flat color=black")
+            ).props("flat color=black"):
+                ui.tooltip("Logout")
             ui.add_head_html("<style>body {background-color: #ffffff;}</style>")
 
 
