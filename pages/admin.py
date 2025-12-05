@@ -1184,6 +1184,10 @@ class Customer:
                             "text-sm text-gray-500"
                         )
                     ui.label(f"Realms: {self.realms}").classes("text-sm text-gray-500")
+                    ui.label(
+                        f"Total users: {self.stats.get('total_users', 0)}"
+                    ).classes("text-sm text-gray-500")
+
                     ui.label(f"Created {self.created_at}").classes(
                         "text-sm text-gray-500"
                     )
@@ -1199,14 +1203,17 @@ class Customer:
                         with ui.column().style("min-width: 30%;"):
                             ui.label("This month").classes("font-semibold")
                             ui.label(
-                                f"Total users: {self.stats.get('total_users', 0)}"
+                                f"Total transcribed files: {self.stats.get('transcribed_files', 0)}"
                             ).classes("text-sm")
                             ui.label(
-                                f"Transcribed files: {self.stats.get('transcribed_files', 0)}"
+                                f"Total transcribed minutes: {self.stats.get('total_transcribed_minutes', 0)}"
                             ).classes("text-sm")
                             ui.label(
-                                f"Transcribed minutes: {self.stats.get('total_transcribed_minutes', 0)}"
+                                f"Transcribed minutes via Sunet Play: {self.stats.get('transcribed_minutes_external', 0)}"
                             ).classes("text-sm")
+                            ui.label(
+                                f"Transcribed minutes via web service: {self.stats.get('total_transcribed_minutes', 0)}"
+                            )
 
                             # Show block usage for fixed plan
                             if self.priceplan == "fixed" and self.blocks_purchased > 0:
@@ -1221,7 +1228,7 @@ class Customer:
                                     ).classes("text-sm font-semibold text-red-600")
                                 else:
                                     ui.label(
-                                        f"Remaining: {self.stats.get('remaining_minutes', 0)} min"
+                                        f"Remaining: {self.stats.get('remaining_minutes', 0)}"
                                     ).classes("text-sm font-semibold text-green-600")
 
                         with ui.column():
@@ -1230,8 +1237,10 @@ class Customer:
                                 f"Transcribed files: {self.stats.get('transcribed_files_last_month', 0)}"
                             ).classes("text-sm")
                             ui.label(
-                                f"Transcribed minutes: {self.stats.get('total_transcribed_minutes_last_month', 0)}m"
+                                f"Total transcribed minutes: {self.stats.get('total_transcribed_minutes_last_month', 0)}"
                             ).classes("text-sm")
+                            ui.label(f"Transcribed minutes via Sunet Play: {self.stats.get('transcribed_minutes_external_last_month', 0)}").classes("text-sm")
+                            ui.label(f"Transcribed minutes via web service: {self.stats.get('total_transcribed_minutes_last_month', 0)}").classes("text-sm")
 
                 with ui.column().style("flex: 0 0 auto;"):
                     statistics = (
