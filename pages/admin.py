@@ -1168,7 +1168,9 @@ class Customer:
             ):
                 with ui.column().style("flex: 0 0 auto; min-width: 25%;"):
                     ui.label(f"{self.name}").classes("text-h5 font-bold")
-                    ui.label(f"Kaltura Partner ID: {self.partner_id}").classes("text-md")
+
+                    if self.partner_id != "N/A" and self.partner_id != "":
+                        ui.label(f"Kaltura Partner ID: {self.partner_id}").classes("text-md")
                     ui.label(f"Plan: {self.priceplan.capitalize()}").classes(
                         "text-sm text-gray-500"
                     )
@@ -1352,9 +1354,10 @@ def edit_customer(customer_id: str) -> None:
     ):
         ui.label(f"Edit customer: {customer['name']}").classes("text-3xl font-bold mb-4")
         with ui.column().classes("gap-4 w-full"):
-            partner_id_input = ui.input(
-                "Kaltura Partner ID", value=customer["partner_id"]
-            ).props("outlined").classes("w-full")
+            if customer["partner_id"] != "N/A" and customer["partner_id"] != "":
+                partner_id_input = ui.input(
+                    "Kaltura Partner ID", value=customer["partner_id"]
+                ).props("outlined").classes("w-full")
             name_input = ui.input("Customer name", value=customer["name"]).props(
                 "outlined"
             ).classes("w-full")
@@ -1618,7 +1621,9 @@ def customer_statistics(customer_id: str) -> None:
     with ui.element("div").classes("stats-container w-full"):
         with ui.element("div").classes("stats-card w-full"):
             ui.label(f"Customer Statistics: {customer['name']}").classes("text-3xl font-bold mb-3 text-gray-800")
-            ui.label(f"Kaltura Partner ID: {customer['partner_id']}").classes("text-lg text-gray-600")
+
+            if customer["partner_id"] != "N/A" and customer["partner_id"] != "":
+                ui.label(f"Kaltura Partner ID: {customer['partner_id']}").classes("text-lg text-gray-600")
             ui.label(f"Price Plan: {customer['priceplan'].capitalize()}").classes("text-lg text-gray-600")
             ui.label(f"Base fee: {customer['base_fee']}").classes("text-lg text-gray-600")
             ui.label(f"Realms: {customer['realms']}").classes("text-lg text-gray-600")
