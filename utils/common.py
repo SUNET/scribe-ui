@@ -206,6 +206,8 @@ def page_init(header_text: Optional[str] = "") -> None:
         if not token_refresh():
             ui.navigate.to(settings.OIDC_APP_LOGOUT_ROUTE)
 
+    refresh()
+
     is_admin = get_admin_status()
     is_bofh = get_bofh_status()
     ui.timer(30, refresh)
