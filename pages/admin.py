@@ -1211,11 +1211,13 @@ class Customer:
                                 f"Total transcribed minutes: {self.stats.get('total_transcribed_minutes', 0)}"
                             ).classes("text-sm")
                             ui.label(
-                                f"Transcribed minutes via Sunet Play: {self.stats.get('transcribed_minutes_external', 0)}"
-                            ).classes("text-sm")
-                            ui.label(
                                 f"Transcribed minutes via Sunet Scribe: {self.stats.get('transcribed_minutes', 0)}"
                             )
+
+                            if self.partner_id != "N/A" and self.partner_id != "":
+                                ui.label(
+                                    f"Transcribed minutes via Sunet Play: {self.stats.get('transcribed_minutes_external', 0)}"
+                                ).classes("text-sm")
 
                             # Show block usage for fixed plan
                             if self.priceplan == "fixed" and self.blocks_purchased > 0:
@@ -1241,8 +1243,9 @@ class Customer:
                             ui.label(
                                 f"Total transcribed minutes: {self.stats.get('total_transcribed_minutes_last_month', 0)}"
                             ).classes("text-sm")
-                            ui.label(f"Transcribed minutes via Sunet Play: {self.stats.get('transcribed_minutes_external_last_month', 0)}").classes("text-sm")
                             ui.label(f"Transcribed minutes via Sunet Scribe: {self.stats.get('transcribed_minutes_last_month', 0)}").classes("text-sm")
+                            if self.partner_id != "N/A" and self.partner_id != "":
+                                ui.label(f"Transcribed minutes via Sunet Play: {self.stats.get('transcribed_minutes_external_last_month', 0)}").classes("text-sm")
 
                 with ui.column().style("flex: 0 0 auto;"):
                     if get_bofh_status():
