@@ -1343,10 +1343,9 @@ def edit_customer(customer_id: str) -> None:
     ):
         ui.label(f"Edit customer: {customer['name']}").classes("text-3xl font-bold mb-4")
         with ui.column().classes("gap-4 w-full"):
-            if customer["partner_id"] != "N/A" and customer["partner_id"] != "":
-                partner_id_input = ui.input(
-                    "Kaltura Partner ID", value=customer["partner_id"]
-                ).props("outlined").classes("w-full")
+            partner_id_input = ui.input(
+                "Kaltura Partner ID", value=customer["partner_id"]
+            ).props("outlined").classes("w-full")
             name_input = ui.input("Customer name", value=customer["name"]).props(
                 "outlined"
             ).classes("w-full")
