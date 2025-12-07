@@ -807,7 +807,7 @@ def health() -> None:
                 box-shadow: 0 2px 8px rgba(0,0,0,0.1);
                 padding: 1.5rem;
                 width: 100%;
-                max-width: 50%;
+                max-width: 100%;
                 display: flex;
                 flex-direction: column;
                 justify-content: space-between;
