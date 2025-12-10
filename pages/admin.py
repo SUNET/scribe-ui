@@ -418,9 +418,9 @@ def edit_group(group_id: str) -> None:
             ui.button("Save group").classes("default-style").props(
                 "color=black flat"
             ).style("width: 150px").on("click", lambda: save_group(users_table.selected, name_input.value, description_input.value, group_id, quota.value))
-            ui.button("Administrators").classes("button-close").props(
-                "color=black flat"
-            ).style("width: 150px").on("click", lambda: admin_dialog(users_table.selected, group_id))
+            # ui.button("Administrators").classes("button-close").props(
+            #     "color=black flat"
+            # ).style("width: 150px").on("click", lambda: admin_dialog(users_table.selected, group_id))
             ui.button("Cancel").classes("button-close").props(
                 "color=black flat"
             ).style("width: 150px;").on("click", lambda: ui.navigate.to("/admin"))
