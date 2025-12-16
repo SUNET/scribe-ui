@@ -565,7 +565,7 @@ def statistics(group_id: str) -> None:
 
         if per_user:
             with ui.element("div").classes("table-container"):
-                ui.label("Transcribed minutes per user this month").classes("text-2xl font-bold mb-4 text-gray-800")
+                ui.label("Transcribed minutes per user this month").classes("text-gray-800")
                 user_rows = [
                     {"username": username, "minutes": f"{minutes:.1f}"}
                     for username, minutes in per_user.items()
@@ -1000,6 +1000,7 @@ def create_customer_dialog(page: callable) -> None:
         with ui.card().style("width: 600px; max-width: 90vw;"):
             ui.label("Create new customer").classes("text-2xl font-bold")
 
+            customer_abbr = ui.input("Customer abbreviation").classes("w-full").props("outlined")
             partner_id_input = ui.input("Kaltura Partner ID", value="N/A").classes("w-full").props("outlined")
             name_input = ui.input("Customer name").classes("w-full").props("outlined")
             contact_email_input = ui.input("Contact email").classes("w-full").props("outlined")
@@ -1067,6 +1068,7 @@ def create_customer_dialog(page: callable) -> None:
                             settings.API_URL + "/api/v1/admin/customers",
                             headers=get_auth_header(),
                             json={
+                                "customer_abbr": customer_abbr.value,
                                 "partner_id": partner_id_input.value,
                                 "name": name_input.value,
                                 "contact_email": contact_email_input.value,
@@ -1101,6 +1103,7 @@ def create_customer_dialog(page: callable) -> None:
 class Customer:
     def __init__(
         self,
+        customer_abbr: str,
         customer_id: str,
         partner_id: str,
         name: str,
@@ -1113,6 +1116,7 @@ class Customer:
         stats: dict,
         blocks_purchased: int = 0,
     ) -> None:
+        self.customer_abbr = customer_abbr
         self.customer_id = customer_id
         self.partner_id = partner_id
         self.name = name
@@ -1167,7 +1171,12 @@ class Customer:
                 "justify-content: space-between; align-items: center; width: 100%;"
             ):
                 with ui.column().style("flex: 0 0 auto; min-width: 25%;"):
-                    ui.label(f"{self.name}").classes("text-h5 font-bold")
+                    customer_name = f"{self.name}"
+
+                    if self.customer_abbr:
+                        customer_name += f" ({self.customer_abbr})"
+
+                    ui.label(customer_name).classes("text-h5 font-bold")
 
                     if self.partner_id != "N/A" and self.partner_id != "":
                         ui.label(f"Kaltura Partner ID: {self.partner_id}").classes("text-md")
@@ -1267,6 +1276,7 @@ class Customer:
 
 
 def save_customer(
+    customber_abbr: str,
     customer_id: str,
     partner_id: str,
     name: str,
@@ -1288,6 +1298,7 @@ def save_customer(
             settings.API_URL + f"/api/v1/admin/customers/{customer_id}",
             headers=get_auth_header(),
             json={
+                "customer_abbr": customber_abbr,
                 "partner_id": partner_id,
                 "name": name,
                 "contact_email": contact_email,
@@ -1343,6 +1354,9 @@ def edit_customer(customer_id: str) -> None:
     ):
         ui.label(f"Edit customer: {customer['name']}").classes("text-3xl font-bold mb-4")
         with ui.column().classes("gap-4 w-full"):
+            customer_abbr_input = ui.input(
+                "Customer abbreviation", value=customer.get("customer_abbr", "")
+            ).props("outlined").classes("w-full")
             partner_id_input = ui.input(
                 "Kaltura Partner ID", value=customer["partner_id"]
             ).props("outlined").classes("w-full")
@@ -1401,6 +1415,7 @@ def edit_customer(customer_id: str) -> None:
             ).style("width: 150px").on(
                 "click",
                 lambda: save_customer(
+                    customer_abbr_input.value,
                     customer_id,
                     partner_id_input.value,
                     name_input.value,
@@ -1436,7 +1451,7 @@ def export_customers_csv() -> None:
         )
 
     except requests.RequestException as e:
-        ui.notify(f"Error exporting customers: {e}", type="negative")
+        ui.notify(f"Error when exporting customers", color="red")
 
 
 @ui.page("/admin/customers")
@@ -1507,6 +1522,7 @@ def customers() -> None:
         )
         for customer in customers_list:
             c = Customer(
+                customer_abbr=customer.get("customer_abbr", ""),
                 customer_id=customer["id"],
                 partner_id=customer["partner_id"],
                 name=customer["name"],
