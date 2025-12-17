@@ -73,30 +73,6 @@ def create() -> None:
             return
 
         with ui.footer().style("background-color: #f5f5f5;"):
-
-            def export(srt_format: str):
-                match srt_format:
-                    case "srt":
-                        srt_content = editor.export_srt()
-                    case "vtt":
-                        srt_content = editor.export_vtt()
-                    case "txt":
-                        srt_content = editor.export_txt()
-                    case "json":
-                        srt_content = editor.export_json()
-                    case "rtf":
-                        srt_content = editor.export_rtf()
-                    case "csv":
-                        srt_content = editor.export_csv()
-                    case "tsv":
-                        srt_content = editor.export_tsv()
-
-                ui.download(
-                    str(srt_content).encode(), filename=f"{filename}.{srt_format}"
-                )
-
-                ui.notify("File exported successfully", type="positive")
-
             with ui.row().classes("justify-end w-full gap-2"):
                 with ui.button("Close", icon="close").props("flat") as close_button:
                     close_button.classes("cancel-style")
@@ -128,47 +104,12 @@ def create() -> None:
 
                     save_button.props("color=white flat")
 
-                with ui.dropdown_button("Export", icon="share") as export_button:
+                with ui.button("Export...", icon="share") as export_button:
                     export_button.props("flat color=white")
                     export_button.classes("button-default-style")
-
-                    if data_format == "srt":
-                        export_button_srt = ui.button("Export as SRT", icon="share")
-                        export_button_srt.props("flat")
-                        export_button_srt.classes("button-default-style")
-                        export_button_srt.on("click", lambda: export("srt"))
-
-                        export_button_vtt = ui.button(
-                            "Export as VTT", icon="share"
-                        ).style("width: 150px;")
-                        export_button_vtt.props("flat")
-                        export_button_vtt.classes("button-default-style")
-                        export_button_vtt.on("click", lambda: export("vtt"))
-                    else:
-                        export_button_txt = ui.button("Export as TXT", icon="share")
-                        export_button_txt.props("flat")
-                        export_button_txt.classes("button-default-style")
-                        export_button_txt.on("click", lambda: export("txt"))
-
-                        export_button_json = ui.button("Export as JSON", icon="share")
-                        export_button_json.props("flat")
-                        export_button_json.classes("button-default-style")
-                        export_button_json.on("click", lambda: export("json"))
-
-                        export_button_rtf = ui.button("Export as RTF", icon="share")
-                        export_button_rtf.props("flat")
-                        export_button_rtf.classes("button-default-style")
-                        export_button_rtf.on("click", lambda: export("rtf"))
-
-                        export_button_csv = ui.button("Export as CSV", icon="share")
-                        export_button_csv.props("flat")
-                        export_button_csv.classes("button-default-style")
-                        export_button_csv.on("click", lambda: export("csv"))
-
-                        export_button_tsv = ui.button("Export as TSV", icon="share")
-                        export_button_tsv.props("flat")
-                        export_button_tsv.classes("button-default-style")
-                        export_button_tsv.on("click", lambda: export("tsv"))
+                    export_button.on(
+                        "click", lambda: editor.open_export_dialog(filename)
+                    )
 
                 if data_format == "srt":
                     with ui.button("Validate", icon="check").props(
