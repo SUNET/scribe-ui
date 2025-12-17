@@ -359,15 +359,19 @@ class SRTEditor:
         for caption in self.captions:
             row = []
             
-            # Add separate columns if configured
-            if config.include_timestamps and config.speaker_placement == "separate":
+            # For CSV/TSV, speaker_placement == "separate" means all metadata goes in separate columns
+            use_separate_columns = config.speaker_placement == "separate"
+            
+            # Add separate timestamp columns if configured
+            if config.include_timestamps and use_separate_columns:
                 start_formatted = self.format_timestamp(caption.start_time, config.timestamp_format)
                 row.append(f'"{start_formatted}"')
                 if config.timestamp_type == "range":
                     end_formatted = self.format_timestamp(caption.end_time, config.timestamp_format)
                     row.append(f'"{end_formatted}"')
             
-            if config.include_speaker and config.speaker_placement == "separate":
+            # Add separate speaker column if configured
+            if config.include_speaker and use_separate_columns:
                 row.append(f'"{caption.speaker}"')
             
             # Build text with inline elements
@@ -403,15 +407,19 @@ class SRTEditor:
         for caption in self.captions:
             row = []
             
-            # Add separate columns if configured
-            if config.include_timestamps and config.speaker_placement == "separate":
+            # For CSV/TSV, speaker_placement == "separate" means all metadata goes in separate columns
+            use_separate_columns = config.speaker_placement == "separate"
+            
+            # Add separate timestamp columns if configured
+            if config.include_timestamps and use_separate_columns:
                 start_formatted = self.format_timestamp(caption.start_time, config.timestamp_format)
                 row.append(start_formatted)
                 if config.timestamp_type == "range":
                     end_formatted = self.format_timestamp(caption.end_time, config.timestamp_format)
                     row.append(end_formatted)
             
-            if config.include_speaker and config.speaker_placement == "separate":
+            # Add separate speaker column if configured
+            if config.include_speaker and use_separate_columns:
                 row.append(caption.speaker)
             
             # Build text with inline elements
@@ -529,16 +537,16 @@ class SRTEditor:
         
         return "\n".join(lines).strip()
 
-    def export_json(self, config: Optional[ExportConfig] = None) -> str:
+    def export_json(self, config: Optional[ExportConfig] = None):
         if config is None:
-            # Default behavior for backward compatibility
+            # Default behavior for backward compatibility - returns dict for compatibility
             return {
                 "segments": [seg.to_dict() for seg in self.captions],
                 "speaker_count": len(self.speakers),
                 "full_transcription": " ".join(seg.text for seg in self.captions),
             }
 
-        # New configurable export
+        # New configurable export - returns JSON string
         segments = []
         for caption in self.captions:
             segment = {}
@@ -569,11 +577,13 @@ class SRTEditor:
             
             segments.append(segment)
         
-        return {
+        result = {
             "segments": segments,
             "speaker_count": len(self.speakers),
             "full_transcription": " ".join(seg.text for seg in self.captions),
         }
+        
+        return json.dumps(result, indent=2)
 
     def export_srt(self) -> str:
         """
@@ -765,8 +775,9 @@ class SRTEditor:
             
             segment["text"] = caption.text
             
+            # For JSON, use separate fields when speaker_placement is "separate"
             if config.include_timestamps:
-                if config.timestamp_placement == "separate" or config.speaker_placement == "separate":
+                if config.speaker_placement == "separate":
                     start_formatted = self.format_timestamp(caption.start_time, config.timestamp_format)
                     if config.timestamp_type == "range":
                         end_formatted = self.format_timestamp(caption.end_time, config.timestamp_format)
@@ -794,15 +805,19 @@ class SRTEditor:
         for caption in captions:
             row = []
             
-            # Add separate columns if configured
-            if config.include_timestamps and config.speaker_placement == "separate":
+            # For CSV/TSV, speaker_placement == "separate" means all metadata goes in separate columns
+            use_separate_columns = config.speaker_placement == "separate"
+            
+            # Add separate timestamp columns if configured
+            if config.include_timestamps and use_separate_columns:
                 start_formatted = self.format_timestamp(caption.start_time, config.timestamp_format)
                 row.append(f'"{start_formatted}"')
                 if config.timestamp_type == "range":
                     end_formatted = self.format_timestamp(caption.end_time, config.timestamp_format)
                     row.append(f'"{end_formatted}"')
             
-            if config.include_speaker and config.speaker_placement == "separate":
+            # Add separate speaker column if configured
+            if config.include_speaker and use_separate_columns:
                 row.append(f'"{caption.speaker}"')
             
             # Build text with inline elements
@@ -827,15 +842,19 @@ class SRTEditor:
         for caption in captions:
             row = []
             
-            # Add separate columns if configured
-            if config.include_timestamps and config.speaker_placement == "separate":
+            # For CSV/TSV, speaker_placement == "separate" means all metadata goes in separate columns
+            use_separate_columns = config.speaker_placement == "separate"
+            
+            # Add separate timestamp columns if configured
+            if config.include_timestamps and use_separate_columns:
                 start_formatted = self.format_timestamp(caption.start_time, config.timestamp_format)
                 row.append(start_formatted)
                 if config.timestamp_type == "range":
                     end_formatted = self.format_timestamp(caption.end_time, config.timestamp_format)
                     row.append(end_formatted)
             
-            if config.include_speaker and config.speaker_placement == "separate":
+            # Add separate speaker column if configured
+            if config.include_speaker and use_separate_columns:
                 row.append(caption.speaker)
             
             # Build text with inline elements
@@ -1782,7 +1801,7 @@ class SRTEditor:
                             elif export_format == "rtf":
                                 content = self.export_rtf(config)
                             elif export_format == "json":
-                                content = self.export_json(config)
+                                content = self.export_json(config)  # Returns JSON string
                             elif export_format == "csv":
                                 content = self.export_csv(config)
                             elif export_format == "tsv":
@@ -1791,9 +1810,9 @@ class SRTEditor:
                                 ui.notify("Unknown format", type="negative")
                                 return
                             
-                            # Download file
+                            # Download file - content is always a string when config is provided
                             ui.download(
-                                str(content).encode(), 
+                                content.encode(), 
                                 filename=f"{filename}.{export_format}"
                             )
                             ui.notify("File exported successfully", type="positive")
