@@ -1230,7 +1230,7 @@ class Customer:
                             # Show block usage for fixed plan
                             if self.priceplan == "fixed" and self.blocks_purchased > 0:
                                 ui.label(
-                                    f"Blocks consumed: {self.stats.get('blocks_consumed', 0):.0f}"
+                                    f"Blocks consumed: {self.stats.get('blocks_consumed', 0):.2f}"
                                 ).classes("text-sm font-semibold text-blue-600")
 
                                 overage = self.stats.get('overage_minutes', 0)
