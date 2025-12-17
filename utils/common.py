@@ -522,11 +522,12 @@ def table_transcribe(selected_row) -> None:
                         value=settings.WHISPER_LANGUAGES[0],
                     ).classes("w-full")
 
-                with ui.column().classes("col-12 col-sm-24"):
-                    ui.label("Accuracy").classes("text-subtitle2 q-mb-sm")
-                    model = ui.radio(
-                        settings.WHISPER_MODELS, value=settings.WHISPER_MODELS[0]
-                    )
+                # Remove the option to pick model for now. People always use the large models anyway.
+                # with ui.column().classes("col-12 col-sm-24"):
+                #     ui.label("Accuracy").classes("text-subtitle2 q-mb-sm")
+                #     model = ui.radio(
+                #         settings.WHISPER_MODELS, value=settings.WHISPER_MODELS[0]
+                #     )
 
                 with ui.column().classes("col-12 col-sm-24"):
                     ui.label("Number of speakers, automatic if not chosen").classes(
@@ -559,7 +560,7 @@ def table_transcribe(selected_row) -> None:
                     on_click=lambda: start_transcription(
                         [selected_row],
                         language.value,
-                        model.value,
+                        # model.value,
                         speakers.value,
                         output_format.value,
                         dialog,
@@ -622,13 +623,14 @@ def __delete_files(table: ui.table, dialog: ui.dialog) -> bool:
 def start_transcription(
     rows: list,
     language: str,
-    model: str,
+    # model: str,
     speakers: str,
     output_format: str,
     dialog: ui.dialog,
 ) -> None:
     selected_language = language
-    selected_model = model
+    # selected_model = model
+    selected_model = "Slower transcription (higher accuracy)"
     error = ""
 
     if output_format == "Subtitles":
