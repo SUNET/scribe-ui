@@ -138,11 +138,11 @@ class Group:
                         with ui.column().style("min-width: 30%;"):
                             ui.label("This month").classes("font-semibold")
                             ui.label(f"Transcribed files current month: {self.stats["transcribed_files"]}").classes("text-sm")
-                            ui.label(f"Transcribed minutes current month: {self.stats["total_transcribed_minutes"]}").classes("text-sm")
+                            ui.label(f"Transcribed minutes current month: {self.stats["total_transcribed_minutes"]:.0f}").classes("text-sm")
                         with ui.column():
                             ui.label("Last month").classes("font-semibold")
                             ui.label(f"Transcribed files last month: {self.stats["transcribed_files_last_month"]}").classes("text-sm")
-                            ui.label(f"Transcribed minutes last month: {self.stats["total_transcribed_minutes_last_month"]}m").classes("text-sm")
+                            ui.label(f"Transcribed minutes last month: {self.stats["total_transcribed_minutes_last_month"]:.0f}").classes("text-sm")
 
                 with ui.column().style("flex: 0 0 auto;"):
 
@@ -500,7 +500,6 @@ def statistics(group_id: str) -> None:
     per_user = result.get("transcribed_minutes_per_user", {})
     job_queue = result.get("job_queue", [])
     total_users = result.get("total_users", 0)
-    total_transcribed = result.get("total_transcribed_minutes", 0)
 
     with ui.element("div").classes("stats-container w-full"):
         with ui.element("div").classes("stats-card w-full"):
@@ -508,7 +507,7 @@ def statistics(group_id: str) -> None:
             ui.label(f"Number of users: {total_users}").classes("text-lg text-gray-600")
             ui.label(f"Transcribed files this month: {result.get('transcribed_files', 0)} files").classes("text-lg text-gray-600")
             ui.label(f"Transcribed files last month: {result.get('transcribed_files_last_month', 0)} files").classes("text-lg text-gray-600")
-            ui.label(f"Transcribed minutes this month: {total_transcribed:.0f} minutes").classes("text-lg text-gray-600")
+            ui.label(f"Transcribed minutes this month: {result.get('total_transcribed_minutes', 0):.0f} minutes").classes("text-lg text-gray-600")
             ui.label(f"Transcribed minutes last month: {result.get('total_transcribed_minutes_last_month', 0):.0f} minutes").classes("text-lg text-gray-600")
 
         if per_day:
@@ -1217,31 +1216,31 @@ class Customer:
                                 f"Total transcribed files: {self.stats.get('transcribed_files', 0)}"
                             ).classes("text-sm")
                             ui.label(
-                                f"Total transcribed minutes: {self.stats.get('total_transcribed_minutes', 0)}"
+                                f"Total transcribed minutes: {self.stats.get('total_transcribed_minutes', 0):.0f}"
                             ).classes("text-sm")
 
                             if self.partner_id != "N/A" and self.partner_id != "":
                                 ui.label(
-                                    f"Transcribed minutes via Sunet Scribe: {self.stats.get('transcribed_minutes', 0)}"
+                                    f"Transcribed minutes via Sunet Scribe: {self.stats.get('transcribed_minutes', 0):.0f}"
                                 )
                                 ui.label(
-                                    f"Transcribed minutes via Sunet Play: {self.stats.get('transcribed_minutes_external', 0)}"
+                                    f"Transcribed minutes via Sunet Play: {self.stats.get('transcribed_minutes_external', 0):.0f}"
                                 ).classes("text-sm")
 
                             # Show block usage for fixed plan
                             if self.priceplan == "fixed" and self.blocks_purchased > 0:
                                 ui.label(
-                                    f"Blocks consumed: {self.stats.get('blocks_consumed', 0):.2f}"
+                                    f"Blocks consumed: {self.stats.get('blocks_consumed', 0):.0f}"
                                 ).classes("text-sm font-semibold text-blue-600")
 
                                 overage = self.stats.get('overage_minutes', 0)
                                 if overage > 0:
                                     ui.label(
-                                        f"⚠️ Overage minutes: {overage} min"
+                                        f"⚠️ Overage minutes: {overage:.0f} min"
                                     ).classes("text-sm font-semibold text-red-600")
                                 else:
                                     ui.label(
-                                        f"Remaining minutes: {self.stats.get('remaining_minutes', 0)}"
+                                        f"Remaining minutes: {self.stats.get('remaining_minutes', 0):.0f}"
                                     ).classes("text-sm font-semibold text-green-600")
 
                         with ui.column():
@@ -1250,11 +1249,11 @@ class Customer:
                                 f"Transcribed files: {self.stats.get('transcribed_files_last_month', 0)}"
                             ).classes("text-sm")
                             ui.label(
-                                f"Total transcribed minutes: {self.stats.get('total_transcribed_minutes_last_month', 0)}"
+                                f"Total transcribed minutes: {self.stats.get('total_transcribed_minutes_last_month', 0):.0f}"
                             ).classes("text-sm")
                             if self.partner_id != "N/A" and self.partner_id != "":
-                                ui.label(f"Transcribed minutes via Sunet Scribe: {self.stats.get('transcribed_minutes_last_month', 0)}").classes("text-sm")
-                                ui.label(f"Transcribed minutes via Sunet Play: {self.stats.get('transcribed_minutes_external_last_month', 0)}").classes("text-sm")
+                                ui.label(f"Transcribed minutes via Sunet Scribe: {self.stats.get('transcribed_minutes_last_month', 0):.0f}").classes("text-sm")
+                                ui.label(f"Transcribed minutes via Sunet Play: {self.stats.get('transcribed_minutes_external_last_month', 0):.0f}").classes("text-sm")
 
                 with ui.column().style("flex: 0 0 auto;"):
                     if get_bofh_status():
