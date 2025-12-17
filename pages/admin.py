@@ -1237,11 +1237,11 @@ class Customer:
                                 overage = self.stats.get('overage_minutes', 0)
                                 if overage > 0:
                                     ui.label(
-                                        f"⚠️ Overage: {overage} min"
+                                        f"⚠️ Overage minutes: {overage} min"
                                     ).classes("text-sm font-semibold text-red-600")
                                 else:
                                     ui.label(
-                                        f"Remaining: {self.stats.get('remaining_minutes', 0)}"
+                                        f"Remaining minutes: {self.stats.get('remaining_minutes', 0)}"
                                     ).classes("text-sm font-semibold text-green-600")
 
                         with ui.column():
