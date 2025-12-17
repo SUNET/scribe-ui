@@ -2,6 +2,7 @@ import json
 import re
 import requests
 
+from dataclasses import dataclass
 from nicegui import events, ui
 from typing import Any, Dict, List, Optional
 from utils.common import get_auth_header
@@ -11,6 +12,17 @@ CHARACTER_LIMIT_EXCEEDED_COLOR = "text-red"
 CHARACTER_LIMIT = 42
 
 settings = get_settings()
+
+
+@dataclass
+class ExportConfig:
+    """Configuration for export options."""
+    include_speaker: bool = True
+    speaker_placement: str = "inline"  # "inline" or "separate"
+    include_timestamps: bool = True
+    timestamp_placement: str = "beginning"  # "beginning", "end", or "inline"
+    timestamp_type: str = "range"  # "start" or "range"
+    timestamp_format: str = "HH:MM:SS,mmm"  # "HH:MM:SS", "HH:MM:SS,mmm", "HH:MM:SS.mmm"
 
 
 class SRTCaption:
@@ -329,33 +341,94 @@ class SRTEditor:
 
         self.renumber_captions()
 
-    def export_csv(self) -> str:
+    def export_csv(self, config: Optional[ExportConfig] = None) -> str:
         """
         Export to CSV format.
         Fields: Start time, stop time, speaker, text
         """
+        if config is None:
+            # Default behavior for backward compatibility
+            csv_content = ""
+            for caption in self.captions:
+                escaped_text = caption.text.replace('"', '""')
+                csv_content += f'"{caption.start_time}","{caption.end_time}","{caption.speaker}","{escaped_text}"\n'
+            return csv_content.strip()
 
+        # New configurable export
         csv_content = ""
         for caption in self.captions:
-            escaped_text = caption.text.replace('"', '""')
-            csv_content += f'"{caption.start_time}","{caption.end_time}","{caption.speaker}","{escaped_text}"\n'
+            row = []
+            
+            # Add separate columns if configured
+            if config.include_timestamps and config.speaker_placement == "separate":
+                start_formatted = self.format_timestamp(caption.start_time, config.timestamp_format)
+                row.append(f'"{start_formatted}"')
+                if config.timestamp_type == "range":
+                    end_formatted = self.format_timestamp(caption.end_time, config.timestamp_format)
+                    row.append(f'"{end_formatted}"')
+            
+            if config.include_speaker and config.speaker_placement == "separate":
+                row.append(f'"{caption.speaker}"')
+            
+            # Build text with inline elements
+            text = caption.text
+            if config.include_speaker and config.speaker_placement == "inline":
+                text = f"{caption.speaker}: {text}"
+            if config.include_timestamps and config.timestamp_placement == "inline":
+                timestamp = self._format_timestamp_for_export(caption, config)
+                text = f"{timestamp} {text}"
+            
+            escaped_text = text.replace('"', '""')
+            row.append(f'"{escaped_text}"')
+            
+            csv_content += ",".join(row) + "\n"
 
         return csv_content.strip()
 
-    def export_tsv(self) -> str:
+    def export_tsv(self, config: Optional[ExportConfig] = None) -> str:
         """
         Export to TSV format.
         Fields: Start time, stop time, speaker, text
         """
+        if config is None:
+            # Default behavior for backward compatibility
+            tsv_content = ""
+            for caption in self.captions:
+                escaped_text = caption.text.replace("\t", "    ").replace("\n", " ")
+                tsv_content += f"{caption.start_time}\t{caption.end_time}\t{caption.speaker}\t{escaped_text}\n"
+            return tsv_content.strip()
 
+        # New configurable export
         tsv_content = ""
         for caption in self.captions:
-            escaped_text = caption.text.replace("\t", "    ").replace("\n", " ")
-            tsv_content += f"{caption.start_time}\t{caption.end_time}\t{caption.speaker}\t{escaped_text}\n"
+            row = []
+            
+            # Add separate columns if configured
+            if config.include_timestamps and config.speaker_placement == "separate":
+                start_formatted = self.format_timestamp(caption.start_time, config.timestamp_format)
+                row.append(start_formatted)
+                if config.timestamp_type == "range":
+                    end_formatted = self.format_timestamp(caption.end_time, config.timestamp_format)
+                    row.append(end_formatted)
+            
+            if config.include_speaker and config.speaker_placement == "separate":
+                row.append(caption.speaker)
+            
+            # Build text with inline elements
+            text = caption.text.replace("\t", "    ").replace("\n", " ")
+            if config.include_speaker and config.speaker_placement == "inline":
+                text = f"{caption.speaker}: {text}"
+            if config.include_timestamps and config.timestamp_placement == "inline":
+                timestamp = self._format_timestamp_for_export(caption, config)
+                text = f"{timestamp} {text}"
+            
+            row.append(text)
+            
+            tsv_content += "\t".join(row) + "\n"
 
         return tsv_content.strip()
 
-    def export_rtf(self) -> str:
+    def export_rtf(self, config: Optional[ExportConfig] = None) -> str:
         """
         Export captions to RTF format with proper Unicode handling.
         """
@@ -379,35 +452,125 @@ class SRTEditor:
         )
 
         for caption in self.captions:
-            rtf_content += (
-                r"\b "
-                + to_rtf_unicode(f"{caption.speaker}: ")
-                + r"\b0 "
-                + to_rtf_unicode(f"{caption.start_time} - {caption.end_time}")
-                + r"\line "
-                + to_rtf_unicode(caption.text).replace("\n", r"\line ")
-                + r"\line\line "
-            )
+            if config is None:
+                # Default behavior for backward compatibility
+                rtf_content += (
+                    r"\b "
+                    + to_rtf_unicode(f"{caption.speaker}: ")
+                    + r"\b0 "
+                    + to_rtf_unicode(f"{caption.start_time} - {caption.end_time}")
+                    + r"\line "
+                    + to_rtf_unicode(caption.text).replace("\n", r"\line ")
+                    + r"\line\line "
+                )
+            else:
+                # New configurable export
+                line_parts = []
+                
+                if config.include_speaker:
+                    line_parts.append(r"\b " + to_rtf_unicode(f"{caption.speaker}:") + r"\b0 ")
+                
+                if config.include_timestamps:
+                    timestamp = self._format_timestamp_for_export(caption, config)
+                    line_parts.append(to_rtf_unicode(timestamp))
+                
+                if line_parts:
+                    rtf_content += " ".join(line_parts) + r"\line "
+                
+                rtf_content += to_rtf_unicode(caption.text).replace("\n", r"\line ") + r"\line\line "
 
         rtf_content += "}"
 
         return rtf_content.strip()
 
-    def export_txt(self) -> str:
+    def export_txt(self, config: Optional[ExportConfig] = None) -> str:
         """
         Export captions to TXT format.
         """
+        if config is None:
+            # Default behavior for backward compatibility
+            txt_content = "\n\n".join(
+                f"{caption.speaker}: {caption.start_time} - {caption.end_time}\n{caption.text}"
+                for caption in self.captions
+            )
+            return txt_content.strip()
 
-        txt_content = "\n\n".join(
-            f"{caption.speaker}: {caption.start_time} - {caption.end_time}\n{caption.text}"
-            for caption in self.captions
-        )
+        # New configurable export
+        lines = []
+        for caption in self.captions:
+            line_parts = []
+            
+            # Add speaker if enabled
+            if config.include_speaker:
+                line_parts.append(f"{caption.speaker}:")
+            
+            # Add timestamp at beginning if enabled
+            if config.include_timestamps and config.timestamp_placement == "beginning":
+                timestamp = self._format_timestamp_for_export(caption, config)
+                line_parts.append(timestamp)
+            
+            # Join header parts
+            if line_parts:
+                lines.append(" ".join(line_parts))
+            
+            # Add text
+            if config.include_timestamps and config.timestamp_placement == "inline":
+                timestamp = self._format_timestamp_for_export(caption, config)
+                lines.append(f"{timestamp} {caption.text}")
+            else:
+                lines.append(caption.text)
+            
+            # Add timestamp at end if enabled
+            if config.include_timestamps and config.timestamp_placement == "end":
+                timestamp = self._format_timestamp_for_export(caption, config)
+                lines.append(timestamp)
+            
+            lines.append("")  # Empty line between segments
+        
+        return "\n".join(lines).strip()
 
-        return txt_content.strip()
+    def export_json(self, config: Optional[ExportConfig] = None) -> str:
+        if config is None:
+            # Default behavior for backward compatibility
+            return {
+                "segments": [seg.to_dict() for seg in self.captions],
+                "speaker_count": len(self.speakers),
+                "full_transcription": " ".join(seg.text for seg in self.captions),
+            }
 
-    def export_json(self) -> str:
+        # New configurable export
+        segments = []
+        for caption in self.captions:
+            segment = {}
+            
+            if config.include_speaker:
+                if config.speaker_placement == "separate":
+                    segment["speaker"] = caption.speaker
+            
+            segment["text"] = caption.text
+            
+            if config.include_timestamps:
+                if config.speaker_placement == "separate":
+                    start_formatted = self.format_timestamp(caption.start_time, config.timestamp_format)
+                    if config.timestamp_type == "range":
+                        end_formatted = self.format_timestamp(caption.end_time, config.timestamp_format)
+                        segment["timestamp"] = f"{start_formatted} - {end_formatted}"
+                    else:
+                        segment["timestamp"] = start_formatted
+            
+            # Add speaker inline in text if needed
+            if config.include_speaker and config.speaker_placement == "inline":
+                segment["text"] = f"{caption.speaker}: {segment['text']}"
+            
+            # Add timestamp inline in text if needed
+            if config.include_timestamps and config.timestamp_placement == "inline":
+                timestamp = self._format_timestamp_for_export(caption, config)
+                segment["text"] = f"{timestamp} {segment['text']}"
+            
+            segments.append(segment)
+        
         return {
-            "segments": [seg.to_dict() for seg in self.captions],
+            "segments": segments,
             "speaker_count": len(self.speakers),
             "full_transcription": " ".join(seg.text for seg in self.captions),
         }
@@ -459,6 +622,245 @@ class SRTEditor:
         secs = int(secs)
 
         return f"{hours:02d}:{minutes:02d}:{secs:02d},{milliseconds:03d}"
+
+    def format_timestamp(self, timestamp: str, format_preset: str) -> str:
+        """
+        Convert timestamp to specified format.
+        
+        Args:
+            timestamp: Timestamp in SRT format (HH:MM:SS,mmm)
+            format_preset: One of "HH:MM:SS", "HH:MM:SS,mmm", "HH:MM:SS.mmm"
+        
+        Returns:
+            Formatted timestamp string
+        """
+        # Normalize input timestamp (replace comma or dot with a standard separator)
+        normalized = timestamp.replace(",", ".").replace(".", ":")
+        parts = normalized.split(":")
+        
+        if len(parts) == 4:
+            hours, minutes, seconds, milliseconds = parts
+        elif len(parts) == 3:
+            hours, minutes, seconds = parts
+            milliseconds = "000"
+        else:
+            return timestamp
+        
+        # Format according to preset
+        if format_preset == "HH:MM:SS":
+            return f"{hours}:{minutes}:{seconds}"
+        elif format_preset == "HH:MM:SS,mmm":
+            return f"{hours}:{minutes}:{seconds},{milliseconds}"
+        elif format_preset == "HH:MM:SS.mmm":
+            return f"{hours}:{minutes}:{seconds}.{milliseconds}"
+        
+        return timestamp
+
+    def generate_preview(self, config: ExportConfig, format_type: str, num_segments: int = 3) -> str:
+        """
+        Generate preview of export output.
+        
+        Args:
+            config: Export configuration
+            format_type: Export format type (txt, rtf, json, csv, tsv, srt, vtt)
+            num_segments: Number of segments to include in preview
+        
+        Returns:
+            Preview string
+        """
+        if not self.captions:
+            return "No captions available for preview"
+        
+        # Get first N captions for preview
+        preview_captions = self.captions[:min(num_segments, len(self.captions))]
+        
+        # Generate preview based on format
+        if format_type == "txt":
+            return self._preview_txt(preview_captions, config)
+        elif format_type == "rtf":
+            return self._preview_rtf(preview_captions, config)
+        elif format_type == "json":
+            return self._preview_json(preview_captions, config)
+        elif format_type == "csv":
+            return self._preview_csv(preview_captions, config)
+        elif format_type == "tsv":
+            return self._preview_tsv(preview_captions, config)
+        elif format_type == "srt":
+            return "\n\n".join(caption.to_srt_format() for caption in preview_captions)
+        elif format_type == "vtt":
+            vtt_content = "WEBVTT\n\n"
+            for caption in preview_captions:
+                vtt_content += f"{caption.index}\n"
+                vtt_content += f"{caption.start_time.replace(',', '.')} --> {caption.end_time.replace(',', '.')}\n"
+                vtt_content += f"{caption.text}\n\n"
+            return vtt_content
+        
+        return "Preview not available for this format"
+
+    def _preview_txt(self, captions: List[SRTCaption], config: ExportConfig) -> str:
+        """Generate TXT preview."""
+        lines = []
+        for caption in captions:
+            line_parts = []
+            
+            # Add speaker if enabled
+            if config.include_speaker:
+                line_parts.append(f"{caption.speaker}:")
+            
+            # Add timestamp at beginning if enabled
+            if config.include_timestamps and config.timestamp_placement == "beginning":
+                timestamp = self._format_timestamp_for_export(caption, config)
+                line_parts.append(timestamp)
+            
+            # Join header parts
+            if line_parts:
+                lines.append(" ".join(line_parts))
+            
+            # Add text
+            if config.include_timestamps and config.timestamp_placement == "inline":
+                timestamp = self._format_timestamp_for_export(caption, config)
+                lines.append(f"{timestamp} {caption.text}")
+            else:
+                lines.append(caption.text)
+            
+            # Add timestamp at end if enabled
+            if config.include_timestamps and config.timestamp_placement == "end":
+                timestamp = self._format_timestamp_for_export(caption, config)
+                lines.append(timestamp)
+            
+            lines.append("")  # Empty line between segments
+        
+        return "\n".join(lines).strip()
+
+    def _preview_rtf(self, captions: List[SRTCaption], config: ExportConfig) -> str:
+        """Generate RTF preview - simplified for display."""
+        lines = []
+        for caption in captions:
+            parts = []
+            
+            if config.include_speaker:
+                parts.append(f"{caption.speaker}:")
+            
+            if config.include_timestamps:
+                timestamp = self._format_timestamp_for_export(caption, config)
+                parts.append(timestamp)
+            
+            if parts:
+                lines.append(" ".join(parts))
+            
+            lines.append(caption.text)
+            lines.append("")
+        
+        return "\n".join(lines).strip()
+
+    def _preview_json(self, captions: List[SRTCaption], config: ExportConfig) -> str:
+        """Generate JSON preview."""
+        segments = []
+        for caption in captions:
+            segment = {}
+            
+            if config.include_speaker:
+                if config.speaker_placement == "separate":
+                    segment["speaker"] = caption.speaker
+            
+            segment["text"] = caption.text
+            
+            if config.include_timestamps:
+                if config.timestamp_placement == "separate" or config.speaker_placement == "separate":
+                    start_formatted = self.format_timestamp(caption.start_time, config.timestamp_format)
+                    if config.timestamp_type == "range":
+                        end_formatted = self.format_timestamp(caption.end_time, config.timestamp_format)
+                        segment["timestamp"] = f"{start_formatted} - {end_formatted}"
+                    else:
+                        segment["timestamp"] = start_formatted
+            
+            # Add speaker inline in text if needed
+            if config.include_speaker and config.speaker_placement == "inline":
+                segment["text"] = f"{caption.speaker}: {segment['text']}"
+            
+            # Add timestamp inline in text if needed
+            if config.include_timestamps and config.timestamp_placement == "inline":
+                timestamp = self._format_timestamp_for_export(caption, config)
+                segment["text"] = f"{timestamp} {segment['text']}"
+            
+            segments.append(segment)
+        
+        return json.dumps({"segments": segments}, indent=2)
+
+    def _preview_csv(self, captions: List[SRTCaption], config: ExportConfig) -> str:
+        """Generate CSV preview."""
+        lines = []
+        
+        for caption in captions:
+            row = []
+            
+            # Add separate columns if configured
+            if config.include_timestamps and config.speaker_placement == "separate":
+                start_formatted = self.format_timestamp(caption.start_time, config.timestamp_format)
+                row.append(f'"{start_formatted}"')
+                if config.timestamp_type == "range":
+                    end_formatted = self.format_timestamp(caption.end_time, config.timestamp_format)
+                    row.append(f'"{end_formatted}"')
+            
+            if config.include_speaker and config.speaker_placement == "separate":
+                row.append(f'"{caption.speaker}"')
+            
+            # Build text with inline elements
+            text = caption.text
+            if config.include_speaker and config.speaker_placement == "inline":
+                text = f"{caption.speaker}: {text}"
+            if config.include_timestamps and config.timestamp_placement == "inline":
+                timestamp = self._format_timestamp_for_export(caption, config)
+                text = f"{timestamp} {text}"
+            
+            escaped_text = text.replace('"', '""')
+            row.append(f'"{escaped_text}"')
+            
+            lines.append(",".join(row))
+        
+        return "\n".join(lines)
+
+    def _preview_tsv(self, captions: List[SRTCaption], config: ExportConfig) -> str:
+        """Generate TSV preview."""
+        lines = []
+        
+        for caption in captions:
+            row = []
+            
+            # Add separate columns if configured
+            if config.include_timestamps and config.speaker_placement == "separate":
+                start_formatted = self.format_timestamp(caption.start_time, config.timestamp_format)
+                row.append(start_formatted)
+                if config.timestamp_type == "range":
+                    end_formatted = self.format_timestamp(caption.end_time, config.timestamp_format)
+                    row.append(end_formatted)
+            
+            if config.include_speaker and config.speaker_placement == "separate":
+                row.append(caption.speaker)
+            
+            # Build text with inline elements
+            text = caption.text.replace("\t", "    ").replace("\n", " ")
+            if config.include_speaker and config.speaker_placement == "inline":
+                text = f"{caption.speaker}: {text}"
+            if config.include_timestamps and config.timestamp_placement == "inline":
+                timestamp = self._format_timestamp_for_export(caption, config)
+                text = f"{timestamp} {text}"
+            
+            row.append(text)
+            
+            lines.append("\t".join(row))
+        
+        return "\n".join(lines)
+
+    def _format_timestamp_for_export(self, caption: SRTCaption, config: ExportConfig) -> str:
+        """Format timestamp according to export config."""
+        start_formatted = self.format_timestamp(caption.start_time, config.timestamp_format)
+        
+        if config.timestamp_type == "range":
+            end_formatted = self.format_timestamp(caption.end_time, config.timestamp_format)
+            return f"{start_formatted} - {end_formatted}"
+        else:
+            return start_formatted
 
     def search_captions(self, search_term: str) -> None:
         """
@@ -1181,3 +1583,220 @@ class SRTEditor:
             dialog.open()
 
         self.refresh_display()
+
+    def open_export_dialog(self, filename: str) -> None:
+        """
+        Open export dialog with configuration options and preview.
+        """
+        # Default configuration
+        config = ExportConfig()
+        
+        # Determine available formats based on data format
+        if self.data_format == "srt":
+            format_options = ["srt", "vtt"]
+        else:
+            format_options = ["txt", "rtf", "json", "csv", "tsv"]
+        
+        selected_format = format_options[0]
+        
+        with ui.dialog() as dialog:
+            with (
+                ui.card()
+                .style(
+                    "background-color: white; align-self: center; border: 0; width: 90%; max-width: 1200px;"
+                )
+                .classes("w-full no-shadow no-border")
+            ):
+                ui.label("Export Options").style("width: 100%;").classes(
+                    "text-h6 q-mb-xl text-black"
+                )
+                
+                with ui.row().classes("w-full gap-4"):
+                    # Left column - Configuration options
+                    with ui.column().classes("w-1/2"):
+                        # Format selection
+                        ui.label("Export Format").classes("text-bold text-sm mb-2")
+                        format_select = ui.select(
+                            options=format_options,
+                            value=selected_format,
+                        ).props("outlined dense").classes("w-full mb-4")
+                        
+                        # Speaker options section (only for txt format)
+                        if self.data_format == "txt":
+                            ui.separator()
+                            ui.label("Speaker Options").classes("text-bold text-sm mb-2 mt-4")
+                            
+                            include_speaker_checkbox = ui.checkbox(
+                                "Include speaker information",
+                                value=config.include_speaker
+                            ).classes("mb-2")
+                            
+                            speaker_placement_select = ui.select(
+                                options={
+                                    "inline": "Inline prefix (e.g., 'Speaker A:')",
+                                    "separate": "Separate column/field"
+                                },
+                                value=config.speaker_placement,
+                                label="Speaker placement"
+                            ).props("outlined dense").classes("w-full mb-2")
+                            
+                            # Timestamp options section
+                            ui.separator()
+                            ui.label("Timestamp Options").classes("text-bold text-sm mb-2 mt-4")
+                            
+                            include_timestamps_checkbox = ui.checkbox(
+                                "Include timestamps",
+                                value=config.include_timestamps
+                            ).classes("mb-2")
+                            
+                            timestamp_placement_select = ui.select(
+                                options={
+                                    "beginning": "At beginning of each segment",
+                                    "end": "At end of each segment",
+                                    "inline": "Inline with text"
+                                },
+                                value=config.timestamp_placement,
+                                label="Timestamp placement"
+                            ).props("outlined dense").classes("w-full mb-2")
+                            
+                            timestamp_type_select = ui.select(
+                                options={
+                                    "start": "Start time only",
+                                    "range": "Start–end range"
+                                },
+                                value=config.timestamp_type,
+                                label="Timestamp type"
+                            ).props("outlined dense").classes("w-full mb-2")
+                            
+                            timestamp_format_select = ui.select(
+                                options={
+                                    "HH:MM:SS": "HH:MM:SS",
+                                    "HH:MM:SS,mmm": "HH:MM:SS,mmm (with comma)",
+                                    "HH:MM:SS.mmm": "HH:MM:SS.mmm (with dot)"
+                                },
+                                value=config.timestamp_format,
+                                label="Timestamp format"
+                            ).props("outlined dense").classes("w-full mb-2")
+                        else:
+                            # Dummy elements for srt/vtt format
+                            include_speaker_checkbox = None
+                            speaker_placement_select = None
+                            include_timestamps_checkbox = None
+                            timestamp_placement_select = None
+                            timestamp_type_select = None
+                            timestamp_format_select = None
+                    
+                    # Right column - Preview
+                    with ui.column().classes("w-1/2"):
+                        ui.label("Preview").classes("text-bold text-sm mb-2")
+                        preview_container = ui.card().classes("w-full p-4 bg-gray-50").style(
+                            "max-height: 500px; overflow-y: auto; font-family: monospace; font-size: 12px; white-space: pre-wrap;"
+                        )
+                        with preview_container:
+                            preview_label = ui.label(
+                                self.generate_preview(config, selected_format, 3)
+                            ).classes("whitespace-pre-wrap")
+                
+                def update_preview():
+                    """Update preview based on current configuration."""
+                    nonlocal selected_format, config
+                    
+                    # Update config from UI
+                    selected_format = format_select.value
+                    
+                    if self.data_format == "txt":
+                        config.include_speaker = include_speaker_checkbox.value
+                        config.speaker_placement = speaker_placement_select.value
+                        config.include_timestamps = include_timestamps_checkbox.value
+                        config.timestamp_placement = timestamp_placement_select.value
+                        config.timestamp_type = timestamp_type_select.value
+                        config.timestamp_format = timestamp_format_select.value
+                        
+                        # Update enabled/disabled state
+                        speaker_placement_select.set_enabled(config.include_speaker)
+                        timestamp_placement_select.set_enabled(config.include_timestamps)
+                        timestamp_type_select.set_enabled(config.include_timestamps)
+                        timestamp_format_select.set_enabled(config.include_timestamps)
+                        
+                        # Show/hide separate option based on format
+                        if selected_format in ["csv", "tsv", "json"]:
+                            speaker_placement_select.update()
+                        else:
+                            # For txt and rtf, only inline is available
+                            if config.speaker_placement == "separate":
+                                config.speaker_placement = "inline"
+                                speaker_placement_select.value = "inline"
+                    
+                    # Update preview
+                    preview_label.set_text(self.generate_preview(config, selected_format, 3))
+                
+                # Bind update events
+                format_select.on("update:model-value", lambda: update_preview())
+                
+                if self.data_format == "txt":
+                    include_speaker_checkbox.on("update:model-value", lambda: update_preview())
+                    speaker_placement_select.on("update:model-value", lambda: update_preview())
+                    include_timestamps_checkbox.on("update:model-value", lambda: update_preview())
+                    timestamp_placement_select.on("update:model-value", lambda: update_preview())
+                    timestamp_type_select.on("update:model-value", lambda: update_preview())
+                    timestamp_format_select.on("update:model-value", lambda: update_preview())
+                    
+                    # Initial state update
+                    update_preview()
+                
+                # Action buttons
+                with ui.row().classes("justify-between w-full mt-4"):
+                    ui.button(
+                        "Cancel",
+                        icon="cancel",
+                    ).props("flat").classes("cancel-style").on("click", lambda: dialog.close())
+                    
+                    def do_export():
+                        """Execute export with selected configuration."""
+                        try:
+                            # Update config one final time
+                            if self.data_format == "txt":
+                                config.include_speaker = include_speaker_checkbox.value
+                                config.speaker_placement = speaker_placement_select.value
+                                config.include_timestamps = include_timestamps_checkbox.value
+                                config.timestamp_placement = timestamp_placement_select.value
+                                config.timestamp_type = timestamp_type_select.value
+                                config.timestamp_format = timestamp_format_select.value
+                            
+                            # Generate export content
+                            export_format = format_select.value
+                            
+                            if export_format == "srt":
+                                content = self.export_srt()
+                            elif export_format == "vtt":
+                                content = self.export_vtt()
+                            elif export_format == "txt":
+                                content = self.export_txt(config)
+                            elif export_format == "rtf":
+                                content = self.export_rtf(config)
+                            elif export_format == "json":
+                                content = self.export_json(config)
+                            elif export_format == "csv":
+                                content = self.export_csv(config)
+                            elif export_format == "tsv":
+                                content = self.export_tsv(config)
+                            else:
+                                ui.notify("Unknown format", type="negative")
+                                return
+                            
+                            # Download file
+                            ui.download(
+                                str(content).encode(), 
+                                filename=f"{filename}.{export_format}"
+                            )
+                            ui.notify("File exported successfully", type="positive")
+                            dialog.close()
+                        except Exception as e:
+                            ui.notify(f"Export failed: {str(e)}", type="negative")
+                    
+                    ui.button(
+                        "Export",
+                        icon="download",
+                    ).props("flat").classes("button-default-style").on("click", do_export)
+            
+            dialog.open()
