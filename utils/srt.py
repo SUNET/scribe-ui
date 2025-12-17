@@ -1718,11 +1718,18 @@ class SRTEditor:
                         timestamp_type_select.set_enabled(config.include_timestamps)
                         timestamp_format_select.set_enabled(config.include_timestamps)
                         
-                        # Show/hide separate option based on format
+                        # Update speaker placement options based on format
                         if selected_format in ["csv", "tsv", "json"]:
-                            speaker_placement_select.update()
+                            # Both inline and separate are available
+                            speaker_placement_select.set_options({
+                                "inline": "Inline prefix (e.g., 'Speaker A:')",
+                                "separate": "Separate column/field"
+                            })
                         else:
                             # For txt and rtf, only inline is available
+                            speaker_placement_select.set_options({
+                                "inline": "Inline prefix (e.g., 'Speaker A:')"
+                            })
                             if config.speaker_placement == "separate":
                                 config.speaker_placement = "inline"
                                 speaker_placement_select.value = "inline"
