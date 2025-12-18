@@ -130,6 +130,21 @@ default_styles = """
 """
 
 
+def realms_get() -> list:
+    """
+    Fetch all realms from backend.
+    """
+    try:
+        res = requests.get(
+            settings.API_URL + "/api/v1/admin/realms", headers=get_auth_header()
+        )
+        res.raise_for_status()
+        return res.json()["result"]
+    except requests.RequestException as e:
+        print(f"Error fetching realms: {e}")
+        return []
+
+
 def show_help_dialog() -> None:
     """
     Show a help dialog with information about the application.

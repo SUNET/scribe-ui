@@ -1,8 +1,10 @@
 from fastapi import Request
 from nicegui import app, ui
-from pages.admin import create as create_admin
-from pages.home import create as create_files_table
-from pages.srt import create as create_srt
+from pages.admin import create as create_admin_page
+from pages.customer import create as create_customer_page
+from pages.health import create as create_health_page
+from pages.home import create as create_files_table_page
+from pages.srt import create as create_srt_page
 from pages.user import create as create_user_page
 from utils.common import default_styles
 from utils.settings import get_settings
@@ -10,10 +12,12 @@ from utils.token import get_user_status
 
 settings = get_settings()
 
-create_files_table()
-create_srt()
-create_admin()
+create_files_table_page()
+create_srt_page()
+create_admin_page()
 create_user_page()
+create_customer_page()
+create_health_page()
 
 
 @ui.page("/")
