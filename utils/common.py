@@ -1,7 +1,9 @@
 import asyncio
 import requests
+import pytz
+from datetime import datetime
 
-from nicegui import ui
+from nicegui import ui, app
 from starlette.formparsers import MultiPartParser
 from typing import Optional
 from utils.settings import get_settings
@@ -266,6 +268,19 @@ def page_init(header_text: Optional[str] = "") -> None:
             ui.add_head_html("<style>body {background-color: #ffffff;}</style>")
 
 
+def add_timezone_to_timestamp(timestamp: str) -> str:
+    """
+    Convert a UTC timestamp to the user's local timezone.
+    """
+    user_timezone = app.storage.user.get("timezone", "UTC")
+    utc_time = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S.%f")
+    utc_time = pytz.utc.localize(utc_time)
+    local_tz = pytz.timezone(user_timezone)
+    local_time = utc_time.astimezone(local_tz)
+
+    return local_time.strftime("%Y-%m-%d %H:%M")
+
+
 def jobs_get() -> list:
     """
     Get the list of transcription jobs from the API.
@@ -284,8 +299,9 @@ def jobs_get() -> list:
         if job["status"] == "in_progress":
             job["status"] = "transcribing"
 
-        # Conert job["deletion_date"] to a more readable format
-        deletion_date = job["deletion_date"]
+        deletion_date = add_timezone_to_timestamp(job["deletion_date"])
+        created_at = add_timezone_to_timestamp(job["created_at"])
+        updated_at = add_timezone_to_timestamp(job["updated_at"])
 
         if deletion_date:
             deletion_date = deletion_date.split(" ")[0]
@@ -305,8 +321,8 @@ def jobs_get() -> list:
             "id": idx,
             "uuid": job["uuid"],
             "filename": job["filename"],
-            "created_at": job["created_at"].rsplit(":", 1)[0],
-            "updated_at": job["updated_at"].rsplit(":", 1)[0],
+            "created_at": created_at,
+            "updated_at": updated_at,
             "deletion_date": deletion_date,
             "language": job["language"].capitalize(),
             "status": job["status"].capitalize(),

@@ -17,7 +17,7 @@ create_user_page()
 
 
 @ui.page("/")
-def index(request: Request) -> None:
+async def index(request: Request) -> None:
     """
     Index page with login.
     """
@@ -32,6 +32,12 @@ def index(request: Request) -> None:
 
     if token:
         app.storage.user["token"] = token
+
+    # Set the users timezone
+    timezone = await ui.run_javascript(
+        "Intl.DateTimeFormat().resolvedOptions().timeZone"
+    )
+    app.storage.user["timezone"] = timezone
 
     if (
         app.storage.user.get("token")
