@@ -27,11 +27,6 @@ def create() -> None:
                             )
 
                         with ui.row().classes("items-center gap-2"):
-                            ui.icon("domain").classes("text-green-500")
-                            ui.label("Realm:").classes("font-medium")
-                            ui.label(userdata["user"]["realm"]).classes("text-gray-700")
-
-                        with ui.row().classes("items-center gap-2"):
                             ui.icon("public").classes("text-purple-500")
                             ui.label("Timezone:").classes("font-medium")
                             ui.label(app.storage.user.get("timezone", "UTC")).classes(
