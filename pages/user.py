@@ -1,9 +1,6 @@
-from nicegui import ui
-from utils.common import (
-    page_init,
-)
+from nicegui import app, ui
+from utils.common import add_timezone_to_timestamp, page_init
 from utils.token import get_user_data
-from datetime import datetime
 
 
 def create() -> None:
@@ -33,6 +30,13 @@ def create() -> None:
                             ui.icon("domain").classes("text-green-500")
                             ui.label("Realm:").classes("font-medium")
                             ui.label(userdata["user"]["realm"]).classes("text-gray-700")
+
+                        with ui.row().classes("items-center gap-2"):
+                            ui.icon("public").classes("text-purple-500")
+                            ui.label("Timezone:").classes("font-medium")
+                            ui.label(app.storage.user.get("timezone", "UTC")).classes(
+                                "text-gray-700"
+                            )
 
                     with ui.column():
                         with ui.row().classes("items-center gap-2"):
@@ -75,8 +79,14 @@ def create() -> None:
                             "align": "center",
                         },
                         {
+                            "name": "updated_at",
+                            "label": "Last Updated",
+                            "field": "updated_at",
+                            "align": "center",
+                        },
+                        {
                             "name": "deletion_date",
-                            "label": "Expires",
+                            "label": "Scheduled deletion",
                             "field": "deletion_date",
                             "align": "center",
                         },
@@ -96,19 +106,17 @@ def create() -> None:
 
                     jobs_data = []
                     for job in userdata["jobs"]["jobs"]:
-                        created_date = datetime.fromisoformat(
-                            job["created_at"].replace(" ", "T")
-                        )
-                        deletion_date = datetime.fromisoformat(
-                            job["deletion_date"].replace(" ", "T")
-                        )
+                        created_at = add_timezone_to_timestamp(job["created_at"])
+                        updated_at = add_timezone_to_timestamp(job["updated_at"])
+                        deletion_date = add_timezone_to_timestamp(job["deletion_date"])
 
                         jobs_data.append(
                             {
                                 "filename": job["filename"],
                                 "job_type": job["job_type"].capitalize(),
-                                "created_at": created_date.strftime("%m/%d/%Y %H:%M"),
-                                "deletion_date": deletion_date.strftime("%m/%d/%Y"),
+                                "created_at": created_at,
+                                "updated_at": updated_at,
+                                "deletion_date": deletion_date,
                                 "status": job["status"].capitalize(),
                                 "length": f"{int(job['transcribed_seconds'] // 60)}min {int(job['transcribed_seconds'] % 60)}s"
                                 if job["transcribed_seconds"]

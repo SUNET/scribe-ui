@@ -953,7 +953,7 @@ def health() -> None:
                         )
                         ui.plotly(fig_gpu).classes("w-full h-64")
 
-                    ui.label(f"Last updated: {times[-1]}").classes(
+                    ui.label(f"Last updated: {times[-1]} UTC").classes(
                         "text-xs text-gray-400 mt-1"
                     )
 
