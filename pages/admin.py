@@ -3,7 +3,7 @@ import requests
 
 from datetime import datetime
 from nicegui import ui
-from utils.common import default_styles, page_init
+from utils.common import add_timezone_to_timestamp, default_styles, page_init
 from utils.settings import get_settings
 from utils.token import get_admin_status, get_auth_header, get_bofh_status
 
@@ -500,6 +500,10 @@ def statistics(group_id: str) -> None:
     per_user = result.get("transcribed_minutes_per_user", {})
     job_queue = result.get("job_queue", [])
     total_users = result.get("total_users", 0)
+
+    # Add timezone to created_at fields in job queue
+    for job in job_queue:
+        job["created_at"] = add_timezone_to_timestamp(job["created_at"])
 
     with ui.element("div").classes("stats-container w-full"):
         with ui.element("div").classes("stats-card w-full"):
