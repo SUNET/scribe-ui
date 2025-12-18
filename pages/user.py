@@ -62,12 +62,6 @@ def create() -> None:
                             "align": "left",
                         },
                         {
-                            "name": "job_type",
-                            "label": "Type",
-                            "field": "job_type",
-                            "align": "center",
-                        },
-                        {
                             "name": "created_at",
                             "label": "Created",
                             "field": "created_at",
@@ -105,6 +99,11 @@ def create() -> None:
                         updated_at = add_timezone_to_timestamp(job["updated_at"])
                         deletion_date = add_timezone_to_timestamp(job["deletion_date"])
 
+                        if job["transcribed_seconds"] > 0:
+                            length = f"{int(job['transcribed_seconds'] // 60)}min {int(job['transcribed_seconds'] % 60)}s"
+                        else:
+                            length = "-"
+
                         jobs_data.append(
                             {
                                 "filename": job["filename"],
@@ -113,9 +112,7 @@ def create() -> None:
                                 "updated_at": updated_at,
                                 "deletion_date": deletion_date,
                                 "status": job["status"].capitalize(),
-                                "length": f"{int(job['transcribed_seconds'] // 60)}min {int(job['transcribed_seconds'] % 60)}s"
-                                if job["transcribed_seconds"]
-                                else "0s",
+                                "length": length,
                             }
                         )
 
