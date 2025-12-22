@@ -32,7 +32,7 @@ class Settings(BaseSettings):
         "Danish",
         "French",
         "Spanish",
-        "Potuguese",
+        "Portuguese",
         "German",
         "Italian",
         "Dutch",
