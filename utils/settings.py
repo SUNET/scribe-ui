@@ -32,8 +32,10 @@ class Settings(BaseSettings):
         "Danish",
         "French",
         "Spanish",
+        "Potuguese",
         "German",
         "Italian",
+        "Dutch",
         "Russian",
         "Ukrainian",
     ]
