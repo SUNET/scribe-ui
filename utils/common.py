@@ -289,7 +289,8 @@ def jobs_get() -> list:
 
     try:
         response = requests.get(
-            f"{settings.API_URL}/api/v1/transcriber", headers=get_auth_header()
+            f"{settings.API_URL}/api/v1/transcriber",
+            headers=get_auth_header(),
         )
         response.raise_for_status()
     except requests.exceptions.RequestException:
@@ -376,6 +377,7 @@ def post_file(filedata: bytes, filename: str) -> None:
             f"{settings.API_URL}/api/v1/transcriber",
             files=files_json,
             headers=get_auth_header(),
+            data={"encryption_password": app.storage.user.get("encryption_password")},
         )
         response.raise_for_status()
 

@@ -1,6 +1,6 @@
 import requests
 
-from nicegui import ui
+from nicegui import app, ui
 from utils.common import default_styles
 from utils.common import get_auth_header
 from utils.common import page_init
@@ -58,11 +58,21 @@ def create() -> None:
                 response = requests.get(
                     f"{settings.API_URL}/api/v1/transcriber/{uuid}/result/srt",
                     headers=get_auth_header(),
+                    data={
+                        "encryption_password": app.storage.user.get(
+                            "encryption_password"
+                        )
+                    },
                 )
             else:
                 response = requests.get(
                     f"{settings.API_URL}/api/v1/transcriber/{uuid}/result/txt",
                     headers=get_auth_header(),
+                    data={
+                        "encryption_password": app.storage.user.get(
+                            "encryption_password"
+                        )
+                    },
                 )
 
             response.raise_for_status()
