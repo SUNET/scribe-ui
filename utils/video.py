@@ -48,6 +48,7 @@ def create_video_proxy() -> Response:
     async def video_proxy(request: Request, job_id: str) -> Response:
         headers = dict(request.headers)
         headers_auth = get_auth_header()
+        encryption_password = app.storage.user.get("encryption_password", "")
 
         if not headers_auth:
             return Response(
@@ -60,6 +61,7 @@ def create_video_proxy() -> Response:
         response = requests.get(
             f"{settings.API_URL}/api/v1/transcriber/{job_id}/videostream",
             headers=headers,
+            data={"encryption_password": encryption_password},
         )
 
         return Response(
