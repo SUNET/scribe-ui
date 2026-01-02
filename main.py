@@ -207,13 +207,14 @@ async def index(request: Request) -> None:
                                 )
                                 with ui.row().classes("justify-between w-full"):
                                     ui.button(
-                                        "Reset Passphrase",
-                                        on_click=lambda: reset_password(),
-                                    ).props("color=red").style("margin-top: 10px;")
-                                    ui.button(
                                         "Close",
                                         on_click=lambda: help_dialog.close(),
                                     ).props("color=black").style("margin-top: 10px;")
+                                    ui.button(
+                                        "Reset Passphrase",
+                                        on_click=lambda: reset_password(),
+                                    ).props("color=red").style("margin-top: 10px;")
+
                             help_dialog.open()
 
                     with ui.row().classes("justify-between w-full"):
