@@ -68,23 +68,46 @@ def reset_password() -> None:
     the encryption password with the backend.
     """
 
-    try:
-        response = requests.put(
-            f"{settings.API_URL}/api/v1/me",
-            headers=get_auth_header(),
-            data={"reset_password": True},
-        )
-        response.raise_for_status()
+    def do_reset():
+        try:
+            response = requests.put(
+                f"{settings.API_URL}/api/v1/me",
+                headers=get_auth_header(),
+                data={"reset_password": True},
+            )
+            response.raise_for_status()
 
-        ui.notify(
-            "Encryption passphrase has been reset. All previously encrypted files have been removed.",
-            color="positive",
-        )
-        app.storage.user["encryption_password"] = None
-        ui.navigate.to("/")
+            ui.notify(
+                "Encryption passphrase has been reset. All previously encrypted files have been removed.",
+                color="positive",
+            )
+            app.storage.user["encryption_password"] = None
+            ui.navigate.to("/")
 
-    except requests.exceptions.RequestException:
-        ui.notify("Failed to reset encryption passphrase.", color="negative")
+        except requests.exceptions.RequestException:
+            ui.notify("Failed to reset encryption passphrase.", color="negative")
+
+    with ui.dialog() as dialog:
+        with ui.card():
+            ui.label("Reset Encryption Passphrase").classes("text-h6")
+            ui.label(
+                "Are you sure you want to reset your encryption passphrase? This will remove all your files and cannot be undone."
+            ).classes("text-subtitle2").style("margin-bottom: 10px;")
+
+            with ui.row().classes("justify-between w-full"):
+                ui.button(
+                    "Cancel",
+                    on_click=lambda: ui.navigate.to("/"),
+                ).props(
+                    "color=black"
+                ).style("margin-top: 10px;")
+                ui.button(
+                    "Reset Passphrase",
+                    on_click=lambda: do_reset(),
+                ).props(
+                    "color=red"
+                ).style("margin-top: 10px;")
+        dialog.open()
 
 
 @ui.page("/")
@@ -200,15 +223,13 @@ async def index(request: Request) -> None:
                                     "text-h6"
                                 )
                                 ui.label(
-                                    "Without the correct passphrase, you will not be able to access your encrypted files."
-                                    + "You can reset your passphrase but all your previously encrypted files will be removed.",
+                                    "Without the correct passphrase, you will not be able to access your encrypted files. You can reset your passphrase but all your previously encrypted files will be permanently deleted."
                                 ).classes("text-subtitle2").style(
                                     "margin-bottom: 10px;"
                                 )
                                 with ui.row().classes("justify-between w-full"):
                                     ui.button(
-                                        "Close",
-                                        on_click=lambda: help_dialog.close(),
+                                        "Close", on_click=lambda: ui.navigate.to("/")
                                     ).props("color=black").style("margin-top: 10px;")
                                     ui.button(
                                         "Reset Passphrase",
@@ -219,7 +240,7 @@ async def index(request: Request) -> None:
 
                     with ui.row().classes("justify-between w-full"):
                         ui.button(
-                            "Verify",
+                            "Unlock",
                             on_click=verify_encryption_password,
                         ).props(
                             "color=black"
