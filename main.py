@@ -61,6 +61,32 @@ def encryption_password_verify(password: str) -> bool:
         return False
 
 
+def reset_password() -> None:
+    """
+    Reset the encryption password for the user.
+    This is a placeholder function. Implement the logic to reset
+    the encryption password with the backend.
+    """
+
+    try:
+        response = requests.put(
+            f"{settings.API_URL}/api/v1/me",
+            headers=get_auth_header(),
+            data={"reset_password": True},
+        )
+        response.raise_for_status()
+
+        ui.notify(
+            "Encryption passphrase has been reset. All previously encrypted files have been removed.",
+            color="positive",
+        )
+        app.storage.user["encryption_password"] = None
+        ui.navigate.to("/")
+
+    except requests.exceptions.RequestException:
+        ui.notify("Failed to reset encryption passphrase.", color="negative")
+
+
 @ui.page("/")
 async def index(request: Request) -> None:
     """
@@ -94,55 +120,58 @@ async def index(request: Request) -> None:
         if not user_data["user"]["encryption_settings"]:
             with ui.dialog() as dialog:
                 with ui.card():
-                    ui.label("Set your encryption password").classes("text-h6")
+                    ui.label("Set your encryption passphrase").classes("text-h6")
                     ui.label(
-                        "This password will be used to encrypt your files. It cannot be recovered if lost."
+                        "This passphrase will be used to encrypt your files. It cannot be recovered if lost."
+                    ).classes("text-subtitle2").style("margin-bottom: 10px;")
+                    ui.label(
+                        "The passphrase must be at least 8 characters long."
                     ).classes("text-subtitle2").style("margin-bottom: 10px;")
                     password_input = ui.input(
-                        "Encryption Password", password=True
+                        "Encryption Passphrase", password=True
                     ).style("width: 100%;")
                     confirm_password_input = ui.input(
-                        "Confirm Encryption Password", password=True
+                        "Confirm Encryption Passphrase", password=True
                     ).style("width: 100%; margin-bottom: 10px;")
 
                     def set_encryption_password() -> None:
                         if (
                             password_input.value
                             and password_input.value == confirm_password_input.value
+                            or len(password_input.value) < 8
                         ):
                             try:
                                 encryption_password_set(password_input.value)
                             except Exception:
                                 ui.notify(
-                                    "Failed to set encryption password.",
+                                    "Failed to set encryption passphrase.",
                                     color="negative",
                                 )
                                 return
 
                             ui.notify(
-                                "Encryption password set successfully.",
+                                "Encryption passphrase set successfully.",
                                 color="positive",
                             )
                             dialog.close()
                             ui.navigate.to("/")
 
                         else:
-                            ui.notify("Passwords do not match.", color="negative")
+                            ui.notify("Passphrases do not match.", color="negative")
 
                     ui.button(
-                        "Set Password",
+                        "Set Passphrases",
                         on_click=set_encryption_password,
-                    ).props(
-                        "color=black"
-                    ).style("margin-top: 10px;")
+                    ).props("color=black").style("margin-top: 10px;")
                 dialog.open()
         else:
             # Ask the user to enter their encryption password
             with ui.dialog() as dialog:
-                with ui.card():
-                    ui.label("Enter your encryption password").classes("text-h6")
+                with ui.card() as card:
+                    # Set the width
+                    ui.label("Enter your encryption passphrase").classes("text-h6")
                     password_input = ui.input(
-                        "Encryption Password", password=True
+                        "Encryption Passphrase", password=True
                     ).style("width: 100%; margin-bottom: 10px;")
 
                     def verify_encryption_password() -> None:
@@ -155,19 +184,48 @@ async def index(request: Request) -> None:
                                 ui.navigate.to("/home")
                             else:
                                 ui.notify(
-                                    "Incorrect encryption password.", color="negative"
+                                    "Incorrect encryption passphrase.", color="negative"
                                 )
 
                         else:
                             ui.notify(
-                                "Please enter your encryption password.",
+                                "Please enter your encryption passphrase.",
                                 color="negative",
                             )
 
-                    ui.button(
-                        "Verify Password",
-                        on_click=verify_encryption_password,
-                    ).props("color=black").style("margin-top: 10px;")
+                    def help_password() -> None:
+                        with ui.dialog() as help_dialog:
+                            with ui.card():
+                                ui.label("Help with Encryption Passphrase").classes(
+                                    "text-h6"
+                                )
+                                ui.label(
+                                    "Without the correct passphrase, you will not be able to access your encrypted files."
+                                    + "You can reset your passphrase but all your previously encrypted files will be removed.",
+                                ).classes("text-subtitle2").style(
+                                    "margin-bottom: 10px;"
+                                )
+                                with ui.row().classes("justify-between w-full"):
+                                    ui.button(
+                                        "Reset Passphrase",
+                                        on_click=lambda: reset_password(),
+                                    ).props("color=red").style("margin-top: 10px;")
+                                    ui.button(
+                                        "Close",
+                                        on_click=lambda: help_dialog.close(),
+                                    ).props("color=black").style("margin-top: 10px;")
+                            help_dialog.open()
+
+                    with ui.row().classes("justify-between w-full"):
+                        ui.button(
+                            "Verify",
+                            on_click=verify_encryption_password,
+                        ).props(
+                            "color=black"
+                        ).style("margin-top: 10px;")
+                        ui.button("Help", on_click=help_password).props(
+                            "color=red"
+                        ).style("margin-top: 10px;")
                 dialog.open()
 
     else:
