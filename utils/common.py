@@ -377,7 +377,7 @@ def post_file(filedata: bytes, filename: str) -> None:
             f"{settings.API_URL}/api/v1/transcriber",
             files=files_json,
             headers=get_auth_header(),
-            data={"encryption_password": app.storage.user.get("encryption_password")},
+            json={"encryption_password": app.storage.user.get("encryption_password")},
         )
         response.raise_for_status()
 

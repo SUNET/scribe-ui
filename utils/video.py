@@ -61,7 +61,7 @@ def create_video_proxy() -> Response:
         response = requests.get(
             f"{settings.API_URL}/api/v1/transcriber/{job_id}/videostream",
             headers=headers,
-            data={"encryption_password": encryption_password},
+            json={"encryption_password": encryption_password},
         )
 
         return Response(

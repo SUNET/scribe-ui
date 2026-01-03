@@ -58,7 +58,7 @@ def create() -> None:
                 response = requests.get(
                     f"{settings.API_URL}/api/v1/transcriber/{uuid}/result/srt",
                     headers=get_auth_header(),
-                    data={
+                    json={
                         "encryption_password": app.storage.user.get(
                             "encryption_password"
                         )
@@ -68,7 +68,7 @@ def create() -> None:
                 response = requests.get(
                     f"{settings.API_URL}/api/v1/transcriber/{uuid}/result/txt",
                     headers=get_auth_header(),
-                    data={
+                    json={
                         "encryption_password": app.storage.user.get(
                             "encryption_password"
                         )

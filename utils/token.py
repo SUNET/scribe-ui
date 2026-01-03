@@ -104,7 +104,7 @@ def get_user_data() -> dict:
 
     try:
         response = requests.get(
-            f"{settings.API_URL}/api/v1/me", headers=get_auth_header()
+            f"{settings.API_URL}/api/v1/me", headers=get_auth_header(), json={}
         )
         response.raise_for_status()
         data = response.json()

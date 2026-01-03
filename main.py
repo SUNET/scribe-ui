@@ -29,7 +29,7 @@ def encryption_password_set(password: str) -> None:
         response = requests.put(
             f"{settings.API_URL}/api/v1/me",
             headers=get_auth_header(),
-            data={"encryption": True, "encryption_password": password},
+            json={"encryption": True, "encryption_password": password},
         )
         response.raise_for_status()
         data = response.json()
@@ -48,10 +48,10 @@ def encryption_password_verify(password: str) -> bool:
     """
 
     try:
-        response = requests.get(
+        response = requests.put(
             f"{settings.API_URL}/api/v1/me",
             headers=get_auth_header(),
-            data={"encryption_password": password},
+            json={"encryption_password": password, "verify_password": True},
         )
         response.raise_for_status()
 
@@ -73,7 +73,7 @@ def reset_password() -> None:
             response = requests.put(
                 f"{settings.API_URL}/api/v1/me",
                 headers=get_auth_header(),
-                data={"reset_password": True},
+                json={"reset_password": True},
             )
             response.raise_for_status()
 
@@ -156,13 +156,19 @@ async def index(request: Request) -> None:
                     confirm_password_input = ui.input(
                         "Confirm Encryption Passphrase", password=True
                     ).style("width: 100%; margin-bottom: 10px;")
+                    error_label = (
+                        ui.label(
+                            "Passphrases do not match or are less than 8 characters."
+                        )
+                        .classes("text-negative")
+                        .style("margin-bottom: 10px;")
+                    )
+                    error_label.visible = False
 
                     def set_encryption_password() -> None:
                         if (
-                            password_input.value
-                            and password_input.value == confirm_password_input.value
-                            or len(password_input.value) < 8
-                        ):
+                            password_input.value == confirm_password_input.value
+                        ) and len(password_input.value) >= 8:
                             try:
                                 encryption_password_set(password_input.value)
                             except Exception:
@@ -180,10 +186,10 @@ async def index(request: Request) -> None:
                             ui.navigate.to("/")
 
                         else:
-                            ui.notify("Passphrases do not match.", color="negative")
+                            error_label.visible = True
 
                     ui.button(
-                        "Set Passphrases",
+                        "Set Passphrase",
                         on_click=set_encryption_password,
                     ).props("color=black").style("margin-top: 10px;")
                 dialog.open()
