@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     OIDC_APP_LOGOUT_ROUTE: str = ""
     OIDC_APP_REFRESH_ROUTE: str = ""
 
+    LOGO_LANDING: str = "sunet_logo.png"
+    LOGO_TOPBAR: str = "sunet_small.png"
+    HEADER_BRANDING: str = "SUNET scribe"
+    LANDING_TEXT: str = "Welcome to SUNET scribe"
+
     WHISPER_MODELS: list[str] = [
         "Fast transcription (normal accuracy)",
         "Slower transcription (higher accuracy)",

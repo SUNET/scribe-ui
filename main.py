@@ -49,13 +49,13 @@ async def index(request: Request) -> None:
     else:
         with ui.card() as card:
             card.style("width: 50%; align-self: center; height: 50vh; margin-top: 10%;")
-            ui.label("Welcome to Sunet Scribe").classes("text-h5").style(
+            ui.label(settings.LANDING_TEXT).classes("text-h5").style(
                 "margin: auto;"
             )
             ui.label(
                 "You must ask your administrator for access before you can login."
             ).classes("text-subtitle2").style("margin: auto; margin-bottom: 10px;")
-            ui.image("static/sunet_logo.png").style(
+            ui.image("static/{}".format(settings.LOGO_LANDING)).style(
                 "width: 25%; height: auto; margin: auto; magin-top: auto;"
             )
             ui.button(
