@@ -130,7 +130,7 @@ def create() -> None:
                                 ),
                             )
                             deletions.tooltip(
-                                "Get an email before your uploaded files are permanently deleted."
+                                "Get an email one day before your uploaded files are permanently deleted."
                             )
 
                             if get_admin_status():
