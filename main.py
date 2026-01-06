@@ -56,7 +56,7 @@ async def index(request: Request) -> None:
                 "You must ask your administrator for access before you can login."
             ).classes("text-subtitle2").style("margin: auto; margin-bottom: 10px;")
             ui.image("static/{}".format(settings.LOGO_LANDING)).style(
-                "width: 25%; height: auto; margin: auto; magin-top: auto;"
+                "max-width: {}px; height: auto; margin: auto; magin-top: auto;".format(settings.LOGO_LANDING_WIDTH)
             )
             ui.button(
                 "Login with SSO",
