@@ -1,142 +1,18 @@
 import requests
 
 from nicegui import app, ui
-from typing import Optional
 from utils.common import add_timezone_to_timestamp, page_init
 from utils.common import default_styles
+from utils.helpers import (
+    email_get,
+    email_save,
+    email_save_notifications,
+    email_save_notifications_get,
+)
 from utils.settings import get_settings
-from utils.token import get_admin_status, get_auth_header, get_user_data
+from utils.token import get_admin_status, get_user_data
 
 settings = get_settings()
-
-
-def email_save(email: str) -> None:
-    """
-    Save and test the notification email address.
-
-    Parameters:
-        email (str): The email address to save.
-    """
-
-    try:
-        response = requests.put(
-            f"{settings.API_URL}/api/v1/me",
-            headers=get_auth_header(),
-            json={"email": email},
-        )
-        response.raise_for_status()
-        data = response.json()
-
-        if "error" in data.get("result", {}):
-            ui.notify(f"Error: {data['result']['error']}", color="red")
-            return None
-
-        ui.notify("E-mail address saved successfully", color="green")
-        return data["result"]
-
-    except requests.exceptions.RequestException:
-        ui.notify("Failed to save e-mail address", color="red")
-        return None
-
-
-def email_get() -> str:
-    """
-    Get the current notification email address.
-
-    Returns:
-        str: The current email address.
-    """
-
-    try:
-        response = requests.get(
-            f"{settings.API_URL}/api/v1/me", headers=get_auth_header(), json={}
-        )
-        response.raise_for_status()
-        data = response.json()
-
-        if "error" in data.get("result", {}):
-            ui.notify(f"Error: {data['result']['error']}", color="red")
-            return ""
-
-        return data["result"]["user"].get("email", "")
-
-    except requests.exceptions.RequestException:
-        ui.notify("Failed to retrieve e-mail address", color="red")
-        return ""
-
-
-def email_save_notifications(
-    job: Optional[bool] = False,
-    deletion: Optional[bool] = False,
-    user: Optional[bool] = False,
-) -> None:
-    """
-    Save notification preferences for the user.
-
-    Parameters:
-        job (bool | None): Whether to receive notifications for transcription jobs.
-        deletion (bool | None): Whether to receive notifications for file deletions.
-        user (bool | None): Whether to receive notifications for new users.
-    """
-
-    print("Saving notification preferences:", job, deletion, user)
-
-    payload = {
-        "notifications": {
-            "notify_on_job": job,
-            "notify_on_deletion": deletion,
-            "notify_on_user": user,
-        }
-    }
-
-    try:
-        response = requests.put(
-            f"{settings.API_URL}/api/v1/me",
-            headers=get_auth_header(),
-            json=payload,
-        )
-        response.raise_for_status()
-        data = response.json()
-
-        if "error" in data.get("result", {}):
-            ui.notify(f"Error: {data['result']['error']}", color="red")
-            return
-
-        ui.notify("Notification preferences updated", color="green")
-
-    except requests.exceptions.RequestException:
-        ui.notify("Failed to update notification preferences", color="red")
-
-
-def email_save_notifications_get() -> dict:
-    """
-    Get the current notification preferences for the user.
-
-    Returns:
-        dict: A dictionary containing the current notification preferences.
-    """
-
-    try:
-        response = requests.get(
-            f"{settings.API_URL}/api/v1/me", headers=get_auth_header(), json={}
-        )
-        response.raise_for_status()
-        data = response.json()
-
-        if "error" in data.get("result", {}):
-            ui.notify(f"Error: {data['result']['error']}", color="red")
-            return {}
-
-        notifications = data["result"]["user"].get("notifications", {})
-
-        if notifications is None:
-            return {}
-
-        return notifications
-
-    except requests.exceptions.RequestException:
-        ui.notify("Failed to retrieve notification preferences", color="red")
-        return {}
 
 
 def create() -> None:

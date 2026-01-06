@@ -1,4 +1,4 @@
-import requests
+import os
 
 from fastapi import Request
 from nicegui import app, ui
@@ -8,7 +8,12 @@ from pages.srt import create as create_srt
 from pages.user import create as create_user_page
 from utils.common import default_styles
 from utils.settings import get_settings
-from utils.token import get_auth_header, get_user_data, get_user_status
+from utils.token import get_user_data, get_user_status
+from utils.helpers import (
+    encryption_password_set,
+    encryption_password_verify,
+    reset_password,
+)
 
 settings = get_settings()
 
@@ -16,98 +21,6 @@ create_files_table()
 create_srt()
 create_admin()
 create_user_page()
-
-
-def encryption_password_set(password: str) -> None:
-    """
-    Set the encryption password for the user.
-    This is a placeholder function. Implement the logic to store
-    the encryption password securely.
-    """
-
-    try:
-        response = requests.put(
-            f"{settings.API_URL}/api/v1/me",
-            headers=get_auth_header(),
-            json={"encryption": True, "encryption_password": password},
-        )
-        response.raise_for_status()
-        data = response.json()
-
-        return data["result"]
-
-    except requests.exceptions.RequestException:
-        return None
-
-
-def encryption_password_verify(password: str) -> bool:
-    """
-    Verify the encryption password for the user.
-    This is a placeholder function. Implement the logic to verify
-    the encryption password with the backend.
-    """
-
-    try:
-        response = requests.put(
-            f"{settings.API_URL}/api/v1/me",
-            headers=get_auth_header(),
-            json={"encryption_password": password, "verify_password": True},
-        )
-        response.raise_for_status()
-
-        return True
-
-    except requests.exceptions.RequestException:
-        return False
-
-
-def reset_password() -> None:
-    """
-    Reset the encryption password for the user.
-    This is a placeholder function. Implement the logic to reset
-    the encryption password with the backend.
-    """
-
-    def do_reset():
-        try:
-            response = requests.put(
-                f"{settings.API_URL}/api/v1/me",
-                headers=get_auth_header(),
-                json={"reset_password": True},
-            )
-            response.raise_for_status()
-
-            ui.notify(
-                "Encryption passphrase has been reset. All previously encrypted files have been removed.",
-                color="positive",
-            )
-            app.storage.user["encryption_password"] = None
-            ui.navigate.to("/")
-
-        except requests.exceptions.RequestException:
-            ui.notify("Failed to reset encryption passphrase.", color="negative")
-
-    with ui.dialog() as dialog:
-        with ui.card():
-            ui.label("Reset Encryption Passphrase").classes("text-h6")
-            ui.label(
-                "Are you sure you want to reset your encryption passphrase? This will remove all your files and cannot be undone."
-            ).classes("text-subtitle2").style("margin-bottom: 10px;")
-
-            with ui.row().classes("justify-between w-full"):
-                ui.button(
-                    "Cancel",
-                    on_click=lambda: ui.navigate.to("/"),
-                ).props(
-                    "color=black"
-                ).style("margin-top: 10px;")
-                ui.button(
-                    "Reset Passphrase",
-                    on_click=lambda: do_reset(),
-                ).props(
-                    "color=red"
-                ).style("margin-top: 10px;")
-        dialog.open()
 
 
 @ui.page("/")
@@ -295,7 +208,7 @@ def logout() -> None:
 
 app.add_static_files(url_path="/static", local_directory="static/")
 ui.run(
-    storage_secret="very_secret",
+    storage_secret=settings.STORAGE_SECRET,
     title="Sunet Scribe",
     host="0.0.0.0",
     port=8888,
