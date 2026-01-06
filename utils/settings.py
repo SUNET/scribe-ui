@@ -22,8 +22,8 @@ class Settings(BaseSettings):
 
     LOGO_LANDING: str = "sunet_logo.png"
     LOGO_TOPBAR: str = "sunet_small.png"
-    HEADER_BRANDING: str = "SUNET scribe"
-    LANDING_TEXT: str = "Welcome to SUNET scribe"
+    HEADER_BRANDING: str = "Sunet Scribe"
+    LANDING_TEXT: str = "Welcome to Sunet Scribe"
 
     WHISPER_MODELS: list[str] = [
         "Fast transcription (normal accuracy)",
