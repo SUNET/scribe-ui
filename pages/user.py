@@ -1,10 +1,11 @@
 import requests
 
 from nicegui import app, ui
+from typing import Optional
 from utils.common import add_timezone_to_timestamp, page_init
 from utils.common import default_styles
 from utils.settings import get_settings
-from utils.token import get_auth_header, get_user_data
+from utils.token import get_admin_status, get_auth_header, get_user_data
 
 settings = get_settings()
 
@@ -64,6 +65,75 @@ def email_get() -> str:
         return ""
 
 
+def email_save_notifications(
+    job: Optional[bool] = False,
+    deletion: Optional[bool] = False,
+    user: Optional[bool] = False,
+) -> None:
+    """
+    Save notification preferences for the user.
+
+    Parameters:
+        job (bool | None): Whether to receive notifications for transcription jobs.
+        deletion (bool | None): Whether to receive notifications for file deletions.
+        user (bool | None): Whether to receive notifications for new users.
+    """
+
+    print("Saving notification preferences:", job, deletion, user)
+
+    payload = {
+        "notifications": {
+            "notify_on_job": job,
+            "notify_on_deletion": deletion,
+            "notify_on_user": user,
+        }
+    }
+
+    try:
+        response = requests.put(
+            f"{settings.API_URL}/api/v1/me",
+            headers=get_auth_header(),
+            json=payload,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        if "error" in data.get("result", {}):
+            ui.notify(f"Error: {data['result']['error']}", color="red")
+            return
+
+        ui.notify("Notification preferences updated", color="green")
+
+    except requests.exceptions.RequestException:
+        ui.notify("Failed to update notification preferences", color="red")
+
+
+def email_save_notifications_get() -> dict:
+    """
+    Get the current notification preferences for the user.
+
+    Returns:
+        dict: A dictionary containing the current notification preferences.
+    """
+
+    try:
+        response = requests.get(
+            f"{settings.API_URL}/api/v1/me", headers=get_auth_header(), json={}
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        if "error" in data.get("result", {}):
+            ui.notify(f"Error: {data['result']['error']}", color="red")
+            return {}
+
+        return data["result"]["user"].get("notifications", {})
+
+    except requests.exceptions.RequestException:
+        ui.notify("Failed to retrieve notification preferences", color="red")
+        return {}
+
+
 def create() -> None:
     @ui.refreshable
     @ui.page("/user")
@@ -76,6 +146,7 @@ def create() -> None:
 
         ui.add_head_html(default_styles)
         current_email = email_get()
+        current_notifications = email_save_notifications_get()
 
         with ui.card().classes("w-full mx-auto mb-6"):
             with ui.card_section():
@@ -125,17 +196,80 @@ def create() -> None:
             with ui.card_section().classes("w-full"):
                 ui.label("Notifications").classes("text-lg font-semibold mb-4")
 
-                with ui.row().classes("items-center gap-2 w-full"):
-                    ui.icon("email").classes("text-red-500")
-                    email = ui.input(
-                        placeholder=current_email,
-                        label=current_email,
-                        value=current_email,
-                    ).classes("w-1/3")
-                    save = ui.button("Test and save")
-                    save.props("color=black flat")
-                    save.classes("default-style")
-                    save.on("click", lambda: email_save(email.value))
+                with ui.grid(columns=2).classes("gap-8 w-full"):
+                    # LEFT COLUMN — Email settings
+                    with ui.column().classes("gap-4"):
+                        ui.label("E-mail settings").classes("font-medium text-base")
+
+                        with ui.row().classes("items-center gap-2 w-full"):
+                            ui.icon("email").classes("text-red-500")
+
+                            email = ui.input(
+                                placeholder=current_email,
+                                value=current_email,
+                            ).classes("flex-grow")
+
+                            save = ui.button("Test and save")
+                            save.props("color=black flat")
+                            save.classes("default-style")
+                            save.on("click", lambda: email_save(email.value))
+
+                    with ui.column().classes("gap-3"):
+                        ui.label("Notification types").classes("font-medium text-base")
+
+                        with ui.grid(columns=2).classes("gap-x-6 gap-y-2"):
+                            jobs = ui.checkbox(
+                                "Transcription completed",
+                                value=True if "job" in current_notifications else False,
+                            )
+                            jobs.on(
+                                "click",
+                                lambda e: email_save_notifications(
+                                    job=jobs.value,
+                                    user=users.value,
+                                    deletion=deletions.value,
+                                ),
+                            )
+                            jobs.tooltip(
+                                "Get an email when one of your transcription jobs finishes processing."
+                            )
+
+                            deletions = ui.checkbox(
+                                "Upcoming file deletions",
+                                value=True
+                                if "deletion" in current_notifications
+                                else False,
+                            )
+                            deletions.on(
+                                "click",
+                                lambda e: email_save_notifications(
+                                    job=jobs.value,
+                                    user=users.value,
+                                    deletion=deletions.value,
+                                ),
+                            )
+                            deletions.tooltip(
+                                "Get an email before your uploaded files are permanently deleted."
+                            )
+
+                            if get_admin_status():
+                                users = ui.checkbox(
+                                    "New user registrations",
+                                    value=True
+                                    if "user" in current_notifications
+                                    else False,
+                                )
+                                users.on(
+                                    "click",
+                                    lambda e: email_save_notifications(
+                                        job=jobs.value,
+                                        user=users.value,
+                                        deletion=deletions.value,
+                                    ),
+                                )
+                                users.tooltip(
+                                    "Get an email when a new user creates an account."
+                                )
 
             with ui.card_section().classes("w-full"):
                 ui.label("Job History").classes("text-xl font-semibold mb-4")
