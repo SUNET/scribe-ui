@@ -29,7 +29,7 @@ def create() -> None:
         current_email = email_get()
         current_notifications = email_save_notifications_get()
 
-        with ui.card().classes("w-full mx-auto mb-6"):
+        with ui.card().classes("w-full mx-auto mb-6 no-border no-shadow"):
             with ui.card_section():
                 ui.label("User Information").classes("text-xl font-semibold mb-6")
 
@@ -74,7 +74,7 @@ def create() -> None:
                                 "text-gray-900"
                             )
 
-            with ui.card_section().classes("w-full"):
+            with ui.card_section().classes("w-full "):
                 ui.label("Notifications").classes("text-lg font-semibold mb-4")
 
                 with ui.grid(columns=2).classes("gap-8 w-full"):
