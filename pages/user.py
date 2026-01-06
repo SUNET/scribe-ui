@@ -127,7 +127,12 @@ def email_save_notifications_get() -> dict:
             ui.notify(f"Error: {data['result']['error']}", color="red")
             return {}
 
-        return data["result"]["user"].get("notifications", {})
+        notifications = data["result"]["user"].get("notifications", {})
+
+        if notifications is None:
+            return {}
+
+        return notifications
 
     except requests.exceptions.RequestException:
         ui.notify("Failed to retrieve notification preferences", color="red")
