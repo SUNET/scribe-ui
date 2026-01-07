@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     LOGO_LANDING_WIDTH: str = "250"
     LOGO_TOPBAR: str = "sunet_small.png"
     FAVICON: str = "favicon.ico"
+    TAB_TITLE: str = "Sunet Scribe"
     TOPBAR_TEXT: str = "Sunet Scribe"
     LANDING_TEXT: str = "Welcome to Sunet Scribe"
 

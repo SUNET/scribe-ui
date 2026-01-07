@@ -86,7 +86,7 @@ def logout() -> None:
 app.add_static_files(url_path="/static", local_directory="static/")
 ui.run(
     storage_secret="very_secret",
-    title="Sunet Scribe",
+    title=f"{settings.TAB_TITLE}",
     host="0.0.0.0",
     port=8888,
     favicon=f"static/{settings.FAVICON}",
