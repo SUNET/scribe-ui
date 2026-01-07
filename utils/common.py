@@ -226,10 +226,10 @@ def page_init(header_text: Optional[str] = "") -> None:
         .classes("drop-shadow-md")
     ):
         with ui.element("div").style("display: flex; gap: 0px;"):
-            ui.image("static/{}".format(settings.LOGO_TOPBAR)).classes("q-mr-sm").style(
+            ui.image(f"static/{settings.LOGO_TOPBAR}").classes("q-mr-sm").style(
                 "height: 30px; width: 30px;"
             )
-            ui.label(settings.HEADER_BRANDING + header_text).classes("text-h6 text-black")
+            ui.label(settings.TOPBAR_TEXT + header_text).classes("text-h6 text-black")
 
         with ui.element("div").style("display: flex; gap: 0px;"):
             if is_admin:

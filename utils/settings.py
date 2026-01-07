@@ -23,7 +23,8 @@ class Settings(BaseSettings):
     LOGO_LANDING: str = "sunet_logo.png"
     LOGO_LANDING_WIDTH: str = "250"
     LOGO_TOPBAR: str = "sunet_small.png"
-    HEADER_BRANDING: str = "Sunet Scribe"
+    FAVICON: str = "favicon.ico"
+    TOPBAR_TEXT: str = "Sunet Scribe"
     LANDING_TEXT: str = "Welcome to Sunet Scribe"
 
     WHISPER_MODELS: list[str] = [

@@ -55,8 +55,8 @@ async def index(request: Request) -> None:
             ui.label(
                 "You must ask your administrator for access before you can login."
             ).classes("text-subtitle2").style("margin: auto; margin-bottom: 10px;")
-            ui.image("static/{}".format(settings.LOGO_LANDING)).style(
-                "max-width: {}px; height: auto; margin: auto; magin-top: auto;".format(settings.LOGO_LANDING_WIDTH)
+            ui.image(f"static/{settings.LOGO_LANDING}").style(
+                f"max-width: {settings.LOGO_LANDING_WIDTH}px; height: auto; margin: auto; magin-top: auto;"
             )
             ui.button(
                 "Login with SSO",
@@ -89,5 +89,5 @@ ui.run(
     title="Sunet Scribe",
     host="0.0.0.0",
     port=8888,
-    favicon="static/favicon.ico",
+    favicon=f"static/{settings.FAVICON}",
 )
