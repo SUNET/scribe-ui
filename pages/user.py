@@ -1,5 +1,3 @@
-import requests
-
 from nicegui import app, ui
 from utils.common import add_timezone_to_timestamp, page_init
 from utils.common import default_styles
@@ -29,12 +27,16 @@ def create() -> None:
         current_email = email_get()
         current_notifications = email_save_notifications_get()
 
+        # If userdata is not available, do not render the page
+        if userdata is None or not userdata or "user" not in userdata:
+            ui.navigate.to("/")
+            return
+
         with ui.card().classes("w-full mx-auto mb-6 no-border no-shadow"):
             with ui.card_section():
                 ui.label("User Information").classes("text-xl font-semibold mb-6")
 
                 with ui.grid(columns=3).classes("gap-6"):
-                    # Column 1 — Identity
                     with ui.column().classes("gap-3"):
                         with ui.row().classes("items-center gap-2"):
                             ui.icon("person").classes("text-blue-500")
@@ -50,7 +52,6 @@ def create() -> None:
                                 "text-gray-500 text-sm break-all"
                             )
 
-                    # Column 2 — Usage
                     with ui.column().classes("gap-3"):
                         with ui.row().classes("items-center gap-2"):
                             ui.icon("schedule").classes("text-orange-500")
@@ -64,7 +65,6 @@ def create() -> None:
                                 "text-gray-900"
                             )
 
-                    # Column 3 — Locale
                     with ui.column().classes("gap-3"):
                         with ui.row().classes("items-center gap-2"):
                             ui.icon("public").classes("text-purple-500")
@@ -78,7 +78,6 @@ def create() -> None:
                 ui.label("Notifications").classes("text-lg font-semibold mb-4")
 
                 with ui.grid(columns=2).classes("gap-8 w-full"):
-                    # LEFT COLUMN — Email settings
                     with ui.column().classes("gap-4"):
                         ui.label("E-mail settings").classes("font-medium text-base")
 
