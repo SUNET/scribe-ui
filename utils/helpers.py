@@ -271,7 +271,7 @@ def email_get() -> str:
             ui.notify(f"Error: {data['result']['error']}", color="red")
             return ""
 
-        return data["result"]["user"].get("email", "")
+        return data["result"].get("email", "")
 
     except requests.exceptions.RequestException:
         ui.notify("Failed to retrieve e-mail address", color="red")
@@ -338,7 +338,7 @@ def email_save_notifications_get() -> dict:
             ui.notify(f"Error: {data['result']['error']}", color="red")
             return {}
 
-        notifications = data["result"]["user"].get("notifications", {})
+        notifications = data["result"].get("notifications", {})
 
         if notifications is None:
             return {}

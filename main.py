@@ -53,7 +53,7 @@ async def index(request: Request) -> None:
     ):
         user_data = get_user_data()
 
-        if not user_data["user"]["encryption_settings"]:
+        if not user_data["encryption_settings"]:
             with ui.dialog() as dialog:
                 with ui.card():
                     ui.label("Set your encryption passphrase").classes("text-h6")
@@ -172,9 +172,7 @@ async def index(request: Request) -> None:
     else:
         with ui.card() as card:
             card.style("width: 50%; align-self: center; height: 50vh; margin-top: 10%;")
-            ui.label(settings.LANDING_TEXT).classes("text-h5").style(
-                "margin: auto;"
-            )
+            ui.label(settings.LANDING_TEXT).classes("text-h5").style("margin: auto;")
             ui.label(
                 "You must ask your administrator for access before you can login."
             ).classes("text-subtitle2").style("margin: auto; margin-bottom: 10px;")

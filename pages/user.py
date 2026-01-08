@@ -28,7 +28,7 @@ def create() -> None:
         current_notifications = email_save_notifications_get()
 
         # If userdata is not available, do not render the page
-        if userdata is None or not userdata or "user" not in userdata:
+        if userdata is None or not userdata:
             ui.navigate.to("/")
             return
 
@@ -41,14 +41,12 @@ def create() -> None:
                         with ui.row().classes("items-center gap-2"):
                             ui.icon("person").classes("text-blue-500")
                             ui.label("Username").classes("font-medium text-gray-600")
-                            ui.label(userdata["user"]["username"]).classes(
-                                "text-gray-900"
-                            )
+                            ui.label(userdata["username"]).classes("text-gray-900")
 
                         with ui.row().classes("items-center gap-2 mt-2"):
                             ui.icon("fingerprint").classes("text-gray-500")
                             ui.label("User ID").classes("font-medium text-gray-600")
-                            ui.label(userdata["user"]["user_id"]).classes(
+                            ui.label(userdata["user_id"]).classes(
                                 "text-gray-500 text-sm break-all"
                             )
 
@@ -59,8 +57,8 @@ def create() -> None:
                                 "font-medium text-gray-600"
                             )
 
-                            minutes = userdata["user"]["transcribed_seconds"] // 60
-                            seconds = userdata["user"]["transcribed_seconds"] % 60
+                            minutes = userdata["transcribed_seconds"] // 60
+                            seconds = userdata["transcribed_seconds"] % 60
                             ui.label(f"{minutes} min {seconds} s").classes(
                                 "text-gray-900"
                             )
@@ -150,82 +148,3 @@ def create() -> None:
                                 users.tooltip(
                                     "Get an email when a new user creates an account."
                                 )
-
-            with ui.card_section().classes("w-full"):
-                ui.label("Job History").classes("text-xl font-semibold mb-4")
-
-                if userdata["jobs"]["jobs"]:
-                    columns = [
-                        {
-                            "name": "filename",
-                            "label": "Filename",
-                            "field": "filename",
-                            "align": "left",
-                        },
-                        {
-                            "name": "created_at",
-                            "label": "Created",
-                            "field": "created_at",
-                            "align": "center",
-                        },
-                        {
-                            "name": "updated_at",
-                            "label": "Last Updated",
-                            "field": "updated_at",
-                            "align": "center",
-                        },
-                        {
-                            "name": "deletion_date",
-                            "label": "Scheduled deletion",
-                            "field": "deletion_date",
-                            "align": "center",
-                        },
-                        {
-                            "name": "status",
-                            "label": "Status",
-                            "field": "status",
-                            "align": "center",
-                        },
-                        {
-                            "name": "length",
-                            "label": "Length",
-                            "field": "length",
-                            "align": "center",
-                        },
-                    ]
-
-                    jobs_data = []
-                    for job in userdata["jobs"]["jobs"]:
-                        created_at = add_timezone_to_timestamp(job["created_at"])
-                        updated_at = add_timezone_to_timestamp(job["updated_at"])
-                        deletion_date = add_timezone_to_timestamp(job["deletion_date"])
-
-                        if job["transcribed_seconds"] > 0:
-                            length = f"{int(job['transcribed_seconds'] // 60)}min {int(job['transcribed_seconds'] % 60)}s"
-                        else:
-                            length = "-"
-
-                        jobs_data.append(
-                            {
-                                "filename": job["filename"],
-                                "job_type": job["job_type"].capitalize(),
-                                "created_at": created_at,
-                                "updated_at": updated_at,
-                                "deletion_date": deletion_date,
-                                "status": job["status"].capitalize(),
-                                "length": length,
-                            }
-                        )
-
-                    ui.table(columns=columns, rows=jobs_data).classes("w-full").style(
-                        "box-shadow: none;"
-                    )
-
-                else:
-                    with ui.row().classes("justify-center items-center py-8"):
-                        ui.icon("work_off").classes("text-6xl text-gray-400")
-                        with ui.column().classes("text-center ml-4"):
-                            ui.label("No jobs found").classes("text-xl text-gray-500")
-                            ui.label(
-                                "Your transcription jobs will appear here"
-                            ).classes("text-gray-400")
