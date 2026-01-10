@@ -282,6 +282,7 @@ def email_save_notifications(
     job: Optional[bool] = False,
     deletion: Optional[bool] = False,
     user: Optional[bool] = False,
+    quota: Optional[bool] = False,
 ) -> None:
     """
     Save notification preferences for the user.
@@ -297,6 +298,7 @@ def email_save_notifications(
             "notify_on_job": job,
             "notify_on_deletion": deletion,
             "notify_on_user": user,
+            # "notify_on_quota": quota,
         }
     }
 

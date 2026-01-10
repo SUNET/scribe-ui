@@ -93,9 +93,14 @@ def create() -> None:
                             save.on("click", lambda: email_save(email.value))
 
                     with ui.column().classes("gap-3"):
-                        ui.label("Notification types").classes("font-medium text-base")
-
                         with ui.grid(columns=2).classes("gap-x-6 gap-y-2"):
+                            ui.label("My notifications").classes(
+                                "col-span-2 font-semibold"
+                            )
+                            ui.label(
+                                "(Notifications related to your own files and activity)"
+                            ).classes("col-span-2 text-sm text-gray-600")
+
                             jobs = ui.checkbox(
                                 "Transcription completed",
                                 value=True if "job" in current_notifications else False,
@@ -106,6 +111,7 @@ def create() -> None:
                                     job=jobs.value,
                                     user=users.value,
                                     deletion=deletions.value,
+                                    # quota=quota.value,
                                 ),
                             )
                             jobs.tooltip(
@@ -124,13 +130,22 @@ def create() -> None:
                                     job=jobs.value,
                                     user=users.value,
                                     deletion=deletions.value,
+                                    # quota=quota.value,
                                 ),
                             )
                             deletions.tooltip(
                                 "Get an email one day before your uploaded files are permanently deleted."
                             )
 
-                            if get_admin_status():
+                        if get_admin_status():
+                            with ui.grid(columns=2).classes("gap-x-6 gap-y-2"):
+                                ui.label("Administrator notifications").classes(
+                                    "col-span-2 font-semibold"
+                                )
+                                ui.label(
+                                    "(Notifications related to administrative tasks)"
+                                ).classes("col-span-2 text-sm text-gray-600")
+
                                 users = ui.checkbox(
                                     "New user registrations",
                                     value=True
@@ -143,8 +158,28 @@ def create() -> None:
                                         job=jobs.value,
                                         user=users.value,
                                         deletion=deletions.value,
+                                        # quota=quota.value,
                                     ),
                                 )
                                 users.tooltip(
                                     "Get an email when a new user creates an account."
                                 )
+
+                                # quota = ui.checkbox(
+                                #     "Quota nearing limit",
+                                #     value=True
+                                #     if "quota" in current_notifications
+                                #     else False,
+                                # )
+                                # quota.on(
+                                #     "click",
+                                #     lambda e: email_save_notifications(
+                                #         job=jobs.value,
+                                #         user=users.value,
+                                #         deletion=deletions.value,
+                                #         quota=quota.value,
+                                #     ),
+                                # )
+                                # quota.tooltip(
+                                #     "Get an email when your transcription quota is nearing its limit."
+                                # )
