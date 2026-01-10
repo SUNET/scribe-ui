@@ -585,7 +585,20 @@ def create() -> None:
                     groups_get()["result"],
                     key=lambda x: (x["name"].lower() != "all users", x["name"].lower()),
                 )
+                expansions = {}
+
                 for group in groups:
+                    customer_name = group.get("customer_name", "None")
+                    if get_bofh_status():
+                        if customer_name not in expansions:
+                            expansions[customer_name] = (
+                                ui.expansion(
+                                    f"Customer: {customer_name}",
+                                    value=False,
+                                )
+                                .classes("mb-4")
+                                .style("width: 100%;")
+                            )
                     g = Group(
                         group_id=group["id"],
                         name=group["name"],
@@ -596,7 +609,12 @@ def create() -> None:
                         stats=group["stats"],
                         quota_seconds=group["quota_seconds"],
                     )
-                    g.create_card()
+
+                    if get_bofh_status():
+                        with expansions[customer_name]:
+                            g.create_card()
+                    else:
+                        g.create_card()
 
 
 @ui.page("/admin/users")
