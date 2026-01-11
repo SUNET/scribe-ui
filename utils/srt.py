@@ -2,8 +2,8 @@ import json
 import re
 import requests
 
-from nicegui import events, ui
-from typing import Any, Dict, List, Optional
+from nicegui import app, events, ui
+from typing import Any, Callable, Dict, List, Optional
 from utils.common import get_auth_header
 from utils.settings import get_settings
 
@@ -34,6 +34,23 @@ class SRTCaption:
         self.is_highlighted = False  # For search highlighting
         self.is_valid = True  # For validation
         self.speaker = speaker if speaker else "UNKNOWN"
+
+    def copy(self) -> "SRTCaption":
+        """
+        Create a deep copy of the caption.
+        """
+
+        new_caption = SRTCaption(
+            self.index,
+            self.start_time,
+            self.end_time,
+            self.text,
+            self.speaker,
+        )
+        new_caption.is_selected = self.is_selected
+        new_caption.is_highlighted = self.is_highlighted
+        new_caption.is_valid = self.is_valid
+        return new_caption
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -85,6 +102,84 @@ class SRTCaption:
         return term in text
 
 
+class UndoRedoManager:
+    """
+    Manages undo/redo history for the SRT editor.
+    """
+
+    def __init__(self, max_history: int = 50):
+        self.undo_stack: List[List[SRTCaption]] = []
+        self.redo_stack: List[List[SRTCaption]] = []
+        self.max_history = max_history
+
+    def save_state(self, captions: List[SRTCaption]) -> None:
+        """
+        Save the current state to the undo stack.
+        """
+
+        # Deep copy the captions list
+        state = [caption.copy() for caption in captions]
+        self.undo_stack.append(state)
+
+        # Clear redo stack when new action is performed
+        self.redo_stack.clear()
+
+        # Limit history size
+        if len(self.undo_stack) > self.max_history:
+            self.undo_stack.pop(0)
+
+    def undo(self, current_captions: List[SRTCaption]) -> Optional[List[SRTCaption]]:
+        """
+        Undo the last action and return the previous state.
+        """
+        if not self.undo_stack:
+            return None
+
+        # Save current state to redo stack
+        current_state = [caption.copy() for caption in current_captions]
+        self.redo_stack.append(current_state)
+
+        # Pop and return the previous state
+        return self.undo_stack.pop()
+
+    def redo(self, current_captions: List[SRTCaption]) -> Optional[List[SRTCaption]]:
+        """
+        Redo the last undone action and return the next state.
+        """
+
+        if not self.redo_stack:
+            return None
+
+        # Save current state to undo stack
+        current_state = [caption.copy() for caption in current_captions]
+        self.undo_stack.append(current_state)
+
+        # Pop and return the next state
+        return self.redo_stack.pop()
+
+    def can_undo(self) -> bool:
+        """
+        Check if undo is available.
+        """
+
+        return len(self.undo_stack) > 0
+
+    def can_redo(self) -> bool:
+        """
+        Check if redo is available.
+        """
+
+        return len(self.redo_stack) > 0
+
+    def clear(self) -> None:
+        """
+        Clear all history.
+        """
+
+        self.undo_stack.clear()
+        self.redo_stack.clear()
+
+
 class SRTEditor:
     def __init__(self, uuid: str, srt_format: str):
         """
@@ -109,6 +204,195 @@ class SRTEditor:
         self.data_format = None
         self.keypresses = 0
 
+        # Initialize undo/redo manager
+        self.undo_redo_manager = UndoRedoManager()
+        self.undo_button = None
+        self.redo_button = None
+
+        # Track unsaved changes
+        self._has_unsaved_changes = False
+        self._save_confirmation_dialog = None
+        self._pending_action_after_save: Optional[Callable] = None
+
+    def has_unsaved_changes(self) -> bool:
+        """
+        Check if there are unsaved changes.
+        """
+
+        return self._has_unsaved_changes
+
+    def mark_as_changed(self) -> None:
+        """
+        Mark the editor as having unsaved changes.
+        """
+
+        self._has_unsaved_changes = True
+
+    def mark_as_saved(self) -> None:
+        """
+        Mark the editor as having no unsaved changes.
+        """
+
+        self._has_unsaved_changes = False
+
+    def setup_beforeunload_warning(self) -> None:
+        """
+        Setup browser beforeunload warning for unsaved changes.
+        """
+
+        ui.run_javascript(
+            """
+            window.addEventListener('beforeunload', function(e) {
+                if (window.hasUnsavedChanges) {
+                    e.preventDefault();
+                    e.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
+                    return e.returnValue;
+                }
+            });
+        """
+        )
+
+    def update_beforeunload_state(self) -> None:
+        """
+        Update the browser's beforeunload state based on unsaved changes.
+        """
+
+        if self._has_unsaved_changes:
+            ui.run_javascript("window.hasUnsavedChanges = true;")
+        else:
+            ui.run_javascript("window.hasUnsavedChanges = false;")
+
+    def show_save_confirmation_dialog(
+        self,
+        on_save: Optional[Callable] = None,
+        on_discard: Optional[Callable] = None,
+        on_cancel: Optional[Callable] = None,
+    ) -> None:
+        """
+        Show a dialog asking the user to save, discard, or cancel.
+        """
+
+        def handle_save():
+            dialog.close()
+            self.save_srt_changes()
+            if on_save:
+                on_save()
+
+        def handle_discard():
+            dialog.close()
+            self.mark_as_saved()
+            self.update_beforeunload_state()
+            if on_discard:
+                on_discard()
+
+        def handle_cancel():
+            dialog.close()
+            if on_cancel:
+                on_cancel()
+
+        with ui.dialog() as dialog, ui.card().classes("w-96"):
+            ui.label("Unsaved Changes").classes("text-h6 q-mb-md")
+            ui.label("You have unsaved changes. What would you like to do?").classes(
+                "q-mb-lg"
+            )
+
+            with ui.row().classes("w-full justify-end gap-2"):
+                ui.button("Cancel", on_click=handle_cancel).props("flat")
+                ui.button("Discard", on_click=handle_discard).props("flat color=red")
+                ui.button("Save", on_click=handle_save).props("color=primary")
+
+        dialog.open()
+
+    def close_editor(self, redirect_url: Optional[str] = None) -> None:
+        """
+        Close the editor, prompting to save if there are unsaved changes.
+        If redirect_url is provided, navigate there after closing.
+        """
+
+        def do_close():
+            if redirect_url:
+                ui.navigate.to(redirect_url)
+
+        if self.has_unsaved_changes():
+            self.show_save_confirmation_dialog(
+                on_save=do_close,
+                on_discard=do_close,
+                on_cancel=None,  # Just close the dialog, don't navigate
+            )
+        else:
+            do_close()
+
+    def save_state_for_undo(self) -> None:
+        """Save the current state before making changes."""
+        self.undo_redo_manager.save_state(self.captions)
+        self._update_undo_redo_buttons()
+        # Mark as having unsaved changes
+        self.mark_as_changed()
+        self.update_beforeunload_state()
+
+    def undo(self) -> None:
+        """Undo the last action."""
+        previous_state = self.undo_redo_manager.undo(self.captions)
+        if previous_state is not None:
+            self.captions = previous_state
+            self.selected_caption = None
+            self.renumber_captions()
+            self.update_words_per_minute()
+            self.refresh_display()
+            self._update_undo_redo_buttons()
+            # Mark as having unsaved changes (undo is still a change from saved state)
+            self.mark_as_changed()
+            self.update_beforeunload_state()
+        else:
+            ui.notify("Nothing to undo", type="info", position="bottom")
+
+    def redo(self) -> None:
+        """Redo the last undone action."""
+        next_state = self.undo_redo_manager.redo(self.captions)
+        if next_state is not None:
+            self.captions = next_state
+            self.selected_caption = None
+            self.renumber_captions()
+            self.update_words_per_minute()
+            self.refresh_display()
+            self._update_undo_redo_buttons()
+            # Mark as having unsaved changes
+            self.mark_as_changed()
+            self.update_beforeunload_state()
+        else:
+            ui.notify("Nothing to redo", type="info", position="bottom")
+
+    def _update_undo_redo_buttons(self) -> None:
+        """Update the enabled state of undo/redo buttons."""
+        if self.undo_button:
+            if self.undo_redo_manager.can_undo():
+                self.undo_button.enable()
+            else:
+                self.undo_button.disable()
+
+        if self.redo_button:
+            if self.undo_redo_manager.can_redo():
+                self.redo_button.enable()
+            else:
+                self.redo_button.disable()
+
+    def create_undo_redo_panel(self) -> None:
+        """Create the undo/redo buttons panel."""
+        with ui.row().classes("gap-2"):
+            self.undo_button = (
+                ui.button("Undo", icon="undo")
+                .props("flat dense")
+                .on("click", self.undo)
+            )
+            self.undo_button.disable()
+
+            self.redo_button = (
+                ui.button("Redo", icon="redo")
+                .props("flat dense")
+                .on("click", self.redo)
+            )
+            self.redo_button.disable()
+
     def save_srt_changes(self) -> None:
         try:
             if self.srt_format == "srt":
@@ -126,8 +410,12 @@ class SRTEditor:
             )
             res.raise_for_status()
         except requests.exceptions.RequestException as e:
-            ui.notify(f"Error: Failed to save file: {e}", type="negative")
+            ui.notify(f"Error:  Failed to save file:  {e}", type="negative")
             return
+
+        # Mark as saved after successful save
+        self.mark_as_saved()
+        self.update_beforeunload_state()
 
         ui.notify(
             "File saved successfully",
@@ -164,6 +452,10 @@ class SRTEditor:
                 self.select_caption(self.selected_caption)
             case "v":
                 self.validate_captions()
+            case "z":
+                self.undo()
+            case "y":
+                self.redo()
             case _:
                 pass
 
@@ -371,7 +663,7 @@ class SRTEditor:
                         result.append(ch)
                 else:
                     signed_code = code if code <= 0x7FFF else code - 0x10000
-                    result.append(f"\\u{signed_code}?")
+                    result.append(f"\\u{signed_code}? ")
             return "".join(result)
 
         rtf_content = (
@@ -399,7 +691,7 @@ class SRTEditor:
         """
 
         txt_content = "\n\n".join(
-            f"{caption.speaker}: {caption.start_time} - {caption.end_time}\n{caption.text}"
+            f"{caption.speaker}: {caption. start_time} - {caption.end_time}\n{caption.text}"
             for caption in self.captions
         )
 
@@ -427,7 +719,7 @@ class SRTEditor:
         vtt_content = "WEBVTT\n\n"
         for caption in self.captions:
             vtt_content += f"{caption.index}\n"
-            vtt_content += f"{caption.start_time.replace(',', '.')} --> {caption.end_time.replace(',', '.')}\n"
+            vtt_content += f"{caption.start_time. replace(',', '.')} --> {caption.end_time.replace(',', '.')}\n"
             vtt_content += f"{caption.text}\n\n"
 
         return vtt_content
@@ -492,7 +784,7 @@ class SRTEditor:
 
     def navigate_search_results(self, direction: int) -> None:
         """
-        Navigate through search results (direction: 1 for next, -1 for previous).
+        Navigate through search results (direction:  1 for next, -1 for previous).
         """
         if not self.search_results:
             return
@@ -524,6 +816,9 @@ class SRTEditor:
             return
 
         if self.selected_caption.matches_search(self.search_term, self.case_sensitive):
+            # Save state before making changes
+            self.save_state_for_undo()
+
             if self.case_sensitive:
                 new_text = self.selected_caption.text.replace(
                     self.search_term, replacement
@@ -546,6 +841,16 @@ class SRTEditor:
         if not self.search_term:
             ui.notify("No search term entered", type="warning")
             return
+
+        # Check if there are any matches before saving state
+        has_matches = any(
+            caption.matches_search(self.search_term, self.case_sensitive)
+            for caption in self.captions
+        )
+
+        if has_matches:
+            # Save state before making changes
+            self.save_state_for_undo()
 
         count = 0
         for caption in self.captions:
@@ -590,7 +895,8 @@ class SRTEditor:
         else:
             pattern = re.compile(f"({re.escape(self.search_term)})", re.IGNORECASE)
             highlighted = pattern.sub(
-                r'<mark style="background-color: yellow; padding: 2px;">\1</mark>', text
+                r'<mark style="background-color:  yellow; padding: 2px;">\1</mark>',
+                text,
             )
 
         return highlighted
@@ -602,6 +908,9 @@ class SRTEditor:
 
         if not caption:
             return
+
+        # Save state before making changes
+        self.save_state_for_undo()
 
         text_lines = caption.text.split("\n")
 
@@ -653,6 +962,9 @@ class SRTEditor:
         Add a new caption after the selected one.
         """
 
+        # Save state before making changes
+        self.save_state_for_undo()
+
         # Calculate new caption timing
         start_seconds = caption.get_end_seconds()
 
@@ -688,6 +1000,9 @@ class SRTEditor:
             return
 
         if len(self.captions) > 1:  # Don't remove if it's the only caption
+            # Save state before making changes
+            self.save_state_for_undo()
+
             self.captions.remove(caption)
             self.renumber_captions()
             self.refresh_display()
@@ -701,7 +1016,7 @@ class SRTEditor:
         caption: SRTCaption,
         speaker: Optional[ui.input] = None,
         button: Optional[bool] = False,
-        seek: Optional[bool] = True
+        seek: Optional[bool] = True,
     ) -> None:
         """
         Select/deselect a caption.
@@ -712,9 +1027,6 @@ class SRTEditor:
 
         if self.selected_caption:
             self.selected_caption.is_selected = False
-
-            if button:
-                self.save_srt_changes()
 
         if self.selected_caption == caption:
             self.selected_caption = None
@@ -740,9 +1052,10 @@ class SRTEditor:
         """
         Update caption text.
         """
-
-        caption.text = new_text
-        # self.refresh_display()
+        # Only save state if text actually changed
+        if caption.text != new_text:
+            self.save_state_for_undo()
+            caption.text = new_text
 
     def update_caption_timing(
         self, caption: SRTCaption, start_time: str, end_time: str
@@ -750,9 +1063,11 @@ class SRTEditor:
         """
         Update caption timing.
         """
-
-        caption.start_time = start_time
-        caption.end_time = end_time
+        # Only save state if timing actually changed
+        if caption.start_time != start_time or caption.end_time != end_time:
+            self.save_state_for_undo()
+            caption.start_time = start_time
+            caption.end_time = end_time
 
         self.refresh_display()
 
@@ -780,7 +1095,7 @@ class SRTEditor:
                 ).classes("button-replace")
 
                 ui.checkbox("Case sensitive").bind_value_to(self, "case_sensitive").on(
-                    "update:model-value",
+                    "update: model-value",
                     lambda: (
                         self.search_captions(search_input.value)
                         if self.search_term
@@ -823,7 +1138,7 @@ class SRTEditor:
 
             # Enter key support for search
             search_input.on(
-                "keydown.enter", lambda: self.search_captions(search_input.value)
+                "keydown. enter", lambda: self.search_captions(search_input.value)
             )
 
     def get_caption_from_time(self, caption_time: float) -> Optional[SRTCaption]:
@@ -849,7 +1164,7 @@ class SRTEditor:
 
         if caption:
             if self.selected_caption != caption:
-                self.select_caption(caption, seek = False)
+                self.select_caption(caption, seek=False)
 
     def merge_with_next(self, caption: SRTCaption) -> None:
         """
@@ -862,6 +1177,9 @@ class SRTEditor:
         if caption_index == len(self.captions) - 1:
             ui.notify("No next caption to merge with", type="warning")
             return
+
+        # Save state before making changes
+        self.save_state_for_undo()
 
         next_caption = self.captions[caption_index + 1]
 
@@ -887,6 +1205,9 @@ class SRTEditor:
         if caption_index == 0:
             ui.notify("No previous caption to merge with", type="warning")
             return
+
+        # Save state before making changes
+        self.save_state_for_undo()
 
         previous_caption = self.captions[caption_index - 1]
 
@@ -1035,7 +1356,7 @@ class SRTEditor:
                             ui.label(f"#{caption.index}").classes("font-bold text-sm")
 
                             if self.data_format == "txt":
-                                ui.label(f"{caption.speaker}:").classes(
+                                ui.label(f"{caption. speaker}:").classes(
                                     "font-bold text-sm"
                                 )
                         ui.label(f"{caption.start_time} - {caption.end_time}").classes(
@@ -1050,7 +1371,7 @@ class SRTEditor:
                         tooltip_text = (
                             "Character count."
                             if self.data_format == "txt"
-                            else "Character count. Max 42 per line (guideline)."
+                            else "Character count.  Max 42 per line (guideline)."
                         )
 
                         character_label = ""
@@ -1149,7 +1470,7 @@ class SRTEditor:
             with (
                 ui.card()
                 .style(
-                    "background-color: white; align-self: center; border: 0; width: 80%;"
+                    "background-color: white; align-self: center; border:  0; width: 80%;"
                 )
                 .classes("w-full no-shadow no-border")
             ):
