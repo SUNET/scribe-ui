@@ -580,25 +580,45 @@ def create() -> None:
                     "text-lg"
                 )
                 return
+
+            expansions = {}
+
             with ui.scroll_area().style("height: calc(100vh - 160px); width: 100%;"):
                 groups = sorted(
                     groups_get()["result"],
-                    key=lambda x: (x["name"].lower() != "all users", x["name"].lower()),
+                    key=lambda x: (
+                        x["name"].lower() != "all users",
+                        x["name"].lower(),
+                    ),
                 )
-                expansions = {}
 
-                for group in groups:
+                g = Group(
+                    group_id=groups[0]["id"],
+                    name=groups[0]["name"],
+                    description=groups[0]["description"],
+                    created_at=groups[0]["created_at"],
+                    users=groups[0]["users"],
+                    nr_users=groups[0]["nr_users"],
+                    stats=groups[0]["stats"],
+                    quota_seconds=groups[0]["quota_seconds"],
+                )
+
+                g.create_card()
+
+                expansions = {}
+                groups = sorted(
+                    groups_get()["result"],
+                    key=lambda x: (
+                        x["customer_name"].lower() != "all users",
+                        x["customer_name"].lower(),
+                    ),
+                )
+
+                for group in groups[1:]:
+                    if group["name"] == "All users":
+                        continue
                     customer_name = group.get("customer_name", "None")
-                    if get_bofh_status():
-                        if customer_name not in expansions:
-                            expansions[customer_name] = (
-                                ui.expansion(
-                                    f"Customer: {customer_name}",
-                                    value=False,
-                                )
-                                .classes("mb-4")
-                                .style("width: 100%;")
-                            )
+
                     g = Group(
                         group_id=group["id"],
                         name=group["name"],
@@ -611,10 +631,21 @@ def create() -> None:
                     )
 
                     if get_bofh_status():
-                        with expansions[customer_name]:
+                        if customer_name not in expansions:
+                            expansions[customer_name] = (
+                                ui.expansion(
+                                    f"Customer: {customer_name}",
+                                    value=False,
+                                )
+                                .classes("text-bold")
+                                .style("width: 100%; background-color: #ffffff;")
+                            )
+
+                        if group["name"] == "All users":
                             g.create_card()
-                    else:
-                        g.create_card()
+                        else:
+                            with expansions[customer_name]:
+                                g.create_card()
 
 
 @ui.page("/admin/users")
@@ -717,9 +748,7 @@ def users() -> None:
                 ui.icon("search")
 
     with ui.footer().style("background-color: #ffffff;"):
-        with ui.row().style(
-            "justify-content: flex-left; width: 100%; padding: 16px; gap: 8px;"
-        ):
+        with ui.row().style("justify-content: flex-left; width: 70%; padding: 16px;"):
             ui.button("Back to groups").classes("button-close").props(
                 "color=black flat"
             ).style("width: 150px ").on("click", lambda: ui.navigate.to("/admin"))
@@ -739,13 +768,437 @@ def users() -> None:
             ui.button("Make admin").classes("button-close").props(
                 "color=black flat"
             ).style("width: 150px").on(
-                "click", lambda: set_admin_status(users_table.selected, True, None, "")
+                "click",
+                lambda: set_admin_status(users_table.selected, True, None, ""),
             )
             ui.button("Remove admin").classes("button-close").props(
                 "color=black flat"
             ).style("width: 150px").on(
-                "click", lambda: set_admin_status(users_table.selected, False, None, "")
+                "click",
+                lambda: set_admin_status(users_table.selected, False, None, ""),
             )
+            ui.button("SAML onboarding").classes("default-style").props(
+                "color=black flat"
+            ).style("width: 200px").on("click", lambda: ui.navigate.to("/admin/saml"))
+
+
+@ui.page("/admin/saml")
+def users() -> None:
+    """
+    Page to show all users with SAML-based onboarding configuration.
+    """
+    page_init()
+
+    ui.add_head_html(default_styles)
+    ui.add_head_html(
+        """
+        <style>
+            body {
+                background-color: #f5f5f5;
+            }
+            .saml-rule-card {
+                background-color: #fafafa;
+                border: 1px solid #e0e0e0;
+                border-radius:  8px;
+                padding: 12px;
+                margin-bottom: 8px;
+            }
+            .section-divider {
+                border-top: 2px solid #e0e0e0;
+                margin:  24px 0;
+            }
+        </style>
+        """
+    )
+
+    # State for SAML onboarding rules
+    saml_rules = []
+
+    def load_saml_rules():
+        """Load existing SAML onboarding rules from API."""
+        try:
+            res = requests.get(
+                settings.API_URL + "/api/v1/admin/onboarding/rules",
+                headers=get_auth_header(),
+            )
+            res.raise_for_status()
+            return res.json().get("result", [])
+        except requests.RequestException:
+            return []
+
+    def save_saml_rule(rule_data):
+        """Save a new SAML onboarding rule."""
+        try:
+            res = requests.post(
+                settings.API_URL + "/api/v1/admin/onboarding/rules",
+                headers=get_auth_header(),
+                json=rule_data,
+            )
+            res.raise_for_status()
+            ui.notify("SAML onboarding rule saved successfully", type="positive")
+            refresh_rules()
+        except requests.RequestException as e:
+            ui.notify(f"Error saving rule: {e}", type="negative")
+
+    def delete_saml_rule(rule_id):
+        """Delete a SAML onboarding rule."""
+        try:
+            res = requests.delete(
+                settings.API_URL + f"/api/v1/admin/onboarding/rule/{rule_id}",
+                headers=get_auth_header(),
+            )
+            res.raise_for_status()
+            ui.notify("Rule deleted successfully", type="positive")
+            refresh_rules()
+        except requests.RequestException as e:
+            ui.notify(f"Error deleting rule: {e}", type="negative")
+
+    def test_saml_rule(attribute_name, attribute_value, match_type):
+        """Test a SAML rule against existing users."""
+        try:
+            res = requests.post(
+                settings.API_URL + "/api/v1/admin/boarding/rules/test",
+                headers=get_auth_header(),
+                json={
+                    "attribute_name": attribute_name,
+                    "attribute_value": attribute_value,
+                    "match_type": match_type,
+                },
+            )
+            res.raise_for_status()
+            matching_users = res.json().get("matching_users", [])
+            ui.notify(f"Rule would match {len(matching_users)} user(s)", type="info")
+        except requests.RequestException as e:
+            ui.notify(f"Error testing rule: {e}", type="negative")
+
+    def get_available_groups():
+        """Fetch available groups for assignment."""
+        try:
+            res = requests.get(
+                settings.API_URL + "/api/v1/admin/groups", headers=get_auth_header()
+            )
+            res.raise_for_status()
+            groups_data = res.json().get("result", [])
+            ret = {}
+
+            for group in groups_data:
+                ret[group["id"]] = group["name"]
+
+            return ret
+        except requests.RequestException:
+            return {}
+
+    def get_available_realms():
+        """Fetch available realms for filtering."""
+        try:
+            res = requests.get(
+                settings.API_URL + "/api/v1/admin/realms", headers=get_auth_header()
+            )
+            res.raise_for_status()
+            realms_data = res.json().get("result", [])
+            return [realm for realm in realms_data]
+        except requests.RequestException:
+            return []
+
+    # Load users
+    try:
+        res = requests.get(
+            settings.API_URL + "/api/v1/admin/users", headers=get_auth_header()
+        )
+        res.raise_for_status()
+        users_data = res.json()["result"]
+
+        for index, user in enumerate(users_data):
+            user["id"] = index
+            user["admin"] = "Yes" if user.get("admin", True) else "No"
+            user["active"] = "Yes" if user.get("active", True) else "No"
+            # Format SAML attributes for display
+            user["saml_attrs_display"] = (
+                ", ".join(
+                    f"{k}={v}" for k, v in user.get("saml_attributes", {}).items()
+                )[:50]
+                + "..."
+                if user.get("saml_attributes")
+                else "N/A"
+            )
+
+    except requests.RequestException as e:
+        ui.label(f"Error fetching users: {e}").classes("text-lg text-red-500")
+        return
+
+    # Main container with tabs
+    with ui.card().style(
+        "width: 100%; box-shadow:  none; border: 1px solid #e0e0e0; align-self:  center;"
+    ):
+        ui.label("Attribute-Based Onboarding").classes("text-3xl font-bold mb-2")
+        ui.label(
+            "Configure rules to automatically activate users and assign roles based on attributes received during authentication."
+        ).classes("text-gray-600 mb-4")
+
+        # Container for existing rules
+        rules_container = ui.column().classes("w-full mb-6")
+
+        def refresh_rules():
+            """Refresh the rules display."""
+            rules_container.clear()
+            rules = load_saml_rules()
+
+            with rules_container:
+                if not rules:
+                    ui.label("No onboarding rules configured yet. ").classes(
+                        "text-gray-500 italic"
+                    )
+                else:
+                    ui.label("Active Onboarding Rules").classes(
+                        "text-xl font-semibold mb-2"
+                    )
+                    for rule in rules:
+                        with ui.card().classes("saml-rule-card w-full"):
+                            with ui.row().classes(
+                                "w-full justify-between items-center"
+                            ):
+                                with ui.column():
+                                    ui.label(
+                                        f"Rule: {rule. get('name', 'Unnamed')}"
+                                    ).classes("font-bold")
+                                    ui.label(
+                                        f"When {rule['attribute_name']} {rule['attribute_condition']} '{rule['attribute_value']}'"
+                                    ).classes("text-sm text-gray-600")
+                                    actions = []
+                                    if rule.get("activate"):
+                                        actions.append("Auto-activate user")
+                                    if rule.get("grant_admin"):
+                                        actions.append("Grant admin role")
+                                    if rule.get("assign_to_group"):
+                                        actions.append(
+                                            f"Add to group: rule['assign_to_group'])"
+                                        )
+                                    if rule.get("assign_to_admin_domains"):
+                                        actions.append(
+                                            f"Assign domains: {rule['assign_to_admin_domains']}"
+                                        )
+                                with ui.row().classes("gap-2"):
+                                    ui.button(icon="edit", color="primary").props(
+                                        "flat dense"
+                                    ).on("click", lambda r=rule: edit_rule_dialog(r))
+                                    ui.button(icon="delete", color="negative").props(
+                                        "flat dense"
+                                    ).on(
+                                        "click",
+                                        lambda r=rule: delete_saml_rule(r["id"]),
+                                    )
+
+        # Initial load of rules
+        refresh_rules()
+
+        # Form to add new rule
+        with ui.expansion("Add New Onboarding Rule", icon="add").classes(
+            "w-full mb-4 font-bold"
+        ):
+            with ui.card().classes("w-full p-4").style("background-color: #f9f9f9;"):
+                rule_name = ui.input(
+                    label="Rule Name", placeholder="e.g., Auto-activate employees"
+                ).classes("w-full mb-2")
+
+                with ui.row().classes("w-full gap-4 mb-2"):
+                    attribute_name = ui.select(
+                        label="Attribute Name",
+                        options=[
+                            "email",
+                            "affiliation",
+                            "preferred_username",
+                            "domain",
+                        ],
+                        with_input=True,
+                    ).classes("flex-1")
+
+                    match_type = ui.select(
+                        label="Match Type",
+                        options=[
+                            "equals",
+                            "contains",
+                            "starts with",
+                            "ends with",
+                            "regex",
+                        ],
+                    ).classes("w-48")
+
+                    attribute_value = ui.input(
+                        label="Attribute Value",
+                        placeholder="e.g., Engineering, admin, CN=Admins",
+                    ).classes("flex-1")
+
+                ui.label("Actions to perform when rule matches:")
+
+                with ui.row().classes("w-full gap-8 mb-4"):
+                    auto_activate = ui.checkbox("Auto-activate user", value=True)
+                    grant_admin = ui.checkbox("Grant administrator role", value=False)
+
+                with ui.row().classes("w-full gap-4 mb-4"):
+                    assign_groups = ui.select(
+                        options=get_available_groups(),
+                        label="Assign to Group (optional)",
+                    ).classes("flex-1")
+
+                    assign_domains = ui.input(
+                        label="Assign Admin Domains (comma-separated, optional)",
+                        placeholder="e.g., example.com, internal.org",
+                    ).classes("flex-1")
+
+                with ui.row().classes("w-full gap-4 mb-4"):
+                    realm_filter = ui.select(
+                        options=get_available_realms(),
+                        label="Apply only to Realm (optional)",
+                    ).classes("flex-1")
+
+                with ui.row().classes("w-full gap-2 mt-4"):
+                    ui.button("Test Rule", icon="science").props(
+                        "color=secondary outline"
+                    ).on(
+                        "click",
+                        lambda: test_saml_rule(
+                            attribute_name.value,
+                            attribute_value.value,
+                            match_type.value,
+                        ),
+                    )
+
+                    def save_new_rule():
+                        if not attribute_name.value or not attribute_value.value:
+                            ui.notify(
+                                "Attribute name and value are required", type="warning"
+                            )
+
+                            return
+
+                        rule_data = {
+                            "name": rule_name.value,
+                            "attribute_name": attribute_name.value,
+                            "attribute_condition": match_type.value,
+                            "attribute_value": attribute_value.value,
+                            "activate": auto_activate.value,
+                            "admin": grant_admin.value,
+                            "assign_to_groups": assign_groups.value,
+                            "assign_to_admin_domains": assign_domains.value,
+                            "realm_filter": realm_filter.value or None,
+                        }
+
+                        save_saml_rule(rule_data)
+
+                        # # Clear form
+                        rule_name.value = ""
+                        attribute_name.value = ""
+                        attribute_value.value = ""
+                        assign_groups.value = ""
+                        assign_domains.value = ""
+
+                    ui.button("Save Rule", icon="save").on("click", save_new_rule)
+
+        # Common SAML attributes reference
+        with ui.expansion("Common Attributes Reference", icon="help_outline").classes(
+            "w-full mb-4 font-bold"
+        ).style("background-color: #f9f9f9;"):
+            with ui.column().classes("p-4"):
+                ui.markdown(
+                    """
+| Attribute | Description | Example Value |
+|-----------|-------------|---------------|
+| `email`  | E-mail address | test@sunet.se |
+| `affiliation` | Role within institution | `employee@sunet.se`, `student@xyz.com` |
+| `preferred_username` | User's preferred username | `jdoe`, `john.doe` |
+| `domain` | Domain part of the username | `sunet.se`, `example.com` |
+
+                """
+                )
+
+    # Footer
+    with ui.footer().style("background-color:  #ffffff;"):
+        with ui.row().style(
+            "justify-content: flex-start; width: 100%; padding: 16px; gap: 8px;"
+        ):
+            ui.button("Back", icon="arrow_back").classes("button-close").props(
+                "color=black flat"
+            ).style("width: 150px").on("click", lambda: ui.navigate.to("/admin"))
+
+
+def edit_rule_dialog(rule):
+    """Open a dialog to edit an existing SAML onboarding rule."""
+    with ui.dialog() as dialog, ui.card().classes("w-1/2"):
+        ui.label(f"Edit Rule: {rule. get('name', 'Unnamed')}").classes(
+            "text-xl font-bold mb-4"
+        )
+
+        rule_name = ui.input(label="Rule Name", value=rule.get("name", "")).classes(
+            "w-full"
+        )
+        attribute_name = ui.input(
+            label="Attribute Name", value=rule.get("attribute_name", "")
+        ).classes("w-full")
+        match_type = ui.select(
+            label="Match Type",
+            options=["equals", "contains", "starts_with", "ends_with", "regex"],
+            value=rule.get("match_type", "equals"),
+        ).classes("w-full")
+        attribute_value = ui.input(
+            label="Attribute Value", value=rule.get("attribute_value", "")
+        ).classes("w-full")
+
+        auto_activate = ui.checkbox(
+            "Auto-activate user", value=rule.get("activate", False)
+        )
+        grant_admin = ui.checkbox(
+            "Grant administrator role", value=rule.get("admin", False)
+        )
+
+        assign_groups = ui.input(
+            label="Assign to Group",
+            value=rule.get("assign_to_group", []),
+        ).classes("w-full")
+        assign_domains = ui.input(
+            label="Assign Admin Domains",
+            value=rule.get("assign_to_admin_domains", []),
+        ).classes("w-full")
+
+        realm_filter = ui.input(
+            label="Apply only to Realm",
+            value=rule.get("realm_filter", ""),
+        ).classes("w-full")
+
+        with ui.row().classes("w-full justify-end gap-2 mt-4"):
+            ui.button("Cancel").props("flat").on("click", dialog.close)
+
+            def update_rule():
+                try:
+                    updated_rule = {
+                        "id": rule["id"],
+                        "name": rule_name.value,
+                        "attribute_name": attribute_name.value,
+                        "attribute_condition": match_type.value,
+                        "attribute_value": attribute_value.value,
+                        "activate": auto_activate.value,
+                        "admin": grant_admin.value,
+                        "assign_to_group": assign_groups.value,
+                        "assign_to_admin_domains": assign_domains.value,
+                        "realm_filter": realm_filter.value,
+                    }
+                    res = requests.put(
+                        settings.API_URL
+                        + f"/api/v1/admin/onboarding/rule/{rule['id']}",
+                        headers=get_auth_header(),
+                        json=updated_rule,
+                    )
+                    res.raise_for_status()
+                    ui.notify("Rule updated successfully", type="positive")
+                    dialog.close()
+                    ui.navigate.reload()
+                except requests.RequestException as e:
+                    ui.notify(f"Error updating rule: {e}", type="negative")
+
+            ui.button("Save", icon="save").props("color=primary").on(
+                "click", lambda e: update_rule()
+            )
+
+    dialog.open()
 
 
 @ui.page("/health")
