@@ -109,127 +109,103 @@ def create() -> None:
 
                 ui.notify("File exported successfully", type="positive")
 
-            with ui.row().classes("justify-between w-full gap-2"):
-                with ui.column().classes("flex-row items-center"):
-                    editor.create_undo_redo_panel()
+        with ui.row().classes("justify-between w-full gap-2"):
+            with ui.column().classes("flex-row items-center"):
+                editor.create_undo_redo_panel()
+                with ui.button("Save", icon="save") as save_button:
+                    if data_format == "srt":
+                        save_button.on(
+                            "click",
+                            lambda: save_srt(
+                                uuid,
+                                editor.export_srt(),
+                                editor,
+                                data_format,
+                            ),
+                        )
+                    else:
+                        save_button.on(
+                            "click",
+                            lambda: save_srt(
+                                uuid,
+                                editor.export_json(),
+                                editor,
+                                "json",
+                            ),
+                        )
 
-                with ui.row().classes(
-                    "gap-2"
-                ):  # Group the right-aligned columns together
-                    with ui.column().classes("flex-row items-center"):
-                        with ui.row().classes("gap-2"):
-                            with ui.button("Close", icon="close").props(
-                                "flat"
-                            ) as close_button:
-                                close_button.classes("cancel-style")
-                                close_button.on(
-                                    "click", lambda: editor.close_editor("/home")
-                                )
+                    save_button.props("color=black flat")
 
-                            with ui.button("Save", icon="save") as save_button:
-                                save_button.classes("button-default-style")
+                with ui.dropdown_button("Export", icon="download") as export_button:
+                    export_button.props("flat color=black")
 
-                                if data_format == "srt":
-                                    save_button.on(
-                                        "click",
-                                        lambda: save_srt(
-                                            uuid,
-                                            editor.export_srt(),
-                                            editor,
-                                            data_format,
-                                        ),
-                                    )
-                                else:
-                                    save_button.on(
-                                        "click",
-                                        lambda: save_srt(
-                                            uuid,
-                                            editor.export_json(),
-                                            editor,
-                                            "json",
-                                        ),
-                                    )
+                    if data_format == "srt":
+                        export_button_srt = ui.button("Export as SRT", icon="download")
+                        export_button_srt.props("flat color=white")
+                        export_button_srt.classes("button-default-style")
+                        export_button_srt.on("click", lambda: export("srt"))
 
-                                save_button.props("color=white flat")
+                        export_button_vtt = ui.button(
+                            "Export as VTT", icon="download"
+                        ).style("width: 150px;")
+                        export_button_vtt.props("flat color=white")
+                        export_button_vtt.classes("button-default-style")
+                        export_button_vtt.on("click", lambda: export("vtt"))
+                    else:
+                        export_button_txt = ui.button("Export as TXT", icon="download")
+                        export_button_txt.props("flat color=white")
+                        export_button_txt.classes("button-default-style")
+                        export_button_txt.on("click", lambda: export("txt"))
 
-                            with ui.dropdown_button(
-                                "Export", icon="share"
-                            ) as export_button:
-                                export_button.props("flat color=white")
-                                export_button.classes("button-default-style")
+                        export_button_json = ui.button(
+                            "Export as JSON", icon="download"
+                        )
+                        export_button_json.props("flat color=white")
+                        export_button_json.classes("button-default-style")
+                        export_button_json.on("click", lambda: export("json"))
 
-                                if data_format == "srt":
-                                    export_button_srt = ui.button(
-                                        "Export as SRT", icon="share"
-                                    )
-                                    export_button_srt.props("flat color=white")
-                                    export_button_srt.classes("button-default-style")
-                                    export_button_srt.on("click", lambda: export("srt"))
+                        export_button_rtf = ui.button("Export as RTF", icon="download")
+                        export_button_rtf.props("flat color=white")
+                        export_button_rtf.classes("button-default-style")
+                        export_button_rtf.on("click", lambda: export("rtf"))
 
-                                    export_button_vtt = ui.button(
-                                        "Export as VTT", icon="share"
-                                    ).style("width: 150px;")
-                                    export_button_vtt.props("flat color=white")
-                                    export_button_vtt.classes("button-default-style")
-                                    export_button_vtt.on("click", lambda: export("vtt"))
-                                else:
-                                    export_button_txt = ui.button(
-                                        "Export as TXT", icon="share"
-                                    )
-                                    export_button_txt.props("flat color=white")
-                                    export_button_txt.classes("button-default-style")
-                                    export_button_txt.on("click", lambda: export("txt"))
+                        export_button_csv = ui.button("Export as CSV", icon="download")
+                        export_button_csv.props("flat color=white")
+                        export_button_csv.classes("button-default-style")
+                        export_button_csv.on("click", lambda: export("csv"))
 
-                                    export_button_json = ui.button(
-                                        "Export as JSON", icon="share"
-                                    )
-                                    export_button_json.props("flat color=white")
-                                    export_button_json.classes("button-default-style")
-                                    export_button_json.on(
-                                        "click", lambda: export("json")
-                                    )
+                        export_button_tsv = ui.button("Export as TSV", icon="download")
+                        export_button_tsv.props("flat color=white")
+                        export_button_tsv.classes("button-default-style")
+                        export_button_tsv.on("click", lambda: export("tsv"))
 
-                                    export_button_rtf = ui.button(
-                                        "Export as RTF", icon="share"
-                                    )
-                                    export_button_rtf.props("flat color=white")
-                                    export_button_rtf.classes("button-default-style")
-                                    export_button_rtf.on("click", lambda: export("rtf"))
-
-                                    export_button_csv = ui.button(
-                                        "Export as CSV", icon="share"
-                                    )
-                                    export_button_csv.props("flat color=white")
-                                    export_button_csv.classes("button-default-style")
-                                    export_button_csv.on("click", lambda: export("csv"))
-
-                                    export_button_tsv = ui.button(
-                                        "Export as TSV", icon="share"
-                                    )
-                                    export_button_tsv.props("flat color=white")
-                                    export_button_tsv.classes("button-default-style")
-                                    export_button_tsv.on("click", lambda: export("tsv"))
-
-                            if data_format == "srt":
-                                with ui.button("Validate", icon="check").props(
-                                    "flat color=white"
-                                ) as validate_button:
-                                    validate_button.classes("button-default-style")
-                                    validate_button.on(
-                                        "click",
-                                        lambda: editor.validate_captions(),
-                                    )
+                if data_format == "srt":
+                    with ui.button("Validate", icon="check").props(
+                        "flat color=black"
+                    ) as validate_button:
+                        validate_button.on(
+                            "click",
+                            lambda: editor.validate_captions(),
+                        )
+                editor.create_search_panel()
+            with ui.column().classes("flex-row items-center"):
+                with ui.row().classes("gap-2"):
+                    with ui.button("", icon="close").props(
+                        "flat color=black"
+                    ) as close_button:
+                        close_button.classes("cancel-style").style("border: 0;")
+                        close_button.on("click", lambda: editor.close_editor("/home"))
 
         with ui.splitter(value=60).classes("w-full h-full") as splitter:
             with splitter.before:
                 with ui.card().classes("w-full h-full"):
-                    editor.create_search_panel()
                     with ui.scroll_area().style("height: calc(90vh - 200px);"):
                         editor.main_container = ui.column().classes("w-full h-full")
 
                     if data_format == "srt":
                         editor.parse_srt(data["result"])
                     else:
+                        editor.create_document_view()
                         editor.parse_txt(data["result"])
 
                     editor.refresh_display()

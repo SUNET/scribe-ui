@@ -367,28 +367,32 @@ class SRTEditor:
         if self.undo_button:
             if self.undo_redo_manager.can_undo():
                 self.undo_button.enable()
+                self.undo_button.props("flat dense color=black")
             else:
                 self.undo_button.disable()
+                self.undo_button.props("flat dense color=grey")
 
         if self.redo_button:
             if self.undo_redo_manager.can_redo():
                 self.redo_button.enable()
+                self.redo_button.props("flat dense color=black")
             else:
                 self.redo_button.disable()
+                self.redo_button.props("flat dense color=grey")
 
     def create_undo_redo_panel(self) -> None:
         """Create the undo/redo buttons panel."""
         with ui.row().classes("gap-2"):
             self.undo_button = (
                 ui.button("Undo", icon="undo")
-                .props("flat dense")
+                .props("flat dense color=grey")
                 .on("click", self.undo)
             )
             self.undo_button.disable()
 
             self.redo_button = (
                 ui.button("Redo", icon="redo")
-                .props("flat dense")
+                .props("flat dense color=grey")
                 .on("click", self.redo)
             )
             self.redo_button.disable()
@@ -1044,7 +1048,10 @@ class SRTEditor:
         if self.selected_caption:
             ui.run_javascript(
                 """
-                document.getElementById("action_row").scrollIntoView({ behavior: "smooth", block: "center" });
+                requestAnimationFrame(() => {
+                    const el = document.getElementById("action_row");
+                    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+                });
                 """
             )
 
@@ -1076,70 +1083,108 @@ class SRTEditor:
         Create the search panel UI.
         """
 
-        with (
-            ui.expansion("Search & Replace")
-            .classes("w-full")
-            .style("background-color: #ffffff;")
-        ):
-            with ui.row().classes("w-full gap-2 mb-2"):
-                search_input = (
-                    ui.input(
-                        placeholder="Search in captions...", value=self.search_term
+        with ui.dialog() as self.search_container:
+            with ui.card().classes("w-1/2 max-w-full").style("padding: 16px;"):
+                # Title
+                ui.label("Find & Replace").classes("text-h6 mb-3")
+
+                # FIND SECTION
+                with ui.column().classes("w-full gap-2"):
+                    ui.label("Find").classes("text-caption text-gray-600")
+
+                    with ui.row().classes("w-full items-center gap-2"):
+                        search_input = (
+                            ui.input(
+                                placeholder="Search in captions…",
+                                value=self.search_term,
+                            )
+                            .classes("flex-1")
+                            .props("outlined dense clearable")
+                        )
+
+                        ui.button(icon="search").props(
+                            "flat dense round color=black"
+                        ).on(
+                            "click", lambda: self.search_captions(search_input.value)
+                        ).tooltip(
+                            "Find"
+                        )
+
+                    with ui.row().classes("w-full items-center justify-between mt-1"):
+                        ui.checkbox("Case sensitive").bind_value_to(
+                            self, "case_sensitive"
+                        ).on(
+                            "update:model-value",
+                            lambda: (
+                                self.search_captions(search_input.value)
+                                if self.search_term
+                                else None
+                            ),
+                        )
+
+                        # Navigation + info
+                        with ui.row().classes("items-center gap-1"):
+                            ui.button(icon="keyboard_arrow_up").props(
+                                "flat dense round color=black"
+                            ).on(
+                                "click", lambda: self.navigate_search_results(-1)
+                            ).tooltip(
+                                "Previous match"
+                            )
+                            ui.button(icon="keyboard_arrow_down").props(
+                                "flat dense round color=black"
+                            ).on(
+                                "click", lambda: self.navigate_search_results(1)
+                            ).tooltip(
+                                "Next match"
+                            )
+
+                            self.search_info_label = ui.label("").classes(
+                                "text-caption text-gray-600"
+                            )
+
+                ui.separator().classes("my-3")
+
+                # REPLACE SECTION
+                with ui.column().classes("w-full gap-2"):
+                    ui.label("Replace").classes("text-caption text-gray-600")
+
+                    replace_input = (
+                        ui.input(
+                            placeholder="Replace with…",
+                        )
+                        .classes("w-full")
+                        .props("outlined dense clearable")
                     )
-                    .classes("flex-1")
-                    .props("outlined dense")
-                )
 
-                ui.button("Search", icon="search").props("flat dense").on(
-                    "click", lambda: self.search_captions(search_input.value)
-                ).classes("button-replace")
+                    with ui.row().classes("w-full justify-end gap-2"):
+                        ui.button("Replace").props("flat dense color=black").on(
+                            "click",
+                            lambda: self.replace_in_current_caption(
+                                replace_input.value
+                            ),
+                        )
 
-                ui.checkbox("Case sensitive").bind_value_to(self, "case_sensitive").on(
-                    "update: model-value",
-                    lambda: (
-                        self.search_captions(search_input.value)
-                        if self.search_term
-                        else None
-                    ),
-                )
+                        ui.button("Replace all").props("flat dense color=black").on(
+                            "click", lambda: self.replace_all(replace_input.value)
+                        )
 
-            # Search navigation
-            with ui.row().classes("w-full gap-2 mb-2"):
-                ui.button("Previous", icon="keyboard_arrow_up").props("dense flat").on(
-                    "click", lambda: self.navigate_search_results(-1)
-                ).classes("button-replace-prev-next")
-                ui.button("Next", icon="keyboard_arrow_down", color="grey").props(
-                    "dense flat"
-                ).on("click", lambda: self.navigate_search_results(1)).classes(
-                    "button-replace-prev-next"
-                )
+                ui.separator().classes("my-3")
 
-                self.search_info_label = ui.label("").classes(
-                    "text-sm text-gray-600 self-center"
-                )
-
-            # Replace functionality
-            with ui.row().classes("w-full gap-2"):
-                replace_input = (
-                    ui.input(
-                        placeholder="Replace with...",
+                # FOOTER (Close button)
+                with ui.row().classes("w-full justify-end"):
+                    ui.button("Close").props("flat dense color=black").on(
+                        "click", self.search_container.close
                     )
-                    .classes("flex-1")
-                    .props("outlined dense")
+
+                # Enter key support for search
+                search_input.on(
+                    "keydown.enter",
+                    lambda: self.search_captions(search_input.value),
                 )
-
-                ui.button("Replace Current").props("flat dense").on(
-                    "click",
-                    lambda: self.replace_in_current_caption(replace_input.value),
-                ).classes("button-replace-current")
-                ui.button("Replace All").props("flat dense").on(
-                    "click", lambda: self.replace_all(replace_input.value)
-                ).classes("button-replace")
-
-            # Enter key support for search
-            search_input.on(
-                "keydown. enter", lambda: self.search_captions(search_input.value)
-            )
+        ui.button("Search").props("icon=search flat dense color=black").on(
+            "click", lambda: self.search_container.open()
+        ).classes("button-open-search")
 
     def get_caption_from_time(self, caption_time: float) -> Optional[SRTCaption]:
         """
@@ -1347,8 +1392,8 @@ class SRTEditor:
                         "text-sm text-gray-500"
                     )
 
-                    ui.html(highlighted_text).classes(
-                        "text-sm leading-relaxed whitespace-pre-wrap", sanitize=False
+                    ui.html(highlighted_text, sanitize=False).classes(
+                        "text-sm leading-relaxed whitespace-pre-wrap"
                     )
                 else:
                     with ui.row().classes("w-full justify-between"):
