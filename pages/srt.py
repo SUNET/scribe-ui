@@ -205,7 +205,6 @@ def create() -> None:
                     if data_format == "srt":
                         editor.parse_srt(data["result"])
                     else:
-                        editor.create_document_view()
                         editor.parse_txt(data["result"])
 
                     editor.refresh_display()
@@ -233,10 +232,6 @@ def create() -> None:
                             )
                             ui.html(
                                 f"<b>Transcription language:</b> {language}",
-                                sanitize=False,
-                            ).classes("text-sm")
-                            ui.html(
-                                f"<b>Transcription accuracy:</b> {model}",
                                 sanitize=False,
                             ).classes("text-sm")
                             html_wpm = ui.html(
