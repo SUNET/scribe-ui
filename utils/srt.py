@@ -324,6 +324,7 @@ class SRTEditor:
 
     def save_state_for_undo(self) -> None:
         """Save the current state before making changes."""
+
         self.undo_redo_manager.save_state(self.captions)
         self._update_undo_redo_buttons()
         # Mark as having unsaved changes
@@ -1021,10 +1022,12 @@ class SRTEditor:
         speaker: Optional[ui.input] = None,
         button: Optional[bool] = False,
         seek: Optional[bool] = True,
+        new_text: Optional[str] = None,
     ) -> None:
         """
         Select/deselect a caption.
         """
+
         if speaker:
             self.speakers.add(speaker.value)
             self.selected_caption.speaker = speaker.value
@@ -1042,6 +1045,13 @@ class SRTEditor:
             if self.__video_player and seek:
                 start_seconds = caption.get_start_seconds()
                 self.__video_player.seek(start_seconds)
+
+        if new_text is not None:
+            self.update_caption_text(
+                caption, caption.text, force=True
+            )  # To mark as changed
+            caption.text = new_text
+
         self.update_words_per_minute()
         self.refresh_display()
 
@@ -1055,12 +1065,15 @@ class SRTEditor:
                 """
             )
 
-    def update_caption_text(self, caption: SRTCaption, new_text: str) -> None:
+    def update_caption_text(
+        self, caption: SRTCaption, new_text: str, force: Optional[bool] = False
+    ) -> None:
         """
         Update caption text.
         """
+
         # Only save state if text actually changed
-        if caption.text != new_text:
+        if caption.text != new_text or force:
             self.save_state_for_undo()
             caption.text = new_text
 
@@ -1367,7 +1380,9 @@ class SRTEditor:
                     with ui.row().classes("gap-2"):
                         ui.button("Close").props("flat dense").on(
                             "click",
-                            lambda: self.select_caption(caption, speaker_select, True),
+                            lambda: self.select_caption(
+                                caption, speaker_select, True, new_text=text_area.value
+                            ),
                         ).classes("button-close")
 
                         if self.data_format == "txt":
