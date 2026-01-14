@@ -188,6 +188,7 @@ def create() -> None:
                             lambda: editor.validate_captions(),
                         )
                 editor.create_search_panel()
+                editor.show_keyboard_shortcuts()
             with ui.column().classes("flex-row items-center"):
                 with ui.row().classes("gap-2"):
                     with ui.button("", icon="close").props(

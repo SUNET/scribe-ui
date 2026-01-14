@@ -213,6 +213,7 @@ class SRTEditor:
         self._has_unsaved_changes = False
         self._save_confirmation_dialog = None
         self._pending_action_after_save: Optional[Callable] = None
+        self._play_pause = False
 
     def has_unsaved_changes(self) -> bool:
         """
@@ -443,31 +444,63 @@ class SRTEditor:
             return
 
         match event.key:
-            case "n":
+            # Next block of captions, Ctrl+Down
+            case "ArrowDown" if event.modifiers.ctrl:
                 self.select_next_caption()
-            case "p":
+
+            # Prev block of captions, Ctrl+Up
+            case "ArrowUp" if event.modifiers.ctrl:
                 self.select_prev_caption()
-            case "i":
-                self.add_caption_after(self.selected_caption)
-            case "s":
+
+            # Split block, Ctrl+S
+            case "s" if event.modifiers.ctrl:
                 self.split_caption(self.selected_caption)
-            case "d":
+
+            # Merge block with next, Ctrl+M
+            case "m" if event.modifiers.ctrl:
+                self.merge_with_next(self.selected_caption)
+
+            # Merge block with previous, Ctrl+Shift+M
+            case "M" if event.modifiers.ctrl:
+                self.merge_with_previous(self.selected_caption)
+
+            # Add caption after, Ctrl+N
+            case "n" if event.modifiers.ctrl:
+                self.add_caption_after(self.selected_caption)
+
+            # Delete block, Ctrl+Shift+D
+            case "d" if event.modifiers.ctrl:
                 self.remove_caption(self.selected_caption)
-            case "c":
-                self.select_caption(self.selected_caption)
-            case "v":
+
+            # Validate captions, Ctrl+Shift+V
+            case "v" if event.modifiers.ctrl:
                 self.validate_captions()
-            case "z":
+
+            # Play/pause video, Ctrl+Space
+            case " " if event.modifiers.ctrl:
+                if self.__video_player:
+                    if self._play_pause:
+                        self.__video_player.pause()
+                        self._play_pause = False
+                    else:
+                        self.__video_player.play()
+                        self._play_pause = True
+
+            # Undo, Ctrl+Z
+            case "z" if event.modifiers.ctrl:
                 self.undo()
-            case "y":
+
+            # Redo, Ctrl+Y
+            case "y" if event.modifiers.ctrl and not event.modifiers.shift:
                 self.redo()
+
+            # Close block, Escape
+            case "Escape":
+                self.select_caption(self.selected_caption)
+
+            # Everything else
             case _:
                 pass
-
-        if event.key.arrow_up:
-            self.select_prev_caption()
-        if event.key.arrow_down:
-            self.select_next_caption()
 
     def select_next_caption(self) -> None:
         """
@@ -1562,3 +1595,42 @@ class SRTEditor:
             dialog.open()
 
         self.refresh_display()
+
+    def show_keyboard_shortcuts(self) -> None:
+        """
+        Show keyboard shortcuts dialog.
+        """
+
+        shortcuts = [
+            ("Next caption", "Ctrl + Down Arrow"),
+            ("Previous caption", "Ctrl + Up Arrow"),
+            ("Split caption", "Ctrl + S"),
+            ("Merge with next caption", "Ctrl + M"),
+            ("Merge with previous caption", "Ctrl + Shift + M"),
+            ("Add caption after", "Ctrl + N"),
+            ("Delete caption", "Ctrl + Shift + D"),
+            ("Validate captions", "Ctrl + Shift + V"),
+            ("Play/Pause video", "Ctrl + Space"),
+            ("Undo", "Ctrl + Z"),
+            ("Redo", "Ctrl + Y"),
+            ("Close caption edit", "Escape"),
+        ]
+
+        with ui.dialog() as dialog:
+            with ui.card().classes("w-1/2 max-w-full").style("padding: 16px;"):
+                ui.label("Keyboard Shortcuts").classes("text-h6 mb-3")
+
+                with ui.column().classes("w-full gap-2"):
+                    for action, keys in shortcuts:
+                        with ui.row().classes("justify-between w-full"):
+                            ui.label(action).classes("text-body1")
+                            ui.label(keys).classes("text-body2 text-gray-600")
+
+                with ui.row().classes("w-full justify-end"):
+                    ui.button("Close").props("flat dense color=black").on(
+                        "click", dialog.close
+                    )
+
+        ui.button("Shortcuts").props("icon=keyboard flat dense color=black").on(
+            "click", lambda: dialog.open()
+        ).classes("button-open-search")
