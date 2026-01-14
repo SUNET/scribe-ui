@@ -580,25 +580,43 @@ def create() -> None:
                     "text-lg"
                 )
                 return
+
             with ui.scroll_area().style("height: calc(100vh - 160px); width: 100%;"):
                 groups = sorted(
                     groups_get()["result"],
-                    key=lambda x: (x["name"].lower() != "all users", x["name"].lower()),
+                    key=lambda x: (
+                        x["name"].lower() != "all users",
+                        x["name"].lower(),
+                    ),
                 )
-                expansions = {}
 
-                for group in groups:
+                g = Group(
+                    group_id=groups[0]["id"],
+                    name=groups[0]["name"],
+                    description=groups[0]["description"],
+                    created_at=groups[0]["created_at"],
+                    users=groups[0]["users"],
+                    nr_users=groups[0]["nr_users"],
+                    stats=groups[0]["stats"],
+                    quota_seconds=groups[0]["quota_seconds"],
+                )
+
+                g.create_card()
+
+                expansions = {}
+                groups = sorted(
+                    groups_get()["result"],
+                    key=lambda x: (
+                        x["customer_name"].lower() != "all users",
+                        x["customer_name"].lower(),
+                    ),
+                )
+
+                for group in groups[1:]:
+                    if group["name"] == "All users":
+                        continue
                     customer_name = group.get("customer_name", "None")
-                    if get_bofh_status():
-                        if customer_name not in expansions:
-                            expansions[customer_name] = (
-                                ui.expansion(
-                                    f"Customer: {customer_name}",
-                                    value=False,
-                                )
-                                .classes("mb-4")
-                                .style("width: 100%;")
-                            )
+
                     g = Group(
                         group_id=group["id"],
                         name=group["name"],
@@ -611,8 +629,21 @@ def create() -> None:
                     )
 
                     if get_bofh_status():
-                        with expansions[customer_name]:
+                        if customer_name not in expansions:
+                            expansions[customer_name] = (
+                                ui.expansion(
+                                    f"Customer: {customer_name}",
+                                    value=False,
+                                )
+                                .classes("text-bold")
+                                .style("width: 100%; background-color: #ffffff;")
+                            )
+
+                        if group["name"] == "All users":
                             g.create_card()
+                        else:
+                            with expansions[customer_name]:
+                                g.create_card()
                     else:
                         g.create_card()
 
