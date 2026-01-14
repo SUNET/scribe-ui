@@ -498,6 +498,10 @@ class SRTEditor:
             case "Escape":
                 self.select_caption(self.selected_caption)
 
+            # Open find, Ctrl+F
+            case "f" if event.modifiers.ctrl:
+                self.create_search_panel(open_window=True)
+
             # Everything else
             case _:
                 pass
@@ -1124,7 +1128,7 @@ class SRTEditor:
 
         self.refresh_display()
 
-    def create_search_panel(self) -> None:
+    def create_search_panel(self, open_window: Optional[bool] = False) -> None:
         """
         Create the search panel UI.
         """
@@ -1228,9 +1232,13 @@ class SRTEditor:
                     "keydown.enter",
                     lambda: self.search_captions(search_input.value),
                 )
-        ui.button("Search").props("icon=search flat dense color=black").on(
-            "click", lambda: self.search_container.open()
-        ).classes("button-open-search")
+
+        if open_window:
+            self.search_container.open()
+        else:
+            ui.button("Search").props("icon=search flat dense color=black").on(
+                "click", lambda: self.search_container.open()
+            ).classes("button-open-search")
 
     def get_caption_from_time(self, caption_time: float) -> Optional[SRTCaption]:
         """
@@ -1613,11 +1621,12 @@ class SRTEditor:
             ("Play/Pause video", "Ctrl + Space"),
             ("Undo", "Ctrl + Z"),
             ("Redo", "Ctrl + Y"),
+            ("Find", "Ctrl + F"),
             ("Close caption edit", "Escape"),
         ]
 
         with ui.dialog() as dialog:
-            with ui.card().classes("w-1/2 max-w-full").style("padding: 16px;"):
+            with ui.card().classes("w-1/3 max-w-full").style("padding: 16px;"):
                 ui.label("Keyboard Shortcuts").classes("text-h6 mb-3")
 
                 with ui.column().classes("w-full gap-2"):
