@@ -13,10 +13,12 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Build the Docker image
-      run: docker build . --file Dockerfile --tag transcribe-ui:$(date +%s)
+      run: docker build . --file Dockerfile --tag ghcr.io/sunet/transcribe-ui:$(date +%s)
 
     - name: Tag the Docker image
       run: docker tag ghcr.io/sunet/transcribe-ui:$(date +%s) ghcr.io/sunet/transcribe-ui:latest
 
     - name: Push the Docker image
-      run: docker push ghcr.io/sunet/transcribe-ui:$(date +%s)
+      run: |
+        docker push ghcr.io/sunet/transcribe-ui:latest
+        docker push ghcr.io/sunet/transcribe-ui:$(date +%s)
