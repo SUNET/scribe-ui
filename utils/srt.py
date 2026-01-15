@@ -453,7 +453,9 @@ class SRTEditor:
                 self.select_prev_caption()
 
             # Split block, Alt+Enter
-            case "Enter" if event.modifiers.alt:
+            case "Enter" if event.modifiers.ctrl:
+                self.split_caption(self.selected_caption)
+            case "Enter" if event.modifiers.meta and not event.modifiers.shift:
                 self.split_caption(self.selected_caption)
 
             # Merge block with next, Ctrl+M
@@ -464,8 +466,10 @@ class SRTEditor:
             case "M" if event.modifiers.ctrl:
                 self.merge_with_previous(self.selected_caption)
 
-            # Add caption after, Ctrl+N
-            case "n" if event.modifiers.ctrl:
+            # Add caption after, Shift+Ctrl+Enter
+            case "Enter" if event.modifiers.ctrl and event.modifiers.shift:
+                self.add_caption_after(self.selected_caption)
+            case "Enter" if event.modifiers.meta and event.modifiers.shift:
                 self.add_caption_after(self.selected_caption)
 
             # Delete block, Ctrl+Shift+D
@@ -507,10 +511,16 @@ class SRTEditor:
             # Open find, Ctrl+F
             case "f" if event.modifiers.ctrl:
                 self.create_search_panel(open_window=True)
+            case "f" if event.modifiers.meta:
+                self.create_search_panel(open_window=True)
 
             # Save file, Ctrl+S / Cmd+S
             case "s" if event.modifiers.ctrl or event.modifiers.meta:
                 self.save_srt_changes()
+
+            # ? to show help
+            case "?" if event.modifiers.shift:
+                self.show_keyboard_shortcuts(open_window=True)
 
             # Everything else
             case _:
@@ -1613,43 +1623,80 @@ class SRTEditor:
 
         self.refresh_display()
 
-    def show_keyboard_shortcuts(self) -> None:
+    def show_keyboard_shortcuts(self, open_window: Optional[bool] = False) -> None:
         """
         Show keyboard shortcuts dialog.
         """
 
-        shortcuts = [
-            ("Next caption", "Alt/Option + Down Arrow"),
-            ("Previous caption", "Alt/Option + Up Arrow"),
-            ("Split caption", "Alt + Enter"),
-            ("Merge with next caption", "Ctrl + M"),
-            ("Merge with previous caption", "Ctrl + Shift + M"),
-            ("Add caption after", "Ctrl + N"),
-            ("Delete caption", "Ctrl + Shift + D"),
-            ("Validate captions", "Ctrl + Shift + V"),
-            ("Play/Pause video", "Ctrl + Space"),
-            ("Undo", "Ctrl/⌘ + Z"),
-            ("Redo", "Ctrl + Y / ⌘ + Shift + Z / ⌘ + Y"),
-            ("Find", "Ctrl + F"),
-            ("Save", "Ctrl + S / ⌘ + S"),
-            ("Close block", "Escape"),
+        shortcut_groups = [
+            (
+                "Navigation",
+                [
+                    ("Next caption", "Alt + ↓"),
+                    ("Previous caption", "Alt + ↑"),
+                    ("Close/deselect block", "Esc"),
+                ],
+            ),
+            (
+                "Editing",
+                [
+                    ("Split caption", "Ctrl/⌘ + Enter"),
+                    ("Merge with next", "Ctrl + M"),
+                    ("Merge with previous", "Ctrl + Shift + M"),
+                    ("Add caption after", "Ctrl/⌘ + Shift + Enter"),
+                    ("Delete caption", "Ctrl + D"),
+                ],
+            ),
+            (
+                "File Operations",
+                [
+                    ("Save file", "Ctrl/⌘ + S"),
+                    ("Find", "Ctrl/⌘ + F"),
+                    ("Validate captions", "Ctrl + V"),
+                ],
+            ),
+            (
+                "History",
+                [
+                    ("Undo", "Ctrl/⌘ + Z"),
+                    ("Redo", "Ctrl + Y / ⌘ + Shift + Z"),
+                ],
+            ),
+            (
+                "Video",
+                [
+                    ("Play/Pause", "Ctrl + Space"),
+                ],
+            ),
         ]
 
         with ui.dialog() as dialog:
-            with ui.card().classes("w-1/3 max-w-full").style("padding: 16px;"):
-                ui.label("Keyboard Shortcuts").classes("text-h6 mb-3")
+            with ui.card().classes("w-2/3 max-w-2xl").style("padding: 24px;"):
+                ui.label("Keyboard Shortcuts").classes("text-h5 mb-4 font-bold")
 
-                with ui.column().classes("w-full gap-2"):
-                    for action, keys in shortcuts:
-                        with ui.row().classes("justify-between w-full"):
-                            ui.label(action).classes("text-body1")
-                            ui.label(keys).classes("text-body2 text-gray-600")
+                with ui.column().classes("w-full gap-4"):
+                    for group_name, shortcuts in shortcut_groups:
+                        ui.label(group_name).classes(
+                            "text-subtitle1 font-semibold mt-2"
+                        )
+                        with ui.column().classes("w-full gap-1 ml-4"):
+                            for action, keys in shortcuts:
+                                with ui.row().classes(
+                                    "justify-between w-full items-center"
+                                ):
+                                    ui.label(action).classes("text-body1")
+                                    ui.label(keys).classes(
+                                        "text-body2 font-mono bg-gray-100 px-2 py-1 rounded"
+                                    )
 
-                with ui.row().classes("w-full justify-end"):
-                    ui.button("Close").props("flat dense color=black").on(
+                with ui.row().classes("w-full justify-end mt-4"):
+                    ui.button("Close").props("flat color=primary").on(
                         "click", dialog.close
                     )
 
-        ui.button("Shortcuts").props("icon=keyboard flat dense color=black").on(
-            "click", lambda: dialog.open()
-        ).classes("button-open-search")
+        if open_window:
+            dialog.open()
+        else:
+            ui.button("Shortcuts").props("icon=keyboard flat dense color=black").on(
+                "click", lambda: dialog.open()
+            ).classes("button-open-search")

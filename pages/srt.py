@@ -56,16 +56,28 @@ def create() -> None:
             """
         <script>
         window.addEventListener('keydown', function(e) {
+            // Block Cmd + z / Ctrl + z for undo
             if ((e.metaKey || e.ctrlKey) && ! e.shiftKey && e.key.toLowerCase() === 'z') {
                 e.preventDefault();
             }
+
+            // Block Cmd + y / Ctrl + y for redo
             if ((e.metaKey || e.ctrlKey) && ! e.shiftKey && e.key.toLowerCase() === 's') {
                 e.preventDefault();
             }
+
+            // Block Cmd + Shift + z / Ctrl + Shift + z for redo
             if ((e.metaKey || e.ctrlKey) && ! e.shiftKey && e.key.toLowerCase() === 'y') {
                 e.preventDefault();
             }
+
+            // Block Cmd + Shift + z / Ctrl + Shift + z for redo
             if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'z') {
+                e.preventDefault();
+            }
+
+            // Block Ctrl + f / Cmd + f for find
+            if ((e.metaKey || e.ctrlKey) && ! e.shiftKey && e.key.toLowerCase() === 'f') {
                 e.preventDefault();
             }
         }, true);
