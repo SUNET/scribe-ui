@@ -521,6 +521,14 @@ class SRTEditor:
             case "s" if event.modifiers.ctrl or event.modifiers.meta:
                 self.save_srt_changes()
 
+            # Export file, Ctrl+E / Cmd+E
+            case "e" if event.modifiers.ctrl and not event.modifiers.shift:
+                if self.filename:
+                    self.show_export_dialog(self.filename)
+            case "e" if event.modifiers.meta and not event.modifiers.shift:
+                if self.filename:
+                    self.show_export_dialog(self.filename)
+
             # ? to show help
             case "?" if event.modifiers.shift and not event.modifiers.ctrl:
                 self.show_keyboard_shortcuts(open_window=True)
@@ -1914,6 +1922,7 @@ class SRTEditor:
                 "File Operations",
                 [
                     ("Save file", "Ctrl/⌘ + S"),
+                    ("Export file", "Ctrl/⌘ + E"),
                     ("Find", "Ctrl/⌘ + F"),
                     ("Validate captions", "Ctrl + V"),
                 ],
@@ -2022,10 +2031,40 @@ class SRTEditor:
                                     "text-subtitle1 font-semibold"
                                 )
                                 ts_incl = ui.checkbox("Include timestamps", value=True)
+
+                                with ui.row().classes("w-full gap-2 items-center"):
+                                    ts_which = (
+                                        ui.select(
+                                            options={
+                                                "both": "Start & End",
+                                                "start": "Start only",
+                                                "end": "End only",
+                                            },
+                                            value="both",
+                                            label="Which",
+                                        )
+                                        .classes("flex-1")
+                                        .props("dense outlined")
+                                    )
+                                    ts_pos = (
+                                        ui.select(
+                                            options={
+                                                "before": "Before text",
+                                                "after": "After text",
+                                            },
+                                            value="before",
+                                            label="Position",
+                                        )
+                                        .classes("flex-1")
+                                        .props("dense outlined")
+                                    )
+                                    ts_pos.visible = False
+
                                 ts_fmt = (
                                     ui.select(
                                         options={
                                             "srt": "SRT (00:00:00,000)",
+                                            "vtt": "VTT (00:00:00.000)",
                                             "seconds": "Seconds (0.000)",
                                             "ms": "Milliseconds",
                                         },
@@ -2045,7 +2084,7 @@ class SRTEditor:
                                 )
                                 spk_incl = ui.checkbox("Include speakers", value=True)
                                 idx_incl = ui.checkbox(
-                                    "Include caption numbers", value=False
+                                    "Include block numbers", value=False
                                 )
                                 sep_type = (
                                     ui.select(
@@ -2082,6 +2121,9 @@ class SRTEditor:
                                     "text-subtitle1 font-semibold"
                                 )
                                 csv_hdr = ui.checkbox("Include header row", value=True)
+                                csv_spk_incl = ui.checkbox(
+                                    "Include speakers", value=True
+                                )
                                 csv_qt = (
                                     ui.input(label="Quote character", value='"')
                                     .classes("w-full mt-2")
@@ -2101,6 +2143,9 @@ class SRTEditor:
                                     "text-subtitle1 font-semibold"
                                 )
                                 tsv_hdr = ui.checkbox("Include header row", value=True)
+                                tsv_spk_incl = ui.checkbox(
+                                    "Include speakers", value=True
+                                )
                                 tsv_tab_type = (
                                     ui.select(
                                         options={
@@ -2201,7 +2246,20 @@ class SRTEditor:
                                 return f"{h*3600 + m*60 + s + ms/1000:.3f}"
                             if f == "ms":
                                 return str(h * 3600000 + m * 60000 + s * 1000 + ms)
-                            return ts
+                            if f == "vtt":
+                                return f"{h:02d}:{m:02d}:{s:02d}.{ms:03d}"
+                            return ts  # srt format
+
+                        def build_ts_str(cap):
+                            """Build timestamp string based on options"""
+                            if not ts_incl.value:
+                                return ""
+                            parts = []
+                            if ts_which.value in ["start", "both"]:
+                                parts.append(fmt_ts(cap.start_time, ts_fmt.value))
+                            if ts_which.value in ["end", "both"]:
+                                parts.append(fmt_ts(cap.end_time, ts_fmt.value))
+                            return " - ".join(parts) if parts else ""
 
                         if fmt.value == "srt":
                             out = "\n\n".join(c.to_srt_format() for c in caps)
@@ -2213,14 +2271,26 @@ class SRTEditor:
                         elif fmt.value == "txt":
                             parts = []
                             for c in caps:
-                                p = ""
+                                p_parts = []
                                 if idx_incl and idx_incl.value:
-                                    p += f"[{c.index}] "
+                                    p_parts.append(f"[{c.index}]")
+
+                                ts_str = build_ts_str(c)
+                                if ts_str and ts_pos.value == "before":
+                                    p_parts.append(f"({ts_str})")
+
                                 if spk_incl and spk_incl.value:
-                                    p += f"{c.speaker}: "
-                                if ts_incl.value:
-                                    p += f"({fmt_ts(c.start_time, ts_fmt.value)} → {fmt_ts(c.end_time, ts_fmt.value)})\n"
-                                p += c.text
+                                    p_parts.append(f"{c.speaker}:")
+
+                                # Add text on new line or same line
+                                if p_parts:
+                                    p = " ".join(p_parts) + "\n" + c.text
+                                else:
+                                    p = c.text
+
+                                if ts_str and ts_pos.value == "after":
+                                    p += f"\n({ts_str})"
+
                                 parts.append(p)
                             s = (
                                 sep_custom.value
@@ -2237,12 +2307,10 @@ class SRTEditor:
                                     "text": c.text,
                                 }
                                 if ts_incl.value:
-                                    cd.update(
-                                        {
-                                            "start": fmt_ts(c.start_time, ts_fmt.value),
-                                            "end": fmt_ts(c.end_time, ts_fmt.value),
-                                        }
-                                    )
+                                    if ts_which.value in ["start", "both"]:
+                                        cd["start"] = fmt_ts(c.start_time, ts_fmt.value)
+                                    if ts_which.value in ["end", "both"]:
+                                        cd["end"] = fmt_ts(c.end_time, ts_fmt.value)
                                 d["captions"].append(cd)
                             out = json.dumps(
                                 d,
@@ -2256,24 +2324,24 @@ class SRTEditor:
                             if csv_hdr.value:
                                 h = ["index"]
                                 if ts_incl.value:
-                                    h.extend(["start", "end"])
-                                h.extend(["speaker", "text"])
+                                    if ts_which.value in ["start", "both"]:
+                                        h.append("start")
+                                    if ts_which.value in ["end", "both"]:
+                                        h.append("end")
+                                if csv_spk_incl.value:
+                                    h.append("speaker")
+                                h.append("text")
                                 lines.append(delim.join(f"{q}{x}{q}" for x in h))
                             for c in caps:
                                 r = [str(c.index)]
                                 if ts_incl.value:
-                                    r.extend(
-                                        [
-                                            fmt_ts(c.start_time, ts_fmt.value),
-                                            fmt_ts(c.end_time, ts_fmt.value),
-                                        ]
-                                    )
-                                r.extend(
-                                    [
-                                        c.speaker,
-                                        c.text.replace(q, q + q).replace("\n", " "),
-                                    ]
-                                )
+                                    if ts_which.value in ["start", "both"]:
+                                        r.append(fmt_ts(c.start_time, ts_fmt.value))
+                                    if ts_which.value in ["end", "both"]:
+                                        r.append(fmt_ts(c.end_time, ts_fmt.value))
+                                if csv_spk_incl.value:
+                                    r.append(c.speaker)
+                                r.append(c.text.replace(q, q + q).replace("\n", " "))
                                 lines.append(delim.join(f"{q}{x}{q}" for x in r))
                             out = "\n".join(lines)
                         elif fmt.value == "tsv":
@@ -2287,24 +2355,24 @@ class SRTEditor:
                             if tsv_hdr.value:
                                 h = ["index"]
                                 if ts_incl.value:
-                                    h.extend(["start", "end"])
-                                h.extend(["speaker", "text"])
+                                    if ts_which.value in ["start", "both"]:
+                                        h.append("start")
+                                    if ts_which.value in ["end", "both"]:
+                                        h.append("end")
+                                if tsv_spk_incl.value:
+                                    h.append("speaker")
+                                h.append("text")
                                 lines.append(tab_char.join(h))
                             for c in caps:
                                 r = [str(c.index)]
                                 if ts_incl.value:
-                                    r.extend(
-                                        [
-                                            fmt_ts(c.start_time, ts_fmt.value),
-                                            fmt_ts(c.end_time, ts_fmt.value),
-                                        ]
-                                    )
-                                r.extend(
-                                    [
-                                        c.speaker,
-                                        c.text.replace("\t", "  ").replace("\n", " "),
-                                    ]
-                                )
+                                    if ts_which.value in ["start", "both"]:
+                                        r.append(fmt_ts(c.start_time, ts_fmt.value))
+                                    if ts_which.value in ["end", "both"]:
+                                        r.append(fmt_ts(c.end_time, ts_fmt.value))
+                                if tsv_spk_incl.value:
+                                    r.append(c.speaker)
+                                r.append(c.text.replace("\t", "  ").replace("\n", " "))
                                 lines.append(tab_char.join(r))
                             out = "\n".join(lines)
                         else:
@@ -2327,16 +2395,18 @@ class SRTEditor:
                         )
 
                 # Connect updates
-                for ctrl in [fmt, ts_incl, ts_fmt]:
+                for ctrl in [fmt, ts_incl, ts_fmt, ts_which, ts_pos]:
                     ctrl.on("update:model-value", lambda: upd_prev())
 
                 # CSV controls
                 csv_hdr.on("update:model-value", lambda: upd_prev())
+                csv_spk_incl.on("update:model-value", lambda: upd_prev())
                 csv_qt.on("blur", lambda: upd_prev())
                 csv_delim.on("blur", lambda: upd_prev())
 
                 # TSV controls
                 tsv_hdr.on("update:model-value", lambda: upd_prev())
+                tsv_spk_incl.on("update:model-value", lambda: upd_prev())
                 tsv_tab_type.on("update:model-value", lambda: upd_prev())
                 tsv_tab_width.on("blur", lambda: upd_prev())
 
@@ -2366,6 +2436,38 @@ class SRTEditor:
                         def exp():
                             try:
                                 c = None
+
+                                def fmt_ts(ts, f):
+                                    p = ts.replace(",", ":").split(":")
+                                    h, m, s, ms = (
+                                        int(p[0]),
+                                        int(p[1]),
+                                        int(p[2]),
+                                        int(p[3]),
+                                    )
+                                    if f == "seconds":
+                                        return f"{h*3600 + m*60 + s + ms/1000:.3f}"
+                                    if f == "ms":
+                                        return str(
+                                            h * 3600000 + m * 60000 + s * 1000 + ms
+                                        )
+                                    if f == "vtt":
+                                        return f"{h:02d}:{m:02d}:{s:02d}.{ms:03d}"
+                                    return ts
+
+                                def build_ts_str(cap):
+                                    """Build timestamp string based on options"""
+                                    if not ts_incl.value:
+                                        return ""
+                                    parts = []
+                                    if ts_which.value in ["start", "both"]:
+                                        parts.append(
+                                            fmt_ts(cap.start_time, ts_fmt.value)
+                                        )
+                                    if ts_which.value in ["end", "both"]:
+                                        parts.append(fmt_ts(cap.end_time, ts_fmt.value))
+                                    return " - ".join(parts) if parts else ""
+
                                 if fmt.value == "srt":
                                     c = self.export_srt()
                                 elif fmt.value == "vtt":
@@ -2378,21 +2480,31 @@ class SRTEditor:
                                     sep_str = "\n\n"
                                     if sep_type.value == "custom":
                                         sep_str = sep_custom.value.replace("\\n", "\n")
-                                    elif sep_type.value == "single":
-                                        sep_str = "\n"
+                                    elif sep_type.value != "\\n\\n":
+                                        sep_str = sep_type.value.replace("\\n", "\n")
 
                                     for cap in self.captions:
-                                        p = []
+                                        p_parts = []
                                         if idx_incl.value:
-                                            p.append(f"{cap.index}")
-                                        if ts_incl.value:
-                                            p.append(
-                                                f"{fmt_ts(cap.start_time, ts_fmt.value)} - {fmt_ts(cap.end_time, ts_fmt.value)}"
-                                            )
+                                            p_parts.append(f"[{cap.index}]")
+
+                                        ts_str = build_ts_str(cap)
+                                        if ts_str and ts_pos.value == "before":
+                                            p_parts.append(f"({ts_str})")
+
                                         if spk_incl.value:
-                                            p.append(f"{cap.speaker}:")
-                                        p.append(cap.text)
-                                        parts.append(" ".join(p))
+                                            p_parts.append(f"{cap.speaker}:")
+
+                                        # Add text on new line or same line
+                                        if p_parts:
+                                            p = " ".join(p_parts) + "\n" + cap.text
+                                        else:
+                                            p = cap.text
+
+                                        if ts_str and ts_pos.value == "after":
+                                            p += f"\n({ts_str})"
+
+                                        parts.append(p)
                                     c = sep_str.join(parts)
                                 elif fmt.value == "csv":
                                     # CSV format with custom options
@@ -2402,33 +2514,37 @@ class SRTEditor:
                                     if csv_hdr.value:
                                         h = ["index"]
                                         if ts_incl.value:
-                                            h.extend(["start", "end"])
-                                        h.extend(["speaker", "text"])
+                                            if ts_which.value in ["start", "both"]:
+                                                h.append("start")
+                                            if ts_which.value in ["end", "both"]:
+                                                h.append("end")
+                                        if csv_spk_incl.value:
+                                            h.append("speaker")
+                                        h.append("text")
                                         lines.append(d.join(f"{q}{x}{q}" for x in h))
                                     for cap in self.captions:
                                         r = [str(cap.index)]
                                         if ts_incl.value:
-                                            r.extend(
-                                                [
-                                                    fmt_ts(
-                                                        cap.start_time, ts_fmt.value
-                                                    ),
-                                                    fmt_ts(cap.end_time, ts_fmt.value),
-                                                ]
+                                            if ts_which.value in ["start", "both"]:
+                                                r.append(
+                                                    fmt_ts(cap.start_time, ts_fmt.value)
+                                                )
+                                            if ts_which.value in ["end", "both"]:
+                                                r.append(
+                                                    fmt_ts(cap.end_time, ts_fmt.value)
+                                                )
+                                        if csv_spk_incl.value:
+                                            r.append(cap.speaker)
+                                        r.append(
+                                            cap.text.replace(q, q + q).replace(
+                                                "\n", " "
                                             )
-                                        r.extend(
-                                            [
-                                                cap.speaker,
-                                                cap.text.replace(q, q + q).replace(
-                                                    "\n", " "
-                                                ),
-                                            ]
                                         )
                                         lines.append(d.join(f"{q}{x}{q}" for x in r))
                                     c = "\n".join(lines)
                                 elif fmt.value == "tsv":
                                     # TSV format with custom options
-                                    if tsv_tab_type.value == "tab":
+                                    if tsv_tab_type.value == "\\t":
                                         tab_char = "\t"
                                     else:
                                         tab_char = " " * int(tsv_tab_width.value)
@@ -2437,39 +2553,77 @@ class SRTEditor:
                                     if tsv_hdr.value:
                                         h = ["index"]
                                         if ts_incl.value:
-                                            h.extend(["start", "end"])
-                                        h.extend(["speaker", "text"])
+                                            if ts_which.value in ["start", "both"]:
+                                                h.append("start")
+                                            if ts_which.value in ["end", "both"]:
+                                                h.append("end")
+                                        if tsv_spk_incl.value:
+                                            h.append("speaker")
+                                        h.append("text")
                                         lines.append(tab_char.join(h))
                                     for cap in self.captions:
                                         r = [str(cap.index)]
                                         if ts_incl.value:
-                                            r.extend(
-                                                [
-                                                    fmt_ts(
-                                                        cap.start_time, ts_fmt.value
-                                                    ),
-                                                    fmt_ts(cap.end_time, ts_fmt.value),
-                                                ]
+                                            if ts_which.value in ["start", "both"]:
+                                                r.append(
+                                                    fmt_ts(cap.start_time, ts_fmt.value)
+                                                )
+                                            if ts_which.value in ["end", "both"]:
+                                                r.append(
+                                                    fmt_ts(cap.end_time, ts_fmt.value)
+                                                )
+                                        if tsv_spk_incl.value:
+                                            r.append(cap.speaker)
+                                        r.append(
+                                            cap.text.replace("\t", "  ").replace(
+                                                "\n", " "
                                             )
-                                        r.extend(
-                                            [
-                                                cap.speaker,
-                                                cap.text.replace("\t", "  ").replace(
-                                                    "\n", " "
-                                                ),
-                                            ]
                                         )
                                         lines.append(tab_char.join(r))
                                     c = "\n".join(lines)
                                 elif fmt.value == "json":
                                     # JSON format with custom options
+                                    data = self.export_json()
+                                    # Update data based on timestamp options
+                                    if ts_incl.value:
+                                        for i, cap in enumerate(self.captions):
+                                            if i < len(data["segments"]):
+                                                seg = data["segments"][i]
+                                                # Remove timestamps not selected
+                                                if ts_which.value == "start":
+                                                    seg["start"] = fmt_ts(
+                                                        cap.start_time, ts_fmt.value
+                                                    )
+                                                    if "end" in seg:
+                                                        del seg["end"]
+                                                elif ts_which.value == "end":
+                                                    seg["end"] = fmt_ts(
+                                                        cap.end_time, ts_fmt.value
+                                                    )
+                                                    if "start" in seg:
+                                                        del seg["start"]
+                                                else:  # both
+                                                    seg["start"] = fmt_ts(
+                                                        cap.start_time, ts_fmt.value
+                                                    )
+                                                    seg["end"] = fmt_ts(
+                                                        cap.end_time, ts_fmt.value
+                                                    )
+                                    else:
+                                        # Remove all timestamps
+                                        for seg in data["segments"]:
+                                            if "start" in seg:
+                                                del seg["start"]
+                                            if "end" in seg:
+                                                del seg["end"]
+
                                     indent = (
                                         int(json_indent.value)
                                         if json_indent.value
                                         else None
                                     )
                                     c = json.dumps(
-                                        self.export_json(),
+                                        data,
                                         indent=indent,
                                         ensure_ascii=json_ascii.value,
                                     )
