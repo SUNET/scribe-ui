@@ -905,7 +905,7 @@ def health() -> None:
                         go.Scatter(
                             x=times,
                             y=load_vals,
-                            mode="lines+markers",
+                            mode="lines",
                             name="Load Avg",
                             line=dict(shape="spline"),
                         )
@@ -914,7 +914,7 @@ def health() -> None:
                         go.Scatter(
                             x=times,
                             y=mem_vals,
-                            mode="lines+markers",
+                            mode="lines",
                             name="Memory %",
                             line=dict(shape="spline"),
                         )
@@ -941,7 +941,7 @@ def health() -> None:
                             go.Scatter(
                                 x=times[-len(gpu_cpu_vals) :],
                                 y=gpu_cpu_vals,
-                                mode="lines+markers",
+                                mode="lines",
                                 name="GPU CPU%",
                                 line=dict(shape="spline"),
                             )
@@ -950,7 +950,7 @@ def health() -> None:
                             go.Scatter(
                                 x=times[-len(gpu_mem_vals) :],
                                 y=gpu_mem_vals,
-                                mode="lines+markers",
+                                mode="lines",
                                 name="GPU RAM%",
                                 line=dict(shape="spline"),
                             )

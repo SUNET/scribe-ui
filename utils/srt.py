@@ -452,8 +452,8 @@ class SRTEditor:
             case "ArrowUp" if event.modifiers.alt:
                 self.select_prev_caption()
 
-            # Split block, Ctrl+S
-            case "s" if event.modifiers.ctrl:
+            # Split block, Alt+Enter
+            case "Enter" if event.modifiers.alt:
                 self.split_caption(self.selected_caption)
 
             # Merge block with next, Ctrl+M
@@ -507,6 +507,10 @@ class SRTEditor:
             # Open find, Ctrl+F
             case "f" if event.modifiers.ctrl:
                 self.create_search_panel(open_window=True)
+
+            # Save file, Ctrl+S / Cmd+S
+            case "s" if event.modifiers.ctrl or event.modifiers.meta:
+                self.save_srt_changes()
 
             # Everything else
             case _:
@@ -1227,7 +1231,6 @@ class SRTEditor:
 
                 ui.separator().classes("my-3")
 
-                # FOOTER (Close button)
                 with ui.row().classes("w-full justify-end"):
                     ui.button("Close").props("flat dense color=black").on(
                         "click", self.search_container.close
