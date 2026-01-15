@@ -1,3 +1,4 @@
+import json
 import requests
 
 from nicegui import app, ui
@@ -18,7 +19,6 @@ def save_srt(job_id: str, data: str, editor: SRTEditor, data_format: str) -> Non
         jsondata = {"format": data_format, "data": data}
 
         headers = get_auth_header()
-        headers["Content-Type"] = "application/json"
         res = requests.put(
             f"{settings.API_URL}/api/v1/transcriber/{job_id}/result",
             headers=headers,
@@ -160,7 +160,7 @@ def create() -> None:
                             "click",
                             lambda: save_srt(
                                 uuid,
-                                editor.export_json(),
+                                json.dumps(editor.export_json()),
                                 editor,
                                 "json",
                             ),
