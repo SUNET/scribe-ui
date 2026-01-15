@@ -497,6 +497,8 @@ class SRTEditor:
                 self.redo()
             case "z" if event.modifiers.meta and event.modifiers.shift:
                 self.redo()
+            case "y" if event.modifiers.meta and not event.modifiers.shift:
+                self.redo()
 
             # Close block, Escape
             case "Escape":
@@ -1623,8 +1625,8 @@ class SRTEditor:
             ("Delete caption", "Ctrl + Shift + D"),
             ("Validate captions", "Ctrl + Shift + V"),
             ("Play/Pause video", "Ctrl + Space"),
-            ("Undo", "Ctrl + Z"),
-            ("Redo", "Ctrl + Y"),
+            ("Undo", "Ctrl/Cmd + Z"),
+            ("Redo", "Ctrl + Y / Cmd + Shift + Z / Cmd + Y"),
             ("Find", "Ctrl + F"),
             ("Close block", "Escape"),
         ]

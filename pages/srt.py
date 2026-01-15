@@ -59,6 +59,9 @@ def create() -> None:
             if ((e.metaKey || e.ctrlKey) && ! e.shiftKey && e.key.toLowerCase() === 'z') {
                 e.preventDefault();
             }
+            if ((e.metaKey || e.ctrlKey) && ! e.shiftKey && e.key.toLowerCase() === 'y') {
+                e.preventDefault();
+            }
             if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'z') {
                 e.preventDefault();
             }
