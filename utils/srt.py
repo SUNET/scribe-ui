@@ -1628,10 +1628,10 @@ class SRTEditor:
             ("Delete caption", "Ctrl + Shift + D"),
             ("Validate captions", "Ctrl + Shift + V"),
             ("Play/Pause video", "Ctrl + Space"),
-            ("Undo", "Ctrl/Commad + Z"),
-            ("Redo", "Ctrl + Y / Commad + Shift + Z / Commad + Y"),
+            ("Undo", "Ctrl/⌘ + Z"),
+            ("Redo", "Ctrl + Y / ⌘ + Shift + Z / ⌘ + Y"),
             ("Find", "Ctrl + F"),
-            ("Save", "Ctrl + S / Commad + S"),
+            ("Save", "Ctrl + S / ⌘ + S"),
             ("Close block", "Escape"),
         ]
 
