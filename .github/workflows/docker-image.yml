@@ -21,3 +21,5 @@ jobs:
     - name: Push the Docker image
       run: |
         docker push ghcr.io/sunet/transcribe-ui:latest
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
