@@ -13,6 +13,23 @@ from utils.token import get_admin_status, get_user_data
 settings = get_settings()
 
 
+def show_user_token() -> None:
+    with ui.dialog() as dialog:
+        with ui.card().style("max-width: 50%; width: 500px; min-width: 500px;"):
+            ui.label("User Token").classes("text-2xl font-bold")
+            ui.label("Your user token is used to authenticate API requests.").classes(
+                "my-4"
+            )
+            token = app.storage.user.get("token", "No token found.")
+            ui.textarea(value=token).classes("w-full h-full")
+            with ui.row().style("justify-content: flex-end; width: 100%;"):
+                ui.button("Close").classes("button-close").props("color=black flat").on(
+                    "click", lambda: dialog.close()
+                )
+
+        dialog.open()
+
+
 def create() -> None:
     @ui.refreshable
     @ui.page("/user")
@@ -41,7 +58,9 @@ def create() -> None:
                         with ui.row().classes("items-center gap-2"):
                             ui.icon("person").classes("text-blue-500")
                             ui.label("Username").classes("font-medium text-gray-600")
-                            ui.label(userdata["username"]).classes("text-gray-900")
+                            ui.label(userdata["username"]).classes("text-gray-900").on(
+                                "click", lambda: show_user_token()
+                            )
 
                         with ui.row().classes("items-center gap-2 mt-2"):
                             ui.icon("fingerprint").classes("text-gray-500")
