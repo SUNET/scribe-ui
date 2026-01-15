@@ -52,8 +52,22 @@ def create() -> None:
         ui.add_head_html(
             f"<link rel='preload' as='video' href='/video/{uuid}' type='video/mp4'>"
         )
+        ui.add_head_html(
+            """
+        <script>
+        window.addEventListener('keydown', function(e) {
+            if ((e.metaKey || e.ctrlKey) && ! e.shiftKey && e.key.toLowerCase() === 'z') {
+                e.preventDefault();
+            }
+            if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'z') {
+                e.preventDefault();
+            }
+        }, true);
+        </script>
+        """
+        )
         ui.add_head_html(default_styles)
-        ui.keyboard(on_key=editor.handle_key_event)
+        ui.keyboard(on_key=editor.handle_key_event, ignore=[])
 
         try:
             if data_format == "srt":

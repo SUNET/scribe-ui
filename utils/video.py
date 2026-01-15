@@ -58,11 +58,18 @@ def create_video_proxy() -> Response:
             )
 
         headers["Authorization"] = headers_auth.get("Authorization", "")
-        response = requests.get(
-            f"{settings.API_URL}/api/v1/transcriber/{job_id}/videostream",
-            headers=headers,
-            json={"encryption_password": encryption_password},
-        )
+
+        try:
+            response = requests.get(
+                f"{settings.API_URL}/api/v1/transcriber/{job_id}/videostream",
+                headers=headers,
+                json={"encryption_password": encryption_password},
+            )
+        except requests.exceptions.ChunkedEncodingError:
+            return Response(
+                content="Error streaming video",
+                status_code=500,
+            )
 
         return Response(
             content=response.content,

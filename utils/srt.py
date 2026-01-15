@@ -487,11 +487,15 @@ class SRTEditor:
                         self._play_pause = True
 
             # Undo, Ctrl+Z
-            case "z" if event.modifiers.ctrl:
+            case "z" if event.modifiers.ctrl and not event.modifiers.shift:
+                self.undo()
+            case "z" if event.modifiers.meta and not event.modifiers.shift:
                 self.undo()
 
             # Redo, Ctrl+Y
             case "y" if event.modifiers.ctrl and not event.modifiers.shift:
+                self.redo()
+            case "z" if event.modifiers.meta and event.modifiers.shift:
                 self.redo()
 
             # Close block, Escape
@@ -1622,7 +1626,7 @@ class SRTEditor:
             ("Undo", "Ctrl + Z"),
             ("Redo", "Ctrl + Y"),
             ("Find", "Ctrl + F"),
-            ("Close caption edit", "Escape"),
+            ("Close block", "Escape"),
         ]
 
         with ui.dialog() as dialog:
