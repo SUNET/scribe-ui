@@ -699,26 +699,22 @@ class SRTEditor:
         Export to CSV format.
         Fields: Start time, stop time, speaker, text
         """
-
-        csv_content = ""
+        lines = []
         for caption in self.captions:
             escaped_text = caption.text.replace('"', '""')
-            csv_content += f'"{caption.start_time}","{caption.end_time}","{caption.speaker}","{escaped_text}"\n'
-
-        return csv_content.strip()
+            lines.append(f'"{caption.start_time}","{caption.end_time}","{caption.speaker}","{escaped_text}"')
+        return "\n".join(lines)
 
     def export_tsv(self) -> str:
         """
         Export to TSV format.
         Fields: Start time, stop time, speaker, text
         """
-
-        tsv_content = ""
+        lines = []
         for caption in self.captions:
             escaped_text = caption.text.replace("\t", "    ").replace("\n", " ")
-            tsv_content += f"{caption.start_time}\t{caption.end_time}\t{caption.speaker}\t{escaped_text}\n"
-
-        return tsv_content.strip()
+            lines.append(f"{caption.start_time}\t{caption.end_time}\t{caption.speaker}\t{escaped_text}")
+        return "\n".join(lines)
 
     def export_rtf(self) -> str:
         """
@@ -743,8 +739,9 @@ class SRTEditor:
             r"{\rtf1\ansi\deff0{\fonttbl{\f0 Arial;}}" r"\viewkind4\uc1\pard\f0\fs20 "
         )
 
+        parts = []
         for caption in self.captions:
-            rtf_content += (
+            parts.append(
                 r"\b "
                 + to_rtf_unicode(f"{caption.speaker}: ")
                 + r"\b0 "
@@ -754,9 +751,8 @@ class SRTEditor:
                 + r"\line\line "
             )
 
-        rtf_content += "}"
-
-        return rtf_content.strip()
+        rtf_content += "".join(parts) + "}"
+        return rtf_content
 
     def export_txt(self) -> str:
         """
@@ -789,13 +785,12 @@ class SRTEditor:
         Export captions to VTT format.
         """
 
-        vtt_content = "WEBVTT\n\n"
+        parts = ["WEBVTT\n\n"]
         for caption in self.captions:
-            vtt_content += f"{caption.index}\n"
-            vtt_content += f"{caption.start_time. replace(',', '.')} --> {caption.end_time.replace(',', '.')}\n"
-            vtt_content += f"{caption.text}\n\n"
-
-        return vtt_content
+            parts.append(f"{caption.index}\n")
+            parts.append(f"{caption.start_time.replace(',', '.')} --> {caption.end_time.replace(',', '.')}\n")
+            parts.append(f"{caption.text}\n\n")
+        return "".join(parts)
 
     def renumber_captions(self) -> None:
         """
@@ -832,13 +827,18 @@ class SRTEditor:
 
         self.search_term = search_term
         self.search_results = []
+        
+        # Track which captions change highlight state
+        changed_indices = set()
 
         # Clear previous highlights
         for caption in self.captions:
-            caption.is_highlighted = False
+            if caption.is_highlighted:
+                caption.is_highlighted = False
+                changed_indices.add(caption.index)
 
         if not search_term.strip():
-            self.refresh_display()
+            self.refresh_display(specific_indices=changed_indices if changed_indices else None)
             self.update_search_info()
             return
 
@@ -847,9 +847,10 @@ class SRTEditor:
             if caption.matches_search(search_term, self.case_sensitive):
                 self.search_results.append(i)
                 caption.is_highlighted = True
+                changed_indices.add(caption.index)
 
         self.current_search_index = 0
-        self.refresh_display()
+        self.refresh_display(specific_indices=changed_indices if changed_indices else None)
         self.update_search_info()
 
         if self.search_results:
@@ -1100,6 +1101,8 @@ class SRTEditor:
             self.speakers.add(speaker.value)
             self.selected_caption.speaker = speaker.value
 
+        old_selected = self.selected_caption
+        
         if self.selected_caption:
             self.selected_caption.is_selected = False
 
@@ -1121,7 +1124,14 @@ class SRTEditor:
             caption.text = new_text
 
         self.update_words_per_minute()
-        self.refresh_display()
+        
+        # Only update the captions that changed state
+        indices_to_update = set()
+        if old_selected:
+            indices_to_update.add(old_selected.index)
+        if caption:
+            indices_to_update.add(caption.index)
+        self.refresh_display(specific_indices=indices_to_update)
 
         if self.selected_caption:
             ui.run_javascript(
@@ -1156,8 +1166,8 @@ class SRTEditor:
             self.save_state_for_undo()
             caption.start_time = start_time
             caption.end_time = end_time
-
-        self.refresh_display()
+            # Only update this specific caption
+            self.refresh_display(specific_indices={caption.index})
 
     def create_search_panel(self, open_window: Optional[bool] = False) -> None:
         """
@@ -1517,18 +1527,15 @@ class SRTEditor:
                                 else "Character count.  Max 42 per line (guideline)."
                             )
 
-                            character_label = ""
-                            for x in caption.text.split("\n"):
-                                if (
-                                    len(x) > CHARACTER_LIMIT
-                                    and self.data_format != "txt"
-                                ):
-                                    text_color = CHARACTER_LIMIT_EXCEEDED_COLOR
-                                    tooltip_text = f"Character limit of {CHARACTER_LIMIT} exceeded in one or more lines."
-                                character_label += f"{len(x)}/"
-
-                            if character_label.endswith("/"):
-                                character_label = character_label[:-1]
+                            lines = caption.text.split("\n")
+                            line_lengths = [str(len(x)) for x in lines]
+                            
+                            # Check for exceeded limit
+                            if self.data_format != "txt" and any(len(x) > CHARACTER_LIMIT for x in lines):
+                                text_color = CHARACTER_LIMIT_EXCEEDED_COLOR
+                                tooltip_text = f"Character limit of {CHARACTER_LIMIT} exceeded in one or more lines."
+                            
+                            character_label = "/".join(line_lengths)
 
                             with ui.label(f"({character_label})").classes(
                                 f"text-sm text-right {text_color}"
@@ -1548,8 +1555,13 @@ class SRTEditor:
         self.caption_containers[caption.index] = container
         return card
 
-    def refresh_display(self, force_full_refresh: bool = False) -> None:
-        """Refresh the caption display - only recreate if necessary"""
+    def refresh_display(self, force_full_refresh: bool = False, specific_indices: set = None) -> None:
+        """Refresh the caption display - only recreate if necessary
+        
+        Args:
+            force_full_refresh: If True, recreate all captions
+            specific_indices: If provided, only update these specific caption indices
+        """
         if self.main_container:
             if force_full_refresh or not self.caption_containers:
                 # Full refresh - clear and recreate everything
@@ -1579,11 +1591,14 @@ class SRTEditor:
                 # Add new captions or update existing ones
                 with self.main_container:
                     for caption in self.captions:
+                        # Only update if no specific_indices filter, or if index is in the filter
+                        should_update = specific_indices is None or caption.index in specific_indices
+                        
                         if caption.index not in self.caption_containers:
                             # New caption - create it
                             self.create_caption_card(caption)
-                        else:
-                            # Existing caption - update it
+                        elif should_update:
+                            # Existing caption - update it only if needed
                             container = self.caption_containers[caption.index]
                             container.clear()
                             with container:
@@ -1735,15 +1750,15 @@ class SRTEditor:
                             else "Character count.  Max 42 per line (guideline)."
                         )
 
-                        character_label = ""
-                        for x in caption.text.split("\n"):
-                            if len(x) > CHARACTER_LIMIT and self.data_format != "txt":
-                                text_color = CHARACTER_LIMIT_EXCEEDED_COLOR
-                                tooltip_text = f"Character limit of {CHARACTER_LIMIT} exceeded in one or more lines."
-                            character_label += f"{len(x)}/"
-
-                        if character_label.endswith("/"):
-                            character_label = character_label[:-1]
+                        lines = caption.text.split("\n")
+                        line_lengths = [str(len(x)) for x in lines]
+                        
+                        # Check for exceeded limit
+                        if self.data_format != "txt" and any(len(x) > CHARACTER_LIMIT for x in lines):
+                            text_color = CHARACTER_LIMIT_EXCEEDED_COLOR
+                            tooltip_text = f"Character limit of {CHARACTER_LIMIT} exceeded in one or more lines."
+                        
+                        character_label = "/".join(line_lengths)
 
                         with ui.label(f"({character_label})").classes(
                             f"text-sm text-right {text_color}"
@@ -1761,8 +1776,13 @@ class SRTEditor:
         """
         Validate captions for overlapping times, empty text, and character limits.
         """
+        # Track which captions changed validity
+        changed_indices = set()
+        
         # Reset all captions to valid first
         for caption in self.captions:
+            if not caption.is_valid:
+                changed_indices.add(caption.index)
             caption.is_valid = True
 
         errors = []
@@ -1777,6 +1797,7 @@ class SRTEditor:
                 errors.append(f"Caption #{caption.index} has no text.")
                 caption.is_valid = False
                 errorenous_captions.append(caption)
+                changed_indices.add(caption.index)
 
             # Check character limit per line (only for SRT format)
             if self.data_format == "srt":
@@ -1788,6 +1809,7 @@ class SRTEditor:
                         caption.is_valid = False
                         if caption not in errorenous_captions:
                             errorenous_captions.append(caption)
+                        changed_indices.add(caption.index)
                         break
 
             if (caption.start_time, caption.end_time) in seen_times:
@@ -1795,6 +1817,7 @@ class SRTEditor:
                 caption.is_valid = False
                 if caption not in errorenous_captions:
                     errorenous_captions.append(caption)
+                changed_indices.add(caption.index)
 
             seen_times.add((caption.start_time, caption.end_time))
 
@@ -1807,6 +1830,7 @@ class SRTEditor:
                 caption.is_valid = False
                 if caption not in errorenous_captions:
                     errorenous_captions.append(caption)
+                changed_indices.add(caption.index)
                 errors.append(
                     f"Caption #{caption.index} has end time before start time."
                 )
@@ -1823,6 +1847,8 @@ class SRTEditor:
                     errorenous_captions.append(current)
                 if next_caption not in errorenous_captions:
                     errorenous_captions.append(next_caption)
+                changed_indices.add(current.index)
+                changed_indices.add(next_caption.index)
                 errors.append(
                     f"Caption #{current.index} overlaps with caption #{next_caption.index}."
                 )
@@ -1839,9 +1865,10 @@ class SRTEditor:
                         if cap not in errorenous_captions:
                             errorenous_captions.append(cap)
                         cap.is_valid = False
+                        changed_indices.add(cap.index)
 
-        # Refresh display to show validation state changes
-        self.refresh_display()
+        # Refresh display to show validation state changes - only update changed captions
+        self.refresh_display(specific_indices=changed_indices if changed_indices else None)
 
         with ui.dialog() as dialog:
             with ui.card().classes("p-6").style("max-width: 700px; min-width: 500px;"):
