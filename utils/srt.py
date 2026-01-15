@@ -504,7 +504,12 @@ class SRTEditor:
 
             # Close block, Escape
             case "Escape":
-                self.select_caption(self.selected_caption)
+                # Trigger blur on any active input to save current changes
+                ui.run_javascript("document.activeElement?.blur?.()")
+                # Small delay to let blur handlers complete
+                ui.timer(
+                    0.1, lambda: self.select_caption(self.selected_caption), once=True
+                )
 
             # Open find, Ctrl+F
             case "f" if event.modifiers.ctrl and not event.modifiers.shift:
@@ -1958,3 +1963,530 @@ class SRTEditor:
             ui.button("Shortcuts").props("icon=keyboard flat dense color=black").on(
                 "click", lambda: dialog.open()
             ).classes("button-open-search")
+
+    def show_export_dialog(self, filename: str) -> None:
+        """
+        Show comprehensive export dialog with format options and live preview.
+        """
+        with ui.dialog() as dialog:
+            with ui.card().classes("p-6").style(
+                "min-width: 1000px; max-width: 1400px;"
+            ):
+                # Header
+                with ui.row().classes("w-full items-center justify-between mb-4"):
+                    ui.label("Export Transcription").classes("text-h5 font-bold")
+                    ui.button(icon="close", on_click=dialog.close).props(
+                        "flat round dense color=grey-7"
+                    )
+
+                ui.separator().classes("mb-4")
+
+                # Two-column layout
+                with ui.row().classes("w-full gap-6"):
+                    # Left: Options (40%)
+                    with ui.column().classes("gap-4").style("flex: 0 0 400px;"):
+                        # Format
+                        ui.label("Format").classes("text-subtitle1 font-semibold")
+                        if self.data_format == "srt":
+                            format_opts = {
+                                "srt": "SubRip (.srt)",
+                                "vtt": "WebVTT (.vtt)",
+                            }
+                        else:
+                            format_opts = {
+                                "txt": "Text (.txt)",
+                                "json": "JSON (.json)",
+                                "rtf": "RTF (.rtf)",
+                                "csv": "CSV (.csv)",
+                                "tsv": "TSV (.tsv)",
+                            }
+
+                        fmt = (
+                            ui.select(
+                                options=format_opts, value=list(format_opts.keys())[0]
+                            )
+                            .classes("w-full")
+                            .props("outlined dense")
+                        )
+
+                        ui.separator()
+
+                        # Options container - will show/hide based on format
+                        options_container = ui.column().classes("gap-4")
+
+                        with options_container:
+                            # Timestamps (for txt, json, csv, tsv)
+                            ts_section = ui.column().classes("gap-2")
+                            with ts_section:
+                                ui.label("Timestamps").classes(
+                                    "text-subtitle1 font-semibold"
+                                )
+                                ts_incl = ui.checkbox("Include timestamps", value=True)
+                                ts_fmt = (
+                                    ui.select(
+                                        options={
+                                            "srt": "SRT (00:00:00,000)",
+                                            "seconds": "Seconds (0.000)",
+                                            "ms": "Milliseconds",
+                                        },
+                                        value="srt",
+                                        label="Format",
+                                    )
+                                    .classes("w-full mt-2")
+                                    .props("dense outlined")
+                                )
+                                ui.separator()
+
+                            # Text options (for txt only)
+                            txt_section = ui.column().classes("gap-2")
+                            with txt_section:
+                                ui.label("Text Options").classes(
+                                    "text-subtitle1 font-semibold"
+                                )
+                                spk_incl = ui.checkbox("Include speakers", value=True)
+                                idx_incl = ui.checkbox(
+                                    "Include caption numbers", value=False
+                                )
+                                sep_type = (
+                                    ui.select(
+                                        options={
+                                            "\\n\\n": "Double newline",
+                                            "\\n": "Single newline",
+                                            "---": "Line",
+                                            "custom": "Custom",
+                                        },
+                                        value="\\n\\n",
+                                        label="Separator",
+                                    )
+                                    .classes("w-full mt-2")
+                                    .props("dense outlined")
+                                )
+                                sep_custom = (
+                                    ui.input(placeholder="Custom separator")
+                                    .classes("w-full mt-2")
+                                    .props("dense outlined")
+                                )
+                                sep_custom.visible = False
+                                sep_type.on(
+                                    "update:model-value",
+                                    lambda e: setattr(
+                                        sep_custom, "visible", e.args == "custom"
+                                    ),
+                                )
+                                ui.separator()
+
+                            # CSV options (for csv only)
+                            csv_section = ui.column().classes("gap-2")
+                            with csv_section:
+                                ui.label("CSV Options").classes(
+                                    "text-subtitle1 font-semibold"
+                                )
+                                csv_hdr = ui.checkbox("Include header row", value=True)
+                                csv_qt = (
+                                    ui.input(label="Quote character", value='"')
+                                    .classes("w-full mt-2")
+                                    .props("dense outlined")
+                                )
+                                csv_delim = (
+                                    ui.input(label="Delimiter", value=",")
+                                    .classes("w-full mt-2")
+                                    .props("dense outlined")
+                                )
+                                ui.separator()
+
+                            # TSV options (for tsv only)
+                            tsv_section = ui.column().classes("gap-2")
+                            with tsv_section:
+                                ui.label("TSV Options").classes(
+                                    "text-subtitle1 font-semibold"
+                                )
+                                tsv_hdr = ui.checkbox("Include header row", value=True)
+                                tsv_tab_type = (
+                                    ui.select(
+                                        options={
+                                            "\\t": "Real tab character",
+                                            "spaces": "Spaces",
+                                        },
+                                        value="\\t",
+                                        label="Tab type",
+                                    )
+                                    .classes("w-full mt-2")
+                                    .props("dense outlined")
+                                )
+                                tsv_tab_width = (
+                                    ui.number(
+                                        label="Tab width (spaces)",
+                                        value=4,
+                                        min=1,
+                                        max=16,
+                                    )
+                                    .classes("w-full mt-2")
+                                    .props("dense outlined")
+                                )
+                                tsv_tab_width.visible = False
+                                tsv_tab_type.on(
+                                    "update:model-value",
+                                    lambda e: setattr(
+                                        tsv_tab_width, "visible", e.args == "spaces"
+                                    ),
+                                )
+                                ui.separator()
+
+                            # JSON options (for json only)
+                            json_section = ui.column().classes("gap-2")
+                            with json_section:
+                                ui.label("JSON Options").classes(
+                                    "text-subtitle1 font-semibold"
+                                )
+                                json_indent = (
+                                    ui.number(
+                                        label="Indentation spaces",
+                                        value=2,
+                                        min=0,
+                                        max=8,
+                                    )
+                                    .classes("w-full mt-2")
+                                    .props("dense outlined")
+                                )
+                                json_ascii = ui.checkbox(
+                                    "Escape non-ASCII characters", value=False
+                                )
+                                ui.separator()
+
+                        def update_options_visibility():
+                            """Show/hide options based on selected format"""
+                            current_fmt = fmt.value
+
+                            # SRT/VTT - no options
+                            ts_section.visible = current_fmt in [
+                                "txt",
+                                "json",
+                                "csv",
+                                "tsv",
+                            ]
+                            txt_section.visible = current_fmt == "txt"
+                            csv_section.visible = current_fmt == "csv"
+                            tsv_section.visible = current_fmt == "tsv"
+                            json_section.visible = current_fmt == "json"
+
+                        fmt.on(
+                            "update:model-value", lambda: update_options_visibility()
+                        )
+                        update_options_visibility()
+
+                    # Right: Preview (60%)
+                    with ui.column().classes("flex-1"):
+                        ui.label("Preview").classes("text-subtitle1 font-semibold mb-2")
+                        with ui.card().classes("bg-gray-900 p-4").style(
+                            "height: 550px; overflow-y: auto;"
+                        ):
+                            prev = (
+                                ui.html("", sanitize=False)
+                                .classes("text-white")
+                                .style(
+                                    "font-family: 'Courier New', monospace; font-size: 13px; white-space: pre-wrap;"
+                                )
+                            )
+                        cnt_lbl = ui.label("").classes("text-caption mt-2")
+
+                def upd_prev():
+                    try:
+                        caps = self.captions[:5]
+                        out = ""
+
+                        def fmt_ts(ts, f):
+                            p = ts.replace(",", ":").split(":")
+                            h, m, s, ms = int(p[0]), int(p[1]), int(p[2]), int(p[3])
+                            if f == "seconds":
+                                return f"{h*3600 + m*60 + s + ms/1000:.3f}"
+                            if f == "ms":
+                                return str(h * 3600000 + m * 60000 + s * 1000 + ms)
+                            return ts
+
+                        if fmt.value == "srt":
+                            out = "\n\n".join(c.to_srt_format() for c in caps)
+                        elif fmt.value == "vtt":
+                            out = "WEBVTT\n\n" + "\n\n".join(
+                                f"{c.index}\n{c.start_time.replace(',','.')} --> {c.end_time.replace(',','.')}\n{c.text}"
+                                for c in caps
+                            )
+                        elif fmt.value == "txt":
+                            parts = []
+                            for c in caps:
+                                p = ""
+                                if idx_incl and idx_incl.value:
+                                    p += f"[{c.index}] "
+                                if spk_incl and spk_incl.value:
+                                    p += f"{c.speaker}: "
+                                if ts_incl.value:
+                                    p += f"({fmt_ts(c.start_time, ts_fmt.value)} → {fmt_ts(c.end_time, ts_fmt.value)})\n"
+                                p += c.text
+                                parts.append(p)
+                            s = (
+                                sep_custom.value
+                                if sep_type.value == "custom"
+                                else sep_type.value.replace("\\n", "\n")
+                            )
+                            out = s.join(parts)
+                        elif fmt.value == "json":
+                            d = {"total": len(self.captions), "captions": []}
+                            for c in caps:
+                                cd = {
+                                    "index": c.index,
+                                    "speaker": c.speaker,
+                                    "text": c.text,
+                                }
+                                if ts_incl.value:
+                                    cd.update(
+                                        {
+                                            "start": fmt_ts(c.start_time, ts_fmt.value),
+                                            "end": fmt_ts(c.end_time, ts_fmt.value),
+                                        }
+                                    )
+                                d["captions"].append(cd)
+                            out = json.dumps(
+                                d,
+                                indent=int(json_indent.value),
+                                ensure_ascii=json_ascii.value,
+                            )
+                        elif fmt.value == "csv":
+                            q = csv_qt.value
+                            delim = csv_delim.value
+                            lines = []
+                            if csv_hdr.value:
+                                h = ["index"]
+                                if ts_incl.value:
+                                    h.extend(["start", "end"])
+                                h.extend(["speaker", "text"])
+                                lines.append(delim.join(f"{q}{x}{q}" for x in h))
+                            for c in caps:
+                                r = [str(c.index)]
+                                if ts_incl.value:
+                                    r.extend(
+                                        [
+                                            fmt_ts(c.start_time, ts_fmt.value),
+                                            fmt_ts(c.end_time, ts_fmt.value),
+                                        ]
+                                    )
+                                r.extend(
+                                    [
+                                        c.speaker,
+                                        c.text.replace(q, q + q).replace("\n", " "),
+                                    ]
+                                )
+                                lines.append(delim.join(f"{q}{x}{q}" for x in r))
+                            out = "\n".join(lines)
+                        elif fmt.value == "tsv":
+                            # Determine tab character
+                            if tsv_tab_type.value == "\\t":
+                                tab_char = "\t"
+                            else:
+                                tab_char = " " * int(tsv_tab_width.value)
+
+                            lines = []
+                            if tsv_hdr.value:
+                                h = ["index"]
+                                if ts_incl.value:
+                                    h.extend(["start", "end"])
+                                h.extend(["speaker", "text"])
+                                lines.append(tab_char.join(h))
+                            for c in caps:
+                                r = [str(c.index)]
+                                if ts_incl.value:
+                                    r.extend(
+                                        [
+                                            fmt_ts(c.start_time, ts_fmt.value),
+                                            fmt_ts(c.end_time, ts_fmt.value),
+                                        ]
+                                    )
+                                r.extend(
+                                    [
+                                        c.speaker,
+                                        c.text.replace("\t", "  ").replace("\n", " "),
+                                    ]
+                                )
+                                lines.append(tab_char.join(r))
+                            out = "\n".join(lines)
+                        else:
+                            out = "(RTF preview unavailable)"
+
+                        if len(self.captions) > 5:
+                            out += f"\n\n<span style='color:#888'>... {len(self.captions)-5} more captions</span>"
+
+                        import html
+
+                        prev.set_content(html.escape(out).replace("\n", "<br>"))
+                        cnt_lbl.set_text(
+                            f"Total: {len(self.captions)} | Showing: {min(5, len(self.captions))}"
+                        )
+                    except Exception as e:
+                        import html
+
+                        prev.set_content(
+                            f"<span style='color:#f88'>{html.escape(str(e))}</span>"
+                        )
+
+                # Connect updates
+                for ctrl in [fmt, ts_incl, ts_fmt]:
+                    ctrl.on("update:model-value", lambda: upd_prev())
+
+                # CSV controls
+                csv_hdr.on("update:model-value", lambda: upd_prev())
+                csv_qt.on("blur", lambda: upd_prev())
+                csv_delim.on("blur", lambda: upd_prev())
+
+                # TSV controls
+                tsv_hdr.on("update:model-value", lambda: upd_prev())
+                tsv_tab_type.on("update:model-value", lambda: upd_prev())
+                tsv_tab_width.on("blur", lambda: upd_prev())
+
+                # JSON controls
+                json_indent.on("blur", lambda: upd_prev())
+                json_ascii.on("update:model-value", lambda: upd_prev())
+
+                # TXT controls
+                spk_incl.on("update:model-value", lambda: upd_prev())
+                if idx_incl:
+                    idx_incl.on("update:model-value", lambda: upd_prev())
+                if sep_type:
+                    sep_type.on("update:model-value", lambda: upd_prev())
+                if sep_custom:
+                    sep_custom.on("blur", lambda: upd_prev())
+
+                upd_prev()
+
+                ui.separator().classes("my-4")
+
+                # Footer
+                with ui.row().classes("w-full justify-between items-center"):
+                    ui.label(f"File: {filename}.{fmt.value}").classes("text-body2")
+                    with ui.row().classes("gap-2"):
+                        ui.button("Cancel", on_click=dialog.close).props("outline")
+
+                        def exp():
+                            try:
+                                c = None
+                                if fmt.value == "srt":
+                                    c = self.export_srt()
+                                elif fmt.value == "vtt":
+                                    c = self.export_vtt()
+                                elif fmt.value == "rtf":
+                                    c = self.export_rtf()
+                                elif fmt.value == "txt":
+                                    # TXT format with custom options
+                                    parts = []
+                                    sep_str = "\n\n"
+                                    if sep_type.value == "custom":
+                                        sep_str = sep_custom.value.replace("\\n", "\n")
+                                    elif sep_type.value == "single":
+                                        sep_str = "\n"
+
+                                    for cap in self.captions:
+                                        p = []
+                                        if idx_incl.value:
+                                            p.append(f"{cap.index}")
+                                        if ts_incl.value:
+                                            p.append(
+                                                f"{fmt_ts(cap.start_time, ts_fmt.value)} - {fmt_ts(cap.end_time, ts_fmt.value)}"
+                                            )
+                                        if spk_incl.value:
+                                            p.append(f"{cap.speaker}:")
+                                        p.append(cap.text)
+                                        parts.append(" ".join(p))
+                                    c = sep_str.join(parts)
+                                elif fmt.value == "csv":
+                                    # CSV format with custom options
+                                    q = csv_qt.value or '"'
+                                    d = csv_delim.value or ","
+                                    lines = []
+                                    if csv_hdr.value:
+                                        h = ["index"]
+                                        if ts_incl.value:
+                                            h.extend(["start", "end"])
+                                        h.extend(["speaker", "text"])
+                                        lines.append(d.join(f"{q}{x}{q}" for x in h))
+                                    for cap in self.captions:
+                                        r = [str(cap.index)]
+                                        if ts_incl.value:
+                                            r.extend(
+                                                [
+                                                    fmt_ts(
+                                                        cap.start_time, ts_fmt.value
+                                                    ),
+                                                    fmt_ts(cap.end_time, ts_fmt.value),
+                                                ]
+                                            )
+                                        r.extend(
+                                            [
+                                                cap.speaker,
+                                                cap.text.replace(q, q + q).replace(
+                                                    "\n", " "
+                                                ),
+                                            ]
+                                        )
+                                        lines.append(d.join(f"{q}{x}{q}" for x in r))
+                                    c = "\n".join(lines)
+                                elif fmt.value == "tsv":
+                                    # TSV format with custom options
+                                    if tsv_tab_type.value == "tab":
+                                        tab_char = "\t"
+                                    else:
+                                        tab_char = " " * int(tsv_tab_width.value)
+
+                                    lines = []
+                                    if tsv_hdr.value:
+                                        h = ["index"]
+                                        if ts_incl.value:
+                                            h.extend(["start", "end"])
+                                        h.extend(["speaker", "text"])
+                                        lines.append(tab_char.join(h))
+                                    for cap in self.captions:
+                                        r = [str(cap.index)]
+                                        if ts_incl.value:
+                                            r.extend(
+                                                [
+                                                    fmt_ts(
+                                                        cap.start_time, ts_fmt.value
+                                                    ),
+                                                    fmt_ts(cap.end_time, ts_fmt.value),
+                                                ]
+                                            )
+                                        r.extend(
+                                            [
+                                                cap.speaker,
+                                                cap.text.replace("\t", "  ").replace(
+                                                    "\n", " "
+                                                ),
+                                            ]
+                                        )
+                                        lines.append(tab_char.join(r))
+                                    c = "\n".join(lines)
+                                elif fmt.value == "json":
+                                    # JSON format with custom options
+                                    indent = (
+                                        int(json_indent.value)
+                                        if json_indent.value
+                                        else None
+                                    )
+                                    c = json.dumps(
+                                        self.export_json(),
+                                        indent=indent,
+                                        ensure_ascii=json_ascii.value,
+                                    )
+
+                                ui.download(
+                                    c.encode("utf-8"),
+                                    filename=f"{filename}.{fmt.value}",
+                                )
+                                ui.notify(
+                                    f"Exported as {fmt.value.upper()}", type="positive"
+                                )
+                                dialog.close()
+                            except Exception as e:
+                                ui.notify(f"Export failed: {str(e)}", type="negative")
+
+                        ui.button("Export", icon="download", on_click=exp).props(
+                            "unelevated color=primary"
+                        )
+
+            dialog.open()
