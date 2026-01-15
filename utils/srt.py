@@ -1621,16 +1621,17 @@ class SRTEditor:
         shortcuts = [
             ("Next caption", "Alt/Option + Down Arrow"),
             ("Previous caption", "Alt/Option + Up Arrow"),
-            ("Split caption", "Ctrl + S"),
+            ("Split caption", "Alt + Enter"),
             ("Merge with next caption", "Ctrl + M"),
             ("Merge with previous caption", "Ctrl + Shift + M"),
             ("Add caption after", "Ctrl + N"),
             ("Delete caption", "Ctrl + Shift + D"),
             ("Validate captions", "Ctrl + Shift + V"),
             ("Play/Pause video", "Ctrl + Space"),
-            ("Undo", "Ctrl/Cmd + Z"),
-            ("Redo", "Ctrl + Y / Cmd + Shift + Z / Cmd + Y"),
+            ("Undo", "Ctrl/Commad + Z"),
+            ("Redo", "Ctrl + Y / Commad + Shift + Z / Commad + Y"),
             ("Find", "Ctrl + F"),
+            ("Save", "Ctrl + S / Commad + S"),
             ("Close block", "Escape"),
         ]
 
