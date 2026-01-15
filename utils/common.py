@@ -136,58 +136,123 @@ def show_help_dialog() -> None:
     """
 
     with ui.dialog() as dialog:
-        dialog.style("max-width: 75%; max-width: none;")
         with (
             ui.card()
             .style(
-                "background-color: white; align-self: center; border: 0; width: 75%; max-width: none;"
+                "max-width: 900px; padding: 32px; background: linear-gradient(to bottom, #ffffff 0%, #f8f9fa 100%);"
             )
-            .classes("w-full no-shadow no-border")
+            .classes("no-shadow")
         ):
-            ui.label("Help").style("width: 100%;").classes("text-h6 q-mb-xl text-black")
+            with ui.row().classes("w-full items-center justify-between mb-6"):
+                ui.label("Help & Documentation").classes("text-h4 font-bold text-black")
+                ui.button(icon="close", on_click=dialog.close).props(
+                    "flat round dense color=grey-7"
+                )
 
-            ui.markdown(
-                """
-                ## About Sunet Scribe
+            with ui.column().classes("w-full gap-6"):
+                with ui.card().classes("bg-blue-50 border-l-4").style(
+                    "border-left-color: #082954; padding: 20px;"
+                ):
+                    ui.label("About Sunet Scribe").classes("text-h6 font-semibold mb-2")
+                    ui.label(
+                        "A powerful transcription service using Whisper AI models to convert audio and video files into searchable text or time-coded subtitles with high accuracy."
+                    ).classes("text-body1")
 
-                Sunet Scribe is a web application that allows users to upload audio and video files for transcription using OpenAI's Whisper model. The application supports multiple languages and provides options for transcription accuracy and output formats.
+                ui.label("Getting Started").classes("text-h6 font-bold mt-2")
 
-                ### Features
+                with ui.grid(columns=2).classes("w-full gap-4"):
+                    for step_num, step_title, step_desc, step_icon in [
+                        (
+                            "1",
+                            "Upload Files",
+                            "Click Upload or drag & drop up to 5 files (max 4GB each). Supports MP3, WAV, MP4, MKV, AVI, and more.",
+                            "upload_file",
+                        ),
+                        (
+                            "2",
+                            "Configure",
+                            'Click the "Transcribe" button, select language, number of speakers, and output format (transcribed text or subtitles).',
+                            "settings",
+                        ),
+                        (
+                            "3",
+                            "Monitor",
+                            "Track job status on the dashboard. Jobs process in the background.",
+                            "pending_actions",
+                        ),
+                        (
+                            "4",
+                            "Edit & Export",
+                            "Click completed jobs to refine in the editor. Press ? for keyboard shortcuts.",
+                            "edit_note",
+                        ),
+                    ]:
+                        with ui.card().classes("p-4"):
+                            with ui.row().classes("items-center gap-3 mb-2"):
+                                ui.icon(step_icon, size="md").classes("text-blue-700")
+                                ui.label(f"{step_num}. {step_title}").classes(
+                                    "text-subtitle1 font-semibold"
+                                )
+                            ui.label(step_desc).classes("text-body2 text-grey-8")
 
-                - Upload audio and video files in various formats (mp3, wav, flac, mp4, mkv, avi, m4a, aiff, aif, mov, ogg, opus, webm, wma).
-                - Choose transcription language from a wide range of supported languages.
-                - Select transcription accuracy (model size) based on your needs.
-                - Option to specify the number of speakers for better diarization.
-                - Download transcriptions as plain text or subtitles (SRT format).
-                - User authentication and role-based access control.
+                ui.label("Key Features").classes("text-h6 font-bold mt-2")
 
-                ### Usage
+                with ui.column().classes("w-full gap-2"):
+                    for icon, feature, desc in [
+                        (
+                            "language",
+                            "Multi-language Support",
+                            "Over 50 languages with high accuracy",
+                        ),
+                        (
+                            "groups",
+                            "Speaker Diarization",
+                            "Distinguishes between different speakers",
+                        ),
+                        (
+                            "edit",
+                            "Advanced Editor",
+                            "Undo/redo, find/replace, keyboard shortcuts",
+                        ),
+                        (
+                            "play_circle",
+                            "Video Preview",
+                            "Side-by-side playback while editing",
+                        ),
+                        (
+                            "verified",
+                            "Auto Validation",
+                            "Checks for timing conflicts and errors",
+                        ),
+                        (
+                            "lock",
+                            "Secure & Private",
+                            "Encrypted at rest, auto-deleted after retention",
+                        ),
+                    ]:
+                        with ui.row().classes("items-center gap-3"):
+                            ui.icon(icon, size="sm").classes("text-green-700")
+                            with ui.column().classes("gap-0"):
+                                ui.label(feature).classes("font-semibold")
+                                ui.label(desc).classes("text-body2 text-grey-7")
 
-                1. Log in using your institutional credentials.
-                2. Upload your audio or video files using the upload button or drag-and-drop area.
-                3. Select the desired transcription settings (language, model, speakers, output format).
-                4. Start the transcription process and monitor the job status on the dashboard.
-                5. Once completed, edit your transcriptions from the job list.
+                with ui.row().classes("w-full gap-4"):
+                    with ui.card().classes("flex-1 bg-amber-50 p-4"):
+                        with ui.row().classes("items-center gap-2 mb-2"):
+                            ui.icon("security", size="sm").classes("text-amber-800")
+                            ui.label("Privacy").classes("text-subtitle1 font-semibold")
+                        ui.label(
+                            "Files are encrypted, only accessible to you, and auto-deleted after the scheduled deletion date."
+                        ).classes("text-body2")
 
-                ### Support
+                    with ui.card().classes("flex-1 bg-green-50 p-4"):
+                        with ui.row().classes("items-center gap-2 mb-2"):
+                            ui.icon("help", size="sm").classes("text-green-800")
+                            ui.label("Support").classes("text-subtitle1 font-semibold")
+                        ui.label(
+                            "Contact your institution's IT department for technical support or questions."
+                        ).classes("text-body2")
 
-                For support or inquiries, please contact the IT department at your institution.
-
-                ### Privacy
-
-                All uploaded files and transcriptions are stored securely and are only accessible to the user who uploaded them. Files are automatically deleted after a specified retention period.
-
-                ---
-                """
-            ).classes("text-body1 q-mb-xl text-black")
-
-            with ui.row().classes("justify-end w-full"):
-                with ui.button(
-                    "Close",
-                    on_click=lambda: dialog.close(),
-                ) as close:
-                    close.props("color=black flat")
-                    close.classes("button-close")
         dialog.open()
 
 
