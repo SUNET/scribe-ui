@@ -191,6 +191,7 @@ class SRTEditor:
         self.captions: List[SRTCaption] = []
         self.selected_caption: Optional[SRTCaption] = None
         self.caption_cards = {}
+        self.caption_containers = {}
         self.main_container = None
         self.search_term = ""
         self.search_results = []
@@ -202,7 +203,6 @@ class SRTEditor:
         self.words_per_minute_element = None
         self.speakers = set()
         self.data_format = None
-        self.keypresses = 0
 
         # Initialize undo/redo manager
         self.undo_redo_manager = UndoRedoManager()
@@ -340,7 +340,7 @@ class SRTEditor:
             self.selected_caption = None
             self.renumber_captions()
             self.update_words_per_minute()
-            self.refresh_display()
+            self.refresh_display(force_full_refresh=True)
             self._update_undo_redo_buttons()
             # Mark as having unsaved changes (undo is still a change from saved state)
             self.mark_as_changed()
@@ -356,7 +356,7 @@ class SRTEditor:
             self.selected_caption = None
             self.renumber_captions()
             self.update_words_per_minute()
-            self.refresh_display()
+            self.refresh_display(force_full_refresh=True)
             self._update_undo_redo_buttons()
             # Mark as having unsaved changes
             self.mark_as_changed()
@@ -437,25 +437,23 @@ class SRTEditor:
         self.autoscroll = autoscroll
 
     def handle_key_event(self, event: events.KeyEventArguments) -> None:
-        self.keypresses += 1
-
-        if self.keypresses > 1:
-            self.keypresses = 0
+        # Only handle keydown events, not keyup to prevent double-firing
+        if not event.action.keydown:
             return
 
         match event.key:
             # Next block of captions, Ctrl+Down
-            case "ArrowDown" if event.modifiers.alt:
+            case "ArrowDown" if event.modifiers.alt and not event.modifiers.shift and not event.modifiers.ctrl and not event.modifiers.meta:
                 self.select_next_caption()
 
             # Prev block of captions, Ctrl+Up
-            case "ArrowUp" if event.modifiers.alt:
+            case "ArrowUp" if event.modifiers.alt and not event.modifiers.shift and not event.modifiers.ctrl and not event.modifiers.meta:
                 self.select_prev_caption()
 
             # Split block, Alt+Enter
-            case "Enter" if event.modifiers.ctrl:
+            case "Enter" if event.modifiers.ctrl and not event.modifiers.shift and not event.modifiers.alt and not event.modifiers.meta:
                 self.split_caption(self.selected_caption)
-            case "Enter" if event.modifiers.meta and not event.modifiers.shift:
+            case "Enter" if event.modifiers.meta and not event.modifiers.shift and not event.modifiers.alt and not event.modifiers.ctrl:
                 self.split_caption(self.selected_caption)
 
             # Merge block with next, Ctrl+M
@@ -481,7 +479,7 @@ class SRTEditor:
                 self.validate_captions()
 
             # Play/pause video, Ctrl+Space
-            case " " if event.modifiers.ctrl:
+            case " " if event.modifiers.ctrl and not event.modifiers.shift and not event.modifiers.alt and not event.modifiers.meta:
                 if self.__video_player:
                     if self._play_pause:
                         self.__video_player.pause()
@@ -509,9 +507,9 @@ class SRTEditor:
                 self.select_caption(self.selected_caption)
 
             # Open find, Ctrl+F
-            case "f" if event.modifiers.ctrl:
+            case "f" if event.modifiers.ctrl and not event.modifiers.shift:
                 self.create_search_panel(open_window=True)
-            case "f" if event.modifiers.meta:
+            case "f" if event.modifiers.meta and not event.modifiers.shift:
                 self.create_search_panel(open_window=True)
 
             # Save file, Ctrl+S / Cmd+S
@@ -519,7 +517,7 @@ class SRTEditor:
                 self.save_srt_changes()
 
             # ? to show help
-            case "?" if event.modifiers.shift:
+            case "?" if event.modifiers.shift and not event.modifiers.ctrl:
                 self.show_keyboard_shortcuts(open_window=True)
 
             # Everything else
@@ -1017,7 +1015,7 @@ class SRTEditor:
 
         self.renumber_captions()
         self.update_words_per_minute()
-        self.refresh_display()
+        self.refresh_display(force_full_refresh=True)
 
     def add_caption_after(self, caption: SRTCaption) -> None:
         """
@@ -1050,7 +1048,7 @@ class SRTEditor:
         self.captions.insert(caption_index + 1, new_caption)
 
         self.renumber_captions()
-        self.refresh_display()
+        self.refresh_display(force_full_refresh=True)
         self.update_words_per_minute()
 
     def remove_caption(self, caption: SRTCaption) -> None:
@@ -1067,7 +1065,7 @@ class SRTEditor:
 
             self.captions.remove(caption)
             self.renumber_captions()
-            self.refresh_display()
+            self.refresh_display(force_full_refresh=True)
         else:
             ui.notify("Cannot remove the only remaining caption", type="warning")
 
@@ -1310,7 +1308,7 @@ class SRTEditor:
 
         self.renumber_captions()
         self.update_words_per_minute()
-        self.refresh_display()
+        self.refresh_display(force_full_refresh=True)
 
     def merge_with_previous(self, caption: SRTCaption) -> None:
         """
@@ -1338,7 +1336,7 @@ class SRTEditor:
 
         self.renumber_captions()
         self.update_words_per_minute()
-        self.refresh_display()
+        self.refresh_display(force_full_refresh=True)
 
     def create_caption_card(self, caption: SRTCaption) -> ui.card:
         """
@@ -1361,8 +1359,241 @@ class SRTEditor:
         else:
             card_class += " hover:shadow-md shadow-none"
 
+        # Create container for this caption that persists
+        container = ui.column().classes("w-full")
+
+        with container:
+            with ui.card().classes(card_class) as card:
+                # Caption text (editable when selected)
+                if caption.is_selected:
+                    with ui.row().classes("w-full justify-between") as action_row:
+                        action_row.props("id=action_row")
+                        ui.label(f"#{caption.index}").classes(
+                            "font-bold text-sm text-gray-500"
+                        )
+
+                        if self.data_format == "txt":
+                            speaker_select = ui.select(
+                                options=list(self.speakers),
+                                value=caption.speaker,
+                                with_input=True,
+                                label="Speaker",
+                                new_value_mode="add",
+                            )
+                        else:
+                            speaker_select = None
+
+                        start_input = ui.input("", value=caption.start_time).props(
+                            "dense borderless"
+                        )
+                        end_input = ui.input("", value=caption.end_time).props(
+                            "dense borderless"
+                        )
+
+                    start_input.on(
+                        "blur",
+                        lambda: self.update_caption_timing(
+                            caption, start_input.value, end_input.value
+                        ),
+                    )
+                    end_input.on(
+                        "blur",
+                        lambda: self.update_caption_timing(
+                            caption, start_input.value, end_input.value
+                        ),
+                    )
+
+                    text_area = (
+                        ui.textarea(value=caption.text)
+                        .classes("w-full")
+                        .props("outlined input-class=h-32")
+                    )
+                    text_area.on(
+                        "blur",
+                        lambda e: self.update_caption_text(caption, e.sender.value),
+                    )
+
+                    # Action buttons
+                    # Row with buttons to the left
+                    with ui.row().classes("w-full justify-between"):
+                        ui.button("Split", icon="call_split", color="blue").props(
+                            "flat dense"
+                        ).on("click", lambda: self.split_caption(caption))
+                        ui.button("Merge with previous", icon="merge_type").props(
+                            "flat dense"
+                        ).on(
+                            "click",
+                            lambda: (
+                                self.merge_with_previous(caption)
+                                if self.captions.index(caption) > 0
+                                else None
+                            ),
+                        )
+                        ui.button("Merge with next", icon="merge_type").props(
+                            "flat dense"
+                        ).on(
+                            "click",
+                            lambda: (
+                                self.merge_with_next(caption)
+                                if self.captions.index(caption) < len(self.captions) - 1
+                                else None
+                            ),
+                        )
+
+                        with ui.row().classes("gap-2"):
+                            ui.button("Close").props("flat dense").on(
+                                "click",
+                                lambda: self.select_caption(
+                                    caption,
+                                    speaker_select,
+                                    True,
+                                    new_text=text_area.value,
+                                ),
+                            ).classes("button-close")
+
+                            if self.data_format == "txt":
+                                ui.button("Add", color="green").props("flat dense").on(
+                                    "click", lambda: self.add_caption_after(caption)
+                                )
+
+                            ui.button("Delete", color="red").props("flat dense").on(
+                                "click", lambda: self.remove_caption(caption)
+                            )
+                else:
+                    # Show text with search highlighting
+                    if caption.is_highlighted and self.search_term:
+                        highlighted_text = self.get_highlighted_text(caption.text)
+
+                        with ui.row():
+                            ui.label(f"#{caption.index}").classes("font-bold text-sm")
+
+                            if self.data_format == "txt":
+                                ui.label(f"{caption.speaker}:").classes(
+                                    "font-bold text-sm"
+                                )
+                        ui.label(f"{caption.start_time} - {caption.end_time}").classes(
+                            "text-sm text-gray-500"
+                        )
+
+                        ui.html(highlighted_text, sanitize=False).classes(
+                            "text-sm leading-relaxed whitespace-pre-wrap"
+                        )
+                    else:
+                        with ui.row().classes("w-full justify-between"):
+                            with ui.row():
+                                ui.label(f"#{caption.index}").classes(
+                                    "font-bold text-sm"
+                                )
+
+                                if self.data_format == "txt":
+                                    ui.label(f"{caption. speaker}:").classes(
+                                        "font-bold text-sm"
+                                    )
+                            ui.label(
+                                f"{caption.start_time} - {caption.end_time}"
+                            ).classes("text-sm text-gray-500")
+                        with ui.row().classes("w-full justify-between items-end"):
+                            ui.label(caption.text).classes(
+                                "text-sm leading-relaxed whitespace-pre-wrap"
+                            )
+                            text_color = "text-gray-500"
+
+                            tooltip_text = (
+                                "Character count."
+                                if self.data_format == "txt"
+                                else "Character count.  Max 42 per line (guideline)."
+                            )
+
+                            character_label = ""
+                            for x in caption.text.split("\n"):
+                                if (
+                                    len(x) > CHARACTER_LIMIT
+                                    and self.data_format != "txt"
+                                ):
+                                    text_color = CHARACTER_LIMIT_EXCEEDED_COLOR
+                                    tooltip_text = f"Character limit of {CHARACTER_LIMIT} exceeded in one or more lines."
+                                character_label += f"{len(x)}/"
+
+                            if character_label.endswith("/"):
+                                character_label = character_label[:-1]
+
+                            with ui.label(f"({character_label})").classes(
+                                f"text-sm text-right {text_color}"
+                            ):
+                                ui.tooltip(tooltip_text)
+
+                card.on(
+                    "click",
+                    lambda: (
+                        self.select_caption(caption)
+                        if not caption.is_selected
+                        else None
+                    ),
+                )
+
+        # Store reference to container
+        self.caption_containers[caption.index] = container
+        return card
+
+    def refresh_display(self, force_full_refresh: bool = False) -> None:
+        """Refresh the caption display - only recreate if necessary"""
+        if self.main_container:
+            if force_full_refresh or not self.caption_containers:
+                # Full refresh - clear and recreate everything
+                self.main_container.clear()
+                self.caption_containers.clear()
+                with self.main_container:
+                    if not self.captions:
+                        ui.label("No captions loaded").classes(
+                            "text-gray-500 text-center p-8"
+                        )
+                    else:
+                        for caption in self.captions:
+                            self.create_caption_card(caption)
+            else:
+                # Incremental update - update existing containers
+                current_indices = {cap.index for cap in self.captions}
+                existing_indices = set(self.caption_containers.keys())
+
+                # Remove containers for deleted captions
+                for idx in existing_indices - current_indices:
+                    if idx in self.caption_containers:
+                        container = self.caption_containers[idx]
+                        container.clear()
+                        container.delete()
+                        del self.caption_containers[idx]
+
+                # Add new captions or update existing ones
+                with self.main_container:
+                    for caption in self.captions:
+                        if caption.index not in self.caption_containers:
+                            # New caption - create it
+                            self.create_caption_card(caption)
+                        else:
+                            # Existing caption - update it
+                            container = self.caption_containers[caption.index]
+                            container.clear()
+                            with container:
+                                self.update_caption_card_content(caption)
+
+    def update_caption_card_content(self, caption: SRTCaption) -> None:
+        """Update the content of an existing caption card"""
+        card_class = "cursor-pointer border-0 transition-all duration-200 w-full"
+
+        if not caption.is_valid:
+            card_class += " border-red-400 bg-red-50 hover:border-red-500"
+        elif caption.is_selected and caption.is_highlighted:
+            card_class += (
+                " shadow-lg border-yellow-400 bg-yellow-100 hover:border-yellow-500"
+            )
+        elif caption.is_selected:
+            card_class += " shadow-lg"
+        elif caption.is_highlighted:
+            card_class += " border-yellow-400 bg-yellow-50 hover:border-yellow-500"
+        else:
+            card_class += " hover:shadow-md shadow-none"
+
         with ui.card().classes(card_class) as card:
-            # Caption text (editable when selected)
             if caption.is_selected:
                 with ui.row().classes("w-full justify-between") as action_row:
                     action_row.props("id=action_row")
@@ -1410,8 +1641,6 @@ class SRTEditor:
                     "blur", lambda e: self.update_caption_text(caption, e.sender.value)
                 )
 
-                # Action buttons
-                # Row with buttons to the left
                 with ui.row().classes("w-full justify-between"):
                     ui.button("Split", icon="call_split", color="blue").props(
                         "flat dense"
@@ -1454,7 +1683,6 @@ class SRTEditor:
                             "click", lambda: self.remove_caption(caption)
                         )
             else:
-                # Show text with search highlighting
                 if caption.is_highlighted and self.search_term:
                     highlighted_text = self.get_highlighted_text(caption.text)
 
@@ -1516,37 +1744,44 @@ class SRTEditor:
                 ),
             )
 
-        return card
-
-    def refresh_display(self) -> None:
-        """Refresh the caption display"""
-        if self.main_container:
-            self.main_container.clear()
-            with self.main_container:
-                if not self.captions:
-                    ui.label("No captions loaded").classes(
-                        "text-gray-500 text-center p-8"
-                    )
-                else:
-                    for caption in self.captions:
-                        self.create_caption_card(caption)
-
     def validate_captions(self):
         """
-        Validate captions for overlapping times and empty text.
+        Validate captions for overlapping times, empty text, and character limits.
         """
+        # Reset all captions to valid first
+        for caption in self.captions:
+            caption.is_valid = True
+
         errors = []
+        warnings = []
         seen_times = set()
         start_times = {}
         errorenous_captions = []
 
         for caption in self.captions:
+            # Check for empty text
             if not caption.text.strip():
                 errors.append(f"Caption #{caption.index} has no text.")
+                caption.is_valid = False
+                errorenous_captions.append(caption)
+
+            # Check character limit per line (only for SRT format)
+            if self.data_format == "srt":
+                for line in caption.text.split("\n"):
+                    if len(line) > CHARACTER_LIMIT:
+                        errors.append(
+                            f"Caption #{caption.index} has a line with {len(line)} characters (max {CHARACTER_LIMIT})."
+                        )
+                        caption.is_valid = False
+                        if caption not in errorenous_captions:
+                            errorenous_captions.append(caption)
+                        break
+
             if (caption.start_time, caption.end_time) in seen_times:
-                errors.append(
-                    f"Caption #{caption.index} overlaps with another caption."
-                )
+                errors.append(f"Caption #{caption.index} has duplicate timestamp.")
+                caption.is_valid = False
+                if caption not in errorenous_captions:
+                    errorenous_captions.append(caption)
 
             seen_times.add((caption.start_time, caption.end_time))
 
@@ -1557,7 +1792,8 @@ class SRTEditor:
 
             if caption.get_end_seconds() < caption.get_start_seconds():
                 caption.is_valid = False
-                errorenous_captions.append(caption)
+                if caption not in errorenous_captions:
+                    errorenous_captions.append(caption)
                 errors.append(
                     f"Caption #{caption.index} has end time before start time."
                 )
@@ -1569,7 +1805,11 @@ class SRTEditor:
 
             if current.get_end_seconds() > next_caption.get_start_seconds():
                 current.is_valid = False
-                errorenous_captions.append(current)
+                next_caption.is_valid = False
+                if current not in errorenous_captions:
+                    errorenous_captions.append(current)
+                if next_caption not in errorenous_captions:
+                    errorenous_captions.append(next_caption)
                 errors.append(
                     f"Caption #{current.index} overlaps with caption #{next_caption.index}."
                 )
@@ -1583,45 +1823,63 @@ class SRTEditor:
 
                 for cap in self.captions:
                     if cap.index in indices:
-                        errorenous_captions.append(cap)
+                        if cap not in errorenous_captions:
+                            errorenous_captions.append(cap)
                         cap.is_valid = False
 
+        # Refresh display to show validation state changes
+        self.refresh_display()
+
         with ui.dialog() as dialog:
-            with (
-                ui.card()
-                .style(
-                    "background-color: white; align-self: center; border:  0; width: 80%;"
-                )
-                .classes("w-full no-shadow no-border")
-            ):
-                ui.label("Subtitles validation").style("width: 100%;").classes(
-                    "text-h6 q-mb-xl text-black"
-                )
+            with ui.card().classes("p-6").style("max-width: 700px; min-width: 500px;"):
+                # Header
+                with ui.row().classes("w-full items-center justify-between mb-4"):
+                    ui.label("Subtitle Validation").classes("text-h5 font-bold")
+                    ui.button(icon="close", on_click=dialog.close).props(
+                        "flat round dense color=grey-7"
+                    )
 
-                with ui.row().classes("w-full"):
-                    if errors:
-                        ui.label(
-                            "The following issues were found with the captions:"
-                        ).classes("text-bold")
-                        ui.html("<br>".join(errors), sanitize=False)
-                    else:
-                        for caption in self.captions:
-                            caption.is_valid = True
+                ui.separator().classes("mb-4")
 
-                        ui.label("All captions are valid, no errors found!")
+                if errors:
+                    # Error summary
+                    with ui.card().classes("bg-red-50 border-l-4 p-4 mb-4").style(
+                        "border-left-color: #dc2626;"
+                    ):
+                        with ui.row().classes("items-center gap-2 mb-2"):
+                            ui.icon("error", size="md").classes("text-red-600")
+                            ui.label(
+                                f"{len(set(errorenous_captions))} caption(s) with issues found"
+                            ).classes("text-h6 font-semibold text-red-900")
 
-                with ui.row().classes("justify-between w-full"):
-                    with ui.button(
-                        "Close",
-                        icon="cancel",
-                    ) as cancel:
-                        cancel.on("click", lambda: dialog.close())
-                        cancel.props("color=black flat")
-                        cancel.classes("cancel-style")
+                    # Error list
+                    with ui.column().classes("w-full gap-2 max-h-96 overflow-y-auto"):
+                        for error in errors:
+                            with ui.row().classes("items-start gap-2"):
+                                ui.icon("warning", size="sm").classes(
+                                    "text-red-600 mt-1"
+                                )
+                                ui.label(error).classes("text-body2")
+                else:
+                    # Success message
+                    with ui.card().classes("bg-green-50 border-l-4 p-4").style(
+                        "border-left-color: #16a34a;"
+                    ):
+                        with ui.row().classes("items-center gap-3"):
+                            ui.icon("check_circle", size="lg").classes("text-green-600")
+                            with ui.column().classes("gap-1"):
+                                ui.label("All captions are valid!").classes(
+                                    "text-h6 font-semibold text-green-900"
+                                )
+                                ui.label(
+                                    f"{len(self.captions)} caption(s) checked"
+                                ).classes("text-body2 text-green-700")
+
+                # Footer
+                with ui.row().classes("w-full justify-end mt-4"):
+                    ui.button("Close", on_click=dialog.close).props("color=primary")
 
             dialog.open()
-
-        self.refresh_display()
 
     def show_keyboard_shortcuts(self, open_window: Optional[bool] = False) -> None:
         """
