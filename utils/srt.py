@@ -445,11 +445,11 @@ class SRTEditor:
 
         match event.key:
             # Next block of captions, Ctrl+Down
-            case "ArrowDown" if event.modifiers.ctrl:
+            case "ArrowDown" if event.modifiers.alt:
                 self.select_next_caption()
 
             # Prev block of captions, Ctrl+Up
-            case "ArrowUp" if event.modifiers.ctrl:
+            case "ArrowUp" if event.modifiers.alt:
                 self.select_prev_caption()
 
             # Split block, Ctrl+S
@@ -1083,7 +1083,7 @@ class SRTEditor:
                 start_seconds = caption.get_start_seconds()
                 self.__video_player.seek(start_seconds)
 
-        if new_text is not None:
+        if new_text is not None and new_text != caption.text:
             self.update_caption_text(
                 caption, caption.text, force=True
             )  # To mark as changed
@@ -1610,8 +1610,8 @@ class SRTEditor:
         """
 
         shortcuts = [
-            ("Next caption", "Ctrl + Down Arrow"),
-            ("Previous caption", "Ctrl + Up Arrow"),
+            ("Next caption", "Alt/Option + Down Arrow"),
+            ("Previous caption", "Alt/Option + Up Arrow"),
             ("Split caption", "Ctrl + S"),
             ("Merge with next caption", "Ctrl + M"),
             ("Merge with previous caption", "Ctrl + Shift + M"),
