@@ -112,6 +112,7 @@ def create() -> None:
                             save.on("click", lambda: email_save(email.value))
 
                     with ui.column().classes("gap-3"):
+                        users = None
                         with ui.grid(columns=2).classes("gap-x-6 gap-y-2"):
                             ui.label("My notifications").classes(
                                 "col-span-2 font-semibold"
@@ -128,7 +129,7 @@ def create() -> None:
                                 "click",
                                 lambda e: email_save_notifications(
                                     job=jobs.value,
-                                    user=users.value,
+                                    user=users.value if users is not None else None,
                                     deletion=deletions.value,
                                     # quota=quota.value,
                                 ),
@@ -147,7 +148,7 @@ def create() -> None:
                                 "click",
                                 lambda e: email_save_notifications(
                                     job=jobs.value,
-                                    user=users.value,
+                                    user=users.value if users is not None else None,
                                     deletion=deletions.value,
                                     # quota=quota.value,
                                 ),
