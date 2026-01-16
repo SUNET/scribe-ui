@@ -827,8 +827,6 @@ def health() -> None:
         """
     )
 
-    ui.label("System Health Overview").classes("text-2xl font-semibold mb-4")
-
     @ui.refreshable
     def render_health():
         try:
@@ -904,7 +902,6 @@ def health() -> None:
                             sanitize=False,
                         )
 
-                    ui.separator()
                     ui.label(
                         f"Load Avg: {latest['load_avg']:.1f} | Memory Usage: {latest['memory_usage']:.1f}%"
                     ).classes("text-sm text-gray-600 mb-2")
