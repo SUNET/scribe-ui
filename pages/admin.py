@@ -798,7 +798,7 @@ def health() -> None:
                 background-color: white;
                 border-radius: 1rem;
                 box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-                padding: 1.5rem;
+                padding: 1.25rem;
                 width: 100%;
                 max-width: 100%;
                 display: flex;
@@ -811,6 +811,17 @@ def health() -> None:
                 border-radius: 50%;
                 display: inline-block;
                 margin-right: 6px;
+            }
+            .health-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+                gap: 1.25rem;
+                width: 100%;
+            }
+            @media (max-width: 768px) {
+                .health-grid {
+                    grid-template-columns: 1fr;
+                }
             }
         </style>
         """
@@ -837,9 +848,7 @@ def health() -> None:
             ui.label("Backend is not reachable").classes("text-lg text-red-500")
             return
 
-        with ui.element("div").style(
-            "display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; width: 100%;"
-        ):
+        with ui.element("div").classes("health-grid"):
             if not data:
                 ui.label("No workers online.").classes("text-lg text-gray-600")
                 return
@@ -907,7 +916,10 @@ def health() -> None:
                             y=load_vals,
                             mode="lines",
                             name="Load Avg",
-                            line=dict(shape="spline"),
+                            line=dict(color="#3b82f6", width=2.5, shape="spline"),
+                            fill="tozeroy",
+                            fillcolor="rgba(59, 130, 246, 0.1)",
+                            hovertemplate="<b>Load</b>: %{y:.1f}<br><extra></extra>",
                         )
                     )
                     fig_cpu.add_trace(
@@ -916,24 +928,40 @@ def health() -> None:
                             y=mem_vals,
                             mode="lines",
                             name="Memory %",
-                            line=dict(shape="spline"),
+                            line=dict(color="#10b981", width=2.5, shape="spline"),
+                            fill="tozeroy",
+                            fillcolor="rgba(16, 185, 129, 0.1)",
+                            hovertemplate="<b>Memory</b>: %{y:.1f}%<br><extra></extra>",
                         )
                     )
                     fig_cpu.update_layout(
-                        margin=dict(l=20, r=20, t=20, b=20),
+                        margin=dict(l=40, r=20, t=30, b=40),
                         legend=dict(
                             orientation="h",
                             yanchor="bottom",
-                            y=1.1,
+                            y=1.02,
                             xanchor="center",
                             x=0.5,
+                            font=dict(size=11),
                         ),
-                        height=250,
+                        height=200,
                         template="plotly_white",
-                        xaxis_title="Time",
-                        yaxis_title="%",
+                        xaxis=dict(
+                            title="Time",
+                            showgrid=True,
+                            gridcolor="rgba(0,0,0,0.05)",
+                        ),
+                        yaxis=dict(
+                            title="%",
+                            showgrid=True,
+                            gridcolor="rgba(0,0,0,0.05)",
+                            rangemode="tozero",
+                        ),
+                        font=dict(size=11),
+                        plot_bgcolor="rgba(248, 250, 252, 0.5)",
+                        hovermode="x unified",
                     )
-                    ui.plotly(fig_cpu).classes("w-full h-64")
+                    ui.plotly(fig_cpu).classes("w-full")
 
                     if "gpu_usage" in samples[-1] and samples[-1]["gpu_usage"]:
                         fig_gpu = go.Figure()
@@ -942,8 +970,11 @@ def health() -> None:
                                 x=times[-len(gpu_cpu_vals) :],
                                 y=gpu_cpu_vals,
                                 mode="lines",
-                                name="GPU CPU%",
-                                line=dict(shape="spline"),
+                                name="GPU Util%",
+                                line=dict(color="#8b5cf6", width=2.5, shape="spline"),
+                                fill="tozeroy",
+                                fillcolor="rgba(139, 92, 246, 0.1)",
+                                hovertemplate="<b>GPU Util</b>: %{y:.1f}%<br><extra></extra>",
                             )
                         )
                         fig_gpu.add_trace(
@@ -951,26 +982,42 @@ def health() -> None:
                                 x=times[-len(gpu_mem_vals) :],
                                 y=gpu_mem_vals,
                                 mode="lines",
-                                name="GPU RAM%",
-                                line=dict(shape="spline"),
+                                name="GPU Mem%",
+                                line=dict(color="#f59e0b", width=2.5, shape="spline"),
+                                fill="tozeroy",
+                                fillcolor="rgba(245, 158, 11, 0.1)",
+                                hovertemplate="<b>GPU Memory</b>: %{y:.1f}%<br><extra></extra>",
                             )
                         )
 
                         fig_gpu.update_layout(
-                            margin=dict(l=20, r=20, t=20, b=20),
+                            margin=dict(l=40, r=20, t=30, b=40),
                             legend=dict(
                                 orientation="h",
                                 yanchor="bottom",
-                                y=1.1,
+                                y=1.02,
                                 xanchor="center",
                                 x=0.5,
+                                font=dict(size=11),
                             ),
-                            height=250,
+                            height=200,
                             template="plotly_white",
-                            xaxis_title="Time",
-                            yaxis_title="%",
+                            xaxis=dict(
+                                title="Time",
+                                showgrid=True,
+                                gridcolor="rgba(0,0,0,0.05)",
+                            ),
+                            yaxis=dict(
+                                title="%",
+                                showgrid=True,
+                                gridcolor="rgba(0,0,0,0.05)",
+                                rangemode="tozero",
+                            ),
+                            font=dict(size=11),
+                            plot_bgcolor="rgba(248, 250, 252, 0.5)",
+                            hovermode="x unified",
                         )
-                        ui.plotly(fig_gpu).classes("w-full h-64")
+                        ui.plotly(fig_gpu).classes("w-full")
 
                     ui.label(f"Last updated: {times[-1]} UTC").classes(
                         "text-xs text-gray-400 mt-1"
