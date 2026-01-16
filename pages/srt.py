@@ -80,6 +80,16 @@ def create() -> None:
             if ((e.metaKey || e.ctrlKey) && ! e.shiftKey && e.key.toLowerCase() === 'f') {
                 e.preventDefault();
             }
+
+            // Handle Escape key globally (even when video player has focus)
+            if (e.key === 'Escape' && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
+                // Blur active element
+                if (document.activeElement && typeof document.activeElement.blur === 'function') {
+                    document.activeElement.blur();
+                }
+                // Dispatch custom event that Python can listen to
+                window.dispatchEvent(new CustomEvent('escape-pressed'));
+            }
         }, true);
         </script>
         """
