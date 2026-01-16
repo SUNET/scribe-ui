@@ -1,7 +1,7 @@
 import asyncio
 import requests
 import pytz
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from nicegui import ui, app
 from starlette.formparsers import MultiPartParser
@@ -125,6 +125,16 @@ default_styles = """
             background-color: #082954;
             color: #ffffff !important;
             width: 150px;
+        }
+        .deletion-warning {
+            color: #d32f2f;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .deletion-warning-icon {
+            font-size: 18px;
         }
     </style>
 """
@@ -361,6 +371,11 @@ def jobs_get() -> list:
     except requests.exceptions.RequestException:
         return []
 
+    # Get current time in user's timezone
+    user_timezone = app.storage.user.get("timezone", "UTC")
+    local_tz = pytz.timezone(user_timezone)
+    current_time = datetime.now(local_tz)
+
     for idx, job in enumerate(response.json()["result"]["jobs"]):
         if job["status"] == "in_progress":
             job["status"] = "transcribing"
@@ -369,10 +384,21 @@ def jobs_get() -> list:
         created_at = add_timezone_to_timestamp(job["created_at"])
         updated_at = add_timezone_to_timestamp(job["updated_at"])
 
+        # Check if deletion is approaching (within 24 hours)
+        deletion_approaching = False
         if deletion_date:
-            deletion_date = deletion_date.split(" ")[0]
+            try:
+                deletion_dt = datetime.strptime(deletion_date, "%Y-%m-%d %H:%M")
+                deletion_dt = local_tz.localize(deletion_dt)
+                time_until_deletion = deletion_dt - current_time
+                # Default threshold: 24 hours
+                deletion_approaching = time_until_deletion <= timedelta(hours=24) and time_until_deletion.total_seconds() > 0
+            except (ValueError, AttributeError):
+                pass
+
+            deletion_date_display = deletion_date.split(" ")[0]
         else:
-            deletion_date = "N/A"
+            deletion_date_display = "N/A"
 
         if job["status"] != "completed":
             job_type = ""
@@ -389,7 +415,8 @@ def jobs_get() -> list:
             "filename": job["filename"],
             "created_at": created_at,
             "updated_at": updated_at,
-            "deletion_date": deletion_date,
+            "deletion_date": deletion_date_display,
+            "deletion_approaching": deletion_approaching,
             "language": job["language"].capitalize(),
             "status": job["status"].capitalize(),
             "model_type": job["model_type"].capitalize(),

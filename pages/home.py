@@ -62,7 +62,24 @@ def create() -> None:
                     style="width: 120px; height: 40px;"
                     @click="$parent.$emit('table_handle_row_click', props.row)"
                 />
-            </q-td>            
+            </q-td>
+            """,
+        )
+        table.add_slot(
+            "body-cell-deletetion_date",
+            """
+            <q-td key="deletetion_date" :props="props">
+                <div :class="props.row.deletion_approaching ? 'deletion-warning' : ''">
+                    <span>{{ props.row.deletion_date }}</span>
+                    <q-icon
+                        v-if="props.row.deletion_approaching"
+                        name="warning"
+                        class="deletion-warning-icon"
+                    >
+                        <q-tooltip>This file will be permanently deleted within 24 hours.</q-tooltip>
+                    </q-icon>
+                </div>
+            </q-td>
             """,
         )
         table.on("table_handle_row_click", table_handle_row_click)
