@@ -392,7 +392,10 @@ def jobs_get() -> list:
                 deletion_dt = local_tz.localize(deletion_dt)
                 time_until_deletion = deletion_dt - current_time
                 # Default threshold: 24 hours
-                deletion_approaching = time_until_deletion <= timedelta(hours=24) and time_until_deletion.total_seconds() > 0
+                deletion_approaching = (
+                    time_until_deletion <= timedelta(hours=24)
+                    and time_until_deletion.total_seconds() > 0
+                )
             except (ValueError, AttributeError):
                 pass
 
@@ -704,7 +707,7 @@ def table_delete(table: ui.table) -> None:
                 ui.button(
                     "Delete",
                     on_click=lambda: __delete_files(table, dialog),
-                ).props("color=black flat").classes("delete-style")
+                ).props("color=red").classes("delete-style")
 
         dialog.open()
 
