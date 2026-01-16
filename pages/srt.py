@@ -141,31 +141,6 @@ def create() -> None:
             ui.notify(f"Error: Failed to get result: {e}")
             return
 
-        with ui.footer().style("background-color: #f5f5f5;"):
-
-            def export(srt_format: str):
-                match srt_format:
-                    case "srt":
-                        srt_content = editor.export_srt()
-                    case "vtt":
-                        srt_content = editor.export_vtt()
-                    case "txt":
-                        srt_content = editor.export_txt()
-                    case "json":
-                        srt_content = editor.export_json()
-                    case "rtf":
-                        srt_content = editor.export_rtf()
-                    case "csv":
-                        srt_content = editor.export_csv()
-                    case "tsv":
-                        srt_content = editor.export_tsv()
-
-                ui.download(
-                    str(srt_content).encode(), filename=f"{filename}.{srt_format}"
-                )
-
-                ui.notify("File exported successfully", type="positive")
-
         with ui.row().classes("justify-between w-full gap-2"):
             with ui.column().classes("flex-row items-center"):
                 editor.create_undo_redo_panel()
@@ -219,7 +194,7 @@ def create() -> None:
         with ui.splitter(value=60).classes("w-full h-full") as splitter:
             with splitter.before:
                 with ui.card().classes("w-full h-full"):
-                    with ui.scroll_area().style("height: calc(90vh - 200px);"):
+                    with ui.scroll_area().style("height: calc(90vh - 100px);"):
                         editor.main_container = ui.column().classes("w-full h-full")
 
                     if data_format == "srt":
