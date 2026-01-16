@@ -81,6 +81,21 @@ def create() -> None:
                 e.preventDefault();
             }
 
+            // Block Ctrl + d / Cmd + d for bookmark
+            if ((e.metaKey || e.ctrlKey) && ! e.shiftKey && e.key.toLowerCase() === 'd') {
+                e.preventDefault();
+            }
+
+            // Block Ctrl + e / Cmd + e for search
+            if ((e.metaKey || e.ctrlKey) && ! e.shiftKey && e.key.toLowerCase() === 'e') {
+                e.preventDefault();
+            }
+
+            // Block Ctrl + Shift + m / Cmd + Shift + m for mute tab
+            if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'm') {
+                e.preventDefault();
+            }
+
             // Handle Escape key globally (even when video player has focus)
             if (e.key === 'Escape' && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
                 // Blur active element
