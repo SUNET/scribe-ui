@@ -4,7 +4,7 @@ import requests
 
 from nicegui import app, events, ui
 from typing import Any, Callable, Dict, List, Optional
-from utils.common import get_auth_header
+from utils.common import default_styles, get_auth_header
 from utils.settings import get_settings
 
 CHARACTER_LIMIT_EXCEEDED_COLOR = "text-red"
@@ -702,7 +702,9 @@ class SRTEditor:
         lines = []
         for caption in self.captions:
             escaped_text = caption.text.replace('"', '""')
-            lines.append(f'"{caption.start_time}","{caption.end_time}","{caption.speaker}","{escaped_text}"')
+            lines.append(
+                f'"{caption.start_time}","{caption.end_time}","{caption.speaker}","{escaped_text}"'
+            )
         return "\n".join(lines)
 
     def export_tsv(self) -> str:
@@ -713,7 +715,9 @@ class SRTEditor:
         lines = []
         for caption in self.captions:
             escaped_text = caption.text.replace("\t", "    ").replace("\n", " ")
-            lines.append(f"{caption.start_time}\t{caption.end_time}\t{caption.speaker}\t{escaped_text}")
+            lines.append(
+                f"{caption.start_time}\t{caption.end_time}\t{caption.speaker}\t{escaped_text}"
+            )
         return "\n".join(lines)
 
     def export_rtf(self) -> str:
@@ -788,7 +792,9 @@ class SRTEditor:
         parts = ["WEBVTT\n\n"]
         for caption in self.captions:
             parts.append(f"{caption.index}\n")
-            parts.append(f"{caption.start_time.replace(',', '.')} --> {caption.end_time.replace(',', '.')}\n")
+            parts.append(
+                f"{caption.start_time.replace(',', '.')} --> {caption.end_time.replace(',', '.')}\n"
+            )
             parts.append(f"{caption.text}\n\n")
         return "".join(parts)
 
@@ -827,7 +833,7 @@ class SRTEditor:
 
         self.search_term = search_term
         self.search_results = []
-        
+
         # Track which captions change highlight state
         changed_indices = set()
 
@@ -838,7 +844,9 @@ class SRTEditor:
                 changed_indices.add(caption.index)
 
         if not search_term.strip():
-            self.refresh_display(specific_indices=changed_indices if changed_indices else None)
+            self.refresh_display(
+                specific_indices=changed_indices if changed_indices else None
+            )
             self.update_search_info()
             return
 
@@ -850,7 +858,9 @@ class SRTEditor:
                 changed_indices.add(caption.index)
 
         self.current_search_index = 0
-        self.refresh_display(specific_indices=changed_indices if changed_indices else None)
+        self.refresh_display(
+            specific_indices=changed_indices if changed_indices else None
+        )
         self.update_search_info()
 
         if self.search_results:
@@ -1102,7 +1112,7 @@ class SRTEditor:
             self.selected_caption.speaker = speaker.value
 
         old_selected = self.selected_caption
-        
+
         if self.selected_caption:
             self.selected_caption.is_selected = False
 
@@ -1124,7 +1134,7 @@ class SRTEditor:
             caption.text = new_text
 
         self.update_words_per_minute()
-        
+
         # Only update the captions that changed state
         indices_to_update = set()
         if old_selected:
@@ -1529,12 +1539,14 @@ class SRTEditor:
 
                             lines = caption.text.split("\n")
                             line_lengths = [str(len(x)) for x in lines]
-                            
+
                             # Check for exceeded limit
-                            if self.data_format != "txt" and any(len(x) > CHARACTER_LIMIT for x in lines):
+                            if self.data_format != "txt" and any(
+                                len(x) > CHARACTER_LIMIT for x in lines
+                            ):
                                 text_color = CHARACTER_LIMIT_EXCEEDED_COLOR
                                 tooltip_text = f"Character limit of {CHARACTER_LIMIT} exceeded in one or more lines."
-                            
+
                             character_label = "/".join(line_lengths)
 
                             with ui.label(f"({character_label})").classes(
@@ -1555,9 +1567,11 @@ class SRTEditor:
         self.caption_containers[caption.index] = container
         return card
 
-    def refresh_display(self, force_full_refresh: bool = False, specific_indices: set = None) -> None:
+    def refresh_display(
+        self, force_full_refresh: bool = False, specific_indices: set = None
+    ) -> None:
         """Refresh the caption display - only recreate if necessary
-        
+
         Args:
             force_full_refresh: If True, recreate all captions
             specific_indices: If provided, only update these specific caption indices
@@ -1592,8 +1606,11 @@ class SRTEditor:
                 with self.main_container:
                     for caption in self.captions:
                         # Only update if no specific_indices filter, or if index is in the filter
-                        should_update = specific_indices is None or caption.index in specific_indices
-                        
+                        should_update = (
+                            specific_indices is None
+                            or caption.index in specific_indices
+                        )
+
                         if caption.index not in self.caption_containers:
                             # New caption - create it
                             self.create_caption_card(caption)
@@ -1752,12 +1769,14 @@ class SRTEditor:
 
                         lines = caption.text.split("\n")
                         line_lengths = [str(len(x)) for x in lines]
-                        
+
                         # Check for exceeded limit
-                        if self.data_format != "txt" and any(len(x) > CHARACTER_LIMIT for x in lines):
+                        if self.data_format != "txt" and any(
+                            len(x) > CHARACTER_LIMIT for x in lines
+                        ):
                             text_color = CHARACTER_LIMIT_EXCEEDED_COLOR
                             tooltip_text = f"Character limit of {CHARACTER_LIMIT} exceeded in one or more lines."
-                        
+
                         character_label = "/".join(line_lengths)
 
                         with ui.label(f"({character_label})").classes(
@@ -1778,7 +1797,7 @@ class SRTEditor:
         """
         # Track which captions changed validity
         changed_indices = set()
-        
+
         # Reset all captions to valid first
         for caption in self.captions:
             if not caption.is_valid:
@@ -1868,7 +1887,9 @@ class SRTEditor:
                         changed_indices.add(cap.index)
 
         # Refresh display to show validation state changes - only update changed captions
-        self.refresh_display(specific_indices=changed_indices if changed_indices else None)
+        self.refresh_display(
+            specific_indices=changed_indices if changed_indices else None
+        )
 
         with ui.dialog() as dialog:
             with ui.card().classes("p-6").style("max-width: 700px; min-width: 500px;"):
@@ -2004,13 +2025,16 @@ class SRTEditor:
         """
         Show comprehensive export dialog with format options and live preview.
         """
+        ui.add_head_html(default_styles)
         with ui.dialog() as dialog:
             with ui.card().classes("p-6").style(
-                "min-width: 1000px; max-width: 1400px;"
+                "min-width: 1000px; max-width: 1400px; background-color: #ffffff;"
             ):
                 # Header
                 with ui.row().classes("w-full items-center justify-between mb-4"):
-                    ui.label("Export Transcription").classes("text-h5 font-bold")
+                    ui.label("Export Transcription").classes(
+                        "text-h5 font-bold text-black"
+                    )
                     ui.button(icon="close", on_click=dialog.close).props(
                         "flat round dense color=grey-7"
                     )
@@ -2402,6 +2426,16 @@ class SRTEditor:
                                 r.append(c.text.replace("\t", "  ").replace("\n", " "))
                                 lines.append(tab_char.join(r))
                             out = "\n".join(lines)
+                        elif fmt.value == "rtf":
+                            # Show RTF source code for preview
+                            parts = []
+                            for c in caps:
+                                parts.append(
+                                    f"{c.speaker}: {c.start_time} - {c.end_time}"
+                                )
+                                parts.append(c.text.replace("\n", "\\line "))
+                                parts.append("")
+                            out = "\n".join(parts)
                         else:
                             out = "(RTF preview unavailable)"
 
@@ -2667,7 +2701,7 @@ class SRTEditor:
                                 ui.notify(f"Export failed: {str(e)}", type="negative")
 
                         ui.button("Export", icon="download", on_click=exp).props(
-                            "unelevated color=primary"
-                        )
+                            "flat color=white"
+                        ).classes("button-default-style")
 
             dialog.open()
