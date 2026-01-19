@@ -239,7 +239,7 @@ class SRTEditor:
             if self.srt_format == "srt":
                 data = self.export_srt()
             else:
-                data = self.export_json()
+                data = json.dumps(self.export_json())
 
             jsondata = {"format": self.srt_format, "data": data}
             headers = get_auth_header()
