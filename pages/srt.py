@@ -46,7 +46,7 @@ def create() -> None:
         Display the result of the transcription job.
         """
         page_init()
-        editor = SRTEditor(uuid, data_format)
+        editor = SRTEditor(uuid, data_format, filename)
         editor.setup_beforeunload_warning()
 
         ui.add_head_html(

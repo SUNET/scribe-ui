@@ -16,7 +16,7 @@ settings = get_settings()
 
 
 class SRTEditor:
-    def __init__(self, uuid: str, srt_format: str):
+    def __init__(self, uuid: str, srt_format: str, filename: str):
         """
         Initialize the SRT editor with empty captions and other properties.
         """
@@ -38,6 +38,7 @@ class SRTEditor:
         self.words_per_minute_element = None
         self.speakers = set()
         self.data_format = None
+        self.filename = filename
 
         # Initialize undo/redo manager
         self.undo_redo_manager = UndoRedoManager()
@@ -358,11 +359,9 @@ class SRTEditor:
 
             # Export file, Ctrl+E / Cmd+E
             case "e" if event.modifiers.ctrl and not event.modifiers.shift:
-                if self.filename:
-                    self.show_export_dialog(self.filename)
+                self.show_export_dialog(self.filename)
             case "e" if event.modifiers.meta and not event.modifiers.shift:
-                if self.filename:
-                    self.show_export_dialog(self.filename)
+                self.show_export_dialog(self.filename)
 
             # ? to show help
             case "?" if event.modifiers.shift and not event.modifiers.ctrl:
