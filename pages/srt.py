@@ -183,13 +183,10 @@ def create() -> None:
                         )
                 editor.create_search_panel()
                 editor.show_keyboard_shortcuts()
-            with ui.column().classes("flex-row items-center"):
-                with ui.row().classes("gap-2"):
-                    with ui.button("", icon="close").props(
-                        "flat color=black"
-                    ) as close_button:
-                        close_button.classes("cancel-style").style("border: 0;")
-                        close_button.on("click", lambda: editor.close_editor("/home"))
+            with ui.button("Close editor", icon="close").props(
+                "flat color=black"
+            ) as close_button:
+                close_button.on("click", lambda: editor.close_editor("/home"))
 
         with ui.splitter(value=60).classes("w-full h-full") as splitter:
             with splitter.before:

@@ -150,14 +150,14 @@ class SRTEditor:
             if redirect_url:
                 ui.navigate.to(redirect_url)
 
-        if self.has_unsaved_changes():
-            self.show_save_confirmation_dialog(
-                on_save=do_close,
-                on_discard=do_close,
-                on_cancel=None,  # Just close the dialog, don't navigate
-            )
-        else:
-            do_close()
+        # if self.has_unsaved_changes():
+        #     self.show_save_confirmation_dialog(
+        #         on_save=do_close,
+        #         on_discard=do_close,
+        #         on_cancel=None,  # Just close the dialog, don't navigate
+        #     )
+        # else:
+        do_close()
 
     def save_state_for_undo(self) -> None:
         """Save the current state before making changes."""
