@@ -4,46 +4,32 @@ import requests
 from datetime import datetime
 from nicegui import ui
 from utils.common import add_timezone_to_timestamp, default_styles, page_init
+from utils.helpers import (
+    groups_get,
+    realms_get,
+    save_customer,
+    save_group,
+    set_active_status,
+    set_admin_status,
+    set_domains,
+    user_statistics_get,
+    export_customers_csv,
+    customers_get,
+)
 from utils.settings import get_settings
 from utils.token import get_admin_status, get_auth_header, get_bofh_status
+from utils.group import Group
+from utils.customer import Customer
 
 
 settings = get_settings()
 
 
-def groups_get() -> list:
-    """
-    Fetch all groups from backend.
-    """
-
-    try:
-        res = requests.get(
-            settings.API_URL + "/api/v1/admin/groups", headers=get_auth_header()
-        )
-        res.raise_for_status()
-
-        return res.json()
-    except requests.RequestException as e:
-        print(f"Error fetching groups: {e}")
-        return []
-
-def user_statistics_get(group_id: str) -> dict:
-    """
-    Fetch user statistics for a group from backend.
-    """
-
-    try:
-        res = requests.get(
-            settings.API_URL + f"/api/v1/admin/groups/{group_id}/stats", headers=get_auth_header()
-        )
-        res.raise_for_status()
-
-        return res.json()
-    except requests.RequestException as e:
-        print(f"Error fetching user statistics: {e}")
-        return {}
-
 def create_group_dialog(page: callable) -> None:
+    """
+    Show a dialog to create a new group.
+    """
+
     with ui.dialog() as create_group_dialog:
         with ui.card().style("width: 500px; max-width: 90vw;"):
             ui.label("Create new group").classes("text-2xl font-bold")
@@ -51,7 +37,13 @@ def create_group_dialog(page: callable) -> None:
             description_input = (
                 ui.textarea("Group description").classes("w-full").props("outlined")
             )
-            quota = ui.input("Monthly transcription limit (minutes, 0 = unlimited)", value=0).classes("w-full").props("outlined type=number min=0")
+            quota = (
+                ui.input(
+                    "Monthly transcription limit (minutes, 0 = unlimited)", value=0
+                )
+                .classes("w-full")
+                .props("outlined type=number min=0")
+            )
 
             with ui.row().style("justify-content: flex-end; width: 100%;"):
                 ui.button("Cancel").classes("button-close").props(
@@ -72,239 +64,17 @@ def create_group_dialog(page: callable) -> None:
                             },
                         ),
                         create_group_dialog.close(),
-                        ui.navigate.to("/admin"))
+                        ui.navigate.to("/admin"),
+                    ),
                 )
 
         create_group_dialog.open()
 
 
-class Group:
-    def __init__(self, group_id: str, name: str, description: str, created_at: str, users: dict, nr_users: int, stats: dict, quota_seconds: int) -> None:
-        self.group_id = group_id
-        self.name = name
-        self.description = description
-        self.created_at = created_at.split(".")[0]
-        self.users = users
-        self.nr_users = nr_users
-        self.stats = stats
-        self.quota_seconds = quota_seconds
-
-    def edit_group(self) -> None:
-        ui.navigate.to(f"/admin/edit/{self.group_id}")
-
-    def delete_group_dialog(self) -> None:
-        with ui.dialog() as delete_group_dialog:
-            with ui.card().style("width: 400px; max-width: 90vw;"):
-                ui.label("Delete group").classes("text-2xl font-bold")
-                ui.label("Are you sure you want to delete this group? This action cannot be undone.").classes("my-4")
-                with ui.row().style("justify-content: flex-end; width: 100%;"):
-                    ui.button("Cancel").classes("button-close").props(
-                        "color=black flat"
-                    ).on("click", lambda: delete_group_dialog.close())
-                    ui.button("Delete").classes("button-close").props(
-                        "color=red flat"
-                    ).on(
-                        "click",
-                        lambda: (
-                            requests.delete(
-                                settings.API_URL + f"/api/v1/admin/groups/{self.group_id}",
-                                headers=get_auth_header(),
-                            ),
-                            delete_group_dialog.close(),
-                            ui.navigate.to("/admin")
-                        ),
-                    )
-
-            delete_group_dialog.open()
-
-    def create_card(self):
-        with ui.card().classes("my-2").style("width: 100%; box-shadow: none; border: 1px solid #e0e0e0; padding: 16px;"):
-            with ui.row().style(
-                "justify-content: space-between; align-items: center; width: 100%;"
-            ):
-                with ui.column().style("flex: 0 0 auto; min-width: 25%;"):
-                    ui.label(f"{self.name}").classes("text-h5 font-bold")
-                    ui.label(self.description).classes("text-md")
-
-                    if self.name != "All users":
-                        ui.label(f"Created {self.created_at}").classes("text-sm text-gray-500")
-
-                    ui.label(f"{self.nr_users} members").classes("text-sm text-gray-500")
-                    ui.label(f"Monthly transcription limit: {'Unlimited' if self.quota_seconds == 0 else str(self.quota_seconds // 60) + ' minutes'}").classes("text-sm text-gray-500")
-                with ui.column().style("flex: 1;"):
-                    ui.label("Statistics").classes("text-h6 font-bold")
-
-                    with ui.row().classes("w-full gap-8"):
-                        with ui.column().style("min-width: 30%;"):
-                            ui.label("This month").classes("font-semibold")
-                            ui.label(f"Transcribed files current month: {self.stats["transcribed_files"]}").classes("text-sm")
-                            ui.label(f"Transcribed minutes current month: {self.stats["total_transcribed_minutes"]:.0f}").classes("text-sm")
-                        with ui.column():
-                            ui.label("Last month").classes("font-semibold")
-                            ui.label(f"Transcribed files last month: {self.stats["transcribed_files_last_month"]}").classes("text-sm")
-                            ui.label(f"Transcribed minutes last month: {self.stats["total_transcribed_minutes_last_month"]:.0f}").classes("text-sm")
-
-                with ui.column().style("flex: 0 0 auto;"):
-
-                    statistics = ui.button("Statistics").classes("button-edit").props(
-                        "color=white flat"
-                    ).style("width: 100%")
-
-                    statistics.on(
-                        "click",
-                        lambda: ui.navigate.to(f"/admin/stats/{self.group_id}")
-                    )
-
-                    if self.name == "All users":
-                        return
-
-                    edit = ui.button("Edit").classes("button-edit").props(
-                        "color=white flat"
-                    ).style("width: 100%")
-                    delete = ui.button("Delete").classes("button-close").props(
-                        "color=black flat"
-                    ).style("width: 100%")
-
-                    edit.on(
-                        "click",
-                        lambda e: self.edit_group()
-                    )
-                    delete.on(
-                        "click",
-                        lambda e: self.delete_group_dialog()
-                    )
-
-def save_group(selected_rows: list, name: str, description: str, group_id: str, quota_seconds: int) -> None:
-    usernames = [row["username"] for row in selected_rows]
-
-    try:
-        res = requests.put(
-            settings.API_URL + f"/api/v1/admin/groups/{group_id}",
-            headers=get_auth_header(),
-            json={
-                "name": name,
-                "description": description,
-                "usernames": usernames,
-                "quota_seconds": int(quota_seconds) * 60,
-            }
-        )
-        res.raise_for_status()
-        ui.navigate.to("/admin")
-    except requests.RequestException as e:
-        ui.notify(f"Error saving group: {e}", type="negative")
-
-def set_active_status(selected_rows: list, make_active: bool) -> None:
-    """
-    Set or remove active status for selected users.
-    """
-
-    for user in selected_rows:
-        try:
-            res = requests.put(
-                settings.API_URL + f"/api/v1/admin/{user['username']}",
-                headers=get_auth_header(),
-                json={"active": make_active}
-            )
-            res.raise_for_status()
-            ui.navigate.to("/admin/users")
-        except requests.RequestException as e:
-            ui.notify(f"Error updating active status for {user['username']}: {e}", type="negative")
-
-def set_admin_status(selected_rows: list, make_admin: bool, dialog: ui.dialog, group_id: str) -> None:
-    """
-    Set or remove admin status for selected users.
-    """
-
-    for user in selected_rows:
-        try:
-            res = requests.put(
-                settings.API_URL + f"/api/v1/admin/{user['username']}",
-                headers=get_auth_header(),
-                json={"admin": make_admin}
-            )
-            res.raise_for_status()
-
-            if dialog:
-                dialog.close()
-                ui.navigate.to(f"/admin/edit/{group_id}")
-            else:
-                ui.navigate.to("/admin/users")
-        except requests.RequestException as e:
-            ui.notify(f"Error updating admin status for {user['username']}: {e}", type="negative")
-
-def save_domains(selected_rows: list, domains: list, domains_str: str, dialog: ui.dialog) -> None:
-    """
-    Save allowed domains for selected users.
-    """
-
-    selected_domains = domains if domains else []
-    new_domains = [r.strip() for r in domains_str.split(",") if r.strip()]
-    all_domains = list(set(selected_domains + new_domains))
-    domains_str = ",".join(all_domains)
-
-    for user in selected_rows:
-        try:
-            res = requests.put(
-                settings.API_URL + f"/api/v1/admin/{user['username']}",
-                headers=get_auth_header(),
-                json={"admin_domains": domains_str}
-            )
-            res.raise_for_status()
-            ui.navigate.to("/admin/users")
-        except requests.RequestException as e:
-            ui.notify(f"Error updating domains for {user['username']}: {e}", type="negative")
-
-    dialog.close()
-
-def set_domains(selected_rows: list) -> None:
-    """
-    Show a dialog with an input to set allowed domains.
-    Domains should be separated by commas.
-    """
-
-    realms = realms_get()
-    domains = []
-    domains_str = ""
-
-    for user in selected_rows:
-        if not user.get("admin_domains"):
-            continue
-        for domain in user["admin_domains"].split(","):
-            if domain.strip() in realms:
-                domains.append(domain.strip())
-            else:
-                domains_str += domain.strip() + ", "
-
-    with ui.dialog() as domain_dialog:
-        with ui.card().style("width: 500px; max-width: 90vw;"):
-            ui.label("Set domains the user can administer").classes("text-2xl font-bold")
-            domains_select = ui.select(
-                realms,
-                label="Allowed domains (existing domains)",
-                multiple=True,
-                value=domains
-            ).classes("w-full").props("outlined")
-
-            domains_input = ui.input(
-                "Add new domains (comma-separated)", value=domains_str.strip()
-            ).classes("w-full").props("outlined")
-
-            with ui.row().style("justify-content: flex-end; width: 100%;"):
-                ui.button("Cancel").classes("button-close").props(
-                    "color=black flat"
-                ).on("click", lambda: domain_dialog.close())
-                ui.button("Save").classes("default-style").props(
-                    "color=black flat"
-                ).on(
-                    "click",
-                    lambda: save_domains(selected_rows, domains_select.value, domains_input.value, domain_dialog)
-                )
-
-        domain_dialog.open()
-
 def admin_dialog(users: list, group_id: str) -> None:
     """
-    Show a dialog with a table of users and buttons to ether make users administrator or remove administrator rights.
+    Show a dialog with a table of users and buttons to ether make users
+    administrator or remove administrator rights.
     """
 
     with ui.dialog() as dialog:
@@ -312,8 +82,20 @@ def admin_dialog(users: list, group_id: str) -> None:
             ui.label("Administrators").classes("text-2xl font-bold")
             admin_table = ui.table(
                 columns=[
-                    {"name": "username", "label": "Username", "field": "username", "align": "left", "sortable": True},
-                    {"name": "role", "label": "Admin", "field": "admin", "align": "left", "sortable": True},
+                    {
+                        "name": "username",
+                        "label": "Username",
+                        "field": "username",
+                        "align": "left",
+                        "sortable": True,
+                    },
+                    {
+                        "name": "role",
+                        "label": "Admin",
+                        "field": "admin",
+                        "align": "left",
+                        "sortable": True,
+                    },
                 ],
                 rows=users,
                 selection="multiple",
@@ -327,19 +109,27 @@ def admin_dialog(users: list, group_id: str) -> None:
                 ).add_slot("append"):
                     ui.icon("search")
 
-            with ui.row().style("justify-content: flex-end; width: 100%; padding-top: 16px; gap: 8px;"):
-                ui.button("Close").classes("button-close").props(
-                    "color=black flat"
-                ).on("click", lambda: dialog.close())
+            with ui.row().style(
+                "justify-content: flex-end; width: 100%; padding-top: 16px; gap: 8px;"
+            ):
+                ui.button("Close").classes("button-close").props("color=black flat").on(
+                    "click", lambda: dialog.close()
+                )
                 ui.button("Make admin").classes("default-style").props(
                     "color=black flat"
                 ).on(
-                    "click", lambda: set_admin_status(admin_table.selected, True, dialog, group_id)
+                    "click",
+                    lambda: set_admin_status(
+                        admin_table.selected, True, dialog, group_id
+                    ),
                 )
                 ui.button("Remove admin").classes("button-close").props(
                     "color=black flat"
                 ).on(
-                    "click", lambda: set_admin_status(admin_table.selected, False, dialog, group_id)
+                    "click",
+                    lambda: set_admin_status(
+                        admin_table.selected, False, dialog, group_id
+                    ),
                 )
         dialog.open()
 
@@ -365,7 +155,8 @@ def edit_group(group_id: str) -> None:
 
     try:
         res = requests.get(
-            settings.API_URL + f"/api/v1/admin/groups/{group_id}", headers=get_auth_header()
+            settings.API_URL + f"/api/v1/admin/groups/{group_id}",
+            headers=get_auth_header(),
         )
         res.raise_for_status()
         group = res.json()["result"]
@@ -380,31 +171,69 @@ def edit_group(group_id: str) -> None:
         ui.label(f"Error fetching group: {e}").classes("text-lg text-red-500")
         return
 
-
-    with ui.card().style("width: 100%; box-shadow: none; border: 1px solid #e0e0e0; align-self: center;"):
+    with ui.card().style(
+        "width: 100%; box-shadow: none; border: 1px solid #e0e0e0; align-self: center;"
+    ):
         ui.label(f"Edit group: {group['name']}").classes("text-3xl font-bold mb-4")
         with ui.row().classes("gap-4 w-full"):
-            name_input = ui.input("Group name", value=group["name"]).props("outlined").classes("w-1/3")
-            description_input = (
-                ui.input("Group description", value=group["description"]).props("outlined").classes("w-1/2")
+            name_input = (
+                ui.input("Group name", value=group["name"])
+                .props("outlined")
+                .classes("w-1/3")
             )
-            quota = ui.input("Monthly transcription limit (minutes, 0 = unlimited)", value=group["quota_seconds"] // 60).props("outlined type=number min=0").classes("w-1/2")
+            description_input = (
+                ui.input("Group description", value=group["description"])
+                .props("outlined")
+                .classes("w-1/2")
+            )
+            quota = (
+                ui.input(
+                    "Monthly transcription limit (minutes, 0 = unlimited)",
+                    value=group["quota_seconds"] // 60,
+                )
+                .props("outlined type=number min=0")
+                .classes("w-1/2")
+            )
 
-        ui.label("Select users to be included in group:").classes("text-xl font-semibold mt-4 mb-2")
+        ui.label("Select users to be included in group:").classes(
+            "text-xl font-semibold mt-4 mb-2"
+        )
 
         users_table = ui.table(
             columns=[
-                {"name": "username", "label": "Username", "field": "username", "align": "left", "sortable": True},
-                {"name": "role", "label": "Admin", "field": "admin", "align": "left", "sortable": True},
-                {"name": "active", "label": "Active", "field": "active", "align": "left", "sortable": True},
+                {
+                    "name": "username",
+                    "label": "Username",
+                    "field": "username",
+                    "align": "left",
+                    "sortable": True,
+                },
+                {
+                    "name": "role",
+                    "label": "Admin",
+                    "field": "admin",
+                    "align": "left",
+                    "sortable": True,
+                },
+                {
+                    "name": "active",
+                    "label": "Active",
+                    "field": "active",
+                    "align": "left",
+                    "sortable": True,
+                },
             ],
             rows=group["users"],
             selection="multiple",
             pagination=20,
             on_select=lambda e: None,
-        ).style("width: 100%; box-shadow: none; font-size: 18px; height: calc(100vh - 550px);")
+        ).style(
+            "width: 100%; box-shadow: none; font-size: 18px; height: calc(100vh - 550px);"
+        )
 
-        users_table.selected = [user for user in group["users"] if user.get("in_group", True)]
+        users_table.selected = [
+            user for user in group["users"] if user.get("in_group", True)
+        ]
 
         with users_table.add_slot("top-right"):
             with ui.input(placeholder="Search").props("type=search").bind_value(
@@ -412,18 +241,28 @@ def edit_group(group_id: str) -> None:
             ).add_slot("append"):
                 ui.icon("search")
 
-
     with ui.footer().style("background-color: #ffffff;"):
-        with ui.row().style("justify-content: flex-left; width: 100%; padding: 16px; gap: 8px;"):
+        with ui.row().style(
+            "justify-content: flex-left; width: 100%; padding: 16px; gap: 8px;"
+        ):
             ui.button("Save group").classes("default-style").props(
                 "color=black flat"
-            ).style("width: 150px").on("click", lambda: save_group(users_table.selected, name_input.value, description_input.value, group_id, quota.value))
+            ).style("width: 150px").on(
+                "click",
+                lambda: save_group(
+                    users_table.selected,
+                    name_input.value,
+                    description_input.value,
+                    group_id,
+                    quota.value,
+                ),
+            )
             # ui.button("Administrators").classes("button-close").props(
             #     "color=black flat"
             # ).style("width: 150px").on("click", lambda: admin_dialog(users_table.selected, group_id))
-            ui.button("Cancel").classes("button-close").props(
-                "color=black flat"
-            ).style("width: 150px;").on("click", lambda: ui.navigate.to("/admin"))
+            ui.button("Cancel").classes("button-close").props("color=black flat").style(
+                "width: 150px;"
+            ).on("click", lambda: ui.navigate.to("/admin"))
 
 
 @ui.refreshable
@@ -490,7 +329,9 @@ def statistics(group_id: str) -> None:
     stats = user_statistics_get(group_id=group_id)
 
     if not stats or "result" not in stats:
-        ui.label("Error fetching statistics.").classes("text-lg text-red-500 text-center mt-6")
+        ui.label("Error fetching statistics.").classes(
+            "text-lg text-red-500 text-center mt-6"
+        )
         return
 
     result = stats["result"]
@@ -507,12 +348,22 @@ def statistics(group_id: str) -> None:
 
     with ui.element("div").classes("stats-container w-full"):
         with ui.element("div").classes("stats-card w-full"):
-            ui.label("Group Statistics").classes("text-3xl font-bold mb-3 text-gray-800")
+            ui.label("Group Statistics").classes(
+                "text-3xl font-bold mb-3 text-gray-800"
+            )
             ui.label(f"Number of users: {total_users}").classes("text-lg text-gray-600")
-            ui.label(f"Transcribed files this month: {result.get('transcribed_files', 0)} files").classes("text-lg text-gray-600")
-            ui.label(f"Transcribed files last month: {result.get('transcribed_files_last_month', 0)} files").classes("text-lg text-gray-600")
-            ui.label(f"Transcribed minutes this month: {result.get('total_transcribed_minutes', 0):.0f} minutes").classes("text-lg text-gray-600")
-            ui.label(f"Transcribed minutes last month: {result.get('total_transcribed_minutes_last_month', 0):.0f} minutes").classes("text-lg text-gray-600")
+            ui.label(
+                f"Transcribed files this month: {result.get('transcribed_files', 0)} files"
+            ).classes("text-lg text-gray-600")
+            ui.label(
+                f"Transcribed files last month: {result.get('transcribed_files_last_month', 0)} files"
+            ).classes("text-lg text-gray-600")
+            ui.label(
+                f"Transcribed minutes this month: {result.get('total_transcribed_minutes', 0):.0f} minutes"
+            ).classes("text-lg text-gray-600")
+            ui.label(
+                f"Transcribed minutes last month: {result.get('total_transcribed_minutes_last_month', 0):.0f} minutes"
+            ).classes("text-lg text-gray-600")
 
         if per_day:
             dates = list(per_day.keys())
@@ -568,22 +419,39 @@ def statistics(group_id: str) -> None:
 
         if per_user:
             with ui.element("div").classes("table-container"):
-                ui.label("Transcribed minutes per user this month").classes("text-gray-800")
+                ui.label("Transcribed minutes per user this month").classes(
+                    "text-gray-800"
+                )
                 user_rows = [
                     {"username": username, "minutes": f"{minutes:.1f}"}
                     for username, minutes in per_user.items()
                 ]
 
                 user_columns = [
-                    {"name": "username", "label": "Username", "field": "username", "align": "left", "sortable": True},
-                    {"name": "minutes", "label": "Minutes", "field": "minutes", "align": "left", "sortable": True, ":sort": "(a, b, rowA, rowB) => a - b"},
+                    {
+                        "name": "username",
+                        "label": "Username",
+                        "field": "username",
+                        "align": "left",
+                        "sortable": True,
+                    },
+                    {
+                        "name": "minutes",
+                        "label": "Minutes",
+                        "field": "minutes",
+                        "align": "left",
+                        "sortable": True,
+                        ":sort": "(a, b, rowA, rowB) => a - b",
+                    },
                 ]
 
                 stats_table = ui.table(
                     columns=user_columns,
                     rows=user_rows,
                     pagination=20,
-                ).style("width: 100%; box-shadow: none; font-size: 16px; margin: auto; height: calc(100vh - 160px);")
+                ).style(
+                    "width: 100%; box-shadow: none; font-size: 16px; margin: auto; height: calc(100vh - 160px);"
+                )
 
                 with stats_table.add_slot("top-right"):
                     with ui.input(placeholder="Search").props("type=search").bind_value(
@@ -593,19 +461,47 @@ def statistics(group_id: str) -> None:
 
         if job_queue:
             with ui.element("div").classes("table-container"):
-                ui.label("Job queue for group").classes("text-2xl font-bold mb-4 text-gray-800")
+                ui.label("Job queue for group").classes(
+                    "text-2xl font-bold mb-4 text-gray-800"
+                )
                 queue_columns = [
-                    {"name": "job_id", "label": "Job ID", "field": "job_id", "align": "left", "sortable": True},
-                    {"name": "username", "label": "Username", "field": "username", "align": "left", "sortable": True},
-                    {"name": "status", "label": "Status", "field": "status", "align": "left", "sortable": True},
-                    {"name": "created_at", "label": "Created at", "field": "created_at", "align": "left", "sortable": True},
+                    {
+                        "name": "job_id",
+                        "label": "Job ID",
+                        "field": "job_id",
+                        "align": "left",
+                        "sortable": True,
+                    },
+                    {
+                        "name": "username",
+                        "label": "Username",
+                        "field": "username",
+                        "align": "left",
+                        "sortable": True,
+                    },
+                    {
+                        "name": "status",
+                        "label": "Status",
+                        "field": "status",
+                        "align": "left",
+                        "sortable": True,
+                    },
+                    {
+                        "name": "created_at",
+                        "label": "Created at",
+                        "field": "created_at",
+                        "align": "left",
+                        "sortable": True,
+                    },
                 ]
 
                 stats_table = ui.table(
                     columns=queue_columns,
                     rows=job_queue,
                     pagination=20,
-                ).style("width: 100%; box-shadow: none; font-size: 16px; margin: auto; height: calc(100vh - 160px);")
+                ).style(
+                    "width: 100%; box-shadow: none; font-size: 16px; margin: auto; height: calc(100vh - 160px);"
+                )
 
                 with stats_table.add_slot("top-right"):
                     with ui.input(placeholder="Search").props("type=search").bind_value(
@@ -635,8 +531,12 @@ def create() -> None:
         )
 
         with ui.footer().style("background-color: #ffffff; color: black;"):
-            with ui.row().style("justify-content: flex-left; width: 100%; padding: 16px; gap: 8px;"):
-                ui.link("API Documentation", settings.API_URL + "/api/docs", new_tab=True)
+            with ui.row().style(
+                "justify-content: flex-left; width: 100%; padding: 16px; gap: 8px;"
+            ):
+                ui.link(
+                    "API Documentation", settings.API_URL + "/api/docs", new_tab=True
+                )
 
         with ui.row().style(
             "justify-content: space-between; align-items: center; width: 100%;"
@@ -652,9 +552,7 @@ def create() -> None:
                 )
                 create.on("click", lambda: create_group_dialog(page=admin))
                 users = (
-                    ui.button("Users")
-                    .classes("button-edit")
-                    .props("color=white flat")
+                    ui.button("Users").classes("button-edit").props("color=white flat")
                 )
                 users.on("click", lambda: ui.navigate.to("/admin/users"))
 
@@ -678,14 +576,47 @@ def create() -> None:
                 groups = groups_get()
 
             if not groups:
-                ui.label("No groups found. Create a new group to get started.").classes("text-lg")
+                ui.label("No groups found. Create a new group to get started.").classes(
+                    "text-lg"
+                )
                 return
+
             with ui.scroll_area().style("height: calc(100vh - 160px); width: 100%;"):
                 groups = sorted(
                     groups_get()["result"],
-                    key=lambda x: (x["name"].lower() != "all users", x["name"].lower())
+                    key=lambda x: (
+                        x["name"].lower() != "all users",
+                        x["name"].lower(),
+                    ),
                 )
-                for group in groups:
+
+                g = Group(
+                    group_id=groups[0]["id"],
+                    name=groups[0]["name"],
+                    description=groups[0]["description"],
+                    created_at=groups[0]["created_at"],
+                    users=groups[0]["users"],
+                    nr_users=groups[0]["nr_users"],
+                    stats=groups[0]["stats"],
+                    quota_seconds=groups[0]["quota_seconds"],
+                )
+
+                g.create_card()
+
+                expansions = {}
+                groups = sorted(
+                    groups_get()["result"],
+                    key=lambda x: (
+                        x["customer_name"].lower() != "all users",
+                        x["customer_name"].lower(),
+                    ),
+                )
+
+                for group in groups[1:]:
+                    if group["name"] == "All users":
+                        continue
+                    customer_name = group.get("customer_name", "None")
+
                     g = Group(
                         group_id=group["id"],
                         name=group["name"],
@@ -696,7 +627,26 @@ def create() -> None:
                         stats=group["stats"],
                         quota_seconds=group["quota_seconds"],
                     )
-                    g.create_card()
+
+                    if get_bofh_status():
+                        if customer_name not in expansions:
+                            expansions[customer_name] = (
+                                ui.expansion(
+                                    f"Customer: {customer_name}",
+                                    value=False,
+                                )
+                                .classes("text-bold")
+                                .style("width: 100%; background-color: #ffffff;")
+                            )
+
+                        if group["name"] == "All users":
+                            g.create_card()
+                        else:
+                            with expansions[customer_name]:
+                                g.create_card()
+                    else:
+                        g.create_card()
+
 
 @ui.page("/admin/users")
 def users() -> None:
@@ -733,22 +683,63 @@ def users() -> None:
         ui.label(f"Error fetching users: {e}").classes("text-lg text-red-500")
         return
 
-    with ui.card().style("width: 100%; box-shadow: none; border: 1px solid #e0e0e0; align-self: center;"):
+    with ui.card().style(
+        "width: 100%; box-shadow: none; border: 1px solid #e0e0e0; align-self: center;"
+    ):
         ui.label("All users").classes("text-3xl font-bold mb-4")
         users_table = ui.table(
             columns=[
-                {"name": "username", "label": "Username", "field": "username", "align": "left", "sortable": True},
-                {"name": "realm", "label": "Realm", "field": "realm", "align": "left", "sortable": True},
-                {"name": "role", "label": "Admin", "field": "admin", "align": "left", "sortable": True},
-                {"name": "groups", "label": "Groups", "field": "groups", "align": "left", "sortable": True},
-                {"name": "domains", "label": "Domains", "field": "admin_domains", "align": "left", "sortable": False, "style": "max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"},
-                {"name": "active", "label": "Active", "field": "active", "align": "left", "sortable": True},
+                {
+                    "name": "username",
+                    "label": "Username",
+                    "field": "username",
+                    "align": "left",
+                    "sortable": True,
+                },
+                {
+                    "name": "realm",
+                    "label": "Realm",
+                    "field": "realm",
+                    "align": "left",
+                    "sortable": True,
+                },
+                {
+                    "name": "role",
+                    "label": "Admin",
+                    "field": "admin",
+                    "align": "left",
+                    "sortable": True,
+                },
+                {
+                    "name": "groups",
+                    "label": "Groups",
+                    "field": "groups",
+                    "align": "left",
+                    "sortable": True,
+                },
+                {
+                    "name": "domains",
+                    "label": "Domains",
+                    "field": "admin_domains",
+                    "align": "left",
+                    "sortable": False,
+                    "style": "max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;",
+                },
+                {
+                    "name": "active",
+                    "label": "Active",
+                    "field": "active",
+                    "align": "left",
+                    "sortable": True,
+                },
             ],
             rows=users,
             selection="multiple",
             pagination=20,
             on_select=lambda e: None,
-        ).style("width: 100%; box-shadow: none; font-size: 18px; height: calc(100vh - 300px);")
+        ).style(
+            "width: 100%; box-shadow: none; font-size: 18px; height: calc(100vh - 300px);"
+        )
 
         with users_table.add_slot("top-right"):
             with ui.input(placeholder="Search").props("type=search").bind_value(
@@ -756,17 +747,16 @@ def users() -> None:
             ).add_slot("append"):
                 ui.icon("search")
 
-
     with ui.footer().style("background-color: #ffffff;"):
-        with ui.row().style("justify-content: flex-left; width: 100%; padding: 16px; gap: 8px;"):
+        with ui.row().style(
+            "justify-content: flex-left; width: 100%; padding: 16px; gap: 8px;"
+        ):
             ui.button("Back to groups").classes("button-close").props(
                 "color=black flat"
             ).style("width: 150px ").on("click", lambda: ui.navigate.to("/admin"))
-            ui.button("Enable").classes("button-close").props(
-                "color=black flat"
-            ).style("width: 150px").on(
-                "click", lambda: set_active_status(users_table.selected, True)
-            )
+            ui.button("Enable").classes("button-close").props("color=black flat").style(
+                "width: 150px"
+            ).on("click", lambda: set_active_status(users_table.selected, True))
             ui.button("Disable").classes("button-close").props(
                 "color=black flat"
             ).style("width: 150px").on(
@@ -808,7 +798,7 @@ def health() -> None:
                 background-color: white;
                 border-radius: 1rem;
                 box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-                padding: 1.5rem;
+                padding: 1.25rem;
                 width: 100%;
                 max-width: 100%;
                 display: flex;
@@ -822,11 +812,20 @@ def health() -> None:
                 display: inline-block;
                 margin-right: 6px;
             }
+            .health-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+                gap: 1.25rem;
+                width: 100%;
+            }
+            @media (max-width: 768px) {
+                .health-grid {
+                    grid-template-columns: 1fr;
+                }
+            }
         </style>
         """
     )
-
-    ui.label("System Health Overview").classes("text-2xl font-semibold mb-4")
 
     @ui.refreshable
     def render_health():
@@ -847,9 +846,7 @@ def health() -> None:
             ui.label("Backend is not reachable").classes("text-lg text-red-500")
             return
 
-        with ui.element("div").style(
-            "display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; width: 100%;"
-        ):
+        with ui.element("div").classes("health-grid"):
             if not data:
                 ui.label("No workers online.").classes("text-lg text-gray-600")
                 return
@@ -865,8 +862,20 @@ def health() -> None:
                 mem_vals = [s["memory_usage"] for s in samples]
 
                 if "gpu_usage" in samples[-1] and samples[-1]["gpu_usage"]:
-                    gpu_cpu_vals = [s["gpu_usage"][0]["utilization"] for s in samples if "gpu_usage" in s]
-                    gpu_mem_vals = [(s["gpu_usage"][0]["memory_used"] / s["gpu_usage"][0]["memory_total"]) * 100 for s in samples if "gpu_usage" in s]
+                    gpu_cpu_vals = [
+                        s["gpu_usage"][0]["utilization"]
+                        for s in samples
+                        if "gpu_usage" in s
+                    ]
+                    gpu_mem_vals = [
+                        (
+                            s["gpu_usage"][0]["memory_used"]
+                            / s["gpu_usage"][0]["memory_total"]
+                        )
+                        * 100
+                        for s in samples
+                        if "gpu_usage" in s
+                    ]
 
                 times = [
                     datetime.fromtimestamp(s["seen"]).strftime("%H:%M:%S")
@@ -889,10 +898,10 @@ def health() -> None:
                         )
 
                         ui.html(
-                            f'<span class="status-dot {status_color}"></span>{status}', sanitize=False
+                            f'<span class="status-dot {status_color}"></span>{status}',
+                            sanitize=False,
                         )
 
-                    ui.separator()
                     ui.label(
                         f"Load Avg: {latest['load_avg']:.1f} | Memory Usage: {latest['memory_usage']:.1f}%"
                     ).classes("text-sm text-gray-600 mb-2")
@@ -902,60 +911,110 @@ def health() -> None:
                         go.Scatter(
                             x=times,
                             y=load_vals,
-                            mode="lines+markers",
+                            mode="lines",
                             name="Load Avg",
-                            line=dict(shape="spline"),
+                            line=dict(color="#3b82f6", width=2.5, shape="spline"),
+                            fill="tozeroy",
+                            fillcolor="rgba(59, 130, 246, 0.1)",
+                            hovertemplate="<b>Load</b>: %{y:.1f}<br><extra></extra>",
                         )
                     )
                     fig_cpu.add_trace(
                         go.Scatter(
                             x=times,
                             y=mem_vals,
-                            mode="lines+markers",
+                            mode="lines",
                             name="Memory %",
-                            line=dict(shape="spline"),
+                            line=dict(color="#10b981", width=2.5, shape="spline"),
+                            fill="tozeroy",
+                            fillcolor="rgba(16, 185, 129, 0.1)",
+                            hovertemplate="<b>Memory</b>: %{y:.1f}%<br><extra></extra>",
                         )
                     )
                     fig_cpu.update_layout(
-                        margin=dict(l=20, r=20, t=20, b=20),
-                        legend=dict(orientation="h", yanchor="bottom", y=1.1, xanchor="center", x=0.5),
-                        height=250,
+                        margin=dict(l=40, r=20, t=30, b=40),
+                        legend=dict(
+                            orientation="h",
+                            yanchor="bottom",
+                            y=1.02,
+                            xanchor="center",
+                            x=0.5,
+                            font=dict(size=11),
+                        ),
+                        height=200,
                         template="plotly_white",
-                        xaxis_title="Time",
-                        yaxis_title="%",
+                        xaxis=dict(
+                            title="Time",
+                            showgrid=True,
+                            gridcolor="rgba(0,0,0,0.05)",
+                        ),
+                        yaxis=dict(
+                            title="%",
+                            showgrid=True,
+                            gridcolor="rgba(0,0,0,0.05)",
+                            rangemode="tozero",
+                        ),
+                        font=dict(size=11),
+                        plot_bgcolor="rgba(248, 250, 252, 0.5)",
+                        hovermode="x unified",
                     )
-                    ui.plotly(fig_cpu).classes("w-full h-64")
+                    ui.plotly(fig_cpu).classes("w-full")
 
                     if "gpu_usage" in samples[-1] and samples[-1]["gpu_usage"]:
                         fig_gpu = go.Figure()
                         fig_gpu.add_trace(
                             go.Scatter(
-                                x=times[-len(gpu_cpu_vals):],
+                                x=times[-len(gpu_cpu_vals) :],
                                 y=gpu_cpu_vals,
-                                mode="lines+markers",
-                                name="GPU CPU%",
-                                line=dict(shape="spline"),
+                                mode="lines",
+                                name="GPU Util%",
+                                line=dict(color="#8b5cf6", width=2.5, shape="spline"),
+                                fill="tozeroy",
+                                fillcolor="rgba(139, 92, 246, 0.1)",
+                                hovertemplate="<b>GPU Util</b>: %{y:.1f}%<br><extra></extra>",
                             )
                         )
                         fig_gpu.add_trace(
                             go.Scatter(
-                                x=times[-len(gpu_mem_vals):],
+                                x=times[-len(gpu_mem_vals) :],
                                 y=gpu_mem_vals,
-                                mode="lines+markers",
-                                name="GPU RAM%",
-                                line=dict(shape="spline"),
+                                mode="lines",
+                                name="GPU Mem%",
+                                line=dict(color="#f59e0b", width=2.5, shape="spline"),
+                                fill="tozeroy",
+                                fillcolor="rgba(245, 158, 11, 0.1)",
+                                hovertemplate="<b>GPU Memory</b>: %{y:.1f}%<br><extra></extra>",
                             )
                         )
 
                         fig_gpu.update_layout(
-                            margin=dict(l=20, r=20, t=20, b=20),
-                            legend=dict(orientation="h", yanchor="bottom", y=1.1, xanchor="center", x=0.5),
-                            height=250,
+                            margin=dict(l=40, r=20, t=30, b=40),
+                            legend=dict(
+                                orientation="h",
+                                yanchor="bottom",
+                                y=1.02,
+                                xanchor="center",
+                                x=0.5,
+                                font=dict(size=11),
+                            ),
+                            height=200,
                             template="plotly_white",
-                            xaxis_title="Time",
-                            yaxis_title="%",
+                            xaxis=dict(
+                                title="Time",
+                                showgrid=True,
+                                gridcolor="rgba(0,0,0,0.05)",
+                            ),
+                            yaxis=dict(
+                                title="%",
+                                showgrid=True,
+                                gridcolor="rgba(0,0,0,0.05)",
+                                rangemode="tozero",
+                            ),
+                            font=dict(size=11),
+                            plot_bgcolor="rgba(248, 250, 252, 0.5)",
+                            hovermode="x unified",
                         )
-                        ui.plotly(fig_gpu).classes("w-full h-64")
+                        ui.plotly(fig_gpu).classes("w-full")
 
                     ui.label(f"Last updated: {times[-1]} UTC").classes(
                         "text-xs text-gray-400 mt-1"
@@ -966,36 +1025,6 @@ def health() -> None:
     ui.timer(10.0, render_health.refresh)
 
 
-def customers_get() -> list:
-    """
-    Fetch all customers from backend.
-    """
-    try:
-        res = requests.get(
-            settings.API_URL + "/api/v1/admin/customers", headers=get_auth_header()
-        )
-        res.raise_for_status()
-        return res.json()
-    except requests.RequestException as e:
-        print(f"Error fetching customers: {e}")
-        return []
-
-
-def realms_get() -> list:
-    """
-    Fetch all realms from backend.
-    """
-    try:
-        res = requests.get(
-            settings.API_URL + "/api/v1/admin/realms", headers=get_auth_header()
-        )
-        res.raise_for_status()
-        return res.json()["result"]
-    except requests.RequestException as e:
-        print(f"Error fetching realms: {e}")
-        return []
-
-
 def create_customer_dialog(page: callable) -> None:
     realms = realms_get()
 
@@ -1003,26 +1032,36 @@ def create_customer_dialog(page: callable) -> None:
         with ui.card().style("width: 600px; max-width: 90vw;"):
             ui.label("Create new customer").classes("text-2xl font-bold")
 
-            customer_abbr = ui.input("Customer abbreviation").classes("w-full").props("outlined")
-            partner_id_input = ui.input("Kaltura Partner ID", value="N/A").classes("w-full").props("outlined")
+            customer_abbr = (
+                ui.input("Customer abbreviation").classes("w-full").props("outlined")
+            )
+            partner_id_input = (
+                ui.input("Kaltura Partner ID", value="N/A")
+                .classes("w-full")
+                .props("outlined")
+            )
             name_input = ui.input("Customer name").classes("w-full").props("outlined")
-            contact_email_input = ui.input("Contact email").classes("w-full").props("outlined")
+            contact_email_input = (
+                ui.input("Contact email").classes("w-full").props("outlined")
+            )
 
-            priceplan_select = ui.select(
-                ["fixed", "variable"],
-                label="Price plan",
-                value="variable"
-            ).classes("w-full").props("outlined")
+            priceplan_select = (
+                ui.select(["fixed", "variable"], label="Price plan", value="variable")
+                .classes("w-full")
+                .props("outlined")
+            )
 
-            base_fee = ui.input(
-                "Base fee",
-                value="0"
-            ).classes("w-full").props("outlined type=number min=0")
+            base_fee = (
+                ui.input("Base fee", value="0")
+                .classes("w-full")
+                .props("outlined type=number min=0")
+            )
 
-            blocks_input = ui.input(
-                "Blocks purchased (4000 min/block)",
-                value="0"
-            ).classes("w-full").props("outlined type=number min=0")
+            blocks_input = (
+                ui.input("Blocks purchased (4000 min/block)", value="0")
+                .classes("w-full")
+                .props("outlined type=number min=0")
+            )
 
             # Show/hide blocks input based on price plan
             def update_blocks_visibility():
@@ -1032,19 +1071,24 @@ def create_customer_dialog(page: callable) -> None:
                     blocks_input.set_visibility(False)
                     blocks_input.value = "0"
 
-            priceplan_select.on("update:model-value", lambda: update_blocks_visibility())
+            priceplan_select.on(
+                "update:model-value", lambda: update_blocks_visibility()
+            )
             blocks_input.set_visibility(False)  # Initially hidden
 
-            realm_select = ui.select(
-                realms,
-                label="Select existing realms",
-                multiple=True,
-                value=[]
-            ).classes("w-full").props("outlined")
+            realm_select = (
+                ui.select(
+                    realms, label="Select existing realms", multiple=True, value=[]
+                )
+                .classes("w-full")
+                .props("outlined")
+            )
 
-            new_realms_input = ui.input(
-                "Add new realms (comma-separated)"
-            ).classes("w-full").props("outlined")
+            new_realms_input = (
+                ui.input("Add new realms (comma-separated)")
+                .classes("w-full")
+                .props("outlined")
+            )
 
             notes_input = ui.textarea("Notes").classes("w-full").props("outlined")
 
@@ -1062,7 +1106,11 @@ def create_customer_dialog(page: callable) -> None:
                         return
 
                     selected_realms = realm_select.value if realm_select.value else []
-                    new_realms = [r.strip() for r in new_realms_input.value.split(",") if r.strip()]
+                    new_realms = [
+                        r.strip()
+                        for r in new_realms_input.value.split(",")
+                        if r.strip()
+                    ]
                     all_realms = list(set(selected_realms + new_realms))
                     realms_str = ",".join(all_realms)
 
@@ -1076,8 +1124,12 @@ def create_customer_dialog(page: callable) -> None:
                                 "name": name_input.value,
                                 "contact_email": contact_email_input.value,
                                 "priceplan": priceplan_select.value,
-                                "base_fee": int(base_fee.value) if base_fee.value else 0,
-                                "blocks_purchased": int(blocks_input.value) if blocks_input.value else 0,
+                                "base_fee": int(base_fee.value)
+                                if base_fee.value
+                                else 0,
+                                "blocks_purchased": int(blocks_input.value)
+                                if blocks_input.value
+                                else 0,
                                 "realms": realms_str,
                                 "notes": notes_input.value,
                             },
@@ -1087,7 +1139,9 @@ def create_customer_dialog(page: callable) -> None:
                     except requests.RequestException as e:
                         if res.status_code == 400:
                             error_msg = res.json().get("error", "Unknown error")
-                            ui.notify(f"Error creating customer: {error_msg}", color="red")
+                            ui.notify(
+                                f"Error creating customer: {error_msg}", color="red"
+                            )
                             return
                         else:
                             ui.notify(f"Error creating customer: {e}", color="red")
@@ -1101,221 +1155,6 @@ def create_customer_dialog(page: callable) -> None:
                 ).on("click", create_customer)
 
         create_customer_dialog.open()
-
-
-class Customer:
-    def __init__(
-        self,
-        customer_abbr: str,
-        customer_id: str,
-        partner_id: str,
-        name: str,
-        contact_email: str,
-        priceplan: str,
-        base_fee: int,
-        realms: str,
-        notes: str,
-        created_at: str,
-        stats: dict,
-        blocks_purchased: int = 0,
-    ) -> None:
-        self.customer_abbr = customer_abbr
-        self.customer_id = customer_id
-        self.partner_id = partner_id
-        self.name = name
-        self.contact_email = contact_email
-        self.priceplan = priceplan
-        self.base_fee = base_fee,
-        self.realms = realms
-        self.notes = notes
-        self.created_at = created_at.split(".")[0]
-        self.stats = stats
-        self.blocks_purchased = blocks_purchased
-
-        if isinstance(self.base_fee, tuple):
-            self.base_fee = self.base_fee[0]
-
-    def edit_customer(self) -> None:
-        ui.navigate.to(f"/admin/customers/edit/{self.customer_id}")
-
-    def delete_customer_dialog(self) -> None:
-        with ui.dialog() as delete_customer_dialog:
-            with ui.card().style("width: 400px; max-width: 90vw;"):
-                ui.label("Delete customer").classes("text-2xl font-bold")
-                ui.label(
-                    "Are you sure you want to delete this customer? This action cannot be undone."
-                ).classes("my-4")
-                with ui.row().style("justify-content: flex-end; width: 100%;"):
-                    ui.button("Cancel").classes("button-close").props(
-                        "color=black flat"
-                    ).on("click", lambda: delete_customer_dialog.close())
-                    ui.button("Delete").classes("button-close").props(
-                        "color=red flat"
-                    ).on(
-                        "click",
-                        lambda: (
-                            requests.delete(
-                                settings.API_URL
-                                + f"/api/v1/admin/customers/{self.customer_id}",
-                                headers=get_auth_header(),
-                            ),
-                            delete_customer_dialog.close(),
-                            ui.navigate.to("/admin/customers"),
-                        ),
-                    )
-
-            delete_customer_dialog.open()
-
-    def create_card(self):
-        with ui.card().classes("my-2").style(
-            "width: 100%; box-shadow: none; border: 1px solid #e0e0e0; padding: 16px;"
-        ):
-            with ui.row().style(
-                "justify-content: space-between; align-items: center; width: 100%;"
-            ):
-                with ui.column().style("flex: 0 0 auto; min-width: 25%;"):
-                    customer_name = f"{self.name}"
-
-                    if self.customer_abbr:
-                        customer_name += f" ({self.customer_abbr})"
-
-                    ui.label(customer_name).classes("text-h5 font-bold")
-
-                    if self.partner_id != "N/A" and self.partner_id != "":
-                        ui.label(f"Kaltura Partner ID: {self.partner_id}").classes("text-md")
-                    ui.label(f"Plan: {self.priceplan.capitalize()}").classes(
-                        "text-sm text-gray-500"
-                    )
-                    if self.priceplan == "fixed":
-                        ui.label(f"Blocks: {self.blocks_purchased} ({self.blocks_purchased * 4000} minutes)").classes(
-                            "text-sm text-gray-500"
-                        )
-                    ui.label(f"Base fee: {self.base_fee}").classes(
-                        "text-sm text-gray-500"
-                    )
-                    if self.contact_email:
-                        ui.label(f"Contact: {self.contact_email}").classes(
-                            "text-sm text-gray-500"
-                        )
-                    ui.label(f"Realms: {self.realms}").classes("text-sm text-gray-500")
-                    ui.label(
-                        f"Total users: {self.stats.get('total_users', 0)}"
-                    ).classes("text-sm text-gray-500")
-
-                    ui.label(f"Created {self.created_at}").classes(
-                        "text-sm text-gray-500"
-                    )
-                    if self.notes:
-                        ui.label(f"Notes: {self.notes}").classes(
-                            "text-sm text-gray-500"
-                        )
-
-                with ui.column().style("flex: 1;"):
-                    ui.label("Statistics").classes("text-h6 font-bold")
-
-                    with ui.row().classes("w-full gap-8"):
-                        with ui.column().style("min-width: 30%;"):
-                            ui.label("This month").classes("font-semibold")
-                            ui.label(
-                                f"Total transcribed files: {self.stats.get('transcribed_files', 0)}"
-                            ).classes("text-sm")
-                            ui.label(
-                                f"Total transcribed minutes: {self.stats.get('total_transcribed_minutes', 0):.0f}"
-                            ).classes("text-sm")
-
-                            if self.partner_id != "N/A" and self.partner_id != "":
-                                ui.label(
-                                    f"Transcribed minutes via Sunet Scribe: {self.stats.get('transcribed_minutes', 0):.0f}"
-                                )
-                                ui.label(
-                                    f"Transcribed minutes via Sunet Play: {self.stats.get('transcribed_minutes_external', 0):.0f}"
-                                ).classes("text-sm")
-
-                            # Show block usage for fixed plan
-                            if self.priceplan == "fixed" and self.blocks_purchased > 0:
-                                ui.label(
-                                    f"Blocks consumed: {self.stats.get('blocks_consumed', 0):.2f}"
-                                ).classes("text-sm font-semibold text-blue-600")
-
-                                overage = self.stats.get('overage_minutes', 0)
-                                if overage > 0:
-                                    ui.label(
-                                        f"⚠️ Overage minutes: {overage:.0f} min"
-                                    ).classes("text-sm font-semibold text-red-600")
-                                else:
-                                    ui.label(
-                                        f"Remaining minutes: {self.stats.get('remaining_minutes', 0):.0f}"
-                                    ).classes("text-sm font-semibold text-green-600")
-
-                        with ui.column():
-                            ui.label("Last month").classes("font-semibold")
-                            ui.label(
-                                f"Transcribed files: {self.stats.get('transcribed_files_last_month', 0)}"
-                            ).classes("text-sm")
-                            ui.label(
-                                f"Total transcribed minutes: {self.stats.get('total_transcribed_minutes_last_month', 0):.0f}"
-                            ).classes("text-sm")
-                            if self.partner_id != "N/A" and self.partner_id != "":
-                                ui.label(f"Transcribed minutes via Sunet Scribe: {self.stats.get('transcribed_minutes_last_month', 0):.0f}").classes("text-sm")
-                                ui.label(f"Transcribed minutes via Sunet Play: {self.stats.get('transcribed_minutes_external_last_month', 0):.0f}").classes("text-sm")
-
-                with ui.column().style("flex: 0 0 auto;"):
-                    if get_bofh_status():
-                        edit = (
-                            ui.button("Edit")
-                            .classes("button-edit")
-                            .props("color=white flat")
-                            .style("width: 100%")
-                        )
-                        delete = (
-                            ui.button("Delete")
-                            .classes("button-close")
-                            .props("color=black flat")
-                            .style("width: 100%")
-                        )
-
-                        edit.on("click", lambda e: self.edit_customer())
-                        delete.on("click", lambda e: self.delete_customer_dialog())
-
-
-def save_customer(
-    customber_abbr: str,
-    customer_id: str,
-    partner_id: str,
-    name: str,
-    contact_email: str,
-    priceplan: str,
-    base_fee: int,
-    selected_realms: list,
-    new_realms: str,
-    notes: str,
-    blocks_purchased: int,
-) -> None:
-    # Combine selected and new realms
-    new_realm_list = [r.strip() for r in new_realms.split(",") if r.strip()]
-    all_realms = list(set(selected_realms + new_realm_list))
-    realms_str = ",".join(all_realms)
-
-    try:
-        res = requests.put(
-            settings.API_URL + f"/api/v1/admin/customers/{customer_id}",
-            headers=get_auth_header(),
-            json={
-                "customer_abbr": customber_abbr,
-                "partner_id": partner_id,
-                "name": name,
-                "contact_email": contact_email,
-                "priceplan": priceplan,
-                "base_fee": int(base_fee) if base_fee else 0,
-                "realms": realms_str,
-                "notes": notes,
-                "blocks_purchased": int(blocks_purchased) if blocks_purchased else 0,
-            },
-        )
-        res.raise_for_status()
-        ui.navigate.to("/admin/customers")
-    except requests.RequestException as e:
-        ui.notify(f"Error saving customer: {e}", type="negative")
 
 
 @ui.refreshable
@@ -1346,7 +1185,9 @@ def edit_customer(customer_id: str) -> None:
         customer = res.json()["result"]
 
         realms = realms_get()
-        customer_realms = [r.strip() for r in customer["realms"].split(",") if r.strip()]
+        customer_realms = [
+            r.strip() for r in customer["realms"].split(",") if r.strip()
+        ]
 
     except requests.RequestException as e:
         ui.label(f"Error fetching customer: {e}").classes("text-lg text-red-500")
@@ -1355,34 +1196,55 @@ def edit_customer(customer_id: str) -> None:
     with ui.card().style(
         "width: 100%; box-shadow: none; border: 1px solid #e0e0e0; align-self: center;"
     ):
-        ui.label(f"Edit customer: {customer['name']}").classes("text-3xl font-bold mb-4")
+        ui.label(f"Edit customer: {customer['name']}").classes(
+            "text-3xl font-bold mb-4"
+        )
         with ui.column().classes("gap-4 w-full"):
-            customer_abbr_input = ui.input(
-                "Customer abbreviation", value=customer.get("customer_abbr", "")
-            ).props("outlined").classes("w-full")
-            partner_id_input = ui.input(
-                "Kaltura Partner ID", value=customer["partner_id"]
-            ).props("outlined").classes("w-full")
-            name_input = ui.input("Customer name", value=customer["name"]).props(
-                "outlined"
-            ).classes("w-full")
-            contact_email_input = ui.input(
-                "Contact email", value=customer.get("contact_email", "")
-            ).props("outlined").classes("w-full")
+            customer_abbr_input = (
+                ui.input(
+                    "Customer abbreviation", value=customer.get("customer_abbr", "")
+                )
+                .props("outlined")
+                .classes("w-full")
+            )
+            partner_id_input = (
+                ui.input("Kaltura Partner ID", value=customer["partner_id"])
+                .props("outlined")
+                .classes("w-full")
+            )
+            name_input = (
+                ui.input("Customer name", value=customer["name"])
+                .props("outlined")
+                .classes("w-full")
+            )
+            contact_email_input = (
+                ui.input("Contact email", value=customer.get("contact_email", ""))
+                .props("outlined")
+                .classes("w-full")
+            )
 
-            priceplan_select = ui.select(
-                ["fixed", "variable"],
-                label="Price plan",
-                value=customer["priceplan"],
-            ).classes("w-full").props("outlined")
-            base_fee = ui.input(
-                "Base fee",
-                value=str(customer.get("base_fee", 0))
-            ).classes("w-full").props("outlined type=number min=0")
-            blocks_input = ui.input(
-                "Blocks purchased (4000 min/block)",
-                value=str(customer.get("blocks_purchased", 0))
-            ).classes("w-full").props("outlined type=number min=0")
+            priceplan_select = (
+                ui.select(
+                    ["fixed", "variable"],
+                    label="Price plan",
+                    value=customer["priceplan"],
+                )
+                .classes("w-full")
+                .props("outlined")
+            )
+            base_fee = (
+                ui.input("Base fee", value=str(customer.get("base_fee", 0)))
+                .classes("w-full")
+                .props("outlined type=number min=0")
+            )
+            blocks_input = (
+                ui.input(
+                    "Blocks purchased (4000 min/block)",
+                    value=str(customer.get("blocks_purchased", 0)),
+                )
+                .classes("w-full")
+                .props("outlined type=number min=0")
+            )
 
             # Show/hide blocks input based on price plan
             def update_blocks_visibility():
@@ -1391,23 +1253,33 @@ def edit_customer(customer_id: str) -> None:
                 else:
                     blocks_input.set_visibility(False)
 
-            priceplan_select.on("update:model-value", lambda: update_blocks_visibility())
+            priceplan_select.on(
+                "update:model-value", lambda: update_blocks_visibility()
+            )
             update_blocks_visibility()
 
-            realm_select = ui.select(
-                realms,
-                label="Select existing realms",
-                multiple=True,
-                value=customer_realms,
-            ).classes("w-full").props("outlined")
+            realm_select = (
+                ui.select(
+                    realms,
+                    label="Select existing realms",
+                    multiple=True,
+                    value=customer_realms,
+                )
+                .classes("w-full")
+                .props("outlined")
+            )
 
-            new_realms_input = ui.input("Add new realms (comma-separated)").classes(
-                "w-full"
-            ).props("outlined")
+            new_realms_input = (
+                ui.input("Add new realms (comma-separated)")
+                .classes("w-full")
+                .props("outlined")
+            )
 
-            notes_input = ui.textarea("Notes", value=customer.get("notes", "")).classes(
-                "w-full"
-            ).props("outlined")
+            notes_input = (
+                ui.textarea("Notes", value=customer.get("notes", ""))
+                .classes("w-full")
+                .props("outlined")
+            )
 
     with ui.footer().style("background-color: #ffffff;"):
         with ui.row().style(
@@ -1431,30 +1303,9 @@ def edit_customer(customer_id: str) -> None:
                     blocks_input.value,
                 ),
             )
-            ui.button("Cancel").classes("button-close").props(
-                "color=black flat"
-            ).style("width: 150px;").on(
-                "click", lambda: ui.navigate.to("/admin/customers")
-            )
-
-def export_customers_csv() -> None:
-    """
-    Export customers data as CSV.
-    """
-    try:
-        res = requests.get(
-            settings.API_URL + "/api/v1/admin/customers/export/csv",
-            headers=get_auth_header()
-        )
-        res.raise_for_status()
-        csv_data = res.content.decode("utf-8")
-
-        ui.download.content(str(csv_data),
-            filename="customers_export.csv"
-        )
-
-    except requests.RequestException as e:
-        ui.notify(f"Error when exporting customers", color="red")
+            ui.button("Cancel").classes("button-close").props("color=black flat").style(
+                "width: 150px;"
+            ).on("click", lambda: ui.navigate.to("/admin/customers"))
 
 
 @ui.page("/admin/customers")
@@ -1505,9 +1356,7 @@ def customers() -> None:
 
             # Export CSV button
             export_csv = (
-                ui.button("Export CSV")
-                .classes("button-edit")
-                .props("color=white flat")
+                ui.button("Export CSV").classes("button-edit").props("color=white flat")
             )
             export_csv.on("click", lambda: export_customers_csv())
 
@@ -1539,4 +1388,3 @@ def customers() -> None:
                 base_fee=customer["base_fee"],
             )
             c.create_card()
-

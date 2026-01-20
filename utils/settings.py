@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     OIDC_APP_LOGIN_ROUTE: str = ""
     OIDC_APP_LOGOUT_ROUTE: str = ""
     OIDC_APP_REFRESH_ROUTE: str = ""
+    STORAGE_SECRET: str = "change_this_secret_to_another_very_secret_secret"
 
     LOGO_LANDING: str = "sunet_logo.png"
     LOGO_LANDING_WIDTH: str = "250"

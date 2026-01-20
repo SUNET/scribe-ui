@@ -104,7 +104,7 @@ def get_user_data() -> dict:
 
     try:
         response = requests.get(
-            f"{settings.API_URL}/api/v1/me", headers=get_auth_header()
+            f"{settings.API_URL}/api/v1/me", headers=get_auth_header(), json={}
         )
         response.raise_for_status()
         data = response.json()
@@ -120,7 +120,7 @@ def get_admin_status() -> bool:
     Check if the user is an admin based on the token.
     """
     try:
-        return get_user_data()["user"]["admin"]
+        return get_user_data()["admin"]
     except (KeyError, TypeError):
         return False
 
@@ -130,7 +130,7 @@ def get_user_status() -> bool:
     Check if the user is a normal user based on the token.
     """
     try:
-        return get_user_data()["user"]["active"]
+        return get_user_data()["active"]
     except (KeyError, TypeError):
         return False
 
@@ -140,6 +140,6 @@ def get_bofh_status():
     Check if the user has BOFH status based on the token.
     """
     try:
-        return get_user_data()["user"]["bofh"]
+        return get_user_data()["bofh"]
     except (KeyError, TypeError):
         return False

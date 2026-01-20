@@ -1,6 +1,7 @@
+import json
 import requests
 
-from nicegui import ui
+from nicegui import app, ui
 from utils.common import default_styles
 from utils.common import get_auth_header
 from utils.common import page_init
@@ -18,7 +19,6 @@ def save_srt(job_id: str, data: str, editor: SRTEditor, data_format: str) -> Non
         jsondata = {"format": data_format, "data": data}
 
         headers = get_auth_header()
-        headers["Content-Type"] = "application/json"
         res = requests.put(
             f"{settings.API_URL}/api/v1/transcriber/{job_id}/result",
             headers=headers,
@@ -46,23 +46,92 @@ def create() -> None:
         Display the result of the transcription job.
         """
         page_init()
-        editor = SRTEditor(uuid, data_format)
+        editor = SRTEditor(uuid, data_format, filename)
+        editor.setup_beforeunload_warning()
+
         ui.add_head_html(
             f"<link rel='preload' as='video' href='/video/{uuid}' type='video/mp4'>"
         )
+        ui.add_head_html(
+            """
+        <script>
+        window.addEventListener('keydown', function(e) {
+            // Block Cmd + z / Ctrl + z for undo
+            if ((e.metaKey || e.ctrlKey) && ! e.shiftKey && e.key.toLowerCase() === 'z') {
+                e.preventDefault();
+            }
+
+            // Block Cmd + y / Ctrl + y for redo
+            if ((e.metaKey || e.ctrlKey) && ! e.shiftKey && e.key.toLowerCase() === 's') {
+                e.preventDefault();
+            }
+
+            // Block Cmd + Shift + z / Ctrl + Shift + z for redo
+            if ((e.metaKey || e.ctrlKey) && ! e.shiftKey && e.key.toLowerCase() === 'y') {
+                e.preventDefault();
+            }
+
+            // Block Cmd + Shift + z / Ctrl + Shift + z for redo
+            if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'z') {
+                e.preventDefault();
+            }
+
+            // Block Ctrl + f / Cmd + f for find
+            if ((e.metaKey || e.ctrlKey) && ! e.shiftKey && e.key.toLowerCase() === 'f') {
+                e.preventDefault();
+            }
+
+            // Block Ctrl + d / Cmd + d for bookmark
+            if ((e.metaKey || e.ctrlKey) && ! e.shiftKey && e.key.toLowerCase() === 'd') {
+                e.preventDefault();
+            }
+
+            // Block Ctrl + e / Cmd + e for search
+            if ((e.metaKey || e.ctrlKey) && ! e.shiftKey && e.key.toLowerCase() === 'e') {
+                e.preventDefault();
+            }
+
+            // Block Ctrl + Shift + m / Cmd + Shift + m for mute tab
+            if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'm') {
+                e.preventDefault();
+            }
+
+            // Handle Escape key globally (even when video player has focus)
+            if (e.key === 'Escape' && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
+                // Blur active element
+                if (document.activeElement && typeof document.activeElement.blur === 'function') {
+                    document.activeElement.blur();
+                }
+                // Dispatch custom event that Python can listen to
+                window.dispatchEvent(new CustomEvent('escape-pressed'));
+            }
+        }, true);
+        </script>
+        """
+        )
         ui.add_head_html(default_styles)
-        ui.keyboard(on_key=editor.handle_key_event)
+        ui.keyboard(on_key=editor.handle_key_event, ignore=[])
 
         try:
             if data_format == "srt":
                 response = requests.get(
                     f"{settings.API_URL}/api/v1/transcriber/{uuid}/result/srt",
                     headers=get_auth_header(),
+                    json={
+                        "encryption_password": app.storage.user.get(
+                            "encryption_password"
+                        )
+                    },
                 )
             else:
                 response = requests.get(
                     f"{settings.API_URL}/api/v1/transcriber/{uuid}/result/txt",
                     headers=get_auth_header(),
+                    json={
+                        "encryption_password": app.storage.user.get(
+                            "encryption_password"
+                        )
+                    },
                 )
 
             response.raise_for_status()
@@ -72,39 +141,10 @@ def create() -> None:
             ui.notify(f"Error: Failed to get result: {e}")
             return
 
-        with ui.footer().style("background-color: #f5f5f5;"):
-
-            def export(srt_format: str):
-                match srt_format:
-                    case "srt":
-                        srt_content = editor.export_srt()
-                    case "vtt":
-                        srt_content = editor.export_vtt()
-                    case "txt":
-                        srt_content = editor.export_txt()
-                    case "json":
-                        srt_content = editor.export_json()
-                    case "rtf":
-                        srt_content = editor.export_rtf()
-                    case "csv":
-                        srt_content = editor.export_csv()
-                    case "tsv":
-                        srt_content = editor.export_tsv()
-
-                ui.download(
-                    str(srt_content).encode(), filename=f"{filename}.{srt_format}"
-                )
-
-                ui.notify("File exported successfully", type="positive")
-
-            with ui.row().classes("justify-end w-full gap-2"):
-                with ui.button("Close", icon="close").props("flat") as close_button:
-                    close_button.classes("cancel-style")
-                    close_button.on("click", lambda: ui.navigate.to("/home"))
-
+        with ui.row().classes("justify-between w-full gap-2"):
+            with ui.column().classes("flex-row items-center"):
+                editor.create_undo_redo_panel()
                 with ui.button("Save", icon="save") as save_button:
-                    save_button.classes("button-default-style")
-
                     if data_format == "srt":
                         save_button.on(
                             "click",
@@ -120,71 +160,38 @@ def create() -> None:
                             "click",
                             lambda: save_srt(
                                 uuid,
-                                editor.export_json(),
+                                json.dumps(editor.export_json()),
                                 editor,
                                 "json",
                             ),
                         )
 
-                    save_button.props("color=white flat")
+                    save_button.props("color=black flat")
 
-                with ui.dropdown_button("Export", icon="share") as export_button:
-                    export_button.props("flat color=white")
-                    export_button.classes("button-default-style")
-
-                    if data_format == "srt":
-                        export_button_srt = ui.button("Export as SRT", icon="share")
-                        export_button_srt.props("flat")
-                        export_button_srt.classes("button-default-style")
-                        export_button_srt.on("click", lambda: export("srt"))
-
-                        export_button_vtt = ui.button(
-                            "Export as VTT", icon="share"
-                        ).style("width: 150px;")
-                        export_button_vtt.props("flat")
-                        export_button_vtt.classes("button-default-style")
-                        export_button_vtt.on("click", lambda: export("vtt"))
-                    else:
-                        export_button_txt = ui.button("Export as TXT", icon="share")
-                        export_button_txt.props("flat")
-                        export_button_txt.classes("button-default-style")
-                        export_button_txt.on("click", lambda: export("txt"))
-
-                        export_button_json = ui.button("Export as JSON", icon="share")
-                        export_button_json.props("flat")
-                        export_button_json.classes("button-default-style")
-                        export_button_json.on("click", lambda: export("json"))
-
-                        export_button_rtf = ui.button("Export as RTF", icon="share")
-                        export_button_rtf.props("flat")
-                        export_button_rtf.classes("button-default-style")
-                        export_button_rtf.on("click", lambda: export("rtf"))
-
-                        export_button_csv = ui.button("Export as CSV", icon="share")
-                        export_button_csv.props("flat")
-                        export_button_csv.classes("button-default-style")
-                        export_button_csv.on("click", lambda: export("csv"))
-
-                        export_button_tsv = ui.button("Export as TSV", icon="share")
-                        export_button_tsv.props("flat")
-                        export_button_tsv.classes("button-default-style")
-                        export_button_tsv.on("click", lambda: export("tsv"))
+                # Export button - opens dialog
+                ui.button("Export", icon="download").props("flat color=black").on(
+                    "click", lambda: editor.show_export_dialog(filename)
+                )
 
                 if data_format == "srt":
                     with ui.button("Validate", icon="check").props(
-                        "flat color=white"
+                        "flat color=black"
                     ) as validate_button:
-                        validate_button.classes("button-default-style")
                         validate_button.on(
                             "click",
                             lambda: editor.validate_captions(),
                         )
+                editor.create_search_panel()
+                editor.show_keyboard_shortcuts()
+            with ui.button("Close editor", icon="close").props(
+                "flat color=black"
+            ) as close_button:
+                close_button.on("click", lambda: editor.close_editor("/home"))
 
         with ui.splitter(value=60).classes("w-full h-full") as splitter:
             with splitter.before:
                 with ui.card().classes("w-full h-full"):
-                    editor.create_search_panel()
-                    with ui.scroll_area().style("height: calc(90vh - 200px);"):
+                    with ui.scroll_area().style("height: calc(90vh - 100px);"):
                         editor.main_container = ui.column().classes("w-full h-full")
 
                     if data_format == "srt":
@@ -217,10 +224,6 @@ def create() -> None:
                             )
                             ui.html(
                                 f"<b>Transcription language:</b> {language}",
-                                sanitize=False,
-                            ).classes("text-sm")
-                            ui.html(
-                                f"<b>Transcription accuracy:</b> {model}",
                                 sanitize=False,
                             ).classes("text-sm")
                             html_wpm = ui.html(
