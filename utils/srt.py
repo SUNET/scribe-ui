@@ -2337,7 +2337,7 @@ class SRTEditor:
                             out = "(RTF preview unavailable)"
 
                         if len(self.captions) > 5:
-                            out += f"\n\n<span style='color:#888'>... {len(self.captions)-5} more captions</span>"
+                            out += f"\n\n... {len(self.captions)-5} more captions"
 
                         import html
 
