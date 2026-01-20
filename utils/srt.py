@@ -554,7 +554,7 @@ class SRTEditor:
             )
         return "\n".join(lines)
 
-    def export_rtf(self) -> str:
+    def export_rtf(self, speakers: bool, times: bool, block_nr: bool) -> str:
         """
         Export captions to RTF format with proper Unicode handling.
         """
@@ -578,18 +578,29 @@ class SRTEditor:
         )
 
         parts = []
+        rtf_data = r"\b "
+
         for caption in self.captions:
-            parts.append(
-                r"\b "
-                + to_rtf_unicode(f"{caption.speaker}: ")
-                + r"\b0 "
-                + to_rtf_unicode(f"{caption.start_time} - {caption.end_time}")
-                + r"\line "
-                + to_rtf_unicode(caption.text).replace("\n", r"\line ")
-                + r"\line\line "
+            if block_nr:
+                rtf_data += to_rtf_unicode(f"{caption.index} ") + r"\b0 "
+
+            if speakers:
+                rtf_data += to_rtf_unicode(f"{caption.speaker}: ") + r"\b0 "
+
+            if times:
+                rtf_data += (
+                    to_rtf_unicode(f"{caption.start_time} - {caption.end_time}")
+                    + r"\line "
+                )
+
+            rtf_data += (
+                to_rtf_unicode(caption.text).replace("\n", r"\line ") + r"\line\line "
             )
 
+            parts.append(rtf_data)
+
         rtf_content += "".join(parts) + "}"
+
         return rtf_content
 
     def export_txt(self) -> str:
@@ -1999,6 +2010,44 @@ class SRTEditor:
                                 )
                                 ui.separator()
 
+                            # Text options (for txt only)
+                            rtf_section = ui.column().classes("gap-2")
+                            with rtf_section:
+                                ui.label("Text Options").classes(
+                                    "text-subtitle1 font-semibold"
+                                )
+                                spk_incl = ui.checkbox("Include speakers", value=True)
+                                idx_incl = ui.checkbox(
+                                    "Include block numbers", value=False
+                                )
+                                sep_type = (
+                                    ui.select(
+                                        options={
+                                            "\\n\\n": "Double newline",
+                                            "\\n": "Single newline",
+                                            "---": "Line",
+                                            "custom": "Custom",
+                                        },
+                                        value="\\n\\n",
+                                        label="Separator",
+                                    )
+                                    .classes("w-full mt-2")
+                                    .props("dense outlined")
+                                )
+                                sep_custom = (
+                                    ui.input(placeholder="Custom separator")
+                                    .classes("w-full mt-2")
+                                    .props("dense outlined")
+                                )
+                                sep_custom.visible = False
+                                sep_type.on(
+                                    "update:model-value",
+                                    lambda e: setattr(
+                                        sep_custom, "visible", e.args == "custom"
+                                    ),
+                                )
+                                ui.separator()
+
                             # CSV options (for csv only)
                             csv_section = ui.column().classes("gap-2")
                             with csv_section:
@@ -2093,11 +2142,13 @@ class SRTEditor:
                                 "json",
                                 "csv",
                                 "tsv",
+                                "rtf",
                             ]
                             txt_section.visible = current_fmt == "txt"
                             csv_section.visible = current_fmt == "csv"
                             tsv_section.visible = current_fmt == "tsv"
                             json_section.visible = current_fmt == "json"
+                            rtf_section.visible = current_fmt == "rtf"
 
                         fmt.on(
                             "update:model-value", lambda: update_options_visibility()
@@ -2153,7 +2204,7 @@ class SRTEditor:
                                 f"{c.index}\n{c.start_time.replace(',','.')} --> {c.end_time.replace(',','.')}\n{c.text}"
                                 for c in caps
                             )
-                        elif fmt.value == "txt":
+                        elif fmt.value == "txt" or fmt.value == "rtf":
                             parts = []
                             for c in caps:
                                 p_parts = []
@@ -2368,7 +2419,9 @@ class SRTEditor:
                                 elif fmt.value == "vtt":
                                     c = self.export_vtt()
                                 elif fmt.value == "rtf":
-                                    c = self.export_rtf()
+                                    c = self.export_rtf(
+                                        spk_incl.value, ts_incl.value, idx_incl.value
+                                    )
                                 elif fmt.value == "txt":
                                     # TXT format with custom options
                                     parts = []
