@@ -1937,7 +1937,7 @@ class SRTEditor:
                                                 "end": "End only",
                                             },
                                             value="both",
-                                            label="Which",
+                                            label="Timestamp range",
                                         )
                                         .classes("flex-1")
                                         .props("dense outlined")
