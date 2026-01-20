@@ -115,6 +115,9 @@ async def index(request: Request) -> None:
                     password_input = ui.input(
                         "Encryption Passphrase", password=True
                     ).style("width: 100%; margin-bottom: 10px;")
+                    password_input.on(
+                        "keydown.enter", lambda e: verify_encryption_password()
+                    )
 
                     def verify_encryption_password() -> None:
                         if password_input.value:
