@@ -1731,6 +1731,14 @@ class SRTEditor:
                         cap.is_valid = False
                         changed_indices.add(cap.index)
 
+        # Find blocks which are shorter than 0.8 seconds
+        for caption in self.captions:
+            print(caption.get_end_seconds(), caption.get_start_seconds())
+            if caption.get_end_seconds() - caption.get_start_seconds() < 0.8:
+                warnings.append(
+                    f"Caption #{caption.index} is very short ({caption.get_end_seconds() - caption.get_start_seconds():.2f} seconds)."
+                )
+
         # Refresh display to show validation state changes - only update changed captions
         self.refresh_display(
             specific_indices=changed_indices if changed_indices else None
