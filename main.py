@@ -203,6 +203,7 @@ def logout() -> None:
 
     app.storage.user["token"] = None
     app.storage.user["refresh_token"] = None
+    app.storage.user["encryption_password"] = None
 
     ui.navigate.to("/")
 

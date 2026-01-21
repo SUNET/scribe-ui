@@ -230,6 +230,10 @@ def logout() -> None:
     Log out the user by clearing the token and navigating to the logout endpoint.
     """
 
+    app.storage.user["token"] = None
+    app.storage.user["refresh_token"] = None
+    app.storage.user["encryption_password"] = None
+
     ui.navigate.to(settings.OIDC_APP_LOGOUT_ROUTE)
 
 
@@ -240,6 +244,10 @@ def page_init(header_text: Optional[str] = "") -> None:
 
     def refresh():
         if not token_refresh():
+            app.storage.user["token"] = None
+            app.storage.user["refresh_token"] = None
+            app.storage.user["encryption_password"] = None
+
             ui.navigate.to(settings.OIDC_APP_LOGOUT_ROUTE)
 
     refresh()
