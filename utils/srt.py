@@ -340,11 +340,10 @@ class SRTEditor:
 
             # Close block, Escape
             case "Escape":
-                # Trigger blur on any active input to save current changes
-                ui.run_javascript("document.activeElement?.blur?.()")
-                # Small delay to let blur handlers complete
-                ui.timer(
-                    0.1, lambda: self.select_caption(self.selected_caption), once=True
+                # Click the "Close" button to save changes before closing
+                # This behaves the same as clicking the Close button
+                ui.run_javascript(
+                    "document.querySelector('.button-close')?.click()"
                 )
 
             # Open find, Ctrl+F
