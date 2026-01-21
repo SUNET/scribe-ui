@@ -205,47 +205,6 @@ def show_help_dialog() -> None:
                                 )
                             ui.label(step_desc).classes("text-body2 text-grey-8")
 
-                ui.label("Key Features").classes("text-h6 font-bold mt-2")
-
-                with ui.column().classes("w-full gap-2"):
-                    for icon, feature, desc in [
-                        (
-                            "language",
-                            "Multi-language Support",
-                            "Over 50 languages with high accuracy",
-                        ),
-                        (
-                            "groups",
-                            "Speaker Diarization",
-                            "Distinguishes between different speakers",
-                        ),
-                        (
-                            "edit",
-                            "Advanced Editor",
-                            "Undo/redo, find/replace, keyboard shortcuts",
-                        ),
-                        (
-                            "play_circle",
-                            "Video Preview",
-                            "Side-by-side playback while editing",
-                        ),
-                        (
-                            "verified",
-                            "Auto Validation",
-                            "Checks for timing conflicts and errors",
-                        ),
-                        (
-                            "lock",
-                            "Secure & Private",
-                            "Encrypted at rest, auto-deleted after retention",
-                        ),
-                    ]:
-                        with ui.row().classes("items-center gap-3"):
-                            ui.icon(icon, size="sm").classes("text-green-700")
-                            with ui.column().classes("gap-0"):
-                                ui.label(feature).classes("font-semibold")
-                                ui.label(desc).classes("text-body2 text-grey-7")
-
                 with ui.row().classes("w-full gap-4"):
                     with ui.card().classes("flex-1 bg-amber-50 p-4"):
                         with ui.row().classes("items-center gap-2 mb-2"):
