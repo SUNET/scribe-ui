@@ -3,23 +3,25 @@ name: Docker Image CI
 on:
   push:
     branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
 
 jobs:
-  build:
+    build-and-push:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v3
 
-    - name: Build the Docker image
-      run: docker build . --file Dockerfile --tag ghcr.io/sunet/transcribe-ui:latest
+    - name: Set short SHA
+      run: echo "SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_ENV
 
-    - name: Tag the Docker image
-      run: docker tag ghcr.io/sunet/transcribe-ui:latest ghcr.io/sunet/transcribe-ui:latest
+    - name: Log in to GHCR
+      uses: docker/login-action@v2
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Push the Docker image
-      run: |
-        docker push ghcr.io/sunet/transcribe-ui:latest
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Build app
+      run: docker build -t ghcr.io/sunet/transcribe-ui:${SHORT_SHA} .
+
+    - name: Push images
+      run: docker push ghcr.io/sunet/transcribe-ui:${SHORT_SHA}
