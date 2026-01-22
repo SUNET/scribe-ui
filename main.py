@@ -1,5 +1,3 @@
-import os
-
 from fastapi import Request
 from nicegui import app, ui
 from pages.admin import create as create_admin
