@@ -52,11 +52,11 @@ docker run -p 8888:8888 --env-file .env transcribe-ui
 
 Using NiceGUI together with Redis is recommended to avoid having user data written to disk. This project includes `nicegui[redis]` as a dependency.
 
-To enable Redis storage:
+To enable Redis storage without persistant data storage, follow these steps:
 
 1. Run a Redis instance (e.g., using Docker):
    ```bash
-   docker run -d -p 6379:6379 redis
+   docker run -d -p 6379:6379 redis redis-server --save ''
    ```
 
 2. Set the `NICEGUI_STORAGE` environment variable:
