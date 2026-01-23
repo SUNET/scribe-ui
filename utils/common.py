@@ -710,7 +710,6 @@ def start_transcription(
 ) -> None:
     selected_language = language
     # selected_model = model
-    selected_model = "Slower transcription (higher accuracy)"
     error = ""
 
     if output_format == "Subtitles":
@@ -726,9 +725,7 @@ def start_transcription(
                 f"{settings.API_URL}/api/v1/transcriber/{uuid}",
                 json={
                     "language": f"{selected_language}",
-                    "model": f"{selected_model}",
                     "speakers": int(speakers),
-                    "status": "pending",
                     "output_format": output_format,
                 },
                 headers=get_auth_header(),
