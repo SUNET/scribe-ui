@@ -279,10 +279,10 @@ def email_get() -> str:
 
 
 def email_save_notifications(
-    job: Optional[bool] = False,
-    deletion: Optional[bool] = False,
-    user: Optional[bool] = False,
-    quota: Optional[bool] = False,
+    job: Optional[bool] = None,
+    deletion: Optional[bool] = None,
+    user: Optional[bool] = None,
+    quota: Optional[bool] = None,
 ) -> None:
     """
     Save notification preferences for the user.

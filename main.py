@@ -1,5 +1,3 @@
-import os
-
 from fastapi import Request
 from nicegui import app, ui
 from pages.admin import create as create_admin
@@ -115,6 +113,9 @@ async def index(request: Request) -> None:
                     password_input = ui.input(
                         "Encryption Passphrase", password=True
                     ).style("width: 100%; margin-bottom: 10px;")
+                    password_input.on(
+                        "keydown.enter", lambda e: verify_encryption_password()
+                    )
 
                     def verify_encryption_password() -> None:
                         if password_input.value:
@@ -200,14 +201,15 @@ def logout() -> None:
 
     app.storage.user["token"] = None
     app.storage.user["refresh_token"] = None
+    app.storage.user["encryption_password"] = None
 
     ui.navigate.to("/")
 
 
 app.add_static_files(url_path="/static", local_directory="static/")
 ui.run(
+    title=f"{settings.TAB_TITLE}",
     storage_secret=settings.STORAGE_SECRET,
-    title="Sunet Scribe",
     host="0.0.0.0",
     port=8888,
     favicon=f"static/{settings.FAVICON}",

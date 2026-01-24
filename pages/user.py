@@ -13,6 +13,23 @@ from utils.token import get_admin_status, get_user_data
 settings = get_settings()
 
 
+def show_user_token() -> None:
+    with ui.dialog() as dialog:
+        with ui.card().style("max-width: 50%; width: 500px; min-width: 500px;"):
+            ui.label("User Token").classes("text-2xl font-bold")
+            ui.label("Your user token is used to authenticate API requests.").classes(
+                "my-4"
+            )
+            token = app.storage.user.get("token", "No token found.")
+            ui.textarea(value=token).classes("w-full h-full")
+            with ui.row().style("justify-content: flex-end; width: 100%;"):
+                ui.button("Close").classes("button-close").props("color=black flat").on(
+                    "click", lambda: dialog.close()
+                )
+
+        dialog.open()
+
+
 def create() -> None:
     @ui.refreshable
     @ui.page("/user")
@@ -41,7 +58,9 @@ def create() -> None:
                         with ui.row().classes("items-center gap-2"):
                             ui.icon("person").classes("text-blue-500")
                             ui.label("Username").classes("font-medium text-gray-600")
-                            ui.label(userdata["username"]).classes("text-gray-900")
+                            ui.label(userdata["username"]).classes("text-gray-900").on(
+                                "click", lambda: show_user_token()
+                            )
 
                         with ui.row().classes("items-center gap-2 mt-2"):
                             ui.icon("fingerprint").classes("text-gray-500")
@@ -93,6 +112,7 @@ def create() -> None:
                             save.on("click", lambda: email_save(email.value))
 
                     with ui.column().classes("gap-3"):
+                        users = None
                         with ui.grid(columns=2).classes("gap-x-6 gap-y-2"):
                             ui.label("My notifications").classes(
                                 "col-span-2 font-semibold"
@@ -109,7 +129,7 @@ def create() -> None:
                                 "click",
                                 lambda e: email_save_notifications(
                                     job=jobs.value,
-                                    user=users.value,
+                                    user=users.value if users is not None else None,
                                     deletion=deletions.value,
                                     # quota=quota.value,
                                 ),
@@ -128,7 +148,7 @@ def create() -> None:
                                 "click",
                                 lambda e: email_save_notifications(
                                     job=jobs.value,
-                                    user=users.value,
+                                    user=users.value if users is not None else None,
                                     deletion=deletions.value,
                                     # quota=quota.value,
                                 ),
