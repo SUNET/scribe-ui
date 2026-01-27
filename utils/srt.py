@@ -567,9 +567,17 @@ class SRTEditor:
                         result.append("\\" + ch)
                     else:
                         result.append(ch)
-                else:
+                elif code <= 0xFFFF:
+                    # BMP character - use signed 16-bit representation
                     signed_code = code if code <= 0x7FFF else code - 0x10000
-                    result.append(f"\\u{signed_code}? ")
+                    result.append(f"\\u{signed_code}?")
+                else:
+                    # Supplementary character (outside BMP) - use UTF-16 surrogate pair
+                    code -= 0x10000
+                    high_surrogate = 0xD800 + (code >> 10)
+                    low_surrogate = 0xDC00 + (code & 0x3FF)
+                    # Surrogates are always > 0x7FFF, convert to signed
+                    result.append(f"\\u{high_surrogate - 0x10000}?\\u{low_surrogate - 0x10000}?")
             return "".join(result)
 
         rtf_content = (
@@ -577,9 +585,9 @@ class SRTEditor:
         )
 
         parts = []
-        rtf_data = r"\b "
 
         for caption in self.captions:
+            rtf_data = r"\b "
             if block_nr:
                 rtf_data += to_rtf_unicode(f"{caption.index} ") + r"\b0 "
 
