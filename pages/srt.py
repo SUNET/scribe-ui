@@ -2,6 +2,7 @@ import json
 import requests
 
 from nicegui import app, ui
+from utils.chat import InferenceChat
 from utils.common import default_styles
 from utils.common import get_auth_header
 from utils.common import page_init
@@ -183,6 +184,9 @@ def create() -> None:
                         )
                 editor.create_search_panel()
                 editor.show_keyboard_shortcuts()
+                autoscroll = ui.switch("Autoscroll")
+                autoscroll.on("click", lambda: editor.set_autoscroll(autoscroll.value))
+
             with ui.button("Close editor", icon="close").props(
                 "flat color=black"
             ) as close_button:
@@ -214,20 +218,10 @@ def create() -> None:
                             "timeupdate",
                             lambda: editor.select_caption_from_video(),
                         )
-                        autoscroll = ui.switch("Autoscroll")
-                        autoscroll.on(
-                            "click", lambda: editor.set_autoscroll(autoscroll.value)
-                        )
-                        with ui.column().classes("bg-gray-100 p-4 w-full"):
-                            ui.label(filename).classes("text-h6").style(
-                                "align-self: center;"
-                            )
-                            ui.html(
-                                f"<b>Transcription language:</b> {language}",
-                                sanitize=False,
-                            ).classes("text-sm")
-                            html_wpm = ui.html(
-                                f"<b>Words per minute:</b> {editor.get_words_per_minute():.2f}",
-                                sanitize=False,
-                            ).classes("text-sm")
-                            editor.set_words_per_minute_element(html_wpm)
+                        # Chat section for inference
+                        with ui.card().classes("w-full mt-4 border-0").style(
+                            "box-shadow: none;"
+                        ):
+                            ui.label("Assistant").classes("text-h6")
+                            chat = InferenceChat(data)
+                            chat.create_ui()

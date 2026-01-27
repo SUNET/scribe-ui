@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     )
 
     API_URL: str = ""
+    API_WS_URL: str = ""
     OIDC_APP_LOGIN_ROUTE: str = ""
     OIDC_APP_LOGOUT_ROUTE: str = ""
     OIDC_APP_REFRESH_ROUTE: str = ""
