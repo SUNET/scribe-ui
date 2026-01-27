@@ -2424,7 +2424,9 @@ class SRTEditor:
                 with ui.row().classes("w-full justify-between items-center"):
                     ui.label(f"File: {filename}.{fmt.value}").classes("text-body2")
                     with ui.row().classes("gap-2"):
-                        ui.button("Cancel", on_click=dialog.close).props("outline")
+                        ui.button("Close", on_click=dialog.close).props(
+                            "outline color=black"
+                        )
 
                         def exp():
                             try:
@@ -2638,7 +2640,7 @@ class SRTEditor:
                                 ui.notify(
                                     f"Exported as {fmt.value.upper()}", type="positive"
                                 )
-                                dialog.close()
+                                # dialog.close()
                             except Exception as e:
                                 ui.notify(f"Export failed: {str(e)}", type="negative")
 
