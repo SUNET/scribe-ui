@@ -116,6 +116,7 @@ async def index(request: Request) -> None:
                     password_input.on(
                         "keydown.enter", lambda e: verify_encryption_password()
                     )
+                    password_input.props("autofocus")
 
                     def verify_encryption_password() -> None:
                         if password_input.value:

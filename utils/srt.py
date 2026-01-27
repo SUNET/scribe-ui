@@ -342,9 +342,7 @@ class SRTEditor:
             case "Escape":
                 # Click the "Close" button to save changes before closing
                 # This behaves the same as clicking the Close button
-                ui.run_javascript(
-                    "document.querySelector('.button-close')?.click()"
-                )
+                ui.run_javascript("document.querySelector('.button-close')?.click()")
 
             # Open find, Ctrl+F
             case "f" if event.modifiers.ctrl and not event.modifiers.shift:
@@ -553,10 +551,29 @@ class SRTEditor:
             )
         return "\n".join(lines)
 
-    def export_rtf(self, speakers: bool, times: bool, block_nr: bool) -> str:
+    def export_rtf(
+        self,
+        speakers: bool,
+        times: bool,
+        block_nr: bool,
+        ts_which: str = "both",
+        ts_fmt: str = "srt",
+    ) -> str:
         """
         Export captions to RTF format with proper Unicode handling.
         """
+
+        def fmt_ts(ts: str, f: str) -> str:
+            """Format timestamp according to selected format."""
+            p = ts.replace(",", ":").split(":")
+            h, m, s, ms = int(p[0]), int(p[1]), int(p[2]), int(p[3])
+            if f == "seconds":
+                return f"{h*3600 + m*60 + s + ms/1000:.3f}"
+            if f == "ms":
+                return str(h * 3600000 + m * 60000 + s * 1000 + ms)
+            if f == "vtt":
+                return f"{h:02d}:{m:02d}:{s:02d}.{ms:03d}"
+            return ts
 
         def to_rtf_unicode(text: str) -> str:
             result = []
@@ -567,9 +584,19 @@ class SRTEditor:
                         result.append("\\" + ch)
                     else:
                         result.append(ch)
-                else:
+                elif code <= 0xFFFF:
+                    # BMP character - use signed 16-bit representation
                     signed_code = code if code <= 0x7FFF else code - 0x10000
-                    result.append(f"\\u{signed_code}? ")
+                    result.append(f"\\u{signed_code}?")
+                else:
+                    # Supplementary character (outside BMP) - use UTF-16 surrogate pair
+                    code -= 0x10000
+                    high_surrogate = 0xD800 + (code >> 10)
+                    low_surrogate = 0xDC00 + (code & 0x3FF)
+                    # Surrogates are always > 0x7FFF, convert to signed
+                    result.append(
+                        f"\\u{high_surrogate - 0x10000}?\\u{low_surrogate - 0x10000}?"
+                    )
             return "".join(result)
 
         rtf_content = (
@@ -577,20 +604,28 @@ class SRTEditor:
         )
 
         parts = []
-        rtf_data = r"\b "
 
         for caption in self.captions:
+            header_parts = []
             if block_nr:
-                rtf_data += to_rtf_unicode(f"{caption.index} ") + r"\b0 "
-
-            if speakers:
-                rtf_data += to_rtf_unicode(f"{caption.speaker}: ") + r"\b0 "
+                header_parts.append(to_rtf_unicode(f"[{caption.index}]"))
 
             if times:
-                rtf_data += (
-                    to_rtf_unicode(f"{caption.start_time} - {caption.end_time}")
-                    + r"\line "
-                )
+                ts_parts = []
+                if ts_which in ["start", "both"]:
+                    ts_parts.append(fmt_ts(caption.start_time, ts_fmt))
+                if ts_which in ["end", "both"]:
+                    ts_parts.append(fmt_ts(caption.end_time, ts_fmt))
+                if ts_parts:
+                    header_parts.append(to_rtf_unicode(f"({' - '.join(ts_parts)})"))
+
+            if speakers:
+                header_parts.append(to_rtf_unicode(f"{caption.speaker}:"))
+
+            # Build RTF data with consistent bold formatting for header
+            rtf_data = ""
+            if header_parts:
+                rtf_data = r"\b " + " ".join(header_parts) + r"\b0\line "
 
             rtf_data += (
                 to_rtf_unicode(caption.text).replace("\n", r"\line ") + r"\line\line "
@@ -1989,11 +2024,13 @@ class SRTEditor:
                                 ui.label("Text Options").classes(
                                     "text-subtitle1 font-semibold"
                                 )
-                                spk_incl = ui.checkbox("Include speakers", value=True)
-                                idx_incl = ui.checkbox(
+                                txt_spk_incl = ui.checkbox(
+                                    "Include speakers", value=True
+                                )
+                                txt_idx_incl = ui.checkbox(
                                     "Include block numbers", value=False
                                 )
-                                sep_type = (
+                                txt_sep_type = (
                                     ui.select(
                                         options={
                                             "\\n\\n": "Double newline",
@@ -2007,55 +2044,31 @@ class SRTEditor:
                                     .classes("w-full mt-2")
                                     .props("dense outlined")
                                 )
-                                sep_custom = (
+                                txt_sep_custom = (
                                     ui.input(placeholder="Custom separator")
                                     .classes("w-full mt-2")
                                     .props("dense outlined")
                                 )
-                                sep_custom.visible = False
-                                sep_type.on(
+                                txt_sep_custom.visible = False
+                                txt_sep_type.on(
                                     "update:model-value",
                                     lambda e: setattr(
-                                        sep_custom, "visible", e.args == "custom"
+                                        txt_sep_custom, "visible", e.args == "custom"
                                     ),
                                 )
                                 ui.separator()
 
-                            # Text options (for txt only)
+                            # RTF options
                             rtf_section = ui.column().classes("gap-2")
                             with rtf_section:
-                                ui.label("Text Options").classes(
+                                ui.label("RTF Options").classes(
                                     "text-subtitle1 font-semibold"
                                 )
-                                spk_incl = ui.checkbox("Include speakers", value=True)
-                                idx_incl = ui.checkbox(
+                                rtf_spk_incl = ui.checkbox(
+                                    "Include speakers", value=True
+                                )
+                                rtf_idx_incl = ui.checkbox(
                                     "Include block numbers", value=False
-                                )
-                                sep_type = (
-                                    ui.select(
-                                        options={
-                                            "\\n\\n": "Double newline",
-                                            "\\n": "Single newline",
-                                            "---": "Line",
-                                            "custom": "Custom",
-                                        },
-                                        value="\\n\\n",
-                                        label="Separator",
-                                    )
-                                    .classes("w-full mt-2")
-                                    .props("dense outlined")
-                                )
-                                sep_custom = (
-                                    ui.input(placeholder="Custom separator")
-                                    .classes("w-full mt-2")
-                                    .props("dense outlined")
-                                )
-                                sep_custom.visible = False
-                                sep_type.on(
-                                    "update:model-value",
-                                    lambda e: setattr(
-                                        sep_custom, "visible", e.args == "custom"
-                                    ),
                                 )
                                 ui.separator()
 
@@ -2215,18 +2228,18 @@ class SRTEditor:
                                 f"{c.index}\n{c.start_time.replace(',','.')} --> {c.end_time.replace(',','.')}\n{c.text}"
                                 for c in caps
                             )
-                        elif fmt.value == "txt" or fmt.value == "rtf":
+                        elif fmt.value == "txt":
                             parts = []
                             for c in caps:
                                 p_parts = []
-                                if idx_incl and idx_incl.value:
+                                if txt_idx_incl and txt_idx_incl.value:
                                     p_parts.append(f"[{c.index}]")
 
                                 ts_str = build_ts_str(c)
                                 if ts_str and ts_pos.value == "before":
                                     p_parts.append(f"({ts_str})")
 
-                                if spk_incl and spk_incl.value:
+                                if txt_spk_incl and txt_spk_incl.value:
                                     p_parts.append(f"{c.speaker}:")
 
                                 # Add text on new line or same line
@@ -2240,11 +2253,33 @@ class SRTEditor:
 
                                 parts.append(p)
                             s = (
-                                sep_custom.value
-                                if sep_type.value == "custom"
-                                else sep_type.value.replace("\\n", "\n")
+                                txt_sep_custom.value
+                                if txt_sep_type.value == "custom"
+                                else txt_sep_type.value.replace("\\n", "\n")
                             )
                             out = s.join(parts)
+                        elif fmt.value == "rtf":
+                            parts = []
+                            for c in caps:
+                                p_parts = []
+                                if rtf_idx_incl and rtf_idx_incl.value:
+                                    p_parts.append(f"[{c.index}]")
+
+                                ts_str = build_ts_str(c)
+                                if ts_str:
+                                    p_parts.append(f"({ts_str})")
+
+                                if rtf_spk_incl and rtf_spk_incl.value:
+                                    p_parts.append(f"{c.speaker}:")
+
+                                # Add text on new line or same line
+                                if p_parts:
+                                    p = " ".join(p_parts) + "\n" + c.text
+                                else:
+                                    p = c.text
+
+                                parts.append(p)
+                            out = "\n\n".join(parts)
                         elif fmt.value == "json":
                             d = {"total": len(self.captions), "captions": []}
                             for c in caps:
@@ -2372,13 +2407,14 @@ class SRTEditor:
                 json_ascii.on("update:model-value", lambda: upd_prev())
 
                 # TXT controls
-                spk_incl.on("update:model-value", lambda: upd_prev())
-                if idx_incl:
-                    idx_incl.on("update:model-value", lambda: upd_prev())
-                if sep_type:
-                    sep_type.on("update:model-value", lambda: upd_prev())
-                if sep_custom:
-                    sep_custom.on("blur", lambda: upd_prev())
+                txt_spk_incl.on("update:model-value", lambda: upd_prev())
+                txt_idx_incl.on("update:model-value", lambda: upd_prev())
+                txt_sep_type.on("update:model-value", lambda: upd_prev())
+                txt_sep_custom.on("blur", lambda: upd_prev())
+
+                # RTF controls
+                rtf_spk_incl.on("update:model-value", lambda: upd_prev())
+                rtf_idx_incl.on("update:model-value", lambda: upd_prev())
 
                 upd_prev()
 
@@ -2388,7 +2424,9 @@ class SRTEditor:
                 with ui.row().classes("w-full justify-between items-center"):
                     ui.label(f"File: {filename}.{fmt.value}").classes("text-body2")
                     with ui.row().classes("gap-2"):
-                        ui.button("Cancel", on_click=dialog.close).props("outline")
+                        ui.button("Close", on_click=dialog.close).props(
+                            "outline color=black"
+                        )
 
                         def exp():
                             try:
@@ -2431,27 +2469,35 @@ class SRTEditor:
                                     c = self.export_vtt()
                                 elif fmt.value == "rtf":
                                     c = self.export_rtf(
-                                        spk_incl.value, ts_incl.value, idx_incl.value
+                                        rtf_spk_incl.value,
+                                        ts_incl.value,
+                                        rtf_idx_incl.value,
+                                        ts_which.value,
+                                        ts_fmt.value,
                                     )
                                 elif fmt.value == "txt":
                                     # TXT format with custom options
                                     parts = []
                                     sep_str = "\n\n"
-                                    if sep_type.value == "custom":
-                                        sep_str = sep_custom.value.replace("\\n", "\n")
-                                    elif sep_type.value != "\\n\\n":
-                                        sep_str = sep_type.value.replace("\\n", "\n")
+                                    if txt_sep_type.value == "custom":
+                                        sep_str = txt_sep_custom.value.replace(
+                                            "\\n", "\n"
+                                        )
+                                    elif txt_sep_type.value != "\\n\\n":
+                                        sep_str = txt_sep_type.value.replace(
+                                            "\\n", "\n"
+                                        )
 
                                     for cap in self.captions:
                                         p_parts = []
-                                        if idx_incl.value:
+                                        if txt_idx_incl.value:
                                             p_parts.append(f"[{cap.index}]")
 
                                         ts_str = build_ts_str(cap)
                                         if ts_str and ts_pos.value == "before":
                                             p_parts.append(f"({ts_str})")
 
-                                        if spk_incl.value:
+                                        if txt_spk_incl.value:
                                             p_parts.append(f"{cap.speaker}:")
 
                                         # Add text on new line or same line
@@ -2594,7 +2640,7 @@ class SRTEditor:
                                 ui.notify(
                                     f"Exported as {fmt.value.upper()}", type="positive"
                                 )
-                                dialog.close()
+                                # dialog.close()
                             except Exception as e:
                                 ui.notify(f"Export failed: {str(e)}", type="negative")
 
