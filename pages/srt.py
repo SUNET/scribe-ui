@@ -1,12 +1,13 @@
 import json
 import requests
 
-from nicegui import app, ui
+from nicegui import ui
 from utils.common import default_styles
 from utils.common import get_auth_header
 from utils.common import page_init
 from utils.settings import get_settings
 from utils.srt import SRTEditor
+from utils.storage import storage
 from utils.video import create_video_proxy
 
 create_video_proxy()
@@ -117,21 +118,13 @@ def create() -> None:
                 response = requests.get(
                     f"{settings.API_URL}/api/v1/transcriber/{uuid}/result/srt",
                     headers=get_auth_header(),
-                    json={
-                        "encryption_password": app.storage.user.get(
-                            "encryption_password"
-                        )
-                    },
+                    json={"encryption_password": storage.get("encryption_password")},
                 )
             else:
                 response = requests.get(
                     f"{settings.API_URL}/api/v1/transcriber/{uuid}/result/txt",
                     headers=get_auth_header(),
-                    json={
-                        "encryption_password": app.storage.user.get(
-                            "encryption_password"
-                        )
-                    },
+                    json={"encryption_password": storage.get("encryption_password")},
                 )
 
             response.raise_for_status()

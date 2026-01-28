@@ -1,5 +1,5 @@
-from nicegui import app, ui
-from utils.common import add_timezone_to_timestamp, page_init
+from nicegui import ui
+from utils.common import page_init
 from utils.common import default_styles
 from utils.helpers import (
     email_get,
@@ -9,6 +9,7 @@ from utils.helpers import (
 )
 from utils.settings import get_settings
 from utils.token import get_admin_status, get_user_data
+from utils.storage import storage
 
 settings = get_settings()
 
@@ -20,7 +21,7 @@ def show_user_token() -> None:
             ui.label("Your user token is used to authenticate API requests.").classes(
                 "my-4"
             )
-            token = app.storage.user.get("token", "No token found.")
+            token = storage.get("token", "No token found.")
             ui.textarea(value=token).classes("w-full h-full")
             with ui.row().style("justify-content: flex-end; width: 100%;"):
                 ui.button("Close").classes("button-close").props("color=black flat").on(
@@ -87,7 +88,7 @@ def create() -> None:
                             ui.icon("public").classes("text-purple-500")
                             ui.label("Timezone").classes("font-medium text-gray-600")
 
-                            ui.label(app.storage.user.get("timezone", "UTC")).classes(
+                            ui.label(storage.get("timezone", "UTC")).classes(
                                 "text-gray-900"
                             )
 

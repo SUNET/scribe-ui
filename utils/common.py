@@ -3,7 +3,7 @@ import requests
 import pytz
 from datetime import datetime, timedelta
 
-from nicegui import ui, app
+from nicegui import ui
 from starlette.formparsers import MultiPartParser
 from typing import Optional
 from utils.settings import get_settings
@@ -13,7 +13,7 @@ from utils.token import (
     get_bofh_status,
     token_refresh,
 )
-
+from utils.storage import storage
 
 MultiPartParser.spool_max_size = 1024 * 1024 * 4096
 
@@ -230,9 +230,9 @@ def logout() -> None:
     Log out the user by clearing the token and navigating to the logout endpoint.
     """
 
-    app.storage.user["token"] = None
-    app.storage.user["refresh_token"] = None
-    app.storage.user["encryption_password"] = None
+    storage["token"] = None
+    storage["refresh_token"] = None
+    storage["encryption_password"] = None
 
     ui.navigate.to(settings.OIDC_APP_LOGOUT_ROUTE)
 
@@ -244,9 +244,9 @@ def page_init(header_text: Optional[str] = "") -> None:
 
     def refresh():
         if not token_refresh():
-            app.storage.user["token"] = None
-            app.storage.user["refresh_token"] = None
-            app.storage.user["encryption_password"] = None
+            storage["token"] = None
+            storage["refresh_token"] = None
+            storage["encryption_password"] = None
 
             ui.navigate.to(settings.OIDC_APP_LOGOUT_ROUTE)
 
@@ -314,7 +314,7 @@ def add_timezone_to_timestamp(timestamp: str) -> str:
     """
     Convert a UTC timestamp to the user's local timezone.
     """
-    user_timezone = app.storage.user.get("timezone", "UTC")
+    user_timezone = storage.get("timezone", "UTC")
     utc_time = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S.%f")
     utc_time = pytz.utc.localize(utc_time)
     local_tz = pytz.timezone(user_timezone)
@@ -339,7 +339,7 @@ def jobs_get() -> list:
         return []
 
     # Get current time in user's timezone
-    user_timezone = app.storage.user.get("timezone", "UTC")
+    user_timezone = storage.get("timezone", "UTC")
     local_tz = pytz.timezone(user_timezone)
     current_time = datetime.now(local_tz)
 
@@ -439,7 +439,7 @@ def post_file(filedata: bytes, filename: str) -> None:
             f"{settings.API_URL}/api/v1/transcriber",
             files=files_json,
             headers=get_auth_header(),
-            json={"encryption_password": app.storage.user.get("encryption_password")},
+            json={"encryption_password": storage.get("encryption_password")},
         )
         response.raise_for_status()
 
