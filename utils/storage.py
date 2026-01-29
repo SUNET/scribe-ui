@@ -1,10 +1,17 @@
 from nicegui import app
+from threading import Lock
 
-# Class to replace NiceGUIs app.storage for in-memory storage
-# that is session-specific and avoids persistence in any way
-# since we don't want to store sensitive data on disk.
+# WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING
+#
+# This should ONLY be used if NiceGUI is running as a single process. It
+# should NOT be used together with Uvicorn and multiple workers!
+#
+# WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING
 
 
+# Class to replace NiceGUIs app.storage for in-memory storage that is
+# session-specific and avoids persistence in any way since we don't want to
+# store sensitive data on disk.
 class MemoryStorage:
     """
     In-memory storage that uses NiceGUI's browser session ID as the key.
@@ -16,6 +23,7 @@ class MemoryStorage:
         """
 
         self.__storage = {}
+        self.__lock = Lock()
 
     def __get_session_id(self) -> str:
         """
@@ -56,8 +64,9 @@ class MemoryStorage:
             value: The value to associate with the key.
         """
 
-        session_store = self.__get_session_store()
-        session_store[key] = value
+        with self.__lock:
+            session_store = self.__get_session_store()
+            session_store[key] = value
 
     def get(self, key, default=None):
         """
@@ -81,10 +90,11 @@ class MemoryStorage:
             default: The default value to return if the key is not found.
         """
 
-        session_store = self.__get_session_store()
+        with self.__lock:
+            session_store = self.__get_session_store()
 
-        if key in session_store:
-            del session_store[key]
+            if key in session_store:
+                del session_store[key]
 
     def __getitem__(self, key):
         """
