@@ -366,7 +366,7 @@ def save_group(
                 "name": name,
                 "description": description,
                 "usernames": usernames,
-                "quota_seconds": int(quota_seconds) * 60,
+                "quota": int(quota_seconds) * 60,
             },
         )
         res.raise_for_status()

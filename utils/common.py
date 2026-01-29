@@ -361,7 +361,6 @@ def jobs_get() -> list:
                 # Default threshold: 24 hours
                 deletion_approaching = (
                     time_until_deletion <= timedelta(hours=24)
-                    and time_until_deletion.total_seconds() > 0
                 )
             except (ValueError, AttributeError):
                 pass
