@@ -21,7 +21,13 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build app
-        run: docker build -t ghcr.io/sunet/transcribe-ui:${SHORT_SHA} .
+        run: |
+          docker build \
+            -t ghcr.io/sunet/transcribe-ui:${SHORT_SHA} \
+            -t ghcr.io/sunet/transcribe-ui:latest \
+            .
 
       - name: Push images
-        run: docker push ghcr.io/sunet/transcribe-ui:${SHORT_SHA}
+        run: |
+          docker push ghcr.io/sunet/transcribe-ui:${SHORT_SHA}
+          docker push ghcr.io/sunet/transcribe-ui:latest
