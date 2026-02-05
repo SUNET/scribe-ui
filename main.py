@@ -179,9 +179,10 @@ async def index(request: Request) -> None:
 
         is_not_activated = has_token and not get_user_status()
 
-        with ui.card().style(
-            "width: 500px; max-width: 90%; align-self: center; margin-top: 10vh; padding: 40px; border: 0; box-shadow: none;"
-        ):
+        with ui.column().classes("w-full h-screen items-center justify-center"):
+          with ui.card().style(
+              "width: 500px; max-width: 90%; padding: 40px; border: 0; box-shadow: none;"
+          ):
             with ui.column().classes("w-full items-center gap-4"):
                 ui.image(f"static/{settings.LOGO_LANDING}").style(
                     f"max-width: {settings.LOGO_LANDING_WIDTH}px; height: auto;"
