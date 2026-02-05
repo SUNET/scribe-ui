@@ -6,7 +6,7 @@ from pages.srt import create as create_srt
 from pages.user import create as create_user_page
 from utils.common import default_styles
 from utils.settings import get_settings
-from utils.token import get_user_data, get_user_status
+from utils.token import get_user_data, get_user_status, get_token_is_valid
 from utils.helpers import (
     encryption_password_set,
     encryption_password_verify,
@@ -173,6 +173,10 @@ async def index(request: Request) -> None:
         has_token = bool(
             app.storage.user.get("token") and app.storage.user.get("refresh_token")
         )
+
+        if has_token and not get_token_is_valid():
+            return ui.navigate.to("/logout")
+
         is_not_activated = has_token and not get_user_status()
 
         with ui.card().style(
