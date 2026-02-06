@@ -1,4 +1,6 @@
 import asyncio
+import json
+import ssl
 import websockets
 
 from nicegui import app, ui
@@ -7,128 +9,115 @@ from utils.settings import get_settings
 settings = get_settings()
 
 
-class InferenceChat:
+class InferenceActions:
     """
-    Chat component for communicating with the inference WebSocket endpoint.
+    Action buttons component for performing inference tasks on transcription data.
     """
 
-    def __init__(self, data: str):
-        self.messages: list[dict] = []
-        self.message_container = None
-        self.input_field = None
-        self.connected = False
-        self.ws_task = None
+    ACTIONS = {
+        "summarize": {
+            "label": "Summarize",
+            "icon": "summarize",
+            "prompt": "Please provide a concise summary of the following transcription:",
+        },
+        "key_points": {
+            "label": "Key Points",
+            "icon": "list",
+            "prompt": "Extract the key points and main topics from this transcription:",
+        },
+        "action_items": {
+            "label": "Action Items",
+            "icon": "checklist",
+            "prompt": "Identify any action items, tasks, or to-dos mentioned in this transcription:",
+        },
+    }
+
+    def __init__(self, data: dict, language: str = "en"):
         self.data = data
+        self.language = language
+        self.result_container = None
+        self.loading = False
 
     def create_ui(self) -> None:
         """
-        Create the chat UI components.
+        Create the action buttons UI.
         """
         with ui.column().classes("w-full gap-2"):
-            self.message_container = (
+            with ui.row().classes("w-full gap-2 flex-wrap"):
+                for action_key, action_config in self.ACTIONS.items():
+                    ui.button(
+                        action_config["label"],
+                        icon=action_config["icon"],
+                        on_click=lambda a=action_key: self._execute_action(a),
+                    ).props("flat color=primary")
+
+            self.result_container = (
                 ui.column()
                 .classes("w-full gap-2 p-2 bg-gray-50 rounded")
-                .style("height: 200px; overflow-y: auto;")
+                .style("min-height: 100px; max-height: 300px; overflow-y: auto;")
             )
 
-            with ui.row().classes("w-full gap-2"):
-                self.input_field = (
-                    ui.input(placeholder="Type a message...")
-                    .classes("flex-grow")
-                    .on("keydown.enter", self._send_message)
-                )
-                ui.button(icon="send", on_click=self._send_message).props(
-                    "flat color=primary"
-                )
-
-    async def _send_message(self) -> None:
+    async def _execute_action(self, action_key: str) -> None:
         """
-        Send a message to the inference endpoint via WebSocket.
+        Execute an inference action.
         """
-        if isinstance(self.data, dict):
-            # Convert dict to string
-            self.data = str(self.data)
-
-        message = (
-            "This is the initial data: "
-            + self.data
-            + "Now the message from the user follows: "
-        )
-        message = self.input_field.value
-        if not message or not message.strip():
+        if self.loading:
+            ui.notify("Please wait for the current action to complete", type="warning")
             return
 
-        self.input_field.value = ""
+        self.loading = True
+        action = self.ACTIONS[action_key]
 
-        # Add user message to chat
-        self._add_message("user", message)
+        self.result_container.clear()
+        with self.result_container:
+            spinner = ui.spinner("dots", size="lg")
+            ui.label(f"Processing {action['label'].lower()}...")
 
-        # Send via WebSocket
+        # Prepare the data
+        data_str = self.data if isinstance(self.data, str) else json.dumps(self.data)
+        message = f"{action['prompt']} Respond in the language: {self.language}\n\n{data_str}"
+
         token = app.storage.user.get("token")
         if not token:
-            self._add_message("system", "Error: Not authenticated")
+            self._show_result("Error: Not authenticated", is_error=True)
+            self.loading = False
             return
 
         ws_url = f"{settings.API_WS_URL}/api/v1/inference?token={token}"
 
         try:
-            async with websockets.connect(ws_url) as websocket:
-                await websocket.send('{"message": "' + message + '"}')
-                response = await asyncio.wait_for(websocket.recv(), timeout=300.0)
+            if "wss" in ws_url:
+                ssl_context = ssl.create_default_context()
+                ssl_context.check_hostname = False
+                ssl_context.verify_mode = ssl.CERT_NONE
+            else:
+                ssl_context = None
 
-                import json
+            async with websockets.connect(ws_url, ssl=ssl_context) as websocket:
+                await websocket.send(json.dumps({"message": message}))
+                response = await asyncio.wait_for(websocket.recv(), timeout=600.0)
 
                 data = json.loads(response)
                 result = data.get("result", "No response")
-                self._add_message("assistant", result)
+                self._show_result(result)
         except asyncio.TimeoutError:
-            self._add_message("system", "Error: Request timed out")
+            self._show_result("Error: Request timed out", is_error=True)
         except Exception as e:
-            self._add_message("system", f"Error: {str(e)}")
+            self._show_result(f"Error: {str(e)}", is_error=True)
+        finally:
+            self.loading = False
 
-    def _add_message(self, role: str, content: str) -> None:
+    def _show_result(self, content: str, is_error: bool = False) -> None:
         """
-        Add a message to the chat display.
-
-        Parameters:
-            role (str): The role of the message sender (user, assistant, system).
-            content (str): The message content.
+        Display the result in the result container.
         """
-        self.messages.append({"role": role, "content": content})
-        self._refresh_messages()
-
-    def _refresh_messages(self) -> None:
-        """
-        Refresh the message display.
-        """
-        if not self.message_container:
+        if not self.result_container:
             return
 
-        self.message_container.clear()
+        self.result_container.clear()
 
-        with self.message_container:
-            for msg in self.messages:
-                role = msg["role"]
-                content = msg["content"]
-
-                if role == "user":
-                    with ui.row().classes("w-full justify-end"):
-                        ui.label(content).classes(
-                            "bg-blue-100 p-2 rounded-lg max-w-xs text-sm"
-                        )
-                elif role == "assistant":
-                    with ui.row().classes("w-full justify-start"):
-                        ui.label(content).classes(
-                            "bg-green-100 p-2 rounded-lg max-w-xs text-sm"
-                        )
-                else:
-                    with ui.row().classes("w-full justify-center"):
-                        ui.label(content).classes(
-                            "bg-red-100 p-2 rounded-lg max-w-xs text-sm text-red-700"
-                        )
-
-            # Scroll to bottom
-            ui.run_javascript(
-                f"document.querySelector(\"[id='{self.message_container.id}']\").scrollTop = "
-                f"document.querySelector(\"[id='{self.message_container.id}']\").scrollHeight"
-            )
+        with self.result_container:
+            if is_error:
+                ui.label(content).classes("text-red-700 text-sm")
+            else:
+                ui.markdown(content).classes("text-sm")

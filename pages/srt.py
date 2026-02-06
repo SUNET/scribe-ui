@@ -2,7 +2,7 @@ import json
 import requests
 
 from nicegui import app, ui
-from utils.chat import InferenceChat
+from utils.chat import InferenceActions
 from utils.common import default_styles
 from utils.common import get_auth_header
 from utils.common import page_init
@@ -205,23 +205,27 @@ def create() -> None:
 
                     editor.refresh_display()
                 with splitter.after:
-                    with ui.card().classes("w-full h-full"):
-                        video = ui.video(
-                            f"/video/{uuid}",
-                            controls=True,
-                            autoplay=False,
-                            loop=False,
-                        ).classes("w-full h-full")
-                        editor.set_video_player(video)
-                        video.props("preload='auto'")
-                        video.on(
-                            "timeupdate",
-                            lambda: editor.select_caption_from_video(),
-                        )
-                        # Chat section for inference
-                        with ui.card().classes("w-full mt-4 border-0").style(
-                            "box-shadow: none;"
-                        ):
-                            ui.label("Assistant").classes("text-h6")
-                            chat = InferenceChat(data)
-                            chat.create_ui()
+                    with ui.splitter(value=60, horizontal=True).classes(
+                        "w-full h-full"
+                    ) as right_splitter:
+                        with right_splitter.before:
+                            with ui.card().classes("w-full h-full"):
+                                video = ui.video(
+                                    f"/video/{uuid}",
+                                    controls=True,
+                                    autoplay=False,
+                                    loop=False,
+                                ).classes("w-full h-full")
+                                editor.set_video_player(video)
+                                video.props("preload='auto'")
+                                video.on(
+                                    "timeupdate",
+                                    lambda: editor.select_caption_from_video(),
+                                )
+                        with right_splitter.after:
+                            with ui.card().classes("w-full h-full").style(
+                                "box-shadow: none;"
+                            ):
+                                ui.label("Assistant").classes("text-h6")
+                                actions = InferenceActions(data, language)
+                                actions.create_ui()
