@@ -1,6 +1,9 @@
 import asyncio
 import requests
 import pytz
+import zipfile
+import io
+import json
 from datetime import datetime, timedelta
 
 from nicegui import ui, app
@@ -754,3 +757,291 @@ def start_transcription(
             dialog.close()
 
         return
+
+
+def table_bulk_transcribe(table: ui.table) -> None:
+    """
+    Handle the bulk transcription of multiple uploaded files.
+    """
+    # Get all selected rows that are in "Uploaded" status
+    selected_rows = table.selected
+    uploaded_rows = [row for row in selected_rows if row["status"] == "Uploaded"]
+    
+    if not uploaded_rows:
+        ui.notify(
+            "No uploaded files selected for transcription",
+            type="warning",
+            position="top"
+        )
+        return
+    
+    file_count = len(uploaded_rows)
+    
+    with ui.dialog() as dialog:
+        with (
+            ui.card()
+            .style(
+                "background-color: white; align-self: center; border: 0; width: 80%;"
+            )
+            .classes("w-full no-shadow no-border")
+        ):
+            with ui.row().classes("w-full"):
+                ui.label("Bulk Transcription Settings").style("width: 100%;").classes(
+                    "text-h6 q-mb-xl text-black"
+                )
+
+                with ui.column().classes("col-12 col-sm-24"):
+                    ui.label(f"Selected files: {file_count}").classes("text-subtitle1 q-mb-sm")
+
+                with ui.column().classes("col-12 col-sm-24"):
+                    ui.label("Language").classes("text-subtitle2 q-mb-sm")
+                    language = ui.select(
+                        settings.WHISPER_LANGUAGES,
+                        value=settings.WHISPER_LANGUAGES[0],
+                    ).classes("w-full")
+
+                with ui.column().classes("col-12 col-sm-24"):
+                    ui.label("Number of speakers, automatic if not chosen").classes(
+                        "text-subtitle2 q-mb-sm"
+                    )
+                    speakers = ui.number(value="0").classes("w-full")
+
+            with ui.row().classes("justify-between w-full"):
+                ui.label("Output format").classes("text-subtitle2 q-mb-sm")
+                output_format = (
+                    ui.radio(
+                        ["Transcribed text", "Subtitles"],
+                        value="Transcribed text",
+                    )
+                    .classes("w-full")
+                    .props("inline")
+                )
+
+            with ui.row().classes("justify-between w-full"):
+                with ui.button(
+                    "Cancel",
+                    icon="cancel",
+                ) as cancel:
+                    cancel.on("click", lambda: dialog.close())
+                    cancel.props("color=black flat")
+                    cancel.classes("cancel-style")
+
+                with ui.button(
+                    "Start transcribing",
+                    on_click=lambda: start_transcription(
+                        uploaded_rows,
+                        language.value,
+                        speakers.value,
+                        output_format.value,
+                        dialog,
+                    ),
+                ) as start:
+                    start.props("color=black flat")
+                    start.classes("default-style")
+
+            dialog.open()
+
+
+def table_bulk_export(table: ui.table) -> None:
+    """
+    Handle the bulk export of multiple completed transcriptions.
+    """
+    # Get all selected rows that are in "Completed" status
+    selected_rows = table.selected
+    completed_rows = [row for row in selected_rows if row["status"] == "Completed"]
+    
+    if not completed_rows:
+        ui.notify(
+            "No completed files selected for export",
+            type="warning",
+            position="top"
+        )
+        return
+    
+    # Check if all selected completed rows have the same output_format
+    output_formats = set(row["output_format"] for row in completed_rows)
+    
+    if len(output_formats) > 1:
+        ui.notify(
+            "Cannot bulk export files with different output formats. Please select only Transcriptions or only Subtitles.",
+            type="negative",
+            position="top"
+        )
+        return
+    
+    output_format = list(output_formats)[0]  # Get the single format
+    file_count = len(completed_rows)
+    
+    # Determine export format options based on output format
+    if output_format == "SRT":
+        export_formats = ["SRT", "VTT"]
+        job_type = "Subtitles"
+    else:  # TXT
+        export_formats = ["TXT", "JSON", "RTF", "CSV", "TSV"]
+        job_type = "Transcription"
+    
+    with ui.dialog() as dialog:
+        with (
+            ui.card()
+            .style(
+                "background-color: white; align-self: center; border: 0; width: 80%;"
+            )
+            .classes("w-full no-shadow no-border")
+        ):
+            with ui.column().classes("w-full"):
+                ui.label("Bulk Export").style("width: 100%;").classes(
+                    "text-h6 q-mb-xl text-black"
+                )
+
+                ui.label(f"Selected files: {file_count} ({job_type})").classes(
+                    "text-subtitle1 q-mb-sm"
+                )
+
+                ui.label("Export format").classes("text-subtitle2 q-mb-sm")
+                export_format_select = ui.select(
+                    export_formats,
+                    value=export_formats[0],
+                ).classes("w-full")
+
+            with ui.row().classes("justify-between w-full"):
+                with ui.button(
+                    "Cancel",
+                    icon="cancel",
+                ) as cancel:
+                    cancel.on("click", lambda: dialog.close())
+                    cancel.props("color=black flat")
+                    cancel.classes("cancel-style")
+
+                with ui.button(
+                    "Export All",
+                    on_click=lambda: execute_bulk_export(
+                        completed_rows,
+                        output_format,
+                        export_format_select.value,
+                        dialog,
+                    ),
+                ) as export_btn:
+                    export_btn.props("color=black flat")
+                    export_btn.classes("button-default-style")
+
+            dialog.open()
+
+
+async def execute_bulk_export(
+    rows: list,
+    output_format: str,
+    export_format: str,
+    dialog: ui.dialog,
+) -> None:
+    """
+    Execute the bulk export operation.
+    """
+    from utils.srt import SRTEditor
+    
+    dialog.close()
+    
+    # Show progress notification
+    ui.notify(
+        f"Exporting {len(rows)} files...",
+        type="info",
+        position="top"
+    )
+    
+    # Create a ZIP file in memory
+    zip_buffer = io.BytesIO()
+    
+    try:
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            for row in rows:
+                uuid = row["uuid"]
+                filename = row["filename"]
+                
+                try:
+                    # Fetch transcription result from API
+                    response = await asyncio.to_thread(
+                        requests.get,
+                        f"{settings.API_URL}/api/v1/transcriber/{uuid}/result",
+                        headers=get_auth_header(),
+                    )
+                    response.raise_for_status()
+                    
+                    result_data = response.text
+                    
+                    # Create an SRTEditor instance and parse the data
+                    editor = SRTEditor(uuid, output_format.lower(), filename)
+                    
+                    if output_format == "SRT":
+                        editor.parse_srt(result_data)
+                    else:  # TXT
+                        editor.parse_txt(result_data)
+                    
+                    # Export in the desired format
+                    if export_format == "SRT":
+                        export_content = editor.export_srt()
+                        file_ext = "srt"
+                    elif export_format == "VTT":
+                        export_content = editor.export_vtt()
+                        file_ext = "vtt"
+                    elif export_format == "TXT":
+                        export_content = editor.export_txt()
+                        file_ext = "txt"
+                    elif export_format == "JSON":
+                        export_content = json.dumps(editor.export_json(), indent=2)
+                        file_ext = "json"
+                    elif export_format == "RTF":
+                        # Use default RTF export settings
+                        export_content = editor.export_rtf(
+                            speakers=True,
+                            times=True,
+                            block_nr=True,
+                            ts_which="both",
+                            ts_fmt="srt"
+                        )
+                        file_ext = "rtf"
+                    elif export_format == "CSV":
+                        export_content = editor.export_csv()
+                        file_ext = "csv"
+                    elif export_format == "TSV":
+                        export_content = editor.export_tsv()
+                        file_ext = "tsv"
+                    else:
+                        continue
+                    
+                    # Remove the original extension and add the new one
+                    base_filename = filename.rsplit('.', 1)[0] if '.' in filename else filename
+                    export_filename = f"{base_filename}.{file_ext}"
+                    
+                    # Add to ZIP file
+                    zip_file.writestr(export_filename, export_content)
+                    
+                except requests.exceptions.RequestException as e:
+                    ui.notify(
+                        f"Failed to export {filename}: {str(e)}",
+                        type="negative",
+                        position="top"
+                    )
+                    continue
+        
+        # Prepare ZIP for download
+        zip_buffer.seek(0)
+        zip_data = zip_buffer.getvalue()
+        
+        # Generate download filename
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        download_filename = f"bulk_export_{timestamp}.zip"
+        
+        # Trigger download
+        ui.download(zip_data, download_filename)
+        
+        ui.notify(
+            f"Successfully exported {len(rows)} files",
+            type="positive",
+            position="top"
+        )
+        
+    except Exception as e:
+        ui.notify(
+            f"Error during bulk export: {str(e)}",
+            type="negative",
+            position="top"
+        )
