@@ -223,7 +223,7 @@ def create() -> None:
                                     lambda: editor.select_caption_from_video(),
                                 )
                         with right_splitter.after:
-                            with ui.card().classes("w-full h-full").style(
+                            with ui.card().classes("w-full h-full flex flex-col").style(
                                 "box-shadow: none;"
                             ):
                                 ui.label("Assistant").classes("text-h6")

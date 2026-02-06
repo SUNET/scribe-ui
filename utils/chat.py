@@ -42,7 +42,7 @@ class InferenceActions:
         """
         Create the action buttons UI.
         """
-        with ui.column().classes("w-full gap-2"):
+        with ui.column().classes("w-full h-full gap-2"):
             with ui.row().classes("w-full gap-2 flex-wrap"):
                 for action_key, action_config in self.ACTIONS.items():
                     ui.button(
@@ -54,8 +54,13 @@ class InferenceActions:
             self.result_container = (
                 ui.column()
                 .classes("w-full gap-2 p-2 bg-gray-50 rounded")
-                .style("min-height: 100px; max-height: 300px; overflow-y: auto;")
+                .style("min-height: 100px; flex: 1; overflow-y: auto;")
             )
+
+            ui.label(
+                "Note: AI-generated content may contain errors or misinterpretations. "
+                "Always verify against the original recording or transcript."
+            ).classes("text-xs text-gray-500 italic mt-2")
 
     async def _execute_action(self, action_key: str) -> None:
         """
@@ -74,8 +79,24 @@ class InferenceActions:
             ui.label(f"Processing {action['label'].lower()}...")
 
         # Prepare the data
-        data_str = self.data if isinstance(self.data, str) else json.dumps(self.data)
-        message = f"{action['prompt']} Respond in the language: {self.language}\n\n{data_str}"
+        try:
+            data_str = json.loads(self.data["result"])
+            data_str = data_str["full_transcription"]
+        except Exception:
+            data_str = self.data["result"]
+
+        message = f"{action['prompt']} Respond in the language: {self.language} and follow these rules: "
+        message += "Do not ask if I have any further questions or further details. "
+        message += """You are assisting with producing clear and neutral written documentation
+based on spoken academic content.
+
+The content may originate from a lecture, a discussion, a presentation,
+or an interview.
+
+The output is intended for internal use in a university context and
+should be easy to read, review, and edit."""
+        message += f"Remember to respond in {self.language}. "
+        message += f"\n\n{data_str}"
 
         token = app.storage.user.get("token")
         if not token:
