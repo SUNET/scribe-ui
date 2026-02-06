@@ -75,8 +75,8 @@ class InferenceActions:
 
         self.result_container.clear()
         with self.result_container:
-            spinner = ui.spinner("dots", size="lg")
-            ui.label(f"Processing {action['label'].lower()}...")
+            ui.spinner("dots", size="lg")
+            ui.label(f"Generating {action['label'].lower()}...")
 
         # Prepare the data
         try:
