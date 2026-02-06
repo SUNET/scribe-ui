@@ -1009,7 +1009,21 @@ async def execute_bulk_export(
                         continue
                     
                     # Remove the original extension and add the new one
-                    base_filename = filename.rsplit('.', 1)[0] if '.' in filename else filename
+                    # Handle common audio/video file extensions
+                    known_extensions = [
+                        '.mp3', '.wav', '.flac', '.mp4', '.mkv', '.avi', 
+                        '.m4a', '.aiff', '.aif', '.mov', '.ogg', '.opus', 
+                        '.webm', '.wma', '.mpg', '.mpeg'
+                    ]
+                    base_filename = filename
+                    for ext in known_extensions:
+                        if filename.lower().endswith(ext):
+                            base_filename = filename[:-len(ext)]
+                            break
+                    else:
+                        # Fallback: remove last extension if no known extension matched
+                        base_filename = filename.rsplit('.', 1)[0] if '.' in filename else filename
+                    
                     export_filename = f"{base_filename}.{file_ext}"
                     
                     # Add to ZIP file
