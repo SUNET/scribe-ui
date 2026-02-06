@@ -87,14 +87,18 @@ class InferenceActions:
 
         message = f"{action['prompt']} Respond in the language: {self.language} and follow these rules: "
         message += "Do not ask if I have any further questions or further details. "
-        message += """You are assisting with producing clear and neutral written documentation
-based on spoken academic content.
+        message += """You are assisting with producing clear and neutral written documentation based on spoken academic content.
 
-The content may originate from a lecture, a discussion, a presentation,
-or an interview.
+The content may originate from a lecture, a discussion, a presentation or an interview.
 
-The output is intended for internal use in a university context and
-should be easy to read, review, and edit."""
+The output is intended for internal use in a university context and should be easy to read, review, and edit.
+
+Output requirements:
+- Write only the requested content.
+- Do not include greetings, introductions, or meta commentary.
+- Do not explain what the text is or what you are about to do.
+- Start directly with the content itself.
+"""
         message += f"Remember to respond in {self.language}. "
         message += f"\n\n{data_str}"
 
