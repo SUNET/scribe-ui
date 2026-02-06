@@ -949,6 +949,7 @@ async def execute_bulk_export(
     
     # Create a ZIP file in memory
     zip_buffer = io.BytesIO()
+    successful_exports = 0
     
     try:
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
@@ -1013,6 +1014,7 @@ async def execute_bulk_export(
                     
                     # Add to ZIP file
                     zip_file.writestr(export_filename, export_content)
+                    successful_exports += 1
                     
                 except requests.exceptions.RequestException as e:
                     ui.notify(
@@ -1022,22 +1024,30 @@ async def execute_bulk_export(
                     )
                     continue
         
-        # Prepare ZIP for download
-        zip_buffer.seek(0)
-        zip_data = zip_buffer.getvalue()
-        
-        # Generate download filename
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        download_filename = f"bulk_export_{timestamp}.zip"
-        
-        # Trigger download
-        ui.download(zip_data, download_filename)
-        
-        ui.notify(
-            f"Successfully exported {len(rows)} files",
-            type="positive",
-            position="top"
-        )
+        # Only download if at least one file was exported successfully
+        if successful_exports > 0:
+            # Prepare ZIP for download
+            zip_buffer.seek(0)
+            zip_data = zip_buffer.getvalue()
+            
+            # Generate download filename
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            download_filename = f"bulk_export_{timestamp}.zip"
+            
+            # Trigger download
+            ui.download(zip_data, download_filename)
+            
+            ui.notify(
+                f"Successfully exported {successful_exports} of {len(rows)} files",
+                type="positive",
+                position="top"
+            )
+        else:
+            ui.notify(
+                "No files were exported successfully",
+                type="negative",
+                position="top"
+            )
         
     except Exception as e:
         ui.notify(

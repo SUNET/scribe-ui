@@ -34,6 +34,8 @@ def create() -> None:
             
             # Enable Bulk Export if at least 2 selected rows have status "Completed" 
             # AND all completed rows have the same output_format
+            # Note: Minimum of 2 files required as per requirements - for single file
+            # exports, users can use the individual "Edit" button
             completed_rows = [row for row in selected if row["status"] == "Completed"]
             if len(completed_rows) >= 2:
                 output_formats = set(row.get("output_format") for row in completed_rows)
