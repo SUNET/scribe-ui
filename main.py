@@ -3,10 +3,11 @@ from nicegui import app, ui
 from pages.admin import create as create_admin
 from pages.home import create as create_files_table
 from pages.srt import create as create_srt
+from pages.status import create as create_status
 from pages.user import create as create_user_page
 from utils.common import default_styles
 from utils.settings import get_settings
-from utils.token import get_user_data, get_user_status
+from utils.token import get_user_data, get_user_status, get_token_is_valid
 from utils.helpers import (
     encryption_password_set,
     encryption_password_verify,
@@ -19,6 +20,7 @@ create_files_table()
 create_srt()
 create_admin()
 create_user_page()
+create_status()
 
 
 @ui.page("/")
@@ -105,10 +107,8 @@ async def index(request: Request) -> None:
                     ).props("color=black").style("margin-top: 10px;")
                 dialog.open()
         else:
-            # Ask the user to enter their encryption password
             with ui.dialog() as dialog:
-                with ui.card() as card:
-                    # Set the width
+                with ui.card():
                     ui.label("Enter your encryption passphrase").classes("text-h6")
                     password_input = ui.input(
                         "Encryption Passphrase", password=True
@@ -172,26 +172,61 @@ async def index(request: Request) -> None:
                 dialog.open()
 
     else:
-        with ui.card() as card:
-            card.style("width: 50%; align-self: center; height: 50vh; margin-top: 10%;")
-            ui.label(settings.LANDING_TEXT).classes("text-h5").style("margin: auto;")
-            ui.label(
-                "You must ask your administrator for access before you can login."
-            ).classes("text-subtitle2").style("margin: auto; margin-bottom: 10px;")
-            ui.image(f"static/{settings.LOGO_LANDING}").style(
-                f"max-width: {settings.LOGO_LANDING_WIDTH}px; height: auto; margin: auto; magin-top: auto;"
-            )
-            ui.button(
-                "Login with SSO",
-                icon="login",
-                on_click=lambda: ui.navigate.to(settings.OIDC_APP_LOGIN_ROUTE),
-            ).style(
-                "margin-top: auto; margin-bottom: 5px; align-self: center; width: 200px;"
-            ).props(
-                "flat color=white"
-            ).classes(
-                "button-default-style"
-            )
+        has_token = bool(
+            app.storage.user.get("token") and app.storage.user.get("refresh_token")
+        )
+
+        if has_token and not get_token_is_valid():
+            return ui.navigate.to("/logout")
+
+        is_not_activated = has_token and not get_user_status()
+
+        with ui.column().classes("w-full h-screen items-center justify-center"):
+          with ui.card().style(
+              "width: 500px; max-width: 90%; padding: 40px; border: 0; box-shadow: none;"
+          ):
+            with ui.column().classes("w-full items-center gap-4"):
+                ui.image(f"static/{settings.LOGO_LANDING}").style(
+                    f"max-width: {settings.LOGO_LANDING_WIDTH}px; height: auto;"
+                )
+
+                ui.label("Welcome to Sunet Scribe").classes(
+                    "text-h5 text-center"
+                ).style("margin-top: 20px;")
+
+                if is_not_activated:
+                    with ui.card().classes("w-full no-shadow").style(
+                        "background-color: #fff3cd; border: 1px solid #ffc107; padding: 20px; margin-top: 20px; min-height: 160px;"
+                    ):
+                        with ui.column().classes("items-center gap-3"):
+                            ui.icon("warning", size="lg").style("color: #ff9800;")
+                            ui.label("Account Pending Activation").classes("text-h6")
+                            ui.label(
+                                "Your account has been created but is not yet activated. Please contact your administrator to enable access."
+                            ).classes("text-body2 text-center")
+
+                    with ui.row().classes("w-full gap-3 justify-center").style(
+                        "margin-top: 30px;"
+                    ):
+                        ui.button(
+                            "Try Again",
+                            icon="refresh",
+                            on_click=lambda: ui.navigate.to("/"),
+                        ).props("flat color=white").classes("button-default-style")
+
+                        ui.button(
+                            "Logout",
+                            icon="logout",
+                            on_click=lambda: ui.navigate.to("/logout"),
+                        ).props("flat color=black").classes("button-close")
+                else:
+                    ui.button(
+                        "Login with SSO",
+                        icon="login",
+                        on_click=lambda: ui.navigate.to(settings.OIDC_APP_LOGIN_ROUTE),
+                    ).props("flat color=white").classes("button-default-style").style(
+                        "width: 220px; height: 44px; margin-top: 30px;"
+                    )
 
 
 @ui.page("/logout")
