@@ -3,6 +3,7 @@ from nicegui import app, ui
 from pages.admin import create as create_admin
 from pages.home import create as create_files_table
 from pages.srt import create as create_srt
+from pages.status import create as create_status
 from pages.user import create as create_user_page
 from utils.common import default_styles
 from utils.settings import get_settings
@@ -19,6 +20,7 @@ create_files_table()
 create_srt()
 create_admin()
 create_user_page()
+create_status()
 
 
 @ui.page("/")
