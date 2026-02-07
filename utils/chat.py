@@ -14,21 +14,62 @@ class InferenceActions:
     Action buttons component for performing inference tasks on transcription data.
     """
 
+    BASE_PROMPT = """Do not ask if I have any further questions or further details. "
+You are assisting with producing clear and neutral written documentation based on spoken academic content.
+
+The content may originate from a lecture, a discussion, a presentation or an interview.
+
+The output is intended for internal use in a university context and should be easy to read, review, and edit.
+
+Output requirements:
+- Write only the requested content.
+- Do not include greetings, introductions, or meta commentary.
+- Do not explain what the text is or what you are about to do.
+- Start directly with the content itself.
+"""
+
     ACTIONS = {
         "summarize": {
-            "label": "Summarize",
+            "label": "Summary",
             "icon": "summarize",
-            "prompt": "Please provide a concise summary of the following transcription:",
+            "prompt": BASE_PROMPT
+            + "Please provide a concise summary of the following transcription:",
         },
         "key_points": {
             "label": "Key Points",
             "icon": "list",
-            "prompt": "Extract the key points and main topics from this transcription:",
+            "prompt": BASE_PROMPT
+            + "Extract the key points and main topics from this transcription:",
         },
         "action_items": {
             "label": "Action Items",
             "icon": "checklist",
-            "prompt": "Identify any action items, tasks, or to-dos mentioned in this transcription:",
+            "prompt": BASE_PROMPT
+            + "Identify any action items, tasks, or to-dos mentioned in this transcription:",
+        },
+        "study_notes": {
+            "label": "Study Notes",
+            "icon": "school",
+            "prompt": BASE_PROMPT
+            + """You are writing study notes based on a university lecture.
+
+The notes are intended to help a student understand and review the material afterwards.
+They should be clear, practical, and easy to revisit.
+
+Base the notes strictly on the provided transcript.
+Do not add interpretations, opinions, or external knowledge.
+If something is unclear or unfinished in the lecture, reflect that uncertainty rather than filling in gaps.
+
+Focus on:
+key concepts and definitionsexplanations and reasoningexamples explicitly mentioned by the lecturerhow ideas relate to each other
+
+Use bullet points and short paragraphs.
+Write in a clear, informal-academic tone suitable for study notes.
+Avoid formal report or protocol language.
+
+Write only the notes themselves.
+Do not include introductions, greetings, or meta commentary.
+Start directly with the content.""",
         },
     }
 
@@ -86,20 +127,6 @@ class InferenceActions:
             data_str = self.data["result"]
 
         message = f"{action['prompt']} Respond in the language: {self.language} and follow these rules: "
-        message += "Do not ask if I have any further questions or further details. "
-        message += """You are assisting with producing clear and neutral written documentation based on spoken academic content.
-
-The content may originate from a lecture, a discussion, a presentation or an interview.
-
-The output is intended for internal use in a university context and should be easy to read, review, and edit.
-
-Output requirements:
-- Write only the requested content.
-- Do not include greetings, introductions, or meta commentary.
-- Do not explain what the text is or what you are about to do.
-- Start directly with the content itself.
-"""
-        message += f"Remember to respond in {self.language}. "
         message += f"\n\n{data_str}"
 
         token = app.storage.user.get("token")
