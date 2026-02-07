@@ -8,6 +8,8 @@ from utils.common import (
     table_upload,
     table_delete,
     table_transcribe,
+    table_bulk_export,
+    table_bulk_transcribe,
 )
 
 
@@ -25,6 +27,15 @@ def create() -> None:
             Toggle the state of buttons based on selected rows.
             """
             delete.set_enabled(bool(selected))
+
+            # Enable bulk export only when all selected completed jobs share the same type
+            completed = [r for r in selected if r.get("status") == "Completed"]
+            formats = set(r.get("output_format", "") for r in completed)
+            bulk_export.set_enabled(len(completed) >= 2 and len(formats) == 1)
+
+            # Enable bulk transcribe when 2+ uploaded jobs are selected
+            uploaded = [r for r in selected if r.get("status") == "Uploaded"]
+            bulk_transcribe.set_enabled(len(uploaded) >= 2)
 
         table = ui.table(
             on_select=lambda e: toggle_buttons(e.selection),
@@ -102,6 +113,20 @@ def create() -> None:
                 delete.set_enabled(False)
                 delete.visible = False
 
+            with ui.button("Export", icon="download") as bulk_export:
+                bulk_export.props("color=black flat")
+                bulk_export.classes("default-style")
+                bulk_export.on("click", lambda: table_bulk_export(table))
+                bulk_export.set_enabled(False)
+                bulk_export.visible = False
+
+            with ui.button("Transcribe", icon="mic") as bulk_transcribe:
+                bulk_transcribe.props("color=black flat")
+                bulk_transcribe.classes("default-style")
+                bulk_transcribe.on("click", lambda: table_bulk_transcribe(table))
+                bulk_transcribe.set_enabled(False)
+                bulk_transcribe.visible = False
+
         def update_rows():
             """
             Update the rows in the table.
@@ -110,8 +135,12 @@ def create() -> None:
 
             if not rows:
                 delete.set_enabled(False)
+                bulk_export.set_enabled(False)
+                bulk_transcribe.set_enabled(False)
             else:
                 delete.visible = True
+                bulk_export.visible = True
+                bulk_transcribe.visible = True
 
             table.selection = "multiple" if rows else "none"
             table.update_rows(rows, clear_selection=False)
