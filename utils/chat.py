@@ -126,7 +126,9 @@ Start directly with the content.""",
         except Exception:
             data_str = self.data["result"]
 
-        message = f"{action['prompt']} Respond in the language: {self.language} and follow these rules: "
+        message = (
+            f" Respond in {self.language} and follow these rules: {action['prompt']}"
+        )
         message += f"\n\n{data_str}"
 
         token = app.storage.user.get("token")
