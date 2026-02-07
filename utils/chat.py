@@ -32,26 +32,22 @@ Output requirements:
         "summarize": {
             "label": "Summary",
             "icon": "summarize",
-            "prompt": BASE_PROMPT
-            + "Please provide a concise summary of the following transcription:",
+            "prompt": "Please provide a concise summary of the following transcription:",
         },
         "key_points": {
             "label": "Key Points",
             "icon": "list",
-            "prompt": BASE_PROMPT
-            + "Extract the key points and main topics from this transcription:",
+            "prompt": "Extract the key points and main topics from this transcription:",
         },
         "action_items": {
             "label": "Action Items",
             "icon": "checklist",
-            "prompt": BASE_PROMPT
-            + "Identify any action items, tasks, or to-dos mentioned in this transcription:",
+            "prompt": "Identify any action items, tasks, or to-dos mentioned in this transcription:",
         },
         "study_notes": {
             "label": "Study Notes",
             "icon": "school",
-            "prompt": BASE_PROMPT
-            + """You are writing study notes based on a university lecture.
+            "prompt": """You are writing study notes based on a university lecture.
 
 The notes are intended to help a student understand and review the material afterwards.
 They should be clear, practical, and easy to revisit.
