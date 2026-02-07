@@ -808,54 +808,75 @@ def table_bulk_export(table: ui.table) -> None:
     source_format = formats.pop()
     data_format = "srt" if source_format == "SRT" else "txt"
 
-    # Build editors for each job by fetching data from API
-    editors = []
-    for row in completed:
-        uuid = row["uuid"]
-        filename = row["filename"]
-        try:
-            if data_format == "srt":
-                response = requests.get(
-                    f"{settings.API_URL}/api/v1/transcriber/{uuid}/result/srt",
-                    headers=get_auth_header(),
-                    json={
-                        "encryption_password": app.storage.user.get(
-                            "encryption_password"
-                        )
-                    },
-                )
-            else:
-                response = requests.get(
-                    f"{settings.API_URL}/api/v1/transcriber/{uuid}/result/txt",
-                    headers=get_auth_header(),
-                    json={
-                        "encryption_password": app.storage.user.get(
-                            "encryption_password"
-                        )
-                    },
-                )
-            response.raise_for_status()
-            data = response.json()
-
-            from utils.srt import SRTEditor
-
-            editor = SRTEditor(uuid, data_format, filename)
-
-            if data_format == "srt":
-                editor.parse_srt(data["result"])
-            else:
-                editor.parse_txt(data["result"])
-
-            editors.append((filename, editor))
-        except requests.exceptions.RequestException as e:
-            ui.notify(
-                f"Error fetching {filename}: {str(e)}",
-                type="negative",
-                position="top",
+    # Show progress dialog while fetching
+    with ui.dialog() as progress_dialog:
+        with ui.card().classes("p-6 items-center").style(
+            "min-width: 400px; background-color: #ffffff;"
+        ):
+            ui.label("Preparing export...").classes("text-h6 text-black mb-2")
+            progress_label = ui.label(f"Fetching file 0 of {len(completed)}").classes(
+                "text-body2 mb-2"
             )
-            return
+            progress = ui.linear_progress(value=0, show_value=False).classes("w-full")
 
-    show_bulk_export_dialog(editors, data_format)
+    progress_dialog.open()
+
+    async def fetch_and_show():
+        from utils.srt import SRTEditor
+
+        editors = []
+        for i, row in enumerate(completed):
+            uuid = row["uuid"]
+            filename = row["filename"]
+            progress_label.set_text(
+                f"Fetching file {i + 1} of {len(completed)}: {filename}"
+            )
+            progress.set_value((i + 1) / len(completed))
+            try:
+                if data_format == "srt":
+                    response = requests.get(
+                        f"{settings.API_URL}/api/v1/transcriber/{uuid}/result/srt",
+                        headers=get_auth_header(),
+                        json={
+                            "encryption_password": app.storage.user.get(
+                                "encryption_password"
+                            )
+                        },
+                    )
+                else:
+                    response = requests.get(
+                        f"{settings.API_URL}/api/v1/transcriber/{uuid}/result/txt",
+                        headers=get_auth_header(),
+                        json={
+                            "encryption_password": app.storage.user.get(
+                                "encryption_password"
+                            )
+                        },
+                    )
+                response.raise_for_status()
+                data = response.json()
+
+                editor = SRTEditor(uuid, data_format, filename)
+                if data_format == "srt":
+                    editor.parse_srt(data["result"])
+                else:
+                    editor.parse_txt(data["result"])
+                editors.append((filename, editor))
+            except requests.exceptions.RequestException as e:
+                progress_dialog.close()
+                ui.notify(
+                    f"Error fetching {filename}: {str(e)}",
+                    type="negative",
+                    position="top",
+                )
+                return
+
+            await asyncio.sleep(0)  # yield to UI to update progress
+
+        progress_dialog.close()
+        show_bulk_export_dialog(editors, data_format)
+
+    ui.timer(0.1, fetch_and_show, once=True)
 
 
 def show_bulk_export_dialog(editors: list, data_format: str) -> None:
