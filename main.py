@@ -255,4 +255,5 @@ ui.run(
     host="0.0.0.0",
     port=8888,
     favicon=f"/static/{settings.FAVICON}",
+    reconnect_timeout=15,
 )
