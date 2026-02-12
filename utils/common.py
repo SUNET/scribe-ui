@@ -1,9 +1,6 @@
 import asyncio
-import io
-import json
 import requests
 import pytz
-import zipfile
 from datetime import datetime, timedelta
 
 from nicegui import ui, app
@@ -71,11 +68,21 @@ default_styles = """
             background-color: #d3ecbe;
             border: 1px solid #000000;
         }
+        .default-style.disabled {
+            background-color: #e0e0e0 !important;
+            border: 1px solid #bdbdbd !important;
+            opacity: 0.7;
+        }
         .delete-style {
             background-color: #ffffff;
             color: #721c24;
             border: 1px solid #000000;
             width: 150px;
+        }
+        .delete-style.disabled {
+            background-color: #e0e0e0 !important;
+            border: 1px solid #bdbdbd !important;
+            opacity: 0.7;
         }
         .table-style th {
             font-size: 14px;
@@ -874,125 +881,11 @@ def table_bulk_export(table: ui.table) -> None:
             await asyncio.sleep(0)  # yield to UI to update progress
 
         progress_dialog.close()
-        show_bulk_export_dialog(editors, data_format)
+        # Use the first editor to show the export dialog with all editors
+        first_filename, first_editor = editors[0]
+        first_editor.show_export_dialog(first_filename, bulk_editors=editors)
 
     ui.timer(0.1, fetch_and_show, once=True)
-
-
-def show_bulk_export_dialog(editors: list, data_format: str) -> None:
-    """
-    Show export dialog for bulk export (no preview). Downloads a zip file.
-    """
-
-    ui.add_head_html(default_styles)
-
-    with ui.dialog() as dialog:
-        with ui.card().classes("p-6").style(
-            "min-width: 500px; max-width: 700px; background-color: #ffffff;"
-        ):
-            with ui.row().classes("w-full items-center justify-between mb-4"):
-                ui.label("Export").classes("text-h5 font-bold text-black")
-                ui.button(icon="close", on_click=dialog.close).props(
-                    "flat round dense color=grey-7"
-                )
-
-            ui.separator().classes("mb-4")
-
-            ui.label(f"Exporting {len(editors)} file(s)").classes("text-body1 mb-2")
-
-            with ui.column().classes("gap-4 w-full"):
-                ui.label("Format").classes("text-subtitle1 font-semibold")
-                if data_format == "srt":
-                    format_opts = {
-                        "srt": "SubRip (.srt)",
-                        "vtt": "WebVTT (.vtt)",
-                    }
-                else:
-                    format_opts = {
-                        "txt": "Text (.txt)",
-                        "json": "JSON (.json)",
-                        "rtf": "RTF (.rtf)",
-                        "csv": "CSV (.csv)",
-                        "tsv": "TSV (.tsv)",
-                    }
-
-                fmt = (
-                    ui.select(options=format_opts, value=list(format_opts.keys())[0])
-                    .classes("w-full")
-                    .props("outlined dense")
-                )
-
-            ui.separator().classes("my-4")
-
-            with ui.row().classes("w-full justify-between items-center"):
-                ui.label("").bind_text_from(
-                    fmt, "value", backward=lambda v: f"Format: .{v}"
-                ).classes("text-body2")
-                with ui.row().classes("gap-2"):
-                    ui.button("Close", on_click=dialog.close).props(
-                        "outline color=black"
-                    )
-
-                    def do_bulk_export():
-                        try:
-                            zip_buffer = io.BytesIO()
-                            chosen_fmt = fmt.value
-                            seen_names = {}
-
-                            with zipfile.ZipFile(
-                                zip_buffer, "w", zipfile.ZIP_DEFLATED
-                            ) as zf:
-                                for filename, editor in editors:
-                                    match chosen_fmt:
-                                        case "srt":
-                                            content = editor.export_srt()
-                                        case "vtt":
-                                            content = editor.export_vtt()
-                                        case "txt":
-                                            content = editor.export_txt()
-                                        case "json":
-                                            content = json.dumps(
-                                                editor.export_json(), indent=2
-                                            )
-                                        case "rtf":
-                                            content = editor.export_rtf(
-                                                speakers=True,
-                                                times=True,
-                                                block_nr=False,
-                                            )
-                                        case "csv":
-                                            content = editor.export_csv()
-                                        case "tsv":
-                                            content = editor.export_tsv()
-                                        case _:
-                                            content = editor.export_txt()
-
-                                    base_name = f"{filename}.{chosen_fmt}"
-
-                                    if base_name in seen_names:
-                                        seen_names[base_name] += 1
-                                        base_name = f"{filename}_{seen_names[base_name]}.{chosen_fmt}"
-                                    else:
-                                        seen_names[base_name] = 0
-
-                                    zf.writestr(base_name, content)
-
-                            ui.download(
-                                zip_buffer.getvalue(),
-                                filename="bulk_export.zip",
-                            )
-                            ui.notify(
-                                f"Exported {len(editors)} files as {chosen_fmt.upper()}",
-                                type="positive",
-                            )
-                        except Exception as e:
-                            ui.notify(f"Export failed: {str(e)}", type="negative")
-
-                    ui.button("Export", icon="download", on_click=do_bulk_export).props(
-                        "flat color=white"
-                    ).classes("button-default-style")
-
-        dialog.open()
 
 
 def start_transcription(
