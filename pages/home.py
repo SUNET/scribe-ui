@@ -111,18 +111,25 @@ def create() -> None:
                 delete.classes("delete-style")
                 delete.on("click", lambda: table_delete(table))
                 delete.set_enabled(False)
+                ui.tooltip("Select one or more jobs to enable deletion.")
 
             with ui.button("Export", icon="download") as bulk_export:
                 bulk_export.props("color=black flat")
                 bulk_export.classes("default-style")
                 bulk_export.on("click", lambda: table_bulk_export(table))
                 bulk_export.set_enabled(False)
+                ui.tooltip(
+                    "Export is only available when all selected completed jobs share the same output format."
+                )
 
             with ui.button("Transcribe", icon="rtt") as bulk_transcribe:
                 bulk_transcribe.props("color=black flat")
                 bulk_transcribe.classes("default-style")
                 bulk_transcribe.on("click", lambda: table_bulk_transcribe(table))
                 bulk_transcribe.set_enabled(False)
+                ui.tooltip(
+                    "Select one or more uploaded jobs to enable bulk transcription."
+                )
 
         def update_rows():
             """
