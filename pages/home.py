@@ -120,7 +120,7 @@ def create() -> None:
                 bulk_export.set_enabled(False)
                 bulk_export.visible = False
 
-            with ui.button("Transcribe", icon="mic") as bulk_transcribe:
+            with ui.button("Transcribe", icon="transcribe") as bulk_transcribe:
                 bulk_transcribe.props("color=black flat")
                 bulk_transcribe.classes("default-style")
                 bulk_transcribe.on("click", lambda: table_bulk_transcribe(table))
