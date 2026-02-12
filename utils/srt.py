@@ -1922,6 +1922,7 @@ class SRTEditor:
         """
         import io
         import zipfile
+        from pathlib import Path
 
         is_bulk = bulk_editors is not None and len(bulk_editors) > 0
 
@@ -2457,7 +2458,7 @@ class SRTEditor:
                             fmt, "value", backward=lambda v: f"Format: .{v}"
                         ).classes("text-body2")
                     else:
-                        ui.label(f"File: {filename}.{fmt.value}").classes("text-body2")
+                        ui.label(f"File: {Path(filename).stem}.{fmt.value}").classes("text-body2")
                     with ui.row().classes("gap-2"):
                         ui.button("Close", on_click=dialog.close).props(
                             "outline color=black"
@@ -2672,11 +2673,11 @@ class SRTEditor:
                                     ) as zf:
                                         for bfn, beditor in bulk_editors:
                                             content = export_one(beditor)
-                                            base_name = f"{bfn}.{chosen_fmt}"
+                                            base_name = f"{Path(bfn).stem}.{chosen_fmt}"
 
                                             if base_name in seen_names:
                                                 seen_names[base_name] += 1
-                                                base_name = f"{bfn}_{seen_names[base_name]}.{chosen_fmt}"
+                                                base_name = f"{Path(bfn).stem}_{seen_names[base_name]}.{chosen_fmt}"
                                             else:
                                                 seen_names[base_name] = 0
 
@@ -2694,7 +2695,7 @@ class SRTEditor:
                                     c = export_one(self)
                                     ui.download(
                                         c.encode("utf-8"),
-                                        filename=f"{filename}.{fmt.value}",
+                                        filename=f"{Path(filename).stem}.{fmt.value}",
                                     )
                                     ui.notify(
                                         f"Exported as {fmt.value.upper()}",
