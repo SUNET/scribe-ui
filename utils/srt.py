@@ -1935,7 +1935,7 @@ class SRTEditor:
             ):
                 # Header
                 with ui.row().classes("w-full items-center justify-between mb-4"):
-                    ui.label("Export Transcription").classes(
+                    ui.label("Export Transcript").classes(
                         "text-h5 font-bold text-black"
                     )
                     ui.button(icon="close", on_click=dialog.close).props(

@@ -191,7 +191,7 @@ def show_help_dialog() -> None:
                         (
                             "2",
                             "Configure",
-                            'Click the "Transcribe" button, select language, number of speakers, and output format (transcribed text or subtitles).',
+                            'Click the "Transcribe" button, select language, number of speakers, and output format (transcript or subtitles).',
                             "settings",
                         ),
                         (
@@ -380,11 +380,11 @@ def jobs_get() -> list:
         if job["status"] != "completed":
             job_type = ""
         elif job["output_format"] == "txt":
-            job_type = "Transcription"
+            job_type = "Transcript"
         elif job["output_format"] == "srt":
             job_type = "Subtitles"
         else:
-            job_type = "Transcription"
+            job_type = "Transcript"
 
         job_data = {
             "id": idx,
@@ -626,8 +626,8 @@ def table_transcribe(selected_row) -> None:
                 ui.label("Output format").classes("text-subtitle2 q-mb-sm")
                 output_format = (
                     ui.radio(
-                        ["Transcribed text", "Subtitles"],
-                        value="Transcribed text",
+                        ["Transcript", "Subtitles"],
+                        value="Transcript",
                     )
                     .classes("w-full")
                     .props("inline")
@@ -706,8 +706,8 @@ def table_bulk_transcribe(table: ui.table) -> None:
                 ui.label("Output format").classes("text-subtitle2 q-mb-sm")
                 output_format = (
                     ui.radio(
-                        ["Transcribed text", "Subtitles"],
-                        value="Transcribed text",
+                        ["Transcript", "Subtitles"],
+                        value="Transcript",
                     )
                     .classes("w-full")
                     .props("inline")
@@ -902,6 +902,8 @@ def start_transcription(
 
     if output_format == "Subtitles":
         output_format = "SRT"
+    elif output_format in ("Transcript", "Transcribed text"):
+        output_format = "TXT"
     else:
         output_format = "TXT"
 
