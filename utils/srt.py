@@ -1925,14 +1925,17 @@ class SRTEditor:
         from pathlib import Path
 
         is_bulk = bulk_editors is not None and len(bulk_editors) > 0
+        # For bulk mode with txt formats: show preview using first file
+        bulk_needs_preview = is_bulk and self.data_format == "txt"
 
         ui.add_head_html(default_styles)
         with ui.dialog() as dialog:
-            with ui.card().classes("p-6").style(
-                f"min-width: {'500' if is_bulk else '1000'}px; "
-                f"max-width: {'700' if is_bulk else '1400'}px; "
+            card = ui.card().classes("p-6").style(
+                f"min-width: {'1000' if (not is_bulk or bulk_needs_preview) else '500'}px; "
+                f"max-width: {'1400' if (not is_bulk or bulk_needs_preview) else '700'}px; "
                 "background-color: #ffffff;"
-            ):
+            )
+            with card:
                 # Header
                 with ui.row().classes("w-full items-center justify-between mb-4"):
                     ui.label("Export Transcript").classes(
@@ -1949,11 +1952,11 @@ class SRTEditor:
                         "text-body1 mb-2"
                     )
 
-                # Two-column layout (single column in bulk mode)
+                # Two-column layout (single column for bulk srt/vtt)
                 with ui.row().classes("w-full gap-6"):
-                    # Left: Options (40% in normal, full width in bulk)
+                    # Left: Options (fixed width when preview shown)
                     with ui.column().classes("gap-4").style(
-                        "flex: 0 0 400px;" if not is_bulk else "width: 100%;"
+                        "flex: 0 0 400px;" if (not is_bulk or bulk_needs_preview) else "width: 100%;"
                     ):
                         # Format
                         ui.label("Format").classes("text-subtitle1 font-semibold")
@@ -2175,6 +2178,8 @@ class SRTEditor:
                                 )
                                 ui.separator()
 
+                        bulk_preview_col = None
+
                         def update_options_visibility():
                             """Show/hide options based on selected format"""
                             current_fmt = fmt.value
@@ -2193,17 +2198,37 @@ class SRTEditor:
                             json_section.visible = current_fmt == "json"
                             rtf_section.visible = current_fmt == "rtf"
 
+                            # In bulk mode, show/hide preview based on format
+                            if bulk_needs_preview and bulk_preview_col is not None:
+                                show_prev = current_fmt not in ["srt", "vtt"]
+                                bulk_preview_col.visible = show_prev
+                                # Resize dialog based on preview visibility
+                                card.style(
+                                    f"min-width: {'1000' if show_prev else '500'}px; "
+                                    f"max-width: {'1400' if show_prev else '700'}px; "
+                                    "background-color: #ffffff;"
+                                )
+
                         fmt.on(
                             "update:model-value", lambda: update_options_visibility()
                         )
-                        update_options_visibility()
 
-                    # Right: Preview (60%) - skip in bulk mode
-                    if not is_bulk:
-                        with ui.column().classes("flex-1"):
-                            ui.label("Preview").classes(
-                                "text-subtitle1 font-semibold mb-2"
-                            )
+                    # Right: Preview (60%) - show for single mode and bulk txt formats
+                    show_preview = not is_bulk or bulk_needs_preview
+                    if show_preview:
+                        preview_col = ui.column().classes("flex-1")
+                        if bulk_needs_preview:
+                            bulk_preview_col = preview_col
+                        with preview_col:
+                            if bulk_needs_preview:
+                                first_fn = bulk_editors[0][0] if bulk_editors else filename
+                                ui.label("Preview").classes(
+                                    "text-subtitle1 font-semibold mb-2"
+                                ).tooltip(f"Showing: {first_fn}")
+                            else:
+                                ui.label("Preview").classes(
+                                    "text-subtitle1 font-semibold mb-2"
+                                )
                             with ui.card().classes("bg-gray-900 p-4").style(
                                 "height: 550px; overflow-y: auto;"
                             ):
@@ -2216,7 +2241,9 @@ class SRTEditor:
                                 )
                             cnt_lbl = ui.label("").classes("text-caption mt-2")
 
-                if not is_bulk:
+                update_options_visibility()
+
+                if show_preview:
 
                     def upd_prev():
                         try:

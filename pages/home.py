@@ -62,6 +62,8 @@ def create() -> None:
                 transcribe_tooltip.text = "One or more files are already transcribed"
             elif len(uploaded) >= 1:
                 transcribe_tooltip.text = "Transcribe selected files"
+            elif len(already_transcribed) > 0 and len(uploaded) == 0:
+                transcribe_tooltip.text = "One or more files are already transcribed"
             else:
                 transcribe_tooltip.text = "Select one or more files to transcribe"
 
