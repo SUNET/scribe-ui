@@ -2,11 +2,10 @@ import asyncio
 import requests
 import pytz
 from datetime import datetime, timedelta
-from requests_toolbelt import MultipartEncoder, MultipartEncoderMonitor
 
 from nicegui import ui, app
 from starlette.formparsers import MultiPartParser
-from typing import Callable, Optional
+from typing import Optional
 from utils.settings import get_settings
 from utils.token import (
     get_admin_status,
@@ -438,36 +437,19 @@ def table_click(event) -> None:
         )
 
 
-def post_file(
-    filedata: bytes,
-    filename: str,
-    progress_callback: Optional[Callable[[float], None]] = None,
-) -> None:
+def post_file(filedata: bytes, filename: str) -> None:
     """
     Post a file to the API.
     """
 
-    encoder = MultipartEncoder(
-        fields={
-            "file": (filename, filedata),
-            "encryption_password": app.storage.user.get("encryption_password") or "",
-        }
-    )
-
-    def _monitor_callback(monitor: MultipartEncoderMonitor):
-        if progress_callback and monitor.len:
-            progress_callback(monitor.bytes_read / monitor.len)
-
-    monitor = MultipartEncoderMonitor(encoder, _monitor_callback)
-
-    headers = get_auth_header()
-    headers["Content-Type"] = monitor.content_type
+    files_json = {"file": (filename, filedata)}
 
     try:
         response = requests.post(
             f"{settings.API_URL}/api/v1/transcriber",
-            data=monitor,
-            headers=headers,
+            files=files_json,
+            headers=get_auth_header(),
+            json={"encryption_password": app.storage.user.get("encryption_password")},
         )
         response.raise_for_status()
 
@@ -527,15 +509,6 @@ def table_upload(table) -> None:
                     close_btn.set_visibility(False)
                 progress_column.set_visibility(False)
 
-            with ui.column().classes(
-                "w-full items-center q-pa-lg"
-            ) as preparing_column:
-                ui.spinner("dots", size="lg").classes("text-grey-8")
-                ui.label("Preparing files...").classes(
-                    "text-body1 text-grey-7 q-mt-sm"
-                )
-                preparing_column.set_visibility(False)
-
             with ui.column().classes("w-full items-center mt-10") as upload_column:
                 upload = ui.upload(
                     label="hidden",
@@ -543,7 +516,6 @@ def table_upload(table) -> None:
                         e,
                         dialog,
                         upload_column,
-                        preparing_column,
                         progress_column,
                         progress_container,
                         progress_header,
@@ -573,42 +545,33 @@ def table_upload(table) -> None:
                 )
 
                 ui.run_javascript(
-                    f"""
+                    """
                         const dz = document.getElementById('dropzone');
                         const hiddenInput = dz.closest('body').querySelector('input[type=file][multiple]');
                         dz.addEventListener('click', () => hiddenInput.click());
 
-                        hiddenInput.addEventListener('change', () => {{
-                            if (hiddenInput.files.length > 0) {{
-                                const uploadCol = getElement({upload_column.id}).$el;
-                                const prepCol = getElement({preparing_column.id}).$el;
-                                uploadCol.style.display = 'none';
-                                prepCol.style.display = '';
-                            }}
-                        }});
-
-                        dz.addEventListener('dragover', e => {{
+                        dz.addEventListener('dragover', e => {
                             e.preventDefault();
                             dz.classList.add('bg-gray-200');
-                        }});
+                        });
 
-                        dz.addEventListener('dragleave', () => {{
+                        dz.addEventListener('dragleave', () => {
                             dz.classList.remove('bg-gray-200');
-                        }});
+                        });
 
-                        dz.addEventListener('drop', e => {{
+                        dz.addEventListener('drop', e => {
                             e.preventDefault();
                             dz.classList.remove('bg-gray-200');
 
                             // Create a DataTransfer to set multiple files
                             const dt = new DataTransfer();
-                            for (const file of e.dataTransfer.files) {{
+                            for (const file of e.dataTransfer.files) {
                                 dt.items.add(file);
-                            }}
+                            }
                             hiddenInput.files = dt.files;
 
-                            hiddenInput.dispatchEvent(new Event('change', {{ bubbles: true }}));
-                        }});
+                            hiddenInput.dispatchEvent(new Event('change', { bubbles: true }));
+                        });
                     """
                 )
                 with ui.row().style("justify-content: flex-end; gap: 12px;"):
@@ -627,7 +590,6 @@ async def handle_upload_with_feedback(
     files,
     dialog,
     upload_column,
-    preparing_column,
     progress_column,
     progress_container,
     progress_header,
@@ -639,7 +601,6 @@ async def handle_upload_with_feedback(
     """
 
     upload_column.set_visibility(False)
-    preparing_column.set_visibility(False)
     progress_column.set_visibility(True)
 
     total = len(files.files)
@@ -660,15 +621,10 @@ async def handle_upload_with_feedback(
                     ui.label(_format_file_size(file_size)).classes(
                         "text-caption text-grey-7"
                     )
-                    progress_bar = ui.linear_progress(value=0, show_value=False).props(
-                        "instant-feedback"
-                    ).classes("w-full q-mt-xs").style("height: 6px;")
-                    progress_bar.set_visibility(False)
                 status_label = ui.label("Pending").classes("text-caption text-grey-6")
         progress_rows[file.name] = {
             "icon": status_icon,
             "label": status_label,
-            "progress": progress_bar,
         }
 
     completed = 0
@@ -683,23 +639,10 @@ async def handle_upload_with_feedback(
         row["icon"].classes(replace="text-blue-6")
         row["label"].set_text("Uploading...")
         row["label"].classes(replace="text-caption text-blue-6")
-        row["progress"].set_visibility(True)
-        row["progress"].set_value(0)
 
         try:
             file_data = await file.read()
-
-            progress_bar_ref = row["progress"]
-
-            def make_progress_callback(pbar):
-                def callback(fraction: float):
-                    pbar.set_value(fraction)
-                return callback
-
-            result = await asyncio.to_thread(
-                post_file, file_data, file_name,
-                progress_callback=make_progress_callback(progress_bar_ref),
-            )
+            result = await asyncio.to_thread(post_file, file_data, file_name)
 
             if result:
                 row["icon"].props("name=check_circle")
