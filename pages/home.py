@@ -48,7 +48,7 @@ def create() -> None:
             elif len(completed) >= 1 and len(formats) == 1:
                 export_tooltip.text = "Export selected files"
             else:
-                export_tooltip.text = "Select one or more completed files to export"
+                export_tooltip.text = "Select one or more already completed files to export"
 
             # Enable bulk transcribe when 1+ uploaded jobs are selected
             uploaded = [r for r in selected if r.get("status") == "Uploaded"]
@@ -75,6 +75,23 @@ def create() -> None:
             pagination=10,
         )
         table.props(":selected-rows-label=\"(n) => n + ' files selected'\"")
+
+        # Custom header checkbox that selects/deselects ALL rows across all pages
+        table.add_slot(
+            "header-selection",
+            """
+            <q-checkbox
+                :model-value="props.selected"
+                @update:model-value="val => { if (!val) { $parent.$emit('deselect_all'); } else { props.selected = true; } }"
+            />
+            """,
+        )
+
+        def deselect_all():
+            table.selected = []
+            toggle_buttons([])
+
+        table.on("deselect_all", deselect_all)
 
         def table_handle_row_click(e: events.GenericEventArguments) -> None:
             if e.args.get("status") == "Completed":

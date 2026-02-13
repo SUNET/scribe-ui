@@ -687,26 +687,20 @@ def table_bulk_transcribe(table: ui.table) -> None:
                     "text-h6 q-mb-xl text-black"
                 )
 
-                if already_done:
-                    with ui.column().classes("w-full q-mb-sm").style(
-                        "background-color: #fff3e0; padding: 8px 12px; border-radius: 4px;"
-                    ):
+                with ui.column().classes("w-full q-mb-sm").style(
+                    "background-color: #fff3e0; padding: 8px 12px; border-radius: 4px;"
+                ):
+                    with ui.row().classes("items-center"):
+                        ui.icon("rtt", color="black").classes("text-body1")
+                        ui.label(
+                            f"{len(uploadable)} file(s) will be transcribed."
+                        ).classes("text-body2 text-black")
+                    if already_done:
                         with ui.row().classes("items-center"):
-                            ui.icon("rtt", color="orange-8").classes("text-body1")
-                            ui.label(
-                                f"{len(uploadable)} file(s) will be transcribed."
-                            ).classes("text-body2 text-orange-9")
-                        with ui.row().classes("items-center"):
-                            ui.icon("skip_next", color="orange-8").classes("text-body1")
+                            ui.icon("skip_next", color="black").classes("text-body1")
                             ui.label(
                                 f"{len(already_done)} completed file(s) will be skipped."
-                            ).classes("text-body2 text-orange-9")
-
-                with ui.column().classes("col-12 col-sm-24"):
-                    ui.label("Files:").classes("text-subtitle2 q-mb-sm")
-                    ui.label(
-                        ", ".join(r["filename"] for r in uploadable)
-                    )
+                            ).classes("text-body2 text-black")
 
                 with ui.column().classes("col-12 col-sm-24"):
                     ui.label("Language").classes("text-subtitle2 q-mb-sm")
@@ -819,7 +813,7 @@ def table_bulk_export(table: ui.table) -> None:
 
     completed = [r for r in selected if r.get("status") == "Completed"]
     if not completed:
-        ui.notify("No completed files selected", type="warning", position="top")
+        ui.notify("No already completed files selected", type="warning", position="top")
         return
 
     formats = set(r.get("output_format", "") for r in completed)
