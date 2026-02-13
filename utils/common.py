@@ -146,6 +146,9 @@ default_styles = """
         .deletion-warning-icon {
             font-size: 18px;
         }
+        .q-tooltip {
+            font-size: 14px;
+        }
     </style>
 """
 
@@ -191,7 +194,7 @@ def show_help_dialog() -> None:
                         (
                             "2",
                             "Configure",
-                            'Click the "Transcribe" button, select language, number of speakers, and output format (transcribed text or subtitles).',
+                            'Click the "Transcribe" button, select language, number of speakers, and output format (transcript or subtitles).',
                             "settings",
                         ),
                         (
@@ -380,11 +383,11 @@ def jobs_get() -> list:
         if job["status"] != "completed":
             job_type = ""
         elif job["output_format"] == "txt":
-            job_type = "Transcription"
+            job_type = "Transcript"
         elif job["output_format"] == "srt":
             job_type = "Subtitles"
         else:
-            job_type = "Transcription"
+            job_type = "Transcript"
 
         job_data = {
             "id": idx,
@@ -626,8 +629,8 @@ def table_transcribe(selected_row) -> None:
                 ui.label("Output format").classes("text-subtitle2 q-mb-sm")
                 output_format = (
                     ui.radio(
-                        ["Transcribed text", "Subtitles"],
-                        value="Transcribed text",
+                        ["Transcript", "Subtitles"],
+                        value="Transcript",
                     )
                     .classes("w-full")
                     .props("inline")
@@ -666,6 +669,7 @@ def table_bulk_transcribe(table: ui.table) -> None:
     """
     selected = table.selected
     uploadable = [r for r in selected if r.get("status") == "Uploaded"]
+    already_done = [r for r in selected if r.get("status") == "Completed"]
     if not uploadable:
         ui.notify("No uploaded files selected", type="warning", position="top")
         return
@@ -682,6 +686,21 @@ def table_bulk_transcribe(table: ui.table) -> None:
                 ui.label("Transcription Settings").style("width: 100%;").classes(
                     "text-h6 q-mb-xl text-black"
                 )
+
+                if already_done:
+                    with ui.column().classes("w-full q-mb-sm").style(
+                        "background-color: #fff3e0; padding: 8px 12px; border-radius: 4px;"
+                    ):
+                        with ui.row().classes("items-center"):
+                            ui.icon("rtt", color="orange-8").classes("text-body1")
+                            ui.label(
+                                f"{len(uploadable)} file(s) will be transcribed."
+                            ).classes("text-body2 text-orange-9")
+                        with ui.row().classes("items-center"):
+                            ui.icon("skip_next", color="orange-8").classes("text-body1")
+                            ui.label(
+                                f"{len(already_done)} completed file(s) will be skipped."
+                            ).classes("text-body2 text-orange-9")
 
                 with ui.column().classes("col-12 col-sm-24"):
                     ui.label("Files:").classes("text-subtitle2 q-mb-sm")
@@ -706,8 +725,8 @@ def table_bulk_transcribe(table: ui.table) -> None:
                 ui.label("Output format").classes("text-subtitle2 q-mb-sm")
                 output_format = (
                     ui.radio(
-                        ["Transcribed text", "Subtitles"],
-                        value="Transcribed text",
+                        ["Transcript", "Subtitles"],
+                        value="Transcript",
                     )
                     .classes("w-full")
                     .props("inline")
@@ -902,6 +921,8 @@ def start_transcription(
 
     if output_format == "Subtitles":
         output_format = "SRT"
+    elif output_format in ("Transcript", "Transcribed text"):
+        output_format = "TXT"
     else:
         output_format = "TXT"
 

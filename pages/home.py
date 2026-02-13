@@ -26,16 +26,46 @@ def create() -> None:
             """
             Toggle the state of buttons based on selected rows.
             """
-            delete.set_enabled(bool(selected))
+            has_selection = bool(selected)
+            delete.set_enabled(has_selection)
+
+            # Update delete tooltip
+            if has_selection:
+                delete_tooltip.text = "Delete selected files"
+            else:
+                delete_tooltip.text = "Select one or more files to delete"
 
             # Enable bulk export only when all selected completed jobs share the same type
             completed = [r for r in selected if r.get("status") == "Completed"]
             formats = set(r.get("output_format", "") for r in completed)
             bulk_export.set_enabled(len(completed) >= 1 and len(formats) == 1)
 
-            # Enable bulk transcribe when 2+ uploaded jobs are selected
+            # Update export tooltip
+            if not has_selection:
+                export_tooltip.text = "Select one or more files to export"
+            elif len(completed) >= 1 and len(formats) > 1:
+                export_tooltip.text = "Subtitles and Transcript can't be exported together."
+            elif len(completed) >= 1 and len(formats) == 1:
+                export_tooltip.text = "Export selected files"
+            else:
+                export_tooltip.text = "Select one or more completed files to export"
+
+            # Enable bulk transcribe when 1+ uploaded jobs are selected
             uploaded = [r for r in selected if r.get("status") == "Uploaded"]
+            already_transcribed = [r for r in selected if r.get("status") == "Completed"]
             bulk_transcribe.set_enabled(len(uploaded) >= 1)
+
+            # Update transcribe tooltip
+            if not has_selection:
+                transcribe_tooltip.text = "Select one or more files to transcribe"
+            elif len(uploaded) >= 1 and len(already_transcribed) > 0:
+                transcribe_tooltip.text = "One or more files are already transcribed"
+            elif len(uploaded) >= 1:
+                transcribe_tooltip.text = "Transcribe selected files"
+            elif len(already_transcribed) > 0 and len(uploaded) == 0:
+                transcribe_tooltip.text = "One or more files are already transcribed"
+            else:
+                transcribe_tooltip.text = "Select one or more files to transcribe"
 
         table = ui.table(
             on_select=lambda e: toggle_buttons(e.selection),
@@ -44,6 +74,7 @@ def create() -> None:
             selection="multiple",
             pagination=10,
         )
+        table.props(":selected-rows-label=\"(n) => n + ' files selected'\"")
 
         def table_handle_row_click(e: events.GenericEventArguments) -> None:
             if e.args.get("status") == "Completed":
@@ -111,24 +142,22 @@ def create() -> None:
                 delete.classes("delete-style")
                 delete.on("click", lambda: table_delete(table))
                 delete.set_enabled(False)
-                ui.tooltip("Select one or more jobs to enable deletion.")
+                delete_tooltip = ui.tooltip("Select one or more files to delete")
 
             with ui.button("Export", icon="download") as bulk_export:
                 bulk_export.props("color=black flat")
                 bulk_export.classes("default-style")
                 bulk_export.on("click", lambda: table_bulk_export(table))
                 bulk_export.set_enabled(False)
-                ui.tooltip(
-                    "Export is only available when all selected completed jobs share the same output format."
-                )
+                export_tooltip = ui.tooltip("Select one or more files to export")
 
             with ui.button("Transcribe", icon="rtt") as bulk_transcribe:
                 bulk_transcribe.props("color=black flat")
                 bulk_transcribe.classes("default-style")
                 bulk_transcribe.on("click", lambda: table_bulk_transcribe(table))
                 bulk_transcribe.set_enabled(False)
-                ui.tooltip(
-                    "Select one or more uploaded jobs to enable bulk transcription."
+                transcribe_tooltip = ui.tooltip(
+                    "Select one or more files to transcribe"
                 )
 
         def update_rows():
