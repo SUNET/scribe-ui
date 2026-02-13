@@ -466,68 +466,43 @@ def post_file(filedata: bytes, filename: str) -> None:
     return True
 
 
-def _format_file_size(size_bytes: int) -> str:
-    """Format bytes into a human-readable string."""
-    if size_bytes < 1024:
-        return f"{size_bytes} B"
-    elif size_bytes < 1024 * 1024:
-        return f"{size_bytes / 1024:.1f} KB"
-    elif size_bytes < 1024 * 1024 * 1024:
-        return f"{size_bytes / (1024 * 1024):.1f} MB"
-    else:
-        return f"{size_bytes / (1024 * 1024 * 1024):.2f} GB"
+def toggle_upload_status(upload_column, status_column):
+    upload_column.visible = False
+    status_column.visible = True
 
 
 def table_upload(table) -> None:
     """
-    Handle the click event on the Upload button with per-file progress.
+    Handle the click event on the Upload button with improved UX.
     """
 
     ui.add_head_html(default_styles)
 
-    progress_column = None
-    progress_header = None
-    progress_rows = {}
-    close_btn = None
-
     with ui.dialog() as dialog:
-        dialog.props("persistent")
-        with ui.card().style("min-width: 450px;"):
-            with ui.column().classes("w-full items-center") as progress_column:
-                progress_header = ui.label("Uploading files...").classes(
-                    "text-h6 text-black"
-                )
-                progress_container = ui.column().classes("w-full q-mt-md")
-                with ui.row().classes("w-full justify-end q-mt-md"):
-                    close_btn = ui.button(
-                        "Close",
-                        icon="check_circle",
-                        on_click=lambda: dialog.close(),
-                    )
-                    close_btn.props("color=black flat")
-                    close_btn.classes("cancel-style")
-                    close_btn.set_visibility(False)
-                progress_column.set_visibility(False)
+        with ui.card():
+            with ui.column().classes("w-full items-center mt-10") as status_column:
+                ui.label("Uploading files, please wait...").style(
+                    "width: 100%;"
+                ).classes("text-h6 q-mb-xl text-black")
+                ui.spinner(size="50px", color="black")
+                status_column.visible = False
 
             with ui.column().classes("w-full items-center mt-10") as upload_column:
                 upload = ui.upload(
                     label="hidden",
-                    on_multi_upload=lambda e: handle_upload_with_feedback(
-                        e,
-                        dialog,
-                        upload_column,
-                        progress_column,
-                        progress_container,
-                        progress_header,
-                        progress_rows,
-                        close_btn,
-                    ),
+                    on_multi_upload=lambda e: handle_upload_with_feedback(e, dialog),
                     auto_upload=True,
                     multiple=True,
                     max_files=5,
                 ).props(
                     "hidden accept=.mp3,.wav,.flac,.mp4,.mkv,.avi,.m4a,.aiff,.aif,.mov,.ogg,.opus,.webm,.wma,.mpg,.mpeg"
                 )
+
+                upload.on(
+                    "start",
+                    lambda _: toggle_upload_status(upload_column, status_column),
+                )
+                upload.on("finish", lambda _: dialog.close())
 
                 ui.html(
                     """
@@ -586,98 +561,27 @@ def table_upload(table) -> None:
         dialog.open()
 
 
-async def handle_upload_with_feedback(
-    files,
-    dialog,
-    upload_column,
-    progress_column,
-    progress_container,
-    progress_header,
-    progress_rows,
-    close_btn,
-):
+async def handle_upload_with_feedback(files, dialog):
     """
-    Handle file uploads with per-file progress feedback.
+    Handle file uploads with user feedback and validation.
     """
 
-    upload_column.set_visibility(False)
-    progress_column.set_visibility(True)
-
-    total = len(files.files)
-    progress_header.set_text(f"Uploading 0 of {total} files...")
-
-    # Build per-file progress rows
-    for file in files.files:
-        file_size = file.size()
-        with progress_container:
-            with ui.row().classes("w-full items-center q-py-xs").style(
-                "border-bottom: 1px solid #e0e0e0;"
-            ):
-                status_icon = ui.icon("hourglass_empty", size="sm").classes(
-                    "text-grey-6"
-                )
-                with ui.column().classes("q-ml-sm").style("flex: 1; gap: 0;"):
-                    ui.label(file.name).classes("text-body2 text-weight-medium")
-                    ui.label(_format_file_size(file_size)).classes(
-                        "text-caption text-grey-7"
-                    )
-                status_label = ui.label("Pending").classes("text-caption text-grey-6")
-        progress_rows[file.name] = {
-            "icon": status_icon,
-            "label": status_label,
-        }
-
-    completed = 0
-    errors = 0
+    dialog.close()
 
     for file in files.files:
-        file_name = file.name
-        row = progress_rows[file_name]
-
-        # Mark as uploading
-        row["icon"].props("name=cloud_upload")
-        row["icon"].classes(replace="text-blue-6")
-        row["label"].set_text("Uploading...")
-        row["label"].classes(replace="text-caption text-blue-6")
-
         try:
+            file_name = file.name
             file_data = await file.read()
-            result = await asyncio.to_thread(post_file, file_data, file_name)
 
-            if result:
-                row["icon"].props("name=check_circle")
-                row["icon"].classes(replace="text-positive")
-                row["label"].set_text("Done")
-                row["label"].classes(replace="text-caption text-positive")
-                completed += 1
-            else:
-                row["icon"].props("name=error")
-                row["icon"].classes(replace="text-negative")
-                row["label"].set_text("Failed")
-                row["label"].classes(replace="text-caption text-negative")
-                errors += 1
+            await asyncio.to_thread(post_file, file_data, file_name)
+
+            ui.notify(
+                f"Successfully uploaded {file_name}", type="positive", timeout=3000
+            )
         except Exception as e:
-            row["icon"].props("name=error")
-            row["icon"].classes(replace="text-negative")
-            row["label"].set_text("Failed")
-            row["label"].classes(replace="text-caption text-negative")
-            errors += 1
-
-        progress_header.set_text(
-            f"Uploading {completed + errors} of {total} files..."
-        )
-
-    # All done — update header and show close button
-    if errors == 0:
-        progress_header.set_text(
-            f"All {total} file{'s' if total > 1 else ''} uploaded successfully!"
-        )
-    else:
-        progress_header.set_text(
-            f"Uploaded {completed} of {total} files ({errors} failed)"
-        )
-
-    close_btn.set_visibility(True)
+            ui.notify(
+                f"Error uploading {file_name}: {str(e)}", type="negative", timeout=5000
+            )
 
 
 def table_transcribe(selected_row) -> None:
