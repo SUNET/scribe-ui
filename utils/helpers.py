@@ -283,6 +283,7 @@ def email_save_notifications(
     deletion: Optional[bool] = None,
     user: Optional[bool] = None,
     quota: Optional[bool] = None,
+    weekly_report: Optional[bool] = None,
 ) -> None:
     """
     Save notification preferences for the user.
@@ -291,6 +292,8 @@ def email_save_notifications(
         job (bool | None): Whether to receive notifications for transcription jobs.
         deletion (bool | None): Whether to receive notifications for file deletions.
         user (bool | None): Whether to receive notifications for new users.
+        quota (bool | None): Whether to receive notifications when quota nears limit.
+        weekly_report (bool | None): Whether to receive weekly usage reports.
     """
 
     payload = {
@@ -298,7 +301,8 @@ def email_save_notifications(
             "notify_on_job": job,
             "notify_on_deletion": deletion,
             "notify_on_user": user,
-            # "notify_on_quota": quota,
+            "notify_on_quota": quota,
+            "notify_on_weekly_report": weekly_report,
         }
     }
 
@@ -350,6 +354,36 @@ def email_save_notifications_get() -> dict:
     except requests.exceptions.RequestException:
         ui.notify("Failed to retrieve notification preferences", color="red")
         return {}
+
+
+def test_all_notifications() -> None:
+    """
+    Trigger all notification types to be sent to the current user's email.
+    Temporary function for testing email notifications.
+    """
+
+    try:
+        response = requests.post(
+            f"{settings.API_URL}/api/v1/me/test-notifications",
+            headers=get_auth_header(),
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        if "error" in data:
+            ui.notify(f"Error: {data['error']}", color="red")
+            return
+
+        result = data.get("result", {})
+        count = result.get("count", 0)
+        sent_to = result.get("sent_to", "unknown")
+        ui.notify(
+            f"{count} test notifications queued for {sent_to}",
+            color="green",
+        )
+
+    except requests.exceptions.RequestException:
+        ui.notify("Failed to send test notifications", color="red")
 
 
 def save_group(

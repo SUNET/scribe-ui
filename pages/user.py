@@ -1,14 +1,15 @@
 from nicegui import app, ui
-from utils.common import add_timezone_to_timestamp, page_init
+from utils.common import page_init
 from utils.common import default_styles
 from utils.helpers import (
     email_get,
     email_save,
     email_save_notifications,
     email_save_notifications_get,
+    test_all_notifications,
 )
 from utils.settings import get_settings
-from utils.token import get_admin_status, get_user_data
+from utils.token import get_admin_status, get_user_data, get_bofh_status
 
 settings = get_settings()
 
@@ -113,6 +114,8 @@ def create() -> None:
 
                     with ui.column().classes("gap-3"):
                         users = None
+                        quota = None
+                        weekly_report = None
                         with ui.grid(columns=2).classes("gap-x-6 gap-y-2"):
                             ui.label("My notifications").classes(
                                 "col-span-2 font-semibold"
@@ -131,7 +134,10 @@ def create() -> None:
                                     job=jobs.value,
                                     user=users.value if users is not None else None,
                                     deletion=deletions.value,
-                                    # quota=quota.value,
+                                    quota=quota.value if quota is not None else None,
+                                    weekly_report=weekly_report.value
+                                    if weekly_report is not None
+                                    else None,
                                 ),
                             )
                             jobs.tooltip(
@@ -150,7 +156,10 @@ def create() -> None:
                                     job=jobs.value,
                                     user=users.value if users is not None else None,
                                     deletion=deletions.value,
-                                    # quota=quota.value,
+                                    quota=quota.value if quota is not None else None,
+                                    weekly_report=weekly_report.value
+                                    if weekly_report is not None
+                                    else None,
                                 ),
                             )
                             deletions.tooltip(
@@ -178,28 +187,63 @@ def create() -> None:
                                         job=jobs.value,
                                         user=users.value,
                                         deletion=deletions.value,
-                                        # quota=quota.value,
+                                        quota=quota.value,
+                                        weekly_report=weekly_report.value,
                                     ),
                                 )
                                 users.tooltip(
                                     "Get an email when a new user creates an account."
                                 )
 
-                                # quota = ui.checkbox(
-                                #     "Quota nearing limit",
-                                #     value=True
-                                #     if "quota" in current_notifications
-                                #     else False,
-                                # )
-                                # quota.on(
-                                #     "click",
-                                #     lambda e: email_save_notifications(
-                                #         job=jobs.value,
-                                #         user=users.value,
-                                #         deletion=deletions.value,
-                                #         quota=quota.value,
-                                #     ),
-                                # )
-                                # quota.tooltip(
-                                #     "Get an email when your transcription quota is nearing its limit."
-                                # )
+                                quota = ui.checkbox(
+                                    "Quota alerts",
+                                    value=True
+                                    if "quota" in current_notifications
+                                    else False,
+                                )
+                                quota.on(
+                                    "click",
+                                    lambda e: email_save_notifications(
+                                        job=jobs.value,
+                                        user=users.value,
+                                        deletion=deletions.value,
+                                        quota=quota.value,
+                                        weekly_report=weekly_report.value,
+                                    ),
+                                )
+                                quota.tooltip(
+                                    "Get an email when a group or account quota is approaching its limit."
+                                )
+
+                                weekly_report = ui.checkbox(
+                                    "Usage summary (current month, sent weekly)",
+                                    value=True
+                                    if "weekly_report" in current_notifications
+                                    else False,
+                                )
+                                weekly_report.on(
+                                    "click",
+                                    lambda e: email_save_notifications(
+                                        job=jobs.value,
+                                        user=users.value,
+                                        deletion=deletions.value,
+                                        quota=quota.value,
+                                        weekly_report=weekly_report.value,
+                                    ),
+                                )
+                                weekly_report.tooltip(
+                                    "Get a weekly email with a summary of transcription usage."
+                                )
+
+                            # Temporary test button, for BOFH
+                            if get_bofh_status():
+                                test_btn = ui.button(
+                                    "Send all test notifications",
+                                    icon="science",
+                                )
+                                test_btn.props("color=red flat")
+                                test_btn.classes("default-style mt-4")
+                                test_btn.on("click", lambda: test_all_notifications())
+                                test_btn.tooltip(
+                                    "Sends one of each notification type to your email for testing."
+                                )
