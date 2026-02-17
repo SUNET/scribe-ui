@@ -68,11 +68,21 @@ default_styles = """
             background-color: #d3ecbe;
             border: 1px solid #000000;
         }
+        .default-style.disabled {
+            background-color: #e0e0e0 !important;
+            border: 1px solid #bdbdbd !important;
+            opacity: 0.7;
+        }
         .delete-style {
             background-color: #ffffff;
             color: #721c24;
             border: 1px solid #000000;
             width: 150px;
+        }
+        .delete-style.disabled {
+            background-color: #e0e0e0 !important;
+            border: 1px solid #bdbdbd !important;
+            opacity: 0.7;
         }
         .table-style th {
             font-size: 14px;
@@ -136,6 +146,9 @@ default_styles = """
         .deletion-warning-icon {
             font-size: 18px;
         }
+        .q-tooltip {
+            font-size: 14px;
+        }
     </style>
 """
 
@@ -181,7 +194,7 @@ def show_help_dialog() -> None:
                         (
                             "2",
                             "Configure",
-                            'Click the "Transcribe" button, select language, number of speakers, and output format (transcribed text or subtitles).',
+                            'Click the "Transcribe" button, select language, number of speakers, and output format (transcript or subtitles).',
                             "settings",
                         ),
                         (
@@ -359,9 +372,7 @@ def jobs_get() -> list:
                 deletion_dt = local_tz.localize(deletion_dt)
                 time_until_deletion = deletion_dt - current_time
                 # Default threshold: 24 hours
-                deletion_approaching = (
-                    time_until_deletion <= timedelta(hours=24)
-                )
+                deletion_approaching = time_until_deletion <= timedelta(hours=24)
             except (ValueError, AttributeError):
                 pass
 
@@ -372,11 +383,11 @@ def jobs_get() -> list:
         if job["status"] != "completed":
             job_type = ""
         elif job["output_format"] == "txt":
-            job_type = "Transcription"
+            job_type = "Transcript"
         elif job["output_format"] == "srt":
             job_type = "Subtitles"
         else:
-            job_type = "Transcription"
+            job_type = "Transcript"
 
         job_data = {
             "id": idx,
@@ -618,8 +629,8 @@ def table_transcribe(selected_row) -> None:
                 ui.label("Output format").classes("text-subtitle2 q-mb-sm")
                 output_format = (
                     ui.radio(
-                        ["Transcribed text", "Subtitles"],
-                        value="Transcribed text",
+                        ["Transcript", "Subtitles"],
+                        value="Transcript",
                     )
                     .classes("w-full")
                     .props("inline")
@@ -643,6 +654,96 @@ def table_transcribe(selected_row) -> None:
                         speakers.value,
                         output_format.value,
                         dialog,
+                    ),
+                ) as start:
+                    start.props("color=black flat")
+                    start.classes("default-style")
+
+            dialog.open()
+
+
+def table_bulk_transcribe(table: ui.table) -> None:
+    """
+    Handle bulk transcription of selected uploaded jobs.
+    Shows the same transcription settings dialog but applies to all selected rows.
+    """
+    selected = table.selected
+    uploadable = [r for r in selected if r.get("status") == "Uploaded"]
+    already_done = [r for r in selected if r.get("status") == "Completed"]
+    if not uploadable:
+        ui.notify("No uploaded files selected", type="warning", position="top")
+        return
+
+    with ui.dialog() as dialog:
+        with (
+            ui.card()
+            .style(
+                "background-color: white; align-self: center; border: 0; width: 80%;"
+            )
+            .classes("w-full no-shadow no-border")
+        ):
+            with ui.row().classes("w-full"):
+                ui.label("Transcription Settings").style("width: 100%;").classes(
+                    "text-h6 q-mb-xl text-black"
+                )
+
+                with ui.column().classes("w-full q-mb-sm").style(
+                    "background-color: #fff3e0; padding: 8px 12px; border-radius: 4px;"
+                ):
+                    with ui.row().classes("items-center"):
+                        ui.icon("rtt", color="black").classes("text-body1")
+                        ui.label(
+                            f"{len(uploadable)} file(s) will be transcribed."
+                        ).classes("text-body2 text-black")
+                    if already_done:
+                        with ui.row().classes("items-center"):
+                            ui.icon("skip_next", color="black").classes("text-body1")
+                            ui.label(
+                                f"{len(already_done)} completed file(s) will be skipped."
+                            ).classes("text-body2 text-black")
+
+                with ui.column().classes("col-12 col-sm-24"):
+                    ui.label("Language").classes("text-subtitle2 q-mb-sm")
+                    language = ui.select(
+                        settings.WHISPER_LANGUAGES,
+                        value=settings.WHISPER_LANGUAGES[0],
+                    ).classes("w-full")
+
+                with ui.column().classes("col-12 col-sm-24"):
+                    ui.label("Number of speakers, automatic if not chosen").classes(
+                        "text-subtitle2 q-mb-sm"
+                    )
+                    speakers = ui.number(value="0").classes("w-full")
+
+            with ui.row().classes("justify-between w-full"):
+                ui.label("Output format").classes("text-subtitle2 q-mb-sm")
+                output_format = (
+                    ui.radio(
+                        ["Transcript", "Subtitles"],
+                        value="Transcript",
+                    )
+                    .classes("w-full")
+                    .props("inline")
+                )
+
+            with ui.row().classes("justify-between w-full"):
+                with ui.button(
+                    "Cancel",
+                    icon="cancel",
+                ) as cancel:
+                    cancel.on("click", lambda: dialog.close())
+                    cancel.props("color=black flat")
+                    cancel.classes("cancel-style")
+
+                with ui.button(
+                    "Start transcribing",
+                    on_click=lambda: start_transcription(
+                        uploadable,
+                        language.value,
+                        speakers.value,
+                        output_format.value,
+                        dialog,
+                        table,
                     ),
                 ) as start:
                     start.props("color=black flat")
@@ -699,6 +800,107 @@ def __delete_files(table: ui.table, dialog: ui.dialog) -> bool:
     dialog.close()
 
 
+def table_bulk_export(table: ui.table) -> None:
+    """
+    Handle bulk export of selected completed jobs as a zip file.
+    All selected jobs must be of the same type (output_format).
+    """
+
+    selected = table.selected
+    if not selected:
+        ui.notify("No files selected", type="warning", position="top")
+        return
+
+    completed = [r for r in selected if r.get("status") == "Completed"]
+    if not completed:
+        ui.notify("No already completed files selected", type="warning", position="top")
+        return
+
+    formats = set(r.get("output_format", "") for r in completed)
+    if len(formats) > 1:
+        ui.notify(
+            "All selected files must be of the same type",
+            type="warning",
+            position="top",
+        )
+        return
+
+    source_format = formats.pop()
+    data_format = "srt" if source_format == "SRT" else "txt"
+
+    # Show progress dialog while fetching
+    with ui.dialog() as progress_dialog:
+        with ui.card().classes("p-6 items-center").style(
+            "min-width: 400px; background-color: #ffffff;"
+        ):
+            ui.label("Preparing export...").classes("text-h6 text-black mb-2")
+            progress_label = ui.label(f"Fetching file 0 of {len(completed)}").classes(
+                "text-body2 mb-2"
+            )
+            progress = ui.linear_progress(value=0, show_value=False).classes("w-full")
+
+    progress_dialog.open()
+
+    async def fetch_and_show():
+        from utils.srt import SRTEditor
+
+        editors = []
+        for i, row in enumerate(completed):
+            uuid = row["uuid"]
+            filename = row["filename"]
+            progress_label.set_text(
+                f"Fetching file {i + 1} of {len(completed)}: {filename}"
+            )
+            progress.set_value((i + 1) / len(completed))
+            try:
+                if data_format == "srt":
+                    response = requests.get(
+                        f"{settings.API_URL}/api/v1/transcriber/{uuid}/result/srt",
+                        headers=get_auth_header(),
+                        json={
+                            "encryption_password": app.storage.user.get(
+                                "encryption_password"
+                            )
+                        },
+                    )
+                else:
+                    response = requests.get(
+                        f"{settings.API_URL}/api/v1/transcriber/{uuid}/result/txt",
+                        headers=get_auth_header(),
+                        json={
+                            "encryption_password": app.storage.user.get(
+                                "encryption_password"
+                            )
+                        },
+                    )
+                response.raise_for_status()
+                data = response.json()
+
+                editor = SRTEditor(uuid, data_format, filename)
+                if data_format == "srt":
+                    editor.parse_srt(data["result"])
+                else:
+                    editor.parse_txt(data["result"])
+                editors.append((filename, editor))
+            except requests.exceptions.RequestException as e:
+                progress_dialog.close()
+                ui.notify(
+                    f"Error fetching {filename}: {str(e)}",
+                    type="negative",
+                    position="top",
+                )
+                return
+
+            await asyncio.sleep(0)  # yield to UI to update progress
+
+        progress_dialog.close()
+        # Use the first editor to show the export dialog with all editors
+        first_filename, first_editor = editors[0]
+        first_editor.show_export_dialog(first_filename, bulk_editors=editors)
+
+    ui.timer(0.1, fetch_and_show, once=True)
+
+
 def start_transcription(
     rows: list,
     language: str,
@@ -706,13 +908,15 @@ def start_transcription(
     speakers: str,
     output_format: str,
     dialog: ui.dialog,
+    table: ui.table = None,
 ) -> None:
     selected_language = language
-    # selected_model = model
     error = ""
 
     if output_format == "Subtitles":
         output_format = "SRT"
+    elif output_format in ("Transcript", "Transcribed text"):
+        output_format = "TXT"
     else:
         output_format = "TXT"
 
@@ -735,22 +939,23 @@ def start_transcription(
                 error = response.json()["result"]["error"]
             else:
                 error = "Error: Failed to start transcription."
+            break
 
-        if error:
-            with dialog:
-                dialog.clear()
+    if error:
+        with dialog:
+            dialog.clear()
 
-                with ui.card().style(
-                    "background-color: white; align-self: center; border: 0; width: 50%;"
-                ):
-                    ui.label(error).classes("text-h6 q-mb-md text-black")
-                    ui.button(
-                        "Close",
-                    ).on("click", lambda: dialog.close()).classes(
-                        "button-close"
-                    ).props("color=black flat")
-                dialog.open()
-        else:
-            dialog.close()
-
-        return
+            with ui.card().style(
+                "background-color: white; align-self: center; border: 0; width: 50%;"
+            ):
+                ui.label(error).classes("text-h6 q-mb-md text-black")
+                ui.button(
+                    "Close",
+                ).on("click", lambda: dialog.close()).classes(
+                    "button-close"
+                ).props("color=black flat")
+            dialog.open()
+    else:
+        if table is not None:
+            table.selected = []
+        dialog.close()
