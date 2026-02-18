@@ -371,8 +371,18 @@ def save_group(
         )
         res.raise_for_status()
         ui.navigate.to("/admin")
-    except requests.RequestException as e:
-        ui.notify(f"Error saving group: {e}", type="negative")
+    except requests.RequestException:
+        error = res.json()
+
+        with ui.dialog() as dialog:
+            with ui.card():
+                ui.label("Error saving group").classes("text-h6")
+                ui.label(error["error"])
+                ui.button("Close", on_click=lambda: dialog.close()).props(
+                    "color=black"
+                ).style("margin-top: 10px;")
+
+        dialog.open()
 
 
 def set_active_status(selected_rows: list, make_active: bool) -> None:

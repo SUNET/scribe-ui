@@ -1912,18 +1912,33 @@ class SRTEditor:
                 "click", lambda: dialog.open()
             ).classes("button-open-search")
 
-    def show_export_dialog(self, filename: str) -> None:
+    def show_export_dialog(
+        self, filename: str, bulk_editors: list | None = None
+    ) -> None:
         """
         Show comprehensive export dialog with format options and live preview.
+        When bulk_editors is provided (list of (filename, editor) tuples),
+        the preview is skipped and files are exported as a zip archive.
         """
+        import io
+        import zipfile
+        from pathlib import Path
+
+        is_bulk = bulk_editors is not None and len(bulk_editors) > 0
+        # For bulk mode with txt formats: show preview using first file
+        bulk_needs_preview = is_bulk and self.data_format == "txt"
+
         ui.add_head_html(default_styles)
         with ui.dialog() as dialog:
-            with ui.card().classes("p-6").style(
-                "min-width: 1000px; max-width: 1400px; background-color: #ffffff;"
-            ):
+            card = ui.card().classes("p-6").style(
+                f"min-width: {'1000' if (not is_bulk or bulk_needs_preview) else '500'}px; "
+                f"max-width: {'1400' if (not is_bulk or bulk_needs_preview) else '700'}px; "
+                "background-color: #ffffff;"
+            )
+            with card:
                 # Header
                 with ui.row().classes("w-full items-center justify-between mb-4"):
-                    ui.label("Export Transcription").classes(
+                    ui.label("Export Transcript").classes(
                         "text-h5 font-bold text-black"
                     )
                     ui.button(icon="close", on_click=dialog.close).props(
@@ -1932,10 +1947,17 @@ class SRTEditor:
 
                 ui.separator().classes("mb-4")
 
-                # Two-column layout
+                if is_bulk:
+                    ui.label(f"Exporting {len(bulk_editors)} file(s)").classes(
+                        "text-body1 mb-2"
+                    )
+
+                # Two-column layout (single column for bulk srt/vtt)
                 with ui.row().classes("w-full gap-6"):
-                    # Left: Options (40%)
-                    with ui.column().classes("gap-4").style("flex: 0 0 400px;"):
+                    # Left: Options (fixed width when preview shown)
+                    with ui.column().classes("gap-4").style(
+                        "flex: 0 0 400px;" if (not is_bulk or bulk_needs_preview) else "width: 100%;"
+                    ):
                         # Format
                         ui.label("Format").classes("text-subtitle1 font-semibold")
                         if self.data_format == "srt":
@@ -2156,6 +2178,8 @@ class SRTEditor:
                                 )
                                 ui.separator()
 
+                        bulk_preview_col = None
+
                         def update_options_visibility():
                             """Show/hide options based on selected format"""
                             current_fmt = fmt.value
@@ -2174,255 +2198,294 @@ class SRTEditor:
                             json_section.visible = current_fmt == "json"
                             rtf_section.visible = current_fmt == "rtf"
 
+                            # In bulk mode, show/hide preview based on format
+                            if bulk_needs_preview and bulk_preview_col is not None:
+                                show_prev = current_fmt not in ["srt", "vtt"]
+                                bulk_preview_col.visible = show_prev
+                                # Resize dialog based on preview visibility
+                                card.style(
+                                    f"min-width: {'1000' if show_prev else '500'}px; "
+                                    f"max-width: {'1400' if show_prev else '700'}px; "
+                                    "background-color: #ffffff;"
+                                )
+
                         fmt.on(
                             "update:model-value", lambda: update_options_visibility()
                         )
-                        update_options_visibility()
 
-                    # Right: Preview (60%)
-                    with ui.column().classes("flex-1"):
-                        ui.label("Preview").classes("text-subtitle1 font-semibold mb-2")
-                        with ui.card().classes("bg-gray-900 p-4").style(
-                            "height: 550px; overflow-y: auto;"
-                        ):
-                            prev = (
-                                ui.html("", sanitize=False)
-                                .classes("text-white")
-                                .style(
-                                    "font-family: 'Courier New', monospace; font-size: 13px; white-space: pre-wrap;"
-                                )
-                            )
-                        cnt_lbl = ui.label("").classes("text-caption mt-2")
-
-                def upd_prev():
-                    try:
-                        caps = self.captions[:5]
-                        out = ""
-
-                        def fmt_ts(ts, f):
-                            p = ts.replace(",", ":").split(":")
-                            h, m, s, ms = int(p[0]), int(p[1]), int(p[2]), int(p[3])
-                            if f == "seconds":
-                                return f"{h*3600 + m*60 + s + ms/1000:.3f}"
-                            if f == "ms":
-                                return str(h * 3600000 + m * 60000 + s * 1000 + ms)
-                            if f == "vtt":
-                                return f"{h:02d}:{m:02d}:{s:02d}.{ms:03d}"
-                            return ts  # srt format
-
-                        def build_ts_str(cap):
-                            """Build timestamp string based on options"""
-                            if not ts_incl.value:
-                                return ""
-                            parts = []
-                            if ts_which.value in ["start", "both"]:
-                                parts.append(fmt_ts(cap.start_time, ts_fmt.value))
-                            if ts_which.value in ["end", "both"]:
-                                parts.append(fmt_ts(cap.end_time, ts_fmt.value))
-                            return " - ".join(parts) if parts else ""
-
-                        if fmt.value == "srt":
-                            out = "\n\n".join(c.to_srt_format() for c in caps)
-                        elif fmt.value == "vtt":
-                            out = "WEBVTT\n\n" + "\n\n".join(
-                                f"{c.index}\n{c.start_time.replace(',','.')} --> {c.end_time.replace(',','.')}\n{c.text}"
-                                for c in caps
-                            )
-                        elif fmt.value == "txt":
-                            parts = []
-                            for c in caps:
-                                p_parts = []
-                                if txt_idx_incl and txt_idx_incl.value:
-                                    p_parts.append(f"[{c.index}]")
-
-                                ts_str = build_ts_str(c)
-                                if ts_str and ts_pos.value == "before":
-                                    p_parts.append(f"({ts_str})")
-
-                                if txt_spk_incl and txt_spk_incl.value:
-                                    p_parts.append(f"{c.speaker}:")
-
-                                # Add text on new line or same line
-                                if p_parts:
-                                    p = " ".join(p_parts) + "\n" + c.text
-                                else:
-                                    p = c.text
-
-                                if ts_str and ts_pos.value == "after":
-                                    p += f"\n({ts_str})"
-
-                                parts.append(p)
-                            s = (
-                                txt_sep_custom.value
-                                if txt_sep_type.value == "custom"
-                                else txt_sep_type.value.replace("\\n", "\n")
-                            )
-                            out = s.join(parts)
-                        elif fmt.value == "rtf":
-                            parts = []
-                            for c in caps:
-                                p_parts = []
-                                if rtf_idx_incl and rtf_idx_incl.value:
-                                    p_parts.append(f"[{c.index}]")
-
-                                ts_str = build_ts_str(c)
-                                if ts_str:
-                                    p_parts.append(f"({ts_str})")
-
-                                if rtf_spk_incl and rtf_spk_incl.value:
-                                    p_parts.append(f"{c.speaker}:")
-
-                                # Add text on new line or same line
-                                if p_parts:
-                                    p = " ".join(p_parts) + "\n" + c.text
-                                else:
-                                    p = c.text
-
-                                parts.append(p)
-                            out = "\n\n".join(parts)
-                        elif fmt.value == "json":
-                            d = {"total": len(self.captions), "captions": []}
-                            for c in caps:
-                                cd = {
-                                    "index": c.index,
-                                    "speaker": c.speaker,
-                                    "text": c.text,
-                                }
-                                if ts_incl.value:
-                                    if ts_which.value in ["start", "both"]:
-                                        cd["start"] = fmt_ts(c.start_time, ts_fmt.value)
-                                    if ts_which.value in ["end", "both"]:
-                                        cd["end"] = fmt_ts(c.end_time, ts_fmt.value)
-                                d["captions"].append(cd)
-                            out = json.dumps(
-                                d,
-                                indent=int(json_indent.value),
-                                ensure_ascii=json_ascii.value,
-                            )
-                        elif fmt.value == "csv":
-                            q = csv_qt.value
-                            delim = csv_delim.value
-                            lines = []
-                            if csv_hdr.value:
-                                h = ["index"]
-                                if ts_incl.value:
-                                    if ts_which.value in ["start", "both"]:
-                                        h.append("start")
-                                    if ts_which.value in ["end", "both"]:
-                                        h.append("end")
-                                if csv_spk_incl.value:
-                                    h.append("speaker")
-                                h.append("text")
-                                lines.append(delim.join(f"{q}{x}{q}" for x in h))
-                            for c in caps:
-                                r = [str(c.index)]
-                                if ts_incl.value:
-                                    if ts_which.value in ["start", "both"]:
-                                        r.append(fmt_ts(c.start_time, ts_fmt.value))
-                                    if ts_which.value in ["end", "both"]:
-                                        r.append(fmt_ts(c.end_time, ts_fmt.value))
-                                if csv_spk_incl.value:
-                                    r.append(c.speaker)
-                                r.append(c.text.replace(q, q + q).replace("\n", " "))
-                                lines.append(delim.join(f"{q}{x}{q}" for x in r))
-                            out = "\n".join(lines)
-                        elif fmt.value == "tsv":
-                            # Determine tab character
-                            if tsv_tab_type.value == "\\t":
-                                tab_char = "\t"
+                    # Right: Preview (60%) - show for single mode and bulk txt formats
+                    show_preview = not is_bulk or bulk_needs_preview
+                    if show_preview:
+                        preview_col = ui.column().classes("flex-1")
+                        if bulk_needs_preview:
+                            bulk_preview_col = preview_col
+                        with preview_col:
+                            if bulk_needs_preview:
+                                first_fn = bulk_editors[0][0] if bulk_editors else filename
+                                ui.label("Preview").classes(
+                                    "text-subtitle1 font-semibold mb-2"
+                                ).tooltip(f"Showing: {first_fn}")
                             else:
-                                tab_char = " " * int(tsv_tab_width.value)
-
-                            lines = []
-                            if tsv_hdr.value:
-                                h = ["index"]
-                                if ts_incl.value:
-                                    if ts_which.value in ["start", "both"]:
-                                        h.append("start")
-                                    if ts_which.value in ["end", "both"]:
-                                        h.append("end")
-                                if tsv_spk_incl.value:
-                                    h.append("speaker")
-                                h.append("text")
-                                lines.append(tab_char.join(h))
-                            for c in caps:
-                                r = [str(c.index)]
-                                if ts_incl.value:
-                                    if ts_which.value in ["start", "both"]:
-                                        r.append(fmt_ts(c.start_time, ts_fmt.value))
-                                    if ts_which.value in ["end", "both"]:
-                                        r.append(fmt_ts(c.end_time, ts_fmt.value))
-                                if tsv_spk_incl.value:
-                                    r.append(c.speaker)
-                                r.append(c.text.replace("\t", "  ").replace("\n", " "))
-                                lines.append(tab_char.join(r))
-                            out = "\n".join(lines)
-                        elif fmt.value == "rtf":
-                            # Show RTF source code for preview
-                            parts = []
-                            for c in caps:
-                                parts.append(
-                                    f"{c.speaker}: {c.start_time} - {c.end_time}"
+                                ui.label("Preview").classes(
+                                    "text-subtitle1 font-semibold mb-2"
                                 )
-                                parts.append(c.text.replace("\n", "\\line "))
-                                parts.append("")
-                            out = "\n".join(parts)
-                        else:
-                            out = "(RTF preview unavailable)"
+                            with ui.card().classes("bg-gray-900 p-4").style(
+                                "height: 550px; overflow-y: auto;"
+                            ):
+                                prev = (
+                                    ui.html("", sanitize=False)
+                                    .classes("text-white")
+                                    .style(
+                                        "font-family: 'Courier New', monospace; font-size: 13px; white-space: pre-wrap;"
+                                    )
+                                )
+                            cnt_lbl = ui.label("").classes("text-caption mt-2")
 
-                        if len(self.captions) > 5:
-                            out += f"\n\n... {len(self.captions)-5} more captions"
+                update_options_visibility()
 
-                        import html
+                if show_preview:
 
-                        prev.set_content(html.escape(out).replace("\n", "<br>"))
-                        cnt_lbl.set_text(
-                            f"Total: {len(self.captions)} | Showing: {min(5, len(self.captions))}"
-                        )
-                    except Exception as e:
-                        import html
+                    def upd_prev():
+                        try:
+                            caps = self.captions[:5]
+                            out = ""
 
-                        prev.set_content(
-                            f"<span style='color:#f88'>{html.escape(str(e))}</span>"
-                        )
+                            def fmt_ts(ts, f):
+                                p = ts.replace(",", ":").split(":")
+                                h, m, s, ms = int(p[0]), int(p[1]), int(p[2]), int(p[3])
+                                if f == "seconds":
+                                    return f"{h*3600 + m*60 + s + ms/1000:.3f}"
+                                if f == "ms":
+                                    return str(h * 3600000 + m * 60000 + s * 1000 + ms)
+                                if f == "vtt":
+                                    return f"{h:02d}:{m:02d}:{s:02d}.{ms:03d}"
+                                return ts  # srt format
 
-                # Connect updates
-                for ctrl in [fmt, ts_incl, ts_fmt, ts_which, ts_pos]:
-                    ctrl.on("update:model-value", lambda: upd_prev())
+                            def build_ts_str(cap):
+                                """Build timestamp string based on options"""
+                                if not ts_incl.value:
+                                    return ""
+                                parts = []
+                                if ts_which.value in ["start", "both"]:
+                                    parts.append(fmt_ts(cap.start_time, ts_fmt.value))
+                                if ts_which.value in ["end", "both"]:
+                                    parts.append(fmt_ts(cap.end_time, ts_fmt.value))
+                                return " - ".join(parts) if parts else ""
 
-                # CSV controls
-                csv_hdr.on("update:model-value", lambda: upd_prev())
-                csv_spk_incl.on("update:model-value", lambda: upd_prev())
-                csv_qt.on("blur", lambda: upd_prev())
-                csv_delim.on("blur", lambda: upd_prev())
+                            match fmt.value:
+                                case "srt":
+                                    out = "\n\n".join(c.to_srt_format() for c in caps)
+                                case "vtt":
+                                    out = "WEBVTT\n\n" + "\n\n".join(
+                                        f"{c.index}\n{c.start_time.replace(',','.')} --> {c.end_time.replace(',','.')}\n{c.text}"
+                                        for c in caps
+                                    )
+                                case "txt":
+                                    parts = []
+                                    for c in caps:
+                                        p_parts = []
+                                        if txt_idx_incl and txt_idx_incl.value:
+                                            p_parts.append(f"[{c.index}]")
 
-                # TSV controls
-                tsv_hdr.on("update:model-value", lambda: upd_prev())
-                tsv_spk_incl.on("update:model-value", lambda: upd_prev())
-                tsv_tab_type.on("update:model-value", lambda: upd_prev())
-                tsv_tab_width.on("blur", lambda: upd_prev())
+                                        ts_str = build_ts_str(c)
+                                        if ts_str and ts_pos.value == "before":
+                                            p_parts.append(f"({ts_str})")
 
-                # JSON controls
-                json_indent.on("blur", lambda: upd_prev())
-                json_ascii.on("update:model-value", lambda: upd_prev())
+                                        if txt_spk_incl and txt_spk_incl.value:
+                                            p_parts.append(f"{c.speaker}:")
 
-                # TXT controls
-                txt_spk_incl.on("update:model-value", lambda: upd_prev())
-                txt_idx_incl.on("update:model-value", lambda: upd_prev())
-                txt_sep_type.on("update:model-value", lambda: upd_prev())
-                txt_sep_custom.on("blur", lambda: upd_prev())
+                                        # Add text on new line or same line
+                                        if p_parts:
+                                            p = " ".join(p_parts) + "\n" + c.text
+                                        else:
+                                            p = c.text
 
-                # RTF controls
-                rtf_spk_incl.on("update:model-value", lambda: upd_prev())
-                rtf_idx_incl.on("update:model-value", lambda: upd_prev())
+                                        if ts_str and ts_pos.value == "after":
+                                            p += f"\n({ts_str})"
 
-                upd_prev()
+                                        parts.append(p)
+                                    s = (
+                                        txt_sep_custom.value
+                                        if txt_sep_type.value == "custom"
+                                        else txt_sep_type.value.replace("\\n", "\n")
+                                    )
+                                    out = s.join(parts)
+                                case "rtf":
+                                    parts = []
+                                    for c in caps:
+                                        p_parts = []
+                                        if rtf_idx_incl and rtf_idx_incl.value:
+                                            p_parts.append(f"[{c.index}]")
+
+                                        ts_str = build_ts_str(c)
+                                        if ts_str:
+                                            p_parts.append(f"({ts_str})")
+
+                                        if rtf_spk_incl and rtf_spk_incl.value:
+                                            p_parts.append(f"{c.speaker}:")
+
+                                        # Add text on new line or same line
+                                        if p_parts:
+                                            p = " ".join(p_parts) + "\n" + c.text
+                                        else:
+                                            p = c.text
+
+                                        parts.append(p)
+                                    out = "\n\n".join(parts)
+                                case "json":
+                                    d = {"total": len(self.captions), "captions": []}
+                                    for c in caps:
+                                        cd = {
+                                            "index": c.index,
+                                            "speaker": c.speaker,
+                                            "text": c.text,
+                                        }
+                                        if ts_incl.value:
+                                            if ts_which.value in ["start", "both"]:
+                                                cd["start"] = fmt_ts(
+                                                    c.start_time, ts_fmt.value
+                                                )
+                                            if ts_which.value in ["end", "both"]:
+                                                cd["end"] = fmt_ts(c.end_time, ts_fmt.value)
+                                        d["captions"].append(cd)
+                                    out = json.dumps(
+                                        d,
+                                        indent=int(json_indent.value),
+                                        ensure_ascii=json_ascii.value,
+                                    )
+                                case "csv":
+                                    q = csv_qt.value
+                                    delim = csv_delim.value
+                                    lines = []
+                                    if csv_hdr.value:
+                                        h = ["index"]
+                                        if ts_incl.value:
+                                            if ts_which.value in ["start", "both"]:
+                                                h.append("start")
+                                            if ts_which.value in ["end", "both"]:
+                                                h.append("end")
+                                        if csv_spk_incl.value:
+                                            h.append("speaker")
+                                        h.append("text")
+                                        lines.append(delim.join(f"{q}{x}{q}" for x in h))
+                                    for c in caps:
+                                        r = [str(c.index)]
+                                        if ts_incl.value:
+                                            if ts_which.value in ["start", "both"]:
+                                                r.append(fmt_ts(c.start_time, ts_fmt.value))
+                                            if ts_which.value in ["end", "both"]:
+                                                r.append(fmt_ts(c.end_time, ts_fmt.value))
+                                        if csv_spk_incl.value:
+                                            r.append(c.speaker)
+                                        r.append(
+                                            c.text.replace(q, q + q).replace("\n", " ")
+                                        )
+                                        lines.append(delim.join(f"{q}{x}{q}" for x in r))
+                                    out = "\n".join(lines)
+                                case "tsv":
+                                    # Determine tab character
+                                    if tsv_tab_type.value == "\\t":
+                                        tab_char = "\t"
+                                    else:
+                                        tab_char = " " * int(tsv_tab_width.value)
+
+                                    lines = []
+                                    if tsv_hdr.value:
+                                        h = ["index"]
+                                        if ts_incl.value:
+                                            if ts_which.value in ["start", "both"]:
+                                                h.append("start")
+                                            if ts_which.value in ["end", "both"]:
+                                                h.append("end")
+                                        if tsv_spk_incl.value:
+                                            h.append("speaker")
+                                        h.append("text")
+                                        lines.append(tab_char.join(h))
+                                    for c in caps:
+                                        r = [str(c.index)]
+                                        if ts_incl.value:
+                                            if ts_which.value in ["start", "both"]:
+                                                r.append(fmt_ts(c.start_time, ts_fmt.value))
+                                            if ts_which.value in ["end", "both"]:
+                                                r.append(fmt_ts(c.end_time, ts_fmt.value))
+                                        if tsv_spk_incl.value:
+                                            r.append(c.speaker)
+                                        r.append(
+                                            c.text.replace("\t", "  ").replace("\n", " ")
+                                        )
+                                        lines.append(tab_char.join(r))
+                                    out = "\n".join(lines)
+                                case "rtf":
+                                    # Show RTF source code for preview
+                                    parts = []
+                                    for c in caps:
+                                        parts.append(
+                                            f"{c.speaker}: {c.start_time} - {c.end_time}"
+                                        )
+                                        parts.append(c.text.replace("\n", "\\line "))
+                                        parts.append("")
+                                    out = "\n".join(parts)
+                                case _:
+                                    out = "(RTF preview unavailable)"
+
+                            if len(self.captions) > 5:
+                                out += f"\n\n... {len(self.captions)-5} more captions"
+
+                            import html
+
+                            prev.set_content(html.escape(out).replace("\n", "<br>"))
+                            cnt_lbl.set_text(
+                                f"Total: {len(self.captions)} | Showing: {min(5, len(self.captions))}"
+                            )
+                        except Exception as e:
+                            import html
+
+                            prev.set_content(
+                                f"<span style='color:#f88'>{html.escape(str(e))}</span>"
+                            )
+
+                    # Connect updates
+                    for ctrl in [fmt, ts_incl, ts_fmt, ts_which, ts_pos]:
+                        ctrl.on("update:model-value", lambda: upd_prev())
+
+                    # CSV controls
+                    csv_hdr.on("update:model-value", lambda: upd_prev())
+                    csv_spk_incl.on("update:model-value", lambda: upd_prev())
+                    csv_qt.on("blur", lambda: upd_prev())
+                    csv_delim.on("blur", lambda: upd_prev())
+
+                    # TSV controls
+                    tsv_hdr.on("update:model-value", lambda: upd_prev())
+                    tsv_spk_incl.on("update:model-value", lambda: upd_prev())
+                    tsv_tab_type.on("update:model-value", lambda: upd_prev())
+                    tsv_tab_width.on("blur", lambda: upd_prev())
+
+                    # JSON controls
+                    json_indent.on("blur", lambda: upd_prev())
+                    json_ascii.on("update:model-value", lambda: upd_prev())
+
+                    # TXT controls
+                    txt_spk_incl.on("update:model-value", lambda: upd_prev())
+                    txt_idx_incl.on("update:model-value", lambda: upd_prev())
+                    txt_sep_type.on("update:model-value", lambda: upd_prev())
+                    txt_sep_custom.on("blur", lambda: upd_prev())
+
+                    # RTF controls
+                    rtf_spk_incl.on("update:model-value", lambda: upd_prev())
+                    rtf_idx_incl.on("update:model-value", lambda: upd_prev())
+
+                    upd_prev()
 
                 ui.separator().classes("my-4")
 
                 # Footer
                 with ui.row().classes("w-full justify-between items-center"):
-                    ui.label(f"File: {filename}.{fmt.value}").classes("text-body2")
+                    if is_bulk:
+                        ui.label("").bind_text_from(
+                            fmt, "value", backward=lambda v: f"Format: .{v}"
+                        ).classes("text-body2")
+                    else:
+                        ui.label(f"File: {Path(filename).stem}.{fmt.value}").classes("text-body2")
                     with ui.row().classes("gap-2"):
                         ui.button("Close", on_click=dialog.close).props(
                             "outline color=black"
@@ -2430,8 +2493,6 @@ class SRTEditor:
 
                         def exp():
                             try:
-                                c = None
-
                                 def fmt_ts(ts, f):
                                     p = ts.replace(",", ":").split(":")
                                     h, m, s, ms = (
@@ -2463,184 +2524,210 @@ class SRTEditor:
                                         parts.append(fmt_ts(cap.end_time, ts_fmt.value))
                                     return " - ".join(parts) if parts else ""
 
-                                if fmt.value == "srt":
-                                    c = self.export_srt()
-                                elif fmt.value == "vtt":
-                                    c = self.export_vtt()
-                                elif fmt.value == "rtf":
-                                    c = self.export_rtf(
-                                        rtf_spk_incl.value,
-                                        ts_incl.value,
-                                        rtf_idx_incl.value,
-                                        ts_which.value,
-                                        ts_fmt.value,
-                                    )
-                                elif fmt.value == "txt":
-                                    # TXT format with custom options
-                                    parts = []
-                                    sep_str = "\n\n"
-                                    if txt_sep_type.value == "custom":
-                                        sep_str = txt_sep_custom.value.replace(
-                                            "\\n", "\n"
+                                def export_one(editor):
+                                    """Export a single editor to string content."""
+                                    c = None
+                                    if fmt.value == "srt":
+                                        c = editor.export_srt()
+                                    elif fmt.value == "vtt":
+                                        c = editor.export_vtt()
+                                    elif fmt.value == "rtf":
+                                        c = editor.export_rtf(
+                                            rtf_spk_incl.value,
+                                            ts_incl.value,
+                                            rtf_idx_incl.value,
+                                            ts_which.value,
+                                            ts_fmt.value,
                                         )
-                                    elif txt_sep_type.value != "\\n\\n":
-                                        sep_str = txt_sep_type.value.replace(
-                                            "\\n", "\n"
-                                        )
+                                    elif fmt.value == "txt":
+                                        parts = []
+                                        sep_str = "\n\n"
+                                        if txt_sep_type.value == "custom":
+                                            sep_str = txt_sep_custom.value.replace(
+                                                "\\n", "\n"
+                                            )
+                                        elif txt_sep_type.value != "\\n\\n":
+                                            sep_str = txt_sep_type.value.replace(
+                                                "\\n", "\n"
+                                            )
 
-                                    for cap in self.captions:
-                                        p_parts = []
-                                        if txt_idx_incl.value:
-                                            p_parts.append(f"[{cap.index}]")
+                                        for cap in editor.captions:
+                                            p_parts = []
+                                            if txt_idx_incl.value:
+                                                p_parts.append(f"[{cap.index}]")
 
-                                        ts_str = build_ts_str(cap)
-                                        if ts_str and ts_pos.value == "before":
-                                            p_parts.append(f"({ts_str})")
+                                            ts_str = build_ts_str(cap)
+                                            if ts_str and ts_pos.value == "before":
+                                                p_parts.append(f"({ts_str})")
 
-                                        if txt_spk_incl.value:
-                                            p_parts.append(f"{cap.speaker}:")
+                                            if txt_spk_incl.value:
+                                                p_parts.append(f"{cap.speaker}:")
 
-                                        # Add text on new line or same line
-                                        if p_parts:
-                                            p = " ".join(p_parts) + "\n" + cap.text
+                                            if p_parts:
+                                                p = " ".join(p_parts) + "\n" + cap.text
+                                            else:
+                                                p = cap.text
+
+                                            if ts_str and ts_pos.value == "after":
+                                                p += f"\n({ts_str})"
+
+                                            parts.append(p)
+                                        c = sep_str.join(parts)
+                                    elif fmt.value == "csv":
+                                        q = csv_qt.value or '"'
+                                        d = csv_delim.value or ","
+                                        lines = []
+                                        if csv_hdr.value:
+                                            h = ["index"]
+                                            if ts_incl.value:
+                                                if ts_which.value in ["start", "both"]:
+                                                    h.append("start")
+                                                if ts_which.value in ["end", "both"]:
+                                                    h.append("end")
+                                            if csv_spk_incl.value:
+                                                h.append("speaker")
+                                            h.append("text")
+                                            lines.append(d.join(f"{q}{x}{q}" for x in h))
+                                        for cap in editor.captions:
+                                            r = [str(cap.index)]
+                                            if ts_incl.value:
+                                                if ts_which.value in ["start", "both"]:
+                                                    r.append(
+                                                        fmt_ts(cap.start_time, ts_fmt.value)
+                                                    )
+                                                if ts_which.value in ["end", "both"]:
+                                                    r.append(
+                                                        fmt_ts(cap.end_time, ts_fmt.value)
+                                                    )
+                                            if csv_spk_incl.value:
+                                                r.append(cap.speaker)
+                                            r.append(
+                                                cap.text.replace(q, q + q).replace(
+                                                    "\n", " "
+                                                )
+                                            )
+                                            lines.append(d.join(f"{q}{x}{q}" for x in r))
+                                        c = "\n".join(lines)
+                                    elif fmt.value == "tsv":
+                                        if tsv_tab_type.value == "\\t":
+                                            tab_char = "\t"
                                         else:
-                                            p = cap.text
+                                            tab_char = " " * int(tsv_tab_width.value)
 
-                                        if ts_str and ts_pos.value == "after":
-                                            p += f"\n({ts_str})"
-
-                                        parts.append(p)
-                                    c = sep_str.join(parts)
-                                elif fmt.value == "csv":
-                                    # CSV format with custom options
-                                    q = csv_qt.value or '"'
-                                    d = csv_delim.value or ","
-                                    lines = []
-                                    if csv_hdr.value:
-                                        h = ["index"]
-                                        if ts_incl.value:
-                                            if ts_which.value in ["start", "both"]:
-                                                h.append("start")
-                                            if ts_which.value in ["end", "both"]:
-                                                h.append("end")
-                                        if csv_spk_incl.value:
-                                            h.append("speaker")
-                                        h.append("text")
-                                        lines.append(d.join(f"{q}{x}{q}" for x in h))
-                                    for cap in self.captions:
-                                        r = [str(cap.index)]
-                                        if ts_incl.value:
-                                            if ts_which.value in ["start", "both"]:
-                                                r.append(
-                                                    fmt_ts(cap.start_time, ts_fmt.value)
+                                        lines = []
+                                        if tsv_hdr.value:
+                                            h = ["index"]
+                                            if ts_incl.value:
+                                                if ts_which.value in ["start", "both"]:
+                                                    h.append("start")
+                                                if ts_which.value in ["end", "both"]:
+                                                    h.append("end")
+                                            if tsv_spk_incl.value:
+                                                h.append("speaker")
+                                            h.append("text")
+                                            lines.append(tab_char.join(h))
+                                        for cap in editor.captions:
+                                            r = [str(cap.index)]
+                                            if ts_incl.value:
+                                                if ts_which.value in ["start", "both"]:
+                                                    r.append(
+                                                        fmt_ts(cap.start_time, ts_fmt.value)
+                                                    )
+                                                if ts_which.value in ["end", "both"]:
+                                                    r.append(
+                                                        fmt_ts(cap.end_time, ts_fmt.value)
+                                                    )
+                                            if tsv_spk_incl.value:
+                                                r.append(cap.speaker)
+                                            r.append(
+                                                cap.text.replace("\t", "  ").replace(
+                                                    "\n", " "
                                                 )
-                                            if ts_which.value in ["end", "both"]:
-                                                r.append(
-                                                    fmt_ts(cap.end_time, ts_fmt.value)
-                                                )
-                                        if csv_spk_incl.value:
-                                            r.append(cap.speaker)
-                                        r.append(
-                                            cap.text.replace(q, q + q).replace(
-                                                "\n", " "
                                             )
-                                        )
-                                        lines.append(d.join(f"{q}{x}{q}" for x in r))
-                                    c = "\n".join(lines)
-                                elif fmt.value == "tsv":
-                                    # TSV format with custom options
-                                    if tsv_tab_type.value == "\\t":
-                                        tab_char = "\t"
-                                    else:
-                                        tab_char = " " * int(tsv_tab_width.value)
-
-                                    lines = []
-                                    if tsv_hdr.value:
-                                        h = ["index"]
+                                            lines.append(tab_char.join(r))
+                                        c = "\n".join(lines)
+                                    elif fmt.value == "json":
+                                        data = editor.export_json()
                                         if ts_incl.value:
-                                            if ts_which.value in ["start", "both"]:
-                                                h.append("start")
-                                            if ts_which.value in ["end", "both"]:
-                                                h.append("end")
-                                        if tsv_spk_incl.value:
-                                            h.append("speaker")
-                                        h.append("text")
-                                        lines.append(tab_char.join(h))
-                                    for cap in self.captions:
-                                        r = [str(cap.index)]
-                                        if ts_incl.value:
-                                            if ts_which.value in ["start", "both"]:
-                                                r.append(
-                                                    fmt_ts(cap.start_time, ts_fmt.value)
-                                                )
-                                            if ts_which.value in ["end", "both"]:
-                                                r.append(
-                                                    fmt_ts(cap.end_time, ts_fmt.value)
-                                                )
-                                        if tsv_spk_incl.value:
-                                            r.append(cap.speaker)
-                                        r.append(
-                                            cap.text.replace("\t", "  ").replace(
-                                                "\n", " "
-                                            )
+                                            for i, cap in enumerate(editor.captions):
+                                                if i < len(data["segments"]):
+                                                    seg = data["segments"][i]
+                                                    if ts_which.value == "start":
+                                                        seg["start"] = fmt_ts(
+                                                            cap.start_time, ts_fmt.value
+                                                        )
+                                                        if "end" in seg:
+                                                            del seg["end"]
+                                                    elif ts_which.value == "end":
+                                                        seg["end"] = fmt_ts(
+                                                            cap.end_time, ts_fmt.value
+                                                        )
+                                                        if "start" in seg:
+                                                            del seg["start"]
+                                                    else:
+                                                        seg["start"] = fmt_ts(
+                                                            cap.start_time, ts_fmt.value
+                                                        )
+                                                        seg["end"] = fmt_ts(
+                                                            cap.end_time, ts_fmt.value
+                                                        )
+                                        else:
+                                            for seg in data["segments"]:
+                                                if "start" in seg:
+                                                    del seg["start"]
+                                                if "end" in seg:
+                                                    del seg["end"]
+
+                                        indent = (
+                                            int(json_indent.value)
+                                            if json_indent.value
+                                            else None
                                         )
-                                        lines.append(tab_char.join(r))
-                                    c = "\n".join(lines)
-                                elif fmt.value == "json":
-                                    # JSON format with custom options
-                                    data = self.export_json()
-                                    # Update data based on timestamp options
-                                    if ts_incl.value:
-                                        for i, cap in enumerate(self.captions):
-                                            if i < len(data["segments"]):
-                                                seg = data["segments"][i]
-                                                # Remove timestamps not selected
-                                                if ts_which.value == "start":
-                                                    seg["start"] = fmt_ts(
-                                                        cap.start_time, ts_fmt.value
-                                                    )
-                                                    if "end" in seg:
-                                                        del seg["end"]
-                                                elif ts_which.value == "end":
-                                                    seg["end"] = fmt_ts(
-                                                        cap.end_time, ts_fmt.value
-                                                    )
-                                                    if "start" in seg:
-                                                        del seg["start"]
-                                                else:  # both
-                                                    seg["start"] = fmt_ts(
-                                                        cap.start_time, ts_fmt.value
-                                                    )
-                                                    seg["end"] = fmt_ts(
-                                                        cap.end_time, ts_fmt.value
-                                                    )
-                                    else:
-                                        # Remove all timestamps
-                                        for seg in data["segments"]:
-                                            if "start" in seg:
-                                                del seg["start"]
-                                            if "end" in seg:
-                                                del seg["end"]
+                                        c = json.dumps(
+                                            data,
+                                            indent=indent,
+                                            ensure_ascii=json_ascii.value,
+                                        )
+                                    return c
 
-                                    indent = (
-                                        int(json_indent.value)
-                                        if json_indent.value
-                                        else None
-                                    )
-                                    c = json.dumps(
-                                        data,
-                                        indent=indent,
-                                        ensure_ascii=json_ascii.value,
-                                    )
+                                if is_bulk:
+                                    zip_buffer = io.BytesIO()
+                                    chosen_fmt = fmt.value
+                                    seen_names = {}
 
-                                ui.download(
-                                    c.encode("utf-8"),
-                                    filename=f"{filename}.{fmt.value}",
-                                )
-                                ui.notify(
-                                    f"Exported as {fmt.value.upper()}", type="positive"
-                                )
-                                # dialog.close()
+                                    with zipfile.ZipFile(
+                                        zip_buffer, "w", zipfile.ZIP_DEFLATED
+                                    ) as zf:
+                                        for bfn, beditor in bulk_editors:
+                                            content = export_one(beditor)
+                                            base_name = f"{Path(bfn).stem}.{chosen_fmt}"
+
+                                            if base_name in seen_names:
+                                                seen_names[base_name] += 1
+                                                base_name = f"{Path(bfn).stem}_{seen_names[base_name]}.{chosen_fmt}"
+                                            else:
+                                                seen_names[base_name] = 0
+
+                                            zf.writestr(base_name, content)
+
+                                    ui.download(
+                                        zip_buffer.getvalue(),
+                                        filename="bulk_export.zip",
+                                    )
+                                    ui.notify(
+                                        f"Exported {len(bulk_editors)} files as {chosen_fmt.upper()}",
+                                        type="positive",
+                                    )
+                                else:
+                                    c = export_one(self)
+                                    ui.download(
+                                        c.encode("utf-8"),
+                                        filename=f"{Path(filename).stem}.{fmt.value}",
+                                    )
+                                    ui.notify(
+                                        f"Exported as {fmt.value.upper()}",
+                                        type="positive",
+                                    )
                             except Exception as e:
                                 ui.notify(f"Export failed: {str(e)}", type="negative")
 

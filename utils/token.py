@@ -134,6 +134,22 @@ def get_user_status() -> bool:
         return False
 
 
+def get_token_is_valid() -> bool:
+    """
+    Check if the current token is valid and not expired.
+    """
+    token = app.storage.user.get("token")
+    if not token:
+        return False
+
+    try:
+        jwt_instance = jwt.JWT()
+        decoded_token = jwt_instance.decode(token, do_verify=False)
+        return decoded_token["exp"] > int(time.time())
+    except Exception:
+        return False
+
+
 def get_bofh_status():
     """
     Check if the user has BOFH status based on the token.
