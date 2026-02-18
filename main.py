@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import Request
 from nicegui import app, ui
 from pages.admin import create as create_admin
@@ -13,6 +15,8 @@ from utils.helpers import (
     encryption_password_verify,
     reset_password,
 )
+from utils.storage import storage
+
 
 settings = get_settings()
 
@@ -35,22 +39,18 @@ async def index(request: Request) -> None:
     refresh_token = request.query_params.get("refresh_token")
 
     if refresh_token:
-        app.storage.user["refresh_token"] = refresh_token
+        storage["refresh_token"] = refresh_token
 
     if token:
-        app.storage.user["token"] = token
+        storage["token"] = token
 
     # Set the users timezone
     timezone = await ui.run_javascript(
         "Intl.DateTimeFormat().resolvedOptions().timeZone"
     )
-    app.storage.user["timezone"] = timezone
+    storage["timezone"] = timezone
 
-    if (
-        app.storage.user.get("token")
-        and app.storage.user.get("refresh_token")
-        and get_user_status()
-    ):
+    if storage.get("token") and storage.get("refresh_token") and get_user_status():
         user_data = get_user_data()
 
         if not user_data["encryption_settings"]:
@@ -120,9 +120,7 @@ async def index(request: Request) -> None:
 
                     def verify_encryption_password() -> None:
                         if password_input.value:
-                            app.storage.user[
-                                "encryption_password"
-                            ] = password_input.value
+                            storage["encryption_password"] = password_input.value
 
                             if encryption_password_verify(password_input.value):
                                 ui.navigate.to("/home")
@@ -241,19 +239,39 @@ def logout() -> None:
     Logout page.
     """
 
-    app.storage.user["token"] = None
-    app.storage.user["refresh_token"] = None
-    app.storage.user["encryption_password"] = None
+    storage["token"] = None
+    storage["refresh_token"] = None
+    storage["encryption_password"] = None
 
     ui.navigate.to("/")
 
 
 app.add_static_files(url_path="/static", local_directory="static/")
+
+
+@app.on_startup
+async def __schedule_purge():
+    """
+    Schedule a background task to purge stale sessions every hour if using
+    in-memory storage.
+    """
+
+    if not settings.STORAGE_IN_MEMORY:
+        return
+
+    async def __purge_loop():
+        while True:
+            await asyncio.sleep(3600)
+            storage.purge_stale_sessions()
+
+    asyncio.create_task(__purge_loop())
+
+
 ui.run(
     title=f"{settings.TAB_TITLE}",
     storage_secret=settings.STORAGE_SECRET,
     host="0.0.0.0",
     port=8888,
-    favicon=f"/static/{settings.FAVICON}",
+    favicon=f"static/{settings.FAVICON}",
     reconnect_timeout=15,
 )
