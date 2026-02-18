@@ -93,7 +93,6 @@ class MemoryStorage:
 
         Parameters:
             key: The key to delete.
-            default: The default value to return if the key is not found.
         """
 
         with self.__lock:
