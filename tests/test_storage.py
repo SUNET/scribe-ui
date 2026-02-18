@@ -137,12 +137,13 @@ class TestInMemStorage:
         Test that missing session ID raises RuntimeError.
         """
 
-        with patch("utils.storage.app") as mock_app:
-            mock_app.storage.browser.get.return_value = None
-            storage = MemoryStorage()
+        with patch("utils.storage.settings.STORAGE_IN_MEMORY", True):
+            with patch("utils.storage.app") as mock_app:
+                mock_app.storage.browser.get.return_value = None
+                storage = MemoryStorage()
 
-            with pytest.raises(RuntimeError, match="No browser session ID found"):
-                storage.add("key", "value")
+                with pytest.raises(RuntimeError, match="No browser session ID found"):
+                    storage.add("key", "value")
 
     def test_multiple_keys_same_session(self, mock_app_storage):
         """
