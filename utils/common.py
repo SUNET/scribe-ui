@@ -697,7 +697,7 @@ def table_bulk_transcribe(table: ui.table) -> None:
                         ).classes("text-body2 text-black")
                     if already_done:
                         with ui.row().classes("items-center"):
-                            ui.icon("skip_next", color="black").classes("text-body1")
+                            ui.icon("block", color="black").classes("text-body1")
                             ui.label(
                                 f"{len(already_done)} completed file(s) will be skipped."
                             ).classes("text-body2 text-black")
