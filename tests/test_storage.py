@@ -12,12 +12,13 @@ class TestInMemStorage:
     @pytest.fixture
     def mock_app_storage(self):
         """
-        Create a mock for NiceGUI app.storage.browser.
+        Create a mock for NiceGUI app.storage.browser and force in-memory storage.
         """
 
-        with patch("utils.storage.app") as mock_app:
-            mock_app.storage.browser.get.return_value = "test-session-id"
-            yield mock_app
+        with patch("utils.storage.settings.STORAGE_IN_MEMORY", True):
+            with patch("utils.storage.app") as mock_app:
+                mock_app.storage.browser.get.return_value = "test-session-id"
+                yield mock_app
 
     def test_init(self, mock_app_storage):
         """
