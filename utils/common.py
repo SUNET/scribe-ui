@@ -858,9 +858,7 @@ def table_bulk_export(table: ui.table) -> None:
                         f"{settings.API_URL}/api/v1/transcriber/{uuid}/result/srt",
                         headers=get_auth_header(),
                         json={
-                            "encryption_password": app.storage.user.get(
-                                "encryption_password"
-                            )
+                            "encryption_password": storage.get("encryption_password")
                         },
                     )
                 else:
@@ -868,9 +866,7 @@ def table_bulk_export(table: ui.table) -> None:
                         f"{settings.API_URL}/api/v1/transcriber/{uuid}/result/txt",
                         headers=get_auth_header(),
                         json={
-                            "encryption_password": app.storage.user.get(
-                                "encryption_password"
-                            )
+                            "encryption_password": storage.get("encryption_password")
                         },
                     )
                 response.raise_for_status()

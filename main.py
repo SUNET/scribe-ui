@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import Request
 from nicegui import app, ui
 from pages.admin import create as create_admin
@@ -14,6 +16,7 @@ from utils.helpers import (
     reset_password,
 )
 from utils.storage import storage
+
 
 settings = get_settings()
 
@@ -244,11 +247,31 @@ def logout() -> None:
 
 
 app.add_static_files(url_path="/static", local_directory="static/")
+
+
+@app.on_startup
+async def __schedule_purge():
+    """
+    Schedule a background task to purge stale sessions every hour if using
+    in-memory storage.
+    """
+
+    if not settings.STORAGE_IN_MEMORY:
+        return
+
+    async def __purge_loop():
+        while True:
+            await asyncio.sleep(3600)
+            storage.purge_stale_sessions()
+
+    asyncio.create_task(__purge_loop())
+
+
 ui.run(
     title=f"{settings.TAB_TITLE}",
     storage_secret=settings.STORAGE_SECRET,
     host="0.0.0.0",
     port=8888,
-    favicon=f"/static/{settings.FAVICON}",
+    favicon=f"static/{settings.FAVICON}",
     reconnect_timeout=15,
 )

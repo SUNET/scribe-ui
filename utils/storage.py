@@ -1,5 +1,6 @@
+from collections import defaultdict
 from nicegui import app
-from threading import Lock
+from time import monotonic
 from utils.settings import get_settings
 
 # WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING
@@ -20,13 +21,17 @@ class MemoryStorage:
     In-memory storage that uses NiceGUI's browser session ID as the key.
     """
 
-    def __init__(self):
+    def __init__(self, max_age: float = 3600):
         """
         Init the class.
+
+        Parameters:
+            max_age: Max idle time in seconds before a session is evicted.
         """
 
-        self.__storage = {}
-        self.__lock = Lock()
+        self.__storage: defaultdict[str, dict] = defaultdict(dict)
+        self.__last_access: dict[str, float] = {}
+        self.__max_age: float = max_age
 
     def __get_session_id(self) -> str:
         """
@@ -56,8 +61,7 @@ class MemoryStorage:
 
         session_id = self.__get_session_id()
 
-        if session_id not in self.__storage:
-            self.__storage[session_id] = {}
+        self.__last_access[session_id] = monotonic()
 
         return self.__storage[session_id]
 
@@ -70,9 +74,8 @@ class MemoryStorage:
             value: The value to associate with the key.
         """
 
-        with self.__lock:
-            session_store = self.__get_session_store()
-            session_store[key] = value
+        session_store = self.__get_session_store()
+        session_store[key] = value
 
     def get(self, key, default=None):
         """
@@ -95,11 +98,33 @@ class MemoryStorage:
             key: The key to delete.
         """
 
-        with self.__lock:
-            session_store = self.__get_session_store()
+        session_store = self.__get_session_store()
 
-            if key in session_store:
-                del session_store[key]
+        if key in session_store:
+            del session_store[key]
+
+    def clear_session(self, session_id: str):
+        """
+        Remove all stored data for a given session.
+
+        Parameters:
+            session_id: The session ID to clear.
+        """
+
+        self.__storage.pop(session_id, None)
+        self.__last_access.pop(session_id, None)
+
+    def purge_stale_sessions(self):
+        """
+        Remove sessions that have not been accessed within max_age seconds.
+        """
+
+        cutoff = monotonic() - self.__max_age
+        stale = [sid for sid, ts in self.__last_access.items() if ts < cutoff]
+
+        for sid in stale:
+            self.__storage.pop(sid, None)
+            self.__last_access.pop(sid, None)
 
     def __getitem__(self, key):
         """

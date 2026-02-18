@@ -186,3 +186,58 @@ class TestInMemStorage:
         assert storage.get("list") == [1, 2, 3]
         assert storage.get("dict") == {"nested": "value"}
         assert storage.get("none") is None
+
+    def test_clear_session(self, mock_app_storage):
+        """
+        Test clearing a session removes its data.
+        """
+
+        storage = MemoryStorage()
+
+        mock_app_storage.storage.browser.get.return_value = "session-1"
+        storage.add("key", "value1")
+
+        mock_app_storage.storage.browser.get.return_value = "session-2"
+        storage.add("key", "value2")
+
+        storage.clear_session("session-1")
+
+        mock_app_storage.storage.browser.get.return_value = "session-1"
+        assert storage.get("key") is None
+
+        mock_app_storage.storage.browser.get.return_value = "session-2"
+        assert storage.get("key") == "value2"
+
+    def test_clear_nonexistent_session(self, mock_app_storage):
+        """
+        Test clearing a non-existent session does not raise.
+        """
+
+        storage = MemoryStorage()
+        storage.clear_session("nonexistent")  # Should not raise
+
+    def test_purge_stale_sessions(self, mock_app_storage):
+        """
+        Test that stale sessions are purged after max_age.
+        """
+
+        with patch("utils.storage.monotonic") as mock_time:
+            mock_time.return_value = 1000.0
+            storage = MemoryStorage(max_age=60)
+
+            mock_app_storage.storage.browser.get.return_value = "session-old"
+            storage.add("key", "old-value")
+
+            mock_time.return_value = 1050.0
+            mock_app_storage.storage.browser.get.return_value = "session-new"
+            storage.add("key", "new-value")
+
+            # Advance past max_age for old session but not new
+            mock_time.return_value = 1070.0
+            storage.purge_stale_sessions()
+
+            mock_app_storage.storage.browser.get.return_value = "session-old"
+            assert storage.get("key") is None
+
+            mock_app_storage.storage.browser.get.return_value = "session-new"
+            assert storage.get("key") == "new-value"
