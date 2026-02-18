@@ -21,7 +21,7 @@ class MemoryStorage:
     In-memory storage that uses NiceGUI's browser session ID as the key.
     """
 
-    def __init__(self, max_age: float = 3600):
+    def __init__(self, max_age: float = 21600):
         """
         Init the class.
 
