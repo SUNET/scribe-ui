@@ -1,5 +1,6 @@
 from nicegui import app
 from threading import Lock
+from utils.settings import get_settings
 
 # WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING
 #
@@ -7,6 +8,8 @@ from threading import Lock
 # should NOT be used together with Uvicorn and multiple workers!
 #
 # WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING
+
+settings = get_settings()
 
 
 # Class to replace NiceGUIs app.storage for in-memory storage that is
@@ -47,6 +50,9 @@ class MemoryStorage:
         Returns:
             dict: The storage dictionary for the current session.
         """
+
+        if not settings.STORAGE_IN_MEMORY:
+            return app.storage.user
 
         session_id = self.__get_session_id()
 

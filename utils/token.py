@@ -138,7 +138,7 @@ def get_token_is_valid() -> bool:
     """
     Check if the current token is valid and not expired.
     """
-    token = app.storage.user.get("token")
+    token = storage.get("token")
     if not token:
         return False
 
