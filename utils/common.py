@@ -3,7 +3,7 @@ import requests
 import pytz
 from datetime import datetime, timedelta
 
-from nicegui import ui
+from nicegui import app, ui
 from starlette.formparsers import MultiPartParser
 from typing import Optional
 from utils.settings import get_settings
