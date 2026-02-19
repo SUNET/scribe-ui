@@ -3,6 +3,7 @@ import requests
 from nicegui import app, ui
 from typing import Optional
 from utils.settings import get_settings
+from utils.storage import storage
 from utils.token import get_auth_header
 
 settings = get_settings()
@@ -71,7 +72,7 @@ def reset_password() -> None:
                 "Encryption passphrase has been reset. All previously encrypted files have been removed.",
                 color="positive",
             )
-            app.storage.user["encryption_password"] = None
+            storage["encryption_password"] = None
             ui.navigate.to("/")
 
         except requests.exceptions.RequestException:

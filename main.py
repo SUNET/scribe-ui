@@ -7,6 +7,7 @@ from pages.status import create as create_status
 from pages.user import create as create_user_page
 from utils.common import default_styles
 from utils.settings import get_settings
+from utils.storage import storage
 from utils.token import get_user_data, get_user_status, get_token_is_valid
 from utils.helpers import (
     encryption_password_set,
@@ -35,20 +36,20 @@ async def index(request: Request) -> None:
     refresh_token = request.query_params.get("refresh_token")
 
     if refresh_token:
-        app.storage.user["refresh_token"] = refresh_token
+        storage["refresh_token"] = refresh_token
 
     if token:
-        app.storage.user["token"] = token
+        storage["token"] = token
 
     # Set the users timezone
     timezone = await ui.run_javascript(
         "Intl.DateTimeFormat().resolvedOptions().timeZone"
     )
-    app.storage.user["timezone"] = timezone
+    storage["timezone"] = timezone
 
     if (
-        app.storage.user.get("token")
-        and app.storage.user.get("refresh_token")
+        storage.get("token")
+        and storage.get("refresh_token")
         and get_user_status()
     ):
         user_data = get_user_data()
@@ -120,7 +121,7 @@ async def index(request: Request) -> None:
 
                     def verify_encryption_password() -> None:
                         if password_input.value:
-                            app.storage.user[
+                            storage[
                                 "encryption_password"
                             ] = password_input.value
 
@@ -173,7 +174,7 @@ async def index(request: Request) -> None:
 
     else:
         has_token = bool(
-            app.storage.user.get("token") and app.storage.user.get("refresh_token")
+            storage.get("token") and storage.get("refresh_token")
         )
 
         if has_token and not get_token_is_valid():
@@ -186,7 +187,7 @@ async def index(request: Request) -> None:
                 "width: 500px; max-width: 90%; padding: 40px; border: 0; box-shadow: none;"
             ):
                 with ui.column().classes("w-full items-center gap-4"):
-                    ui.image(f"/static/{settings.LOGO_LANDING}").style(
+                    ui.image(f"static/{settings.LOGO_LANDING}").style(
                         f"max-width: {settings.LOGO_LANDING_WIDTH}px; height: auto;"
                     )
 
@@ -241,9 +242,9 @@ def logout() -> None:
     Logout page.
     """
 
-    app.storage.user["token"] = None
-    app.storage.user["refresh_token"] = None
-    app.storage.user["encryption_password"] = None
+    storage["token"] = None
+    storage["refresh_token"] = None
+    storage["encryption_password"] = None
 
     ui.navigate.to("/")
 
@@ -254,6 +255,6 @@ ui.run(
     storage_secret=settings.STORAGE_SECRET,
     host="0.0.0.0",
     port=8888,
-    favicon=f"/static/{settings.FAVICON}",
+    favicon=f"static/{settings.FAVICON}",
     reconnect_timeout=15,
 )

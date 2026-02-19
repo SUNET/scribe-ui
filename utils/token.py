@@ -4,6 +4,7 @@ import time
 
 from nicegui import app
 from utils.settings import get_settings
+from utils.storage import storage
 
 
 settings = get_settings()
@@ -11,7 +12,7 @@ settings = get_settings()
 
 def token_refresh_call() -> str:
     try:
-        token_refresh = app.storage.user.get("refresh_token")
+        token_refresh = storage.get("refresh_token")
         response = requests.post(
             settings.OIDC_APP_REFRESH_ROUTE,
             json={"token": token_refresh},
@@ -28,7 +29,7 @@ def token_refresh() -> bool:
     Refresh the token using the refresh token.
     """
 
-    token_auth = app.storage.user.get("token")
+    token_auth = storage.get("token")
 
     try:
         jwt_instance = jwt.JWT()
@@ -38,14 +39,14 @@ def token_refresh() -> bool:
         if not token:
             return None
         jwt_decoded = jwt_instance.decode(token, do_verify=False)
-        app.storage.user["token"] = token
+        storage["token"] = token
     try:
         # Only refresh if the token is about to expire within 60 seconds.
         if jwt_decoded["exp"] - int(time.time()) > 60:
             return True
 
         token = token_refresh_call()
-        app.storage.user["token"] = token
+        storage["token"] = token
     except requests.exceptions.RequestException:
         return None
 
@@ -57,7 +58,7 @@ def get_auth_header() -> dict[str, str]:
     Get the authorization header for API requests.
     """
 
-    token = app.storage.user.get("token")
+    token = storage.get("token")
 
     try:
         jwt_instance = jwt.JWT()
@@ -73,7 +74,7 @@ def get_user_info() -> tuple[str, int] | None:
     Get user information from token.
     """
 
-    token = app.storage.user.get("token")
+    token = storage.get("token")
 
     if not token:
         return None, None
@@ -139,7 +140,7 @@ def get_token_is_valid() -> bool:
     """
     Check if the current token is valid and not expired.
     """
-    token = app.storage.user.get("token")
+    token = storage.get("token")
     if not token:
         return False
 
