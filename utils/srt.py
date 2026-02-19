@@ -1362,10 +1362,9 @@ class SRTEditor:
                             ),
                         ).classes("caption-close")
 
-                        if self.data_format == "txt":
-                            ui.button("Add").props("flat dense").on(
-                                "click", lambda: self.add_caption_after(caption)
-                            )
+                        ui.button("Add").props("flat dense").on(
+                            "click", lambda: self.add_caption_after(caption)
+                        )
 
                         ui.button("Delete", color="red").props("flat dense").on(
                             "click", lambda: self.remove_caption(caption)
@@ -1596,10 +1595,9 @@ class SRTEditor:
                         ),
                     ).classes("caption-close")
 
-                    if self.data_format == "txt":
-                        ui.button("Add").props("flat dense").on(
-                            "click", lambda: self.add_caption_after(caption)
-                        )
+                    ui.button("Add").props("flat dense").on(
+                        "click", lambda: self.add_caption_after(caption)
+                    )
 
                     ui.button("Delete", color="red").props("flat dense").on(
                         "click", lambda: self.remove_caption(caption)
