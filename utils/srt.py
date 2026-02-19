@@ -342,7 +342,7 @@ class SRTEditor:
             case "Escape":
                 # Click the "Close" button to save changes before closing
                 # This behaves the same as clicking the Close button
-                ui.run_javascript("document.querySelector('.button-close')?.click()")
+                ui.run_javascript("document.querySelector('.caption-close')?.click()")
 
             # Open find, Ctrl+F
             case "f" if event.modifiers.ctrl and not event.modifiers.shift:
@@ -1328,7 +1328,7 @@ class SRTEditor:
                     # Action buttons
                     # Row with buttons to the left
                     with ui.row().classes("w-full justify-between"):
-                        ui.button("Split", icon="call_split", color="blue").props(
+                        ui.button("Split", icon="call_split").props(
                             "flat dense"
                         ).on("click", lambda: self.split_caption(caption))
                         ui.button("Merge with previous", icon="merge_type").props(
@@ -1352,25 +1352,24 @@ class SRTEditor:
                             ),
                         )
 
-                        with ui.row().classes("gap-2"):
-                            ui.button("Close").props("flat dense").on(
-                                "click",
-                                lambda: self.select_caption(
-                                    caption,
-                                    speaker_select,
-                                    True,
-                                    new_text=text_area.value,
-                                ),
-                            ).classes("button-close")
+                        ui.button("Close").props("flat dense").on(
+                            "click",
+                            lambda: self.select_caption(
+                                caption,
+                                speaker_select,
+                                True,
+                                new_text=text_area.value,
+                            ),
+                        ).classes("caption-close")
 
-                            if self.data_format == "txt":
-                                ui.button("Add", color="green").props("flat dense").on(
-                                    "click", lambda: self.add_caption_after(caption)
-                                )
-
-                            ui.button("Delete", color="red").props("flat dense").on(
-                                "click", lambda: self.remove_caption(caption)
+                        if self.data_format == "txt":
+                            ui.button("Add").props("flat dense").on(
+                                "click", lambda: self.add_caption_after(caption)
                             )
+
+                        ui.button("Delete", color="red").props("flat dense").on(
+                            "click", lambda: self.remove_caption(caption)
+                        )
                 else:
                     # Show text with search highlighting
                     if caption.is_highlighted and self.search_term:
@@ -1566,7 +1565,7 @@ class SRTEditor:
                 )
 
                 with ui.row().classes("w-full justify-between"):
-                    ui.button("Split", icon="call_split", color="blue").props(
+                    ui.button("Split", icon="call_split").props(
                         "flat dense"
                     ).on("click", lambda: self.split_caption(caption))
                     ui.button("Merge with previous", icon="merge_type").props(
@@ -1590,22 +1589,21 @@ class SRTEditor:
                         ),
                     )
 
-                    with ui.row().classes("gap-2"):
-                        ui.button("Close").props("flat dense").on(
-                            "click",
-                            lambda: self.select_caption(
-                                caption, speaker_select, True, new_text=text_area.value
-                            ),
-                        ).classes("button-close")
+                    ui.button("Close").props("flat dense").on(
+                        "click",
+                        lambda: self.select_caption(
+                            caption, speaker_select, True, new_text=text_area.value
+                        ),
+                    ).classes("caption-close")
 
-                        if self.data_format == "txt":
-                            ui.button("Add", color="green").props("flat dense").on(
-                                "click", lambda: self.add_caption_after(caption)
-                            )
-
-                        ui.button("Delete", color="red").props("flat dense").on(
-                            "click", lambda: self.remove_caption(caption)
+                    if self.data_format == "txt":
+                        ui.button("Add").props("flat dense").on(
+                            "click", lambda: self.add_caption_after(caption)
                         )
+
+                    ui.button("Delete", color="red").props("flat dense").on(
+                        "click", lambda: self.remove_caption(caption)
+                    )
             else:
                 if caption.is_highlighted and self.search_term:
                     highlighted_text = self.get_highlighted_text(caption.text)
