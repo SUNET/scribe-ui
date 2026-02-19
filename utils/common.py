@@ -487,14 +487,22 @@ def table_upload(table) -> None:
                 status_column.visible = False
 
             with ui.column().classes("w-full items-center mt-10") as upload_column:
-                upload = ui.upload(
-                    label="hidden",
-                    on_multi_upload=lambda e: handle_upload_with_feedback(e, dialog),
-                    auto_upload=True,
-                    multiple=True,
-                    max_files=5,
-                ).props(
-                    "hidden accept=.mp3,.wav,.flac,.mp4,.mkv,.avi,.m4a,.aiff,.aif,.mov,.ogg,.opus,.webm,.wma,.mpg,.mpeg"
+                upload = (
+                    ui.upload(
+                        label="hidden",
+                        on_multi_upload=lambda e: handle_upload_with_feedback(
+                            e, dialog
+                        ),
+                        auto_upload=True,
+                        multiple=True,
+                        max_files=5,
+                    )
+                    .props(
+                        "accept=.mp3,.wav,.flac,.mp4,.mkv,.avi,.m4a,.aiff,.aif,.mov,.ogg,.opus,.webm,.wma,.mpg,.mpeg"
+                    )
+                    .style(
+                        "position: absolute; width: 0; height: 0; overflow: hidden; opacity: 0"
+                    )
                 )
 
                 upload.on(
@@ -503,10 +511,9 @@ def table_upload(table) -> None:
                 )
                 upload.on("finish", lambda _: dialog.close())
 
-                ui.html(
+                dropzone = ui.html(
                     """
-                    <div id="dropzone"
-                         class="w-96 h-40 flex items-center justify-center
+                    <div class="w-96 h-40 flex items-center justify-center
                                 border-2 border-dashed border-gray-400
                                 rounded-2xl bg-gray-50
                                 hover:bg-gray-100 cursor-pointer text-gray-600">
@@ -518,35 +525,29 @@ def table_upload(table) -> None:
                     sanitize=False,
                 )
 
-                ui.run_javascript(
-                    """
-                        const dz = document.getElementById('dropzone');
-                        const hiddenInput = dz.closest('body').querySelector('input[type=file][multiple]');
-                        dz.addEventListener('click', () => hiddenInput.click());
-
-                        dz.addEventListener('dragover', e => {
-                            e.preventDefault();
-                            dz.classList.add('bg-gray-200');
-                        });
-
-                        dz.addEventListener('dragleave', () => {
-                            dz.classList.remove('bg-gray-200');
-                        });
-
-                        dz.addEventListener('drop', e => {
-                            e.preventDefault();
-                            dz.classList.remove('bg-gray-200');
-
-                            // Create a DataTransfer to set multiple files
-                            const dt = new DataTransfer();
-                            for (const file of e.dataTransfer.files) {
-                                dt.items.add(file);
-                            }
-                            hiddenInput.files = dt.files;
-
-                            hiddenInput.dispatchEvent(new Event('change', { bubbles: true }));
-                        });
-                    """
+                upload_id = upload.id
+                dropzone_id = dropzone.id
+                ui.timer(
+                    0.1,
+                    lambda: ui.run_javascript(
+                        "const dz = getHtmlElement(" + str(dropzone_id) + ");"
+                        "const upl = getElement(" + str(upload_id) + ");"
+                        "if (!dz || !upl) return;"
+                        "dz.addEventListener('click', () => upl.$refs.qRef.pickFiles());"
+                        "dz.addEventListener('dragover', e => {"
+                        "  e.preventDefault();"
+                        "  dz.querySelector('div').classList.add('bg-gray-200');"
+                        "});"
+                        "dz.addEventListener('dragleave', () => {"
+                        "  dz.querySelector('div').classList.remove('bg-gray-200');"
+                        "});"
+                        "dz.addEventListener('drop', e => {"
+                        "  e.preventDefault();"
+                        "  dz.querySelector('div').classList.remove('bg-gray-200');"
+                        "  upl.$refs.qRef.addFiles(Array.from(e.dataTransfer.files));"
+                        "});"
+                    ),
+                    once=True,
                 )
                 with ui.row().style("justify-content: flex-end; gap: 12px;"):
                     with ui.button(
