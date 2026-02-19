@@ -1783,7 +1783,7 @@ class SRTEditor:
         )
 
         with ui.dialog() as dialog:
-            with ui.card().classes("p-6").style("max-width: 700px; min-width: 500px;"):
+            with ui.card().classes("p-6").style("max-width: 700px; min-width: 500px; max-height: 90vh; overflow-y: auto;"):
                 # Header
                 with ui.row().classes("w-full items-center justify-between mb-4"):
                     ui.label("Subtitle Validation").classes("text-h5 font-bold")
@@ -1828,7 +1828,9 @@ class SRTEditor:
                                 ).classes("text-body2 text-green-700")
 
                 # Footer
-                with ui.row().classes("w-full justify-end mt-4"):
+                with ui.row().classes("w-full justify-end mt-4").style(
+                    "position: sticky; bottom: -24px; background: white; padding-bottom: 8px; z-index: 1;"
+                ):
                     ui.button("Close", on_click=dialog.close).props("color=primary")
 
             dialog.open()
@@ -1882,7 +1884,7 @@ class SRTEditor:
         ]
 
         with ui.dialog() as dialog:
-            with ui.card().classes("w-2/3 max-w-2xl").style("padding: 24px;"):
+            with ui.card().classes("w-2/3 max-w-2xl").style("padding: 24px; max-height: 90vh; overflow-y: auto;"):
                 ui.label("Keyboard Shortcuts").classes("text-h5 mb-4 font-bold")
 
                 with ui.column().classes("w-full gap-4"):
@@ -1900,7 +1902,9 @@ class SRTEditor:
                                         "text-body2 font-mono bg-gray-100 px-2 py-1 rounded"
                                     )
 
-                with ui.row().classes("w-full justify-end mt-4"):
+                with ui.row().classes("w-full justify-end mt-4").style(
+                    "position: sticky; bottom: -24px; background: white; padding-bottom: 8px; z-index: 1;"
+                ):
                     ui.button("Close").props("flat color=primary").on(
                         "click", dialog.close
                     )
@@ -1933,6 +1937,7 @@ class SRTEditor:
             card = ui.card().classes("p-6").style(
                 f"min-width: {'1000' if (not is_bulk or bulk_needs_preview) else '500'}px; "
                 f"max-width: {'1400' if (not is_bulk or bulk_needs_preview) else '700'}px; "
+                "max-height: 90vh; overflow-y: auto; "
                 "background-color: #ffffff;"
             )
             with card:
@@ -2479,7 +2484,9 @@ class SRTEditor:
                 ui.separator().classes("my-4")
 
                 # Footer
-                with ui.row().classes("w-full justify-between items-center"):
+                with ui.row().classes("w-full justify-between items-center").style(
+                    "position: sticky; bottom: -24px; background: white; padding-bottom: 8px; z-index: 1;"
+                ):
                     if is_bulk:
                         ui.label("").bind_text_from(
                             fmt, "value", backward=lambda v: f"Format: .{v}"

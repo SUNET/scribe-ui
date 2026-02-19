@@ -8,7 +8,7 @@ from cryptography.hazmat.primitives.hashes import SHA256
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 
-SALT_KEY = "_salt"
+SALT_KEY = "salt"
 NONCE_LENGTH = 12
 TEST_SECRET = "test-secret-key"
 TEST_SESSION_ID = "abc123-session-uuid"
