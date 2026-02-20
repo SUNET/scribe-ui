@@ -8,7 +8,7 @@ from pages.user import create as create_user_page
 from utils.common import default_styles
 from utils.settings import get_settings
 from utils.storage import storage
-from utils.token import get_user_data, get_user_status, get_token_is_valid
+from utils.token import exchange_code, get_user_data, get_user_status, get_token_is_valid
 from utils.helpers import (
     encryption_password_set,
     encryption_password_verify,
@@ -32,14 +32,14 @@ async def index(request: Request) -> None:
 
     ui.add_head_html(default_styles)
 
-    token = request.query_params.get("token")
-    refresh_token = request.query_params.get("refresh_token")
+    code = request.query_params.get("code")
 
-    if refresh_token:
-        storage["refresh_token"] = refresh_token
-
-    if token:
-        storage["token"] = token
+    if code:
+        tokens = exchange_code(code)
+        if tokens:
+            storage["token"] = tokens.get("id_token")
+            if tokens.get("refresh_token"):
+                storage["refresh_token"] = tokens["refresh_token"]
 
     # Set the users timezone
     timezone = await ui.run_javascript(
