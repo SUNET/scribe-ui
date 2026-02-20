@@ -10,6 +10,22 @@ from utils.storage import storage
 settings = get_settings()
 
 
+def exchange_code(code: str) -> dict | None:
+    """
+    Exchange a one-time auth code for tokens via the backend.
+    """
+
+    try:
+        response = requests.post(
+            f"{settings.API_URL}/api/exchange",
+            json={"code": code},
+        )
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException:
+        return None
+
+
 def token_refresh_call() -> str:
     try:
         token_refresh = storage.get("refresh_token")
