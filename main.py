@@ -191,7 +191,7 @@ async def index(request: Request) -> None:
                         f"max-width: {settings.LOGO_LANDING_WIDTH}px; height: auto;"
                     )
 
-                    ui.label("Welcome to Sunet Scribe").classes(
+                    ui.label(settings.LANDING_TEXT).classes(
                         "text-h5 text-center"
                     ).style("margin-top: 20px;")
 
