@@ -322,7 +322,7 @@ ciphertext, protecting against pattern recognition.
 
 ### Cookie signing
 `app.storage.browser` is signed by NiceGUI/Starlette with `STORAGE_SECRET`.
-The client cannot read or modify the cookie contents (including `_bk`) without
+The client cannot modify the cookie contents (including `_bk`) without
 invalidating the signature.
 
 ## Limitations and Considerations
