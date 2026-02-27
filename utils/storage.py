@@ -1,204 +1,192 @@
 import base64
 import os
+import secrets
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.hashes import SHA256
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from nicegui import app
-from nicegui.storage import request_contextvar
 from utils.settings import get_settings
 
 settings = get_settings()
 
-def get_session_id() -> str:
-    """
-    Get the NiceGUI browser session ID from the request context.
-    """
-    
-    request = request_contextvar.get()
-    
-    if request and hasattr(request, "session") and "id" in request.session:
-        return request.session["id"]
-    
-    return ""
+# Keys whose values are encrypted with a per-browser key and stored in
+# app.storage.user.  The browser key lives only in app.storage.browser
+# (a signed cookie) and is never persisted to disk on the server.
+SECRET_KEYS = frozenset({"encryption_password"})
 
 
-def derive_key(storage_secret: str, salt: bytes, session_id: str) -> bytes:
-    """
-    Derive a 256-bit AES key using HKDF.
-    """
-    
+def _derive_key(ikm: bytes, salt: bytes) -> bytes:
+    """Derive a 256-bit AES key using HKDF."""
     hkdf = HKDF(
         algorithm=SHA256(),
         length=32,
         salt=salt,
-        info=session_id.encode(),
+        info=b"browser-storage",
     )
-    
-    return hkdf.derive(storage_secret.encode())
+    return hkdf.derive(ikm)
 
 
-class EncryptedStorage:
+def _get_aesgcm(browser_key: str) -> AESGCM:
     """
-    A transparent encryption wrapper around NiceGUI's app.storage.user.
+    Get an AESGCM instance keyed by the browser key + STORAGE_SECRET.
 
-    All values are encrypted at rest using AES-256-GCM.
-    The encryption key is derived via HKDF from:
-      - STORAGE_SECRET (server-wide, from settings)
-      - A random per-user salt (stored as _salt in the same storage)
-      - The NiceGUI browser session UUID
+    The salt is stored in app.storage.user (server-side, not secret).
+    """
+    salt_hex = app.storage.user.get("salt")
+
+    if not salt_hex:
+        salt = os.urandom(16)
+        salt_hex = salt.hex()
+        app.storage.user["salt"] = salt_hex
+
+    salt = bytes.fromhex(salt_hex)
+    # Use browser_key as IKM and STORAGE_SECRET-derived bytes as HKDF salt,
+    # so both are required independently for key derivation.
+    storage_salt = HKDF(
+        algorithm=SHA256(),
+        length=32,
+        salt=salt,
+        info=b"storage-secret",
+    ).derive(settings.STORAGE_SECRET.encode())
+    key = _derive_key(browser_key.encode(), storage_salt)
+
+    return AESGCM(key)
+
+
+def _encrypt(value: str, browser_key: str, aad: str) -> str:
+    """Encrypt a string value using AES-256-GCM with AAD, returned as base64."""
+    aesgcm = _get_aesgcm(browser_key)
+    nonce = os.urandom(12)
+    ciphertext = aesgcm.encrypt(nonce, value.encode(), aad.encode())
+
+    return base64.urlsafe_b64encode(nonce + ciphertext).decode()
+
+
+def _decrypt(value: str, browser_key: str, aad: str) -> str:
+    """Decrypt a base64-encoded AES-256-GCM ciphertext with AAD verification."""
+    aesgcm = _get_aesgcm(browser_key)
+    raw = base64.urlsafe_b64decode(value.encode())
+    nonce = raw[:12]
+    ciphertext = raw[12:]
+
+    return aesgcm.decrypt(nonce, ciphertext, aad.encode()).decode()
+
+
+# --- URL-safe encryption (for video proxy query params) ---
+# Uses only STORAGE_SECRET so the server can decrypt without browser context.
+
+
+def _derive_url_key(salt: bytes) -> bytes:
+    hkdf = HKDF(
+        algorithm=SHA256(),
+        length=32,
+        salt=salt,
+        info=b"url-param",
+    )
+    return hkdf.derive(settings.STORAGE_SECRET.encode())
+
+
+def encrypt_for_url(value: str) -> str:
+    """Encrypt a value for use in URL query params (server-only secret)."""
+    salt = os.urandom(16)
+    key = _derive_url_key(salt)
+    aesgcm = AESGCM(key)
+    nonce = os.urandom(12)
+    ciphertext = aesgcm.encrypt(nonce, value.encode(), None)
+
+    return base64.urlsafe_b64encode(salt + nonce + ciphertext).decode()
+
+
+def decrypt_from_url(value: str) -> str:
+    """Decrypt a value from a URL query param."""
+    raw = base64.urlsafe_b64decode(value.encode())
+    salt = raw[:16]
+    nonce = raw[16:28]
+    ciphertext = raw[28:]
+    key = _derive_url_key(salt)
+    aesgcm = AESGCM(key)
+
+    return aesgcm.decrypt(nonce, ciphertext, None).decode()
+
+
+class Storage:
+    """
+    Unified storage with two backends:
+
+    - Secret keys (encryption_password): encrypted with a per-browser random
+      key and stored in app.storage.user.  The browser key lives only in
+      app.storage.browser (a signed cookie that is never written to disk).
+    - All other keys: stored in app.storage.user (server-side per-user files).
     """
 
-    def __get_aesgcm(self) -> AESGCM:
+    def ensure_browser_key(self) -> None:
         """
-        Get an AESGCM instance initialized with the derived key.
+        Generate a random browser key if one doesn't exist yet.
 
-        Returns:
-            AESGCM: An instance of AESGCM initialized with the derived key.
+        Must be called at the top of page handlers, before any await,
+        while app.storage.browser is still writable.
         """
+        if not app.storage.browser.get("_bk"):
+            app.storage.browser["_bk"] = secrets.token_urlsafe(32)
 
-        raw = app.storage.user
-        salt_hex = raw.get("salt")
-
-        if not salt_hex:
-            salt = os.urandom(16)
-            raw["salt"] = salt.hex()
-            salt_hex = salt.hex()
-
-        salt = bytes.fromhex(salt_hex)
-        session_id = get_session_id()
-        key = derive_key(settings.STORAGE_SECRET, salt, session_id)
-
-        return AESGCM(key)
-
-    def __encrypt(self, value):
-        """
-        Encrypt a value using AES-256-GCM.
-        
-        Parameters:
-            value: The value to encrypt.
-        
-        Returns:
-            str: The encrypted value, encoded in base64.
-        """
-
-        if value is None:
-            return None
-
-        aesgcm = self.__get_aesgcm()
-        nonce = os.urandom(12)
-        ciphertext = aesgcm.encrypt(nonce, str(value).encode(), None)
-        
-        return base64.urlsafe_b64encode(nonce + ciphertext).decode()
-
-    def __decrypt(self, value):
-        """
-        Decrypt a value using AES-256-GCM.
-
-        Parameters:
-            value: The value to decrypt (base64-encoded).
-        Returns:
-            The decrypted value, or the original value if decryption fails (for plaintext migration).
-        """
-
-        if value is None:
-            return None
-        
-        try:
-            aesgcm = self.__get_aesgcm()
-            raw = base64.urlsafe_b64decode(value.encode())
-            nonce = raw[:12]
-            ciphertext = raw[12:]
-        
-            return aesgcm.decrypt(nonce, ciphertext, None).decode()
-        
-        except Exception:
-            # Plaintext migration: return value as-is if decryption fails
-            return value
+    def _get_browser_key(self) -> str | None:
+        return app.storage.browser.get("_bk")
 
     def __setitem__(self, key: str, value):
-        """
-        Set a value in the encrypted storage.
-
-        Parameters:
-            key (str): The key to set.
-            value: The value to set.
-
-        Raises:
-            KeyError: If the key is "salt", which is reserved for internal use.
-        """
-
-        if key == "salt":
-            raise KeyError(f"'{"salt"}' is a reserved key")
-        
-        app.storage.user[key] = self.__encrypt(value)
+        if key in SECRET_KEYS:
+            if value is None:
+                app.storage.user.pop(f"_secret_{key}", None)
+            else:
+                browser_key = self._get_browser_key()
+                if browser_key:
+                    encrypted = _encrypt(str(value), browser_key, key)
+                    app.storage.user[f"_secret_{key}"] = encrypted
+        else:
+            app.storage.user[key] = value
 
     def __getitem__(self, key: str):
-        """
-        Get a value from the encrypted storage.
+        if key in SECRET_KEYS:
+            browser_key = self._get_browser_key()
+            if not browser_key:
+                raise KeyError(key)
 
-        Parameters:
-            key (str): The key to get.
+            value = app.storage.user.get(f"_secret_{key}")
+            if value is None:
+                raise KeyError(key)
 
-        Returns:
-            The decrypted value associated with the key.
+            return _decrypt(value, browser_key, key)
 
-        Raises:
-            KeyError: If the key is "salt", which is reserved for internal use.
-        """
-
-        if key == "salt":
-            raise KeyError(f"'{"salt"}' is a reserved key")
-        
-        return self.__decrypt(app.storage.user[key])
+        return app.storage.user[key]
 
     def get(self, key: str, default=None):
-        """
-        Get a value from the encrypted storage, with a default if the key is not found.
+        if key in SECRET_KEYS:
+            browser_key = self._get_browser_key()
+            if not browser_key:
+                return default
 
-        Parameters:
-            key (str): The key to get.
-            default: The value to return if the key is not found.
+            value = app.storage.user.get(f"_secret_{key}")
+            if value is None:
+                return default
 
-        Returns:
-            The decrypted value associated with the key, or the default if the key is not found.
-        """
+            try:
+                return _decrypt(value, browser_key, key)
+            except Exception:
+                return default
 
-        if key == "salt":
-            return default
-
-        value = app.storage.user.get(key)
-
-        if value is None:
-            return default
-
-        return self.__decrypt(value)
+        return app.storage.user.get(key, default)
 
     def __contains__(self, key: str) -> bool:
-        """
-        Check if a key exists in the encrypted storage.
-
-        Parameters:
-            key (str): The key to check.
-
-        Returns:
-            bool: True if the key exists, False otherwise.
-        """
+        if key in SECRET_KEYS:
+            return f"_secret_{key}" in app.storage.user
 
         return key in app.storage.user
 
     def __delitem__(self, key: str):
-        """
-        Delete a key from the encrypted storage.
-
-        Parameters:
-            key (str): The key to delete.
-
-        Raises:
-            KeyError: If the key is "salt", which is reserved for internal use.
-        """
-
-        del app.storage.user[key]
+        if key in SECRET_KEYS:
+            app.storage.user.pop(f"_secret_{key}", None)
+        else:
+            del app.storage.user[key]
 
 
-storage = EncryptedStorage()
+storage = Storage()

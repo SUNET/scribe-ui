@@ -254,6 +254,8 @@ def page_init(header_text: Optional[str] = "") -> None:
     Initialize the page with a header and background color.
     """
 
+    storage.ensure_browser_key()
+
     def refresh():
         if not token_refresh():
             storage["token"] = None
@@ -263,6 +265,14 @@ def page_init(header_text: Optional[str] = "") -> None:
             ui.navigate.to(settings.OIDC_APP_LOGOUT_ROUTE)
 
     refresh()
+
+    # If a stored encryption_password exists on the server but cannot be
+    # decrypted (e.g. server session was cleared and salt regenerated, or the
+    # browser key changed), redirect to the index page so the user can
+    # re-enter their passphrase.
+    if "encryption_password" in storage and storage.get("encryption_password") is None:
+        ui.navigate.to("/")
+        return
 
     is_admin = get_admin_status()
     is_bofh = get_bofh_status()
@@ -436,7 +446,7 @@ def table_click(event) -> None:
         )
 
 
-def post_file(filedata: bytes, filename: str) -> None:
+def post_file(filedata: bytes, filename: str, encryption_password: str = "") -> None:
     """
     Post a file to the API.
     """
@@ -448,7 +458,7 @@ def post_file(filedata: bytes, filename: str) -> None:
             f"{settings.API_URL}/api/v1/transcriber",
             files=files_json,
             headers=get_auth_header(),
-            json={"encryption_password": storage.get("encryption_password")},
+            json={"encryption_password": encryption_password},
         )
         response.raise_for_status()
 
@@ -568,12 +578,14 @@ async def handle_upload_with_feedback(files, dialog):
 
     dialog.close()
 
+    encryption_password = storage.get("encryption_password", "")
+
     for file in files.files:
         try:
             file_name = file.name
             file_data = await file.read()
 
-            await asyncio.to_thread(post_file, file_data, file_name)
+            await asyncio.to_thread(post_file, file_data, file_name, encryption_password)
 
             ui.notify(
                 f"Successfully uploaded {file_name}", type="positive", timeout=3000

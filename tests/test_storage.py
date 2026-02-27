@@ -1,193 +1,241 @@
-import os
 import base64
 from unittest.mock import MagicMock, patch
 
 import pytest
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from cryptography.hazmat.primitives.hashes import SHA256
-from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
-
-SALT_KEY = "salt"
 NONCE_LENGTH = 12
 TEST_SECRET = "test-secret-key"
-TEST_SESSION_ID = "abc123-session-uuid"
 
 
-def _derive_key(storage_secret, salt, session_id):
-    hkdf = HKDF(algorithm=SHA256(), length=32, salt=salt, info=session_id.encode())
-    return hkdf.derive(storage_secret.encode())
-
-
-@pytest.fixture
-def mock_storage():
-    """Mock NiceGUI app.storage.user as a plain dict."""
-    backing = {}
+def _make_mock_app(browser=None, user=None):
     mock_app = MagicMock()
-    mock_app.storage.user = backing
-    return backing, mock_app
+    mock_app.storage.browser = browser if browser is not None else {}
+    mock_app.storage.user = user if user is not None else {}
+    return mock_app
 
 
 @pytest.fixture
-def mock_request():
-    """Mock NiceGUI request_contextvar with a session ID."""
-    request = MagicMock()
-    request.session = {"id": TEST_SESSION_ID}
-    return request
+def mock_app():
+    return _make_mock_app()
 
 
 @pytest.fixture
-def encrypted_storage(mock_storage, mock_request):
-    """Create an EncryptedStorage with mocked dependencies."""
-    backing, mock_app = mock_storage
-
+def storage_instance(mock_app):
+    """Storage with browser + user writable."""
     with (
         patch("utils.storage.app", mock_app),
-        patch("utils.storage.request_contextvar") as mock_ctx,
         patch("utils.storage.get_settings") as mock_settings,
     ):
-        mock_ctx.get.return_value = mock_request
         mock_settings.return_value.STORAGE_SECRET = TEST_SECRET
+        from utils.storage import Storage
 
-        from utils.storage import EncryptedStorage
-
-        store = EncryptedStorage()
-        yield store, backing
+        yield Storage(), mock_app
 
 
-class TestEncryptDecryptRoundTrip:
-    def test_string_value(self, encrypted_storage):
-        store, backing = encrypted_storage
-        store["token"] = "my-secret-token"
-        assert backing.get("token") != "my-secret-token"  # encrypted
-        assert store["token"] == "my-secret-token"
+@pytest.fixture
+def storage_with_browser_key(mock_app):
+    """Storage with a browser key already set."""
+    with (
+        patch("utils.storage.app", mock_app),
+        patch("utils.storage.get_settings") as mock_settings,
+    ):
+        mock_settings.return_value.STORAGE_SECRET = TEST_SECRET
+        from utils.storage import Storage
 
-    def test_none_value(self, encrypted_storage):
-        store, backing = encrypted_storage
-        store["key"] = None
-        assert backing["key"] is None
-        assert store.get("key") is None
-
-    def test_empty_string(self, encrypted_storage):
-        store, backing = encrypted_storage
-        store["key"] = ""
-        assert store["key"] == ""
-
-    def test_multiple_keys(self, encrypted_storage):
-        store, _ = encrypted_storage
-        store["a"] = "value_a"
-        store["b"] = "value_b"
-        assert store["a"] == "value_a"
-        assert store["b"] == "value_b"
-
-    def test_overwrite_value(self, encrypted_storage):
-        store, _ = encrypted_storage
-        store["key"] = "first"
-        store["key"] = "second"
-        assert store["key"] == "second"
+        store = Storage()
+        store.ensure_browser_key()
+        yield store, mock_app
 
 
-class TestGetMethod:
-    def test_get_existing(self, encrypted_storage):
-        store, _ = encrypted_storage
-        store["key"] = "value"
-        assert store.get("key") == "value"
+class TestNonSecretKeys:
+    """Non-secret keys go to app.storage.user."""
 
-    def test_get_missing_returns_default(self, encrypted_storage):
-        store, _ = encrypted_storage
+    def test_set_and_get(self, storage_instance):
+        store, mock = storage_instance
+        store["token"] = "my-jwt"
+        assert mock.storage.user["token"] == "my-jwt"
+        assert store["token"] == "my-jwt"
+
+    def test_get_default(self, storage_instance):
+        store, _ = storage_instance
         assert store.get("missing") is None
         assert store.get("missing", "fallback") == "fallback"
 
-    def test_get_with_custom_default(self, encrypted_storage):
-        store, _ = encrypted_storage
-        assert store.get("x", "default_val") == "default_val"
-
-
-class TestPlaintextMigration:
-    def test_reads_plaintext_when_decryption_fails(self, encrypted_storage):
-        store, backing = encrypted_storage
-        # Simulate pre-existing plaintext data
-        backing["old_token"] = "plaintext-jwt-token"
-        assert store.get("old_token") == "plaintext-jwt-token"
-
-    def test_reads_plaintext_getitem(self, encrypted_storage):
-        store, backing = encrypted_storage
-        backing["legacy"] = "legacy-value"
-        assert store["legacy"] == "legacy-value"
-
-
-class TestSaltKey:
-    def test_salt_is_generated(self, encrypted_storage):
-        store, backing = encrypted_storage
-        store["key"] = "value"
-        assert SALT_KEY in backing
-        assert len(bytes.fromhex(backing[SALT_KEY])) == 16
-
-    def test_salt_reserved_setitem(self, encrypted_storage):
-        store, _ = encrypted_storage
-        with pytest.raises(KeyError, match="reserved"):
-            store[SALT_KEY] = "value"
-
-    def test_salt_reserved_getitem(self, encrypted_storage):
-        store, _ = encrypted_storage
-        with pytest.raises(KeyError, match="reserved"):
-            _ = store[SALT_KEY]
-
-    def test_salt_get_returns_default(self, encrypted_storage):
-        store, _ = encrypted_storage
-        assert store.get(SALT_KEY) is None
-        assert store.get(SALT_KEY, "x") == "x"
-
-    def test_same_salt_reused(self, encrypted_storage):
-        store, backing = encrypted_storage
-        store["a"] = "1"
-        salt1 = backing[SALT_KEY]
-        store["b"] = "2"
-        salt2 = backing[SALT_KEY]
-        assert salt1 == salt2
-
-
-class TestContainsAndDelete:
-    def test_contains(self, encrypted_storage):
-        store, _ = encrypted_storage
-        store["key"] = "value"
-        assert "key" in store
+    def test_contains(self, storage_instance):
+        store, _ = storage_instance
+        store["token"] = "x"
+        assert "token" in store
         assert "missing" not in store
 
-    def test_delete(self, encrypted_storage):
-        store, backing = encrypted_storage
-        store["key"] = "value"
-        del store["key"]
-        assert "key" not in backing
+    def test_delete(self, storage_instance):
+        store, mock = storage_instance
+        store["token"] = "x"
+        del store["token"]
+        assert "token" not in mock.storage.user
+
+    def test_none_value(self, storage_instance):
+        store, mock = storage_instance
+        store["token"] = None
+        assert mock.storage.user["token"] is None
+
+    def test_not_stored_in_browser(self, storage_instance):
+        store, mock = storage_instance
+        store["token"] = "my-jwt"
+        assert "token" not in mock.storage.browser
 
 
-class TestKeyDerivation:
-    def test_different_secrets_produce_different_ciphertext(self, mock_storage, mock_request):
-        backing, mock_app = mock_storage
+class TestEnsureBrowserKey:
+    """ensure_browser_key() creates a random key in app.storage.browser."""
 
-        from utils.storage import EncryptedStorage
+    def test_creates_key(self, storage_instance):
+        store, mock = storage_instance
+        store.ensure_browser_key()
+        assert "_bk" in mock.storage.browser
+        assert len(mock.storage.browser["_bk"]) > 20
 
-        ciphertexts = []
-        for secret in ["secret-1", "secret-2"]:
-            backing.clear()
-            with (
-                patch("utils.storage.app", mock_app),
-                patch("utils.storage.request_contextvar") as mock_ctx,
-                patch("utils.storage.get_settings") as mock_settings,
-            ):
-                mock_ctx.get.return_value = mock_request
-                mock_settings.return_value.STORAGE_SECRET = secret
-                store = EncryptedStorage()
-                store["key"] = "same-value"
-                ciphertexts.append(backing["key"])
+    def test_idempotent(self, storage_instance):
+        store, mock = storage_instance
+        store.ensure_browser_key()
+        first_key = mock.storage.browser["_bk"]
+        store.ensure_browser_key()
+        assert mock.storage.browser["_bk"] == first_key
 
-        # Different secrets should produce different ciphertext
-        # (they also have different salts, so this is guaranteed)
-        assert ciphertexts[0] != ciphertexts[1]
 
-    def test_ciphertext_is_base64(self, encrypted_storage):
-        store, backing = encrypted_storage
-        store["key"] = "test"
+class TestSecretKeys:
+    """Secret keys are encrypted with browser key and stored in app.storage.user."""
+
+    def test_set_writes_encrypted_to_user_storage(self, storage_with_browser_key):
+        store, mock = storage_with_browser_key
+        store["encryption_password"] = "my-secret"
+        raw = mock.storage.user["_secret_encryption_password"]
+        assert raw != "my-secret"
         # Should be valid base64
-        raw = base64.urlsafe_b64decode(backing["key"].encode())
-        assert len(raw) > NONCE_LENGTH  # nonce + ciphertext
+        decoded = base64.urlsafe_b64decode(raw.encode())
+        assert len(decoded) > NONCE_LENGTH
+
+    def test_get_decrypts(self, storage_with_browser_key):
+        store, _ = storage_with_browser_key
+        store["encryption_password"] = "my-secret"
+        assert store.get("encryption_password") == "my-secret"
+
+    def test_getitem_decrypts(self, storage_with_browser_key):
+        store, _ = storage_with_browser_key
+        store["encryption_password"] = "my-secret"
+        assert store["encryption_password"] == "my-secret"
+
+    def test_set_none_clears(self, storage_with_browser_key):
+        store, mock = storage_with_browser_key
+        store["encryption_password"] = "my-secret"
+        store["encryption_password"] = None
+        assert "_secret_encryption_password" not in mock.storage.user
+        assert store.get("encryption_password") is None
+
+    def test_delete(self, storage_with_browser_key):
+        store, mock = storage_with_browser_key
+        store["encryption_password"] = "my-secret"
+        del store["encryption_password"]
+        assert "_secret_encryption_password" not in mock.storage.user
+
+    def test_contains(self, storage_with_browser_key):
+        store, _ = storage_with_browser_key
+        store["encryption_password"] = "my-secret"
+        assert "encryption_password" in store
+
+    def test_not_contains_when_missing(self, storage_with_browser_key):
+        store, _ = storage_with_browser_key
+        assert "encryption_password" not in store
+
+    def test_not_stored_in_browser(self, storage_with_browser_key):
+        store, mock = storage_with_browser_key
+        store["encryption_password"] = "my-secret"
+        assert "encryption_password" not in mock.storage.browser
+
+    def test_get_returns_default_without_browser_key(self, storage_instance):
+        store, mock = storage_instance
+        # No browser key set
+        assert store.get("encryption_password") is None
+        assert store.get("encryption_password", "fallback") == "fallback"
+
+    def test_getitem_raises_without_browser_key(self, storage_instance):
+        store, _ = storage_instance
+        with pytest.raises(KeyError):
+            _ = store["encryption_password"]
+
+    def test_set_ignored_without_browser_key(self, storage_instance):
+        store, mock = storage_instance
+        # No browser key — set should be a no-op
+        store["encryption_password"] = "my-secret"
+        assert "_secret_encryption_password" not in mock.storage.user
+
+    def test_different_browser_keys_produce_different_ciphertext(self, mock_app):
+        with (
+            patch("utils.storage.app", mock_app),
+            patch("utils.storage.get_settings") as mock_settings,
+        ):
+            mock_settings.return_value.STORAGE_SECRET = TEST_SECRET
+            from utils.storage import Storage
+
+            store = Storage()
+            store.ensure_browser_key()
+            store["encryption_password"] = "same-password"
+            ct1 = mock_app.storage.user["_secret_encryption_password"]
+
+            # Change browser key
+            mock_app.storage.browser["_bk"] = "different-browser-key"
+            store["encryption_password"] = "same-password"
+            ct2 = mock_app.storage.user["_secret_encryption_password"]
+
+            assert ct1 != ct2
+
+
+class TestSalt:
+    """Salt is stored in app.storage.user."""
+
+    def test_salt_created_in_user_storage(self, storage_with_browser_key):
+        store, mock = storage_with_browser_key
+        store["encryption_password"] = "x"
+        assert "salt" in mock.storage.user
+        assert len(bytes.fromhex(mock.storage.user["salt"])) == 16
+
+    def test_salt_reused(self, storage_with_browser_key):
+        store, mock = storage_with_browser_key
+        store["encryption_password"] = "x"
+        salt1 = mock.storage.user["salt"]
+        store["encryption_password"] = "y"
+        assert mock.storage.user["salt"] == salt1
+
+    def test_salt_not_in_browser(self, storage_with_browser_key):
+        store, mock = storage_with_browser_key
+        store["encryption_password"] = "x"
+        assert "salt" not in mock.storage.browser
+
+
+class TestUrlEncryption:
+    """encrypt_for_url / decrypt_from_url for video proxy."""
+
+    def test_roundtrip(self):
+        with patch("utils.storage.get_settings") as mock_settings:
+            mock_settings.return_value.STORAGE_SECRET = TEST_SECRET
+            from utils.storage import decrypt_from_url, encrypt_for_url
+
+            encrypted = encrypt_for_url("my-password")
+            assert encrypted != "my-password"
+            assert decrypt_from_url(encrypted) == "my-password"
+
+    def test_empty_string(self):
+        with patch("utils.storage.get_settings") as mock_settings:
+            mock_settings.return_value.STORAGE_SECRET = TEST_SECRET
+            from utils.storage import decrypt_from_url, encrypt_for_url
+
+            encrypted = encrypt_for_url("")
+            assert decrypt_from_url(encrypted) == ""
+
+    def test_different_encryptions_differ(self):
+        with patch("utils.storage.get_settings") as mock_settings:
+            mock_settings.return_value.STORAGE_SECRET = TEST_SECRET
+            from utils.storage import encrypt_for_url
+
+            ct1 = encrypt_for_url("password")
+            ct2 = encrypt_for_url("password")
+            # Different nonces produce different ciphertext
+            assert ct1 != ct2

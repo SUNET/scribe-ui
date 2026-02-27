@@ -6,7 +6,7 @@ from utils.common import default_styles
 from utils.common import get_auth_header
 from utils.common import page_init
 from utils.settings import get_settings
-from utils.storage import storage
+from utils.storage import encrypt_for_url, storage
 from utils.srt import SRTEditor
 from utils.video import create_video_proxy
 
@@ -50,8 +50,11 @@ def create() -> None:
         editor = SRTEditor(uuid, data_format, filename)
         editor.setup_beforeunload_warning()
 
+        enc_pw = encrypt_for_url(storage.get("encryption_password", ""))
+        video_url = f"/video/{uuid}?ep={enc_pw}"
+
         ui.add_head_html(
-            f"<link rel='preload' as='video' href='/video/{uuid}' type='video/mp4'>"
+            f"<link rel='preload' as='video' href='{video_url}' type='video/mp4'>"
         )
         ui.add_head_html(
             """
@@ -204,7 +207,7 @@ def create() -> None:
                 with splitter.after:
                     with ui.card().classes("w-full h-full"):
                         video = ui.video(
-                            f"/video/{uuid}",
+                            video_url,
                             controls=True,
                             autoplay=False,
                             loop=False,

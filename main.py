@@ -32,6 +32,8 @@ async def index(request: Request) -> None:
 
     ui.add_head_html(default_styles)
 
+    storage.ensure_browser_key()
+
     token = request.query_params.get("token")
     refresh_token = request.query_params.get("refresh_token")
 

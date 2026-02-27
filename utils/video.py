@@ -5,7 +5,7 @@ from fastapi.responses import Response
 from nicegui import app
 from utils.common import get_auth_header
 from utils.settings import get_settings
-from utils.storage import storage
+from utils.storage import decrypt_from_url
 
 settings = get_settings()
 
@@ -49,7 +49,8 @@ def create_video_proxy() -> Response:
     async def video_proxy(request: Request, job_id: str) -> Response:
         headers = dict(request.headers)
         headers_auth = get_auth_header()
-        encryption_password = storage.get("encryption_password", "")
+        ep = request.query_params.get("ep", "")
+        encryption_password = decrypt_from_url(ep) if ep else ""
 
         if not headers_auth:
             return Response(
