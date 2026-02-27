@@ -54,10 +54,10 @@ Neither one alone is sufficient to decrypt any data.
 ┌──────────────────────────────────────────────────────────────────────┐
 │                             Server                                   │
 │                                                                      │
-│  ┌───────────────────────────────┐  ┌────────────────────────────┐  │
-│  │  Environment variable         │  │  app.storage.user           │  │
-│  │  STORAGE_SECRET = "..."       │  │  (per user, disk/Redis)     │  │
-│  └───────────────┬───────────────┘  │                            │  │
+│  ┌───────────────────────────────┐   ┌────────────────────────────┐  │
+│  │  Environment variable         │   │  app.storage.user          │  │
+│  │  STORAGE_SECRET = "..."       │   │  (per user, disk/Redis)    │  │
+│  └───────────────┬───────────────┘   │                            │  │
 │                  │                   │  salt = "a3f2..."          │  │
 │                  │                   │  _secret_encryption_       │  │
 │                  │                   │    password = "base64..."  │  │
@@ -65,15 +65,15 @@ Neither one alone is sufficient to decrypt any data.
 │                  │                   └────────────────────────────┘  │
 │                  │                              ▲                    │
 │                  ▼                              │                    │
-│         ┌────────────────────────────────────────┐                  │
+│         ┌────────────────────────────────────────-┐                  │
 │         │         Key derivation (HKDF)           │                  │
-│         │                                        │                  │
+│         │                                         │                  │
 │         │  STORAGE_SECRET ──HKDF──► storage_salt  │                  │
 │         │  _bk + storage_salt ──HKDF──► AES key   │                  │
-│         │                                        │                  │
+│         │                                         │                  │
 │         │         AES-256-GCM encryption          │                  │
 │         │  plaintext + nonce + AAD ──► ciphertext │                  │
-│         └────────────────────────────────────────┘                  │
+│         └────────────────────────────────────────-┘                  │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -278,14 +278,14 @@ secrets, simply extend this set.
 
 ### Methods
 
-| Method                    | Behavior                                                  |
-|---------------------------|-----------------------------------------------------------|
-| `ensure_browser_key()`    | Creates `_bk` in the cookie if it does not exist          |
-| `__setitem__(key, value)` | Encrypts if `key ∈ SECRET_KEYS`, otherwise plaintext      |
+| Method                    | Behavior                                                      |
+|---------------------------|---------------------------------------------------------------|
+| `ensure_browser_key()`    | Creates `_bk` in the cookie if it does not exist              |
+| `__setitem__(key, value)` | Encrypts if `key ∈ SECRET_KEYS`, otherwise plaintext          |
 | `__getitem__(key)`        | Decrypts if `key ∈ SECRET_KEYS`, raises `KeyError` on failure |
-| `get(key, default=None)`  | Like `__getitem__` but returns `default` on failure       |
-| `__contains__(key)`       | Checks if the key exists (checks `_secret_` prefix)       |
-| `__delitem__(key)`        | Removes encrypted or plaintext entry                      |
+| `get(key, default=None)`  | Like `__getitem__` but returns `default` on failure           |
+| `__contains__(key)`       | Checks if the key exists (checks `_secret_` prefix)           |
+| `__delitem__(key)`        | Removes encrypted or plaintext entry                          |
 
 ## Security Properties
 
