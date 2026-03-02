@@ -1426,7 +1426,7 @@ def analytics() -> None:
     with ui.row().style(
         "justify-content: space-between; align-items: center; width: 100%;"
     ):
-        ui.label("Page View Analytics").classes("text-3xl font-bold")
+        ui.label("Analytics").classes("text-3xl font-bold")
         ui.button("Back to Admin").classes("button-edit").props(
             "color=white flat"
         ).on("click", lambda: ui.navigate.to("/admin"))
@@ -1442,7 +1442,20 @@ def analytics() -> None:
         wow_color = "#757575"
         wow_display = "N/A"
 
-    # Summary cards
+    summary = get_page_views_summary()
+
+    # Action data (reused below for cards and charts)
+    action_summary = [r for r in summary if r["path"].startswith("/action/")]
+    action_labels = {
+        "/action/upload": ("Uploads", "upload_file", "#2e7d32"),
+        "/action/transcription": ("Transcriptions", "record_voice_over", "#1565c0"),
+        "/action/bulk_transcription": ("Bulk Transcriptions", "dynamic_feed", "#6a1b9a"),
+        "/action/export": ("Exports", "download", "#e65100"),
+        "/action/bulk_export": ("Bulk Exports", "folder_zip", "#00695c"),
+    }
+    action_map = {r["path"]: r for r in action_summary}
+
+    # Summary cards — page views
     with ui.row().classes("w-full gap-4 q-mt-md"):
         for label, value, icon, color in [
             ("Total Views (All Time)", stats["total_views"], "visibility", "#082954"),
@@ -1457,6 +1470,21 @@ def analytics() -> None:
                     ui.icon(icon, size="sm").style(f"color: {color};")
                     ui.label(label).classes("text-caption text-grey-7")
                 ui.label(str(value)).classes("text-h5 font-bold q-mt-sm")
+
+    # Summary cards — user actions
+    with ui.row().classes("w-full gap-4 q-mt-sm"):
+        for path, (label, icon, color) in action_labels.items():
+            row = action_map.get(path, {"total_views": 0, "views_30d": 0})
+            with ui.card().classes("flex-1 p-4").style(
+                f"border-left: 4px solid {color}; min-width: 160px;"
+            ):
+                with ui.row().classes("items-center gap-2"):
+                    ui.icon(icon, size="sm").style(f"color: {color};")
+                    ui.label(label).classes("text-caption text-grey-7")
+                ui.label(str(row["total_views"])).classes("text-h5 font-bold q-mt-sm")
+                ui.label(f'{row["views_30d"]} last 30 days').classes(
+                    "text-caption text-grey-5"
+                )
 
     # Charts
     with ui.row().classes("w-full gap-4 q-mt-lg"):
@@ -1499,8 +1527,6 @@ def analytics() -> None:
             ui.label("Total Views Per Page").classes(
                 "text-h6 font-semibold q-mb-md"
             )
-            summary = get_page_views_summary()
-
             if summary:
                 fig = go.Figure()
                 fig.add_trace(
@@ -1642,6 +1668,80 @@ def analytics() -> None:
                     columns=columns,
                     rows=recent,
                     row_key="timestamp",
-                ).classes("w-full table-style").props("dense")
+                ).classes("w-full table-style").props("dense").style("max-height: 300px;")
             else:
                 ui.label("No data yet.").classes("text-grey-6")
+
+    # Action charts
+    with ui.row().classes("w-full gap-4 q-mt-lg"):
+        with ui.card().classes("flex-1 p-4").style("min-width: 400px;"):
+            ui.label("Actions Per Day (Last 30 Days)").classes(
+                "text-h6 font-semibold q-mb-md"
+            )
+            action_views = [
+                r for r in get_page_views(days=30) if r["path"].startswith("/action/")
+            ]
+
+            if action_views:
+                by_action = defaultdict(lambda: {"dates": [], "views": []})
+                for row in action_views:
+                    action_name = row["path"].replace("/action/", "")
+                    by_action[action_name]["dates"].append(row["date"])
+                    by_action[action_name]["views"].append(row["views"])
+
+                fig = go.Figure()
+                for action_name, data in sorted(by_action.items()):
+                    fig.add_trace(
+                        go.Bar(
+                            x=data["dates"],
+                            y=data["views"],
+                            name=action_name,
+                        )
+                    )
+                fig.update_layout(
+                    barmode="stack",
+                    xaxis_title="Date",
+                    yaxis_title="Count",
+                    template="plotly_white",
+                    height=350,
+                    margin=dict(l=40, r=20, t=20, b=40),
+                )
+                ui.plotly(fig).classes("w-full")
+            else:
+                ui.label("No action data yet.").classes("text-grey-6")
+
+        with ui.card().classes("flex-1 p-4").style("min-width: 400px;"):
+            ui.label("Total Actions By Type").classes(
+                "text-h6 font-semibold q-mb-md"
+            )
+
+            if action_summary:
+                action_names = [r["path"].replace("/action/", "") for r in action_summary]
+                fig = go.Figure()
+                fig.add_trace(
+                    go.Bar(
+                        x=action_names,
+                        y=[r["total_views"] for r in action_summary],
+                        name="All Time",
+                        marker_color="#082954",
+                    )
+                )
+                fig.add_trace(
+                    go.Bar(
+                        x=action_names,
+                        y=[r["views_30d"] for r in action_summary],
+                        name="Last 30 Days",
+                        marker_color="#4caf50",
+                    )
+                )
+                fig.update_layout(
+                    barmode="group",
+                    xaxis_title="Action",
+                    yaxis_title="Count",
+                    template="plotly_white",
+                    height=350,
+                    margin=dict(l=40, r=20, t=20, b=40),
+                )
+                ui.plotly(fig).classes("w-full")
+            else:
+                ui.label("No action data yet.").classes("text-grey-6")

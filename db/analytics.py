@@ -8,6 +8,11 @@ from utils.token import get_auth_header
 settings = get_settings()
 
 
+def log_action(action: str) -> None:
+    """Log a user action (upload, transcription, export, etc.)."""
+    log_page_view(f"/action/{action}")
+
+
 def log_page_view(path: str) -> None:
     """Log an anonymous page view via the backend API (fire-and-forget)."""
     if not path:

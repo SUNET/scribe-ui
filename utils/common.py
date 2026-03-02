@@ -15,7 +15,7 @@ from utils.token import (
     token_refresh,
 )
 from utils.helpers import storage_decrypt
-from db.analytics import log_page_view
+from db.analytics import log_action, log_page_view
 
 MultiPartParser.spool_max_size = 1024 * 1024 * 4096
 settings = get_settings()
@@ -489,6 +489,7 @@ def post_file(filedata: bytes, filename: str) -> None:
             },
         )
         response.raise_for_status()
+        log_action("upload")
 
         if response.status_code != 200:
             raise requests.exceptions.RequestException(
@@ -775,13 +776,16 @@ def table_bulk_transcribe(table: ui.table) -> None:
 
                 with ui.button(
                     "Start transcribing",
-                    on_click=lambda: start_transcription(
-                        uploadable,
-                        language.value,
-                        speakers.value,
-                        output_format.value,
-                        dialog,
-                        table,
+                    on_click=lambda: (
+                        log_action("bulk_transcription"),
+                        start_transcription(
+                            uploadable,
+                            language.value,
+                            speakers.value,
+                            output_format.value,
+                            dialog,
+                            table,
+                        ),
                     ),
                 ) as start:
                     start.props("color=black flat")
@@ -932,6 +936,7 @@ def table_bulk_export(table: ui.table) -> None:
             await asyncio.sleep(0)  # yield to UI to update progress
 
         progress_dialog.close()
+        log_action("bulk_export")
         # Use the first editor to show the export dialog with all editors
         first_filename, first_editor = editors[0]
         first_editor.show_export_dialog(first_filename, bulk_editors=editors)
@@ -972,6 +977,7 @@ def start_transcription(
                 headers=get_auth_header(),
             )
             response.raise_for_status()
+            log_action("transcription")
         except requests.exceptions.RequestException:
             if response.status_code == 403:
                 error = response.json()["result"]["error"]
