@@ -86,6 +86,47 @@ def get_recent_views(limit: int = 50) -> list[dict]:
         return []
 
 
+def get_hourly_heatmap(days: int = 30) -> list[dict]:
+    """Views by day-of-week and hour-of-day for heatmap."""
+    try:
+        response = requests.get(
+            f"{settings.API_URL}/api/v1/admin/analytics/heatmap",
+            headers=get_auth_header(),
+            params={"days": days},
+        )
+        response.raise_for_status()
+        return response.json()["result"]
+    except Exception:
+        return []
+
+
+def get_hourly_distribution(days: int = 30) -> list[dict]:
+    """Views per hour-of-day."""
+    try:
+        response = requests.get(
+            f"{settings.API_URL}/api/v1/admin/analytics/hourly",
+            headers=get_auth_header(),
+            params={"days": days},
+        )
+        response.raise_for_status()
+        return response.json()["result"]
+    except Exception:
+        return []
+
+
+def get_week_over_week() -> dict:
+    """Week-over-week comparison."""
+    try:
+        response = requests.get(
+            f"{settings.API_URL}/api/v1/admin/analytics/wow",
+            headers=get_auth_header(),
+        )
+        response.raise_for_status()
+        return response.json()["result"]
+    except Exception:
+        return {"this_week": 0, "last_week": 0, "change_pct": None}
+
+
 def get_total_stats() -> dict:
     """Aggregate stats for summary cards."""
     try:

@@ -10,6 +10,9 @@ from db.analytics import (
     get_page_views_summary,
     get_views_per_day,
     get_recent_views,
+    get_hourly_heatmap,
+    get_hourly_distribution,
+    get_week_over_week,
     get_total_stats,
 )
 from utils.helpers import (
@@ -1429,6 +1432,15 @@ def analytics() -> None:
         ).on("click", lambda: ui.navigate.to("/admin"))
 
     stats = get_total_stats()
+    wow = get_week_over_week()
+
+    if wow["change_pct"] is not None:
+        sign = "+" if wow["change_pct"] >= 0 else ""
+        wow_color = "#2e7d32" if wow["change_pct"] >= 0 else "#c62828"
+        wow_display = f'{sign}{wow["change_pct"]}%'
+    else:
+        wow_color = "#757575"
+        wow_display = "N/A"
 
     # Summary cards
     with ui.row().classes("w-full gap-4 q-mt-md"):
@@ -1436,6 +1448,7 @@ def analytics() -> None:
             ("Total Views (All Time)", stats["total_views"], "visibility", "#082954"),
             ("Views (Last 30 Days)", stats["views_30d"], "trending_up", "#1565c0"),
             ("Top Page (30 Days)", f'{stats["top_page"]["path"]}', "star", "#e65100"),
+            ("Week over Week", wow_display, "compare_arrows", wow_color),
         ]:
             with ui.card().classes("flex-1 p-4").style(
                 f"border-left: 4px solid {color}; min-width: 200px;"
@@ -1512,6 +1525,74 @@ def analytics() -> None:
                     yaxis_title="Views",
                     template="plotly_white",
                     height=350,
+                    margin=dict(l=40, r=20, t=20, b=40),
+                )
+                ui.plotly(fig).classes("w-full")
+            else:
+                ui.label("No data yet.").classes("text-grey-6")
+
+    # Peak hours heatmap + hourly distribution
+    with ui.row().classes("w-full gap-4 q-mt-lg"):
+        with ui.card().classes("flex-1 p-4").style("min-width: 400px;"):
+            ui.label("Peak Hours (Last 30 Days)").classes(
+                "text-h6 font-semibold q-mb-md"
+            )
+            heatmap_data = get_hourly_heatmap(days=30)
+
+            if heatmap_data:
+                day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+                hours = list(range(24))
+                # Build a 7x24 matrix (rows=days, cols=hours)
+                matrix = [[0] * 24 for _ in range(7)]
+                for r in heatmap_data:
+                    # PostgreSQL dow: 0=Sun, 1=Mon..6=Sat -> remap to Mon=0..Sun=6
+                    day_idx = (r["dow"] - 1) % 7
+                    matrix[day_idx][r["hour"]] = r["views"]
+
+                fig = go.Figure(
+                    data=go.Heatmap(
+                        z=matrix,
+                        x=[f"{h:02d}:00" for h in hours],
+                        y=day_names,
+                        colorscale="Blues",
+                        hovertemplate="Day: %{y}<br>Hour: %{x}<br>Views: %{z}<extra></extra>",
+                    )
+                )
+                fig.update_layout(
+                    template="plotly_white",
+                    height=280,
+                    margin=dict(l=50, r=20, t=20, b=40),
+                    xaxis_title="Hour of Day",
+                )
+                ui.plotly(fig).classes("w-full")
+            else:
+                ui.label("No data yet.").classes("text-grey-6")
+
+        with ui.card().classes("flex-1 p-4").style("min-width: 400px;"):
+            ui.label("Hourly Distribution (Last 30 Days)").classes(
+                "text-h6 font-semibold q-mb-md"
+            )
+            hourly = get_hourly_distribution(days=30)
+
+            if hourly:
+                # Fill missing hours with 0
+                hourly_map = {r["hour"]: r["views"] for r in hourly}
+                all_hours = list(range(24))
+                all_views = [hourly_map.get(h, 0) for h in all_hours]
+
+                fig = go.Figure()
+                fig.add_trace(
+                    go.Bar(
+                        x=[f"{h:02d}:00" for h in all_hours],
+                        y=all_views,
+                        marker_color="#1565c0",
+                    )
+                )
+                fig.update_layout(
+                    xaxis_title="Hour of Day",
+                    yaxis_title="Views",
+                    template="plotly_white",
+                    height=280,
                     margin=dict(l=40, r=20, t=20, b=40),
                 )
                 ui.plotly(fig).classes("w-full")
