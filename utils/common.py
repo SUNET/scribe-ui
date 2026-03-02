@@ -360,6 +360,11 @@ def jobs_get() -> list:
         response = requests.get(
             f"{settings.API_URL}/api/v1/transcriber",
             headers=get_auth_header(),
+            json={
+                "encryption_password": storage_decrypt(
+                    app.storage.user.get("encryption_password"),
+                )
+            },
         )
         response.raise_for_status()
     except requests.exceptions.RequestException:
