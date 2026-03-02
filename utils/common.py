@@ -15,6 +15,7 @@ from utils.token import (
     token_refresh,
 )
 from utils.helpers import storage_decrypt
+from db.analytics import log_page_view
 
 MultiPartParser.spool_max_size = 1024 * 1024 * 4096
 settings = get_settings()
@@ -283,6 +284,14 @@ def page_init(header_text: Optional[str] = "") -> None:
     is_bofh = get_bofh_status()
     ui.timer(30, refresh)
 
+    try:
+        client = ui.context.client
+        current_path = client.page.path if client and client.page else ""
+        if current_path:
+            log_page_view(current_path)
+    except Exception:
+        pass
+
     if header_text:
         header_text = f" - {header_text}"
 
@@ -314,6 +323,11 @@ def page_init(header_text: Optional[str] = "") -> None:
                     on_click=lambda: ui.navigate.to("/health"),
                 ).props("flat color=red"):
                     ui.tooltip("System status")
+                with ui.button(
+                    icon="analytics",
+                    on_click=lambda: ui.navigate.to("/admin/analytics"),
+                ).props("flat color=red"):
+                    ui.tooltip("Page view statistics")
             with ui.button(
                 icon="home",
                 on_click=lambda: ui.navigate.to("/home"),
