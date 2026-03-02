@@ -1,3 +1,5 @@
+import secrets
+
 from fastapi import Request
 from nicegui import app, ui
 from pages.admin import create as create_admin
@@ -7,12 +9,12 @@ from pages.status import create as create_status
 from pages.user import create as create_user_page
 from utils.common import default_styles
 from utils.settings import get_settings
-from utils.storage import storage
 from utils.token import get_user_data, get_user_status, get_token_is_valid
 from utils.helpers import (
     encryption_password_set,
     encryption_password_verify,
     reset_password,
+    storage_encrypt,
 )
 
 settings = get_settings()
@@ -35,21 +37,24 @@ async def index(request: Request) -> None:
     token = request.query_params.get("token")
     refresh_token = request.query_params.get("refresh_token")
 
+    if "_scribe_bk" not in app.storage.browser:
+        app.storage.browser["_scribe_bk"] = secrets.token_hex(32)
+
     if refresh_token:
-        storage["refresh_token"] = refresh_token
+        app.storage.user["refresh_token"] = refresh_token
 
     if token:
-        storage["token"] = token
+        app.storage.user["token"] = token
 
     # Set the users timezone
     timezone = await ui.run_javascript(
         "Intl.DateTimeFormat().resolvedOptions().timeZone"
     )
-    storage["timezone"] = timezone
+    app.storage.user["timezone"] = timezone
 
     if (
-        storage.get("token")
-        and storage.get("refresh_token")
+        app.storage.user.get("token")
+        and app.storage.user.get("refresh_token")
         and get_user_status()
     ):
         user_data = get_user_data()
@@ -121,9 +126,9 @@ async def index(request: Request) -> None:
 
                     def verify_encryption_password() -> None:
                         if password_input.value:
-                            storage[
-                                "encryption_password"
-                            ] = password_input.value
+                            app.storage.user["encryption_password"] = storage_encrypt(
+                                password_input.value,
+                            )
 
                             if encryption_password_verify(password_input.value):
                                 ui.navigate.to("/home")
@@ -174,7 +179,7 @@ async def index(request: Request) -> None:
 
     else:
         has_token = bool(
-            storage.get("token") and storage.get("refresh_token")
+            app.storage.user.get("token") and app.storage.user.get("refresh_token")
         )
 
         if has_token and not get_token_is_valid():
@@ -242,9 +247,9 @@ def logout() -> None:
     Logout page.
     """
 
-    storage["token"] = None
-    storage["refresh_token"] = None
-    storage["encryption_password"] = None
+    app.storage.user["token"] = None
+    app.storage.user["refresh_token"] = None
+    app.storage.user["encryption_password"] = None
 
     ui.navigate.to("/")
 

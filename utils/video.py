@@ -4,8 +4,8 @@ from fastapi import Request
 from fastapi.responses import Response
 from nicegui import app
 from utils.common import get_auth_header
+from utils.helpers import storage_decrypt
 from utils.settings import get_settings
-from utils.storage import storage
 
 settings = get_settings()
 
@@ -49,7 +49,6 @@ def create_video_proxy() -> Response:
     async def video_proxy(request: Request, job_id: str) -> Response:
         headers = dict(request.headers)
         headers_auth = get_auth_header()
-        encryption_password = storage.get("encryption_password", "")
 
         if not headers_auth:
             return Response(
@@ -58,13 +57,17 @@ def create_video_proxy() -> Response:
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
+        encryption_password = storage_decrypt(
+            app.storage.user.get("encryption_password"),
+        )
+
         headers["Authorization"] = headers_auth.get("Authorization", "")
 
         try:
             response = requests.get(
                 f"{settings.API_URL}/api/v1/transcriber/{job_id}/videostream",
                 headers=headers,
-                json={"encryption_password": encryption_password},
+                json={"encryption_password": encryption_password or ""},
             )
         except requests.exceptions.ChunkedEncodingError:
             return Response(
