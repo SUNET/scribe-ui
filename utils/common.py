@@ -1,4 +1,5 @@
 import asyncio
+import re
 import requests
 import pytz
 
@@ -17,6 +18,17 @@ from utils.helpers import storage_decrypt
 
 MultiPartParser.spool_max_size = 1024 * 1024 * 4096
 settings = get_settings()
+
+
+def sanitize_filename(filename: str) -> str:
+    """Remove or replace characters that are unsafe in filenames."""
+    # Replace path separators and null bytes
+    filename = filename.replace("/", "_").replace("\\", "_").replace("\x00", "")
+    # Remove other problematic characters
+    filename = re.sub(r'[<>:"|?*\x01-\x1f]', "_", filename)
+    # Strip leading/trailing dots and spaces
+    filename = filename.strip(". ")
+    return filename or "unnamed"
 
 jobs_columns = [
     {
@@ -577,7 +589,7 @@ async def handle_upload_with_feedback(files, dialog):
 
     for file in files.files:
         try:
-            file_name = file.name
+            file_name = sanitize_filename(file.name)
             file_data = await file.read()
 
             await asyncio.to_thread(post_file, file_data, file_name)
@@ -630,7 +642,7 @@ def table_transcribe(selected_row) -> None:
                     ui.label("Number of speakers, automatic if not chosen").classes(
                         "text-subtitle2 q-mb-sm"
                     )
-                    speakers = ui.number(value="0").classes("w-full")
+                    speakers = ui.number(value="0", min=0).classes("w-full")
 
             with ui.row().classes("justify-between w-full"):
                 ui.label("Output format").classes("text-subtitle2 q-mb-sm")
@@ -720,7 +732,7 @@ def table_bulk_transcribe(table: ui.table) -> None:
                     ui.label("Number of speakers, automatic if not chosen").classes(
                         "text-subtitle2 q-mb-sm"
                     )
-                    speakers = ui.number(value="0").classes("w-full")
+                    speakers = ui.number(value="0", min=0).classes("w-full")
 
             with ui.row().classes("justify-between w-full"):
                 ui.label("Output format").classes("text-subtitle2 q-mb-sm")

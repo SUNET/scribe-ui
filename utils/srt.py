@@ -5,7 +5,7 @@ import requests
 from nicegui import events, ui
 from typing import Callable, List, Optional
 from utils.caption import SRTCaption
-from utils.common import default_styles, get_auth_header
+from utils.common import default_styles, get_auth_header, sanitize_filename
 from utils.settings import get_settings
 from utils.undo_redo import UndoRedoManager
 
@@ -1923,6 +1923,12 @@ class SRTEditor:
         import io
         import zipfile
         from pathlib import Path
+
+        filename = sanitize_filename(filename)
+        if bulk_editors:
+            bulk_editors = [
+                (sanitize_filename(fn), ed) for fn, ed in bulk_editors
+            ]
 
         is_bulk = bulk_editors is not None and len(bulk_editors) > 0
         # For bulk mode with txt formats: show preview using first file
