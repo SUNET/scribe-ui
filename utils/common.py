@@ -1,4 +1,5 @@
 import asyncio
+import io
 import re
 import requests
 import pytz
@@ -461,7 +462,7 @@ def post_file(filedata: bytes, filename: str) -> None:
     Post a file to the API.
     """
 
-    files_json = {"file": (filename, filedata)}
+    files_json = {"file": (filename, io.BytesIO(filedata))}
 
     try:
         response = requests.post(
@@ -473,6 +474,7 @@ def post_file(filedata: bytes, filename: str) -> None:
                     app.storage.user.get("encryption_password"),
                 )
             },
+            timeout=(10, 7200),
         )
         response.raise_for_status()
 
@@ -481,10 +483,7 @@ def post_file(filedata: bytes, filename: str) -> None:
                 f"Upload failed, status code: {response.status_code}"
             )
     except requests.exceptions.RequestException as e:
-        ui.notify(
-            f"Error when uploading file: {str(e)}", type="negative", position="top"
-        )
-        return
+        raise RuntimeError(f"Error when uploading file: {str(e)}") from e
 
     return True
 
