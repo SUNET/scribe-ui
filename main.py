@@ -1,3 +1,5 @@
+import secrets
+
 from fastapi import Request
 from nicegui import app, ui
 from pages.admin import create as create_admin
@@ -12,6 +14,7 @@ from utils.helpers import (
     encryption_password_set,
     encryption_password_verify,
     reset_password,
+    storage_encrypt,
 )
 
 settings = get_settings()
@@ -33,6 +36,9 @@ async def index(request: Request) -> None:
 
     token = request.query_params.get("token")
     refresh_token = request.query_params.get("refresh_token")
+
+    if "_scribe_bk" not in app.storage.browser:
+        app.storage.browser["_scribe_bk"] = secrets.token_hex(32)
 
     if refresh_token:
         app.storage.user["refresh_token"] = refresh_token
@@ -120,9 +126,9 @@ async def index(request: Request) -> None:
 
                     def verify_encryption_password() -> None:
                         if password_input.value:
-                            app.storage.user[
-                                "encryption_password"
-                            ] = password_input.value
+                            app.storage.user["encryption_password"] = storage_encrypt(
+                                password_input.value,
+                            )
 
                             if encryption_password_verify(password_input.value):
                                 ui.navigate.to("/home")
@@ -186,7 +192,7 @@ async def index(request: Request) -> None:
                 "width: 500px; max-width: 90%; padding: 40px; border: 0; box-shadow: none;"
             ):
                 with ui.column().classes("w-full items-center gap-4"):
-                    ui.image(f"/static/{settings.LOGO_LANDING}").style(
+                    ui.image(f"static/{settings.LOGO_LANDING}").style(
                         f"max-width: {settings.LOGO_LANDING_WIDTH}px; height: auto;"
                     )
 
@@ -254,6 +260,6 @@ ui.run(
     storage_secret=settings.STORAGE_SECRET,
     host="0.0.0.0",
     port=8888,
-    favicon=f"/static/{settings.FAVICON}",
+    favicon=f"static/{settings.FAVICON}",
     reconnect_timeout=15,
 )

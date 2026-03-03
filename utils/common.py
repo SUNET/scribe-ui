@@ -1,8 +1,9 @@
 import asyncio
+import re
 import requests
 import pytz
-from datetime import datetime, timedelta
 
+from datetime import datetime, timedelta
 from nicegui import ui, app
 from starlette.formparsers import MultiPartParser
 from typing import Optional
@@ -13,12 +14,21 @@ from utils.token import (
     get_bofh_status,
     token_refresh,
 )
-
+from utils.helpers import storage_decrypt
 
 MultiPartParser.spool_max_size = 1024 * 1024 * 4096
-
-
 settings = get_settings()
+
+
+def sanitize_filename(filename: str) -> str:
+    """Remove or replace characters that are unsafe in filenames."""
+    # Replace path separators and null bytes
+    filename = filename.replace("/", "_").replace("\\", "_").replace("\x00", "")
+    # Remove other problematic characters
+    filename = re.sub(r'[<>:"|?*\x01-\x1f]', "_", filename)
+    # Strip leading/trailing dots and spaces
+    filename = filename.strip(". ")
+    return filename or "unnamed"
 
 jobs_columns = [
     {
@@ -255,6 +265,10 @@ def page_init(header_text: Optional[str] = "") -> None:
     Initialize the page with a header and background color.
     """
 
+    if "_scribe_bk" not in app.storage.browser:
+        ui.navigate.to("/")
+        return
+
     def refresh():
         if not token_refresh():
             app.storage.user["token"] = None
@@ -346,6 +360,11 @@ def jobs_get() -> list:
         response = requests.get(
             f"{settings.API_URL}/api/v1/transcriber",
             headers=get_auth_header(),
+            json={
+                "encryption_password": storage_decrypt(
+                    app.storage.user.get("encryption_password"),
+                )
+            },
         )
         response.raise_for_status()
     except requests.exceptions.RequestException:
@@ -449,7 +468,11 @@ def post_file(filedata: bytes, filename: str) -> None:
             f"{settings.API_URL}/api/v1/transcriber",
             files=files_json,
             headers=get_auth_header(),
-            json={"encryption_password": app.storage.user.get("encryption_password")},
+            json={
+                "encryption_password": storage_decrypt(
+                    app.storage.user.get("encryption_password"),
+                )
+            },
         )
         response.raise_for_status()
 
@@ -488,14 +511,22 @@ def table_upload(table) -> None:
                 status_column.visible = False
 
             with ui.column().classes("w-full items-center mt-10") as upload_column:
-                upload = ui.upload(
-                    label="hidden",
-                    on_multi_upload=lambda e: handle_upload_with_feedback(e, dialog),
-                    auto_upload=True,
-                    multiple=True,
-                    max_files=5,
-                ).props(
-                    "hidden accept=.mp3,.wav,.flac,.mp4,.mkv,.avi,.m4a,.aiff,.aif,.mov,.ogg,.opus,.webm,.wma,.mpg,.mpeg"
+                upload = (
+                    ui.upload(
+                        label="hidden",
+                        on_multi_upload=lambda e: handle_upload_with_feedback(
+                            e, dialog
+                        ),
+                        auto_upload=True,
+                        multiple=True,
+                        max_files=5,
+                    )
+                    .props(
+                        "accept=.mp3,.wav,.flac,.mp4,.mkv,.avi,.m4a,.aiff,.aif,.mov,.ogg,.opus,.webm,.wma,.mpg,.mpeg"
+                    )
+                    .style(
+                        "position: absolute; width: 0; height: 0; overflow: hidden; opacity: 0"
+                    )
                 )
 
                 upload.on(
@@ -504,10 +535,9 @@ def table_upload(table) -> None:
                 )
                 upload.on("finish", lambda _: dialog.close())
 
-                ui.html(
+                dropzone = ui.html(
                     """
-                    <div id="dropzone"
-                         class="w-96 h-40 flex items-center justify-center
+                    <div class="w-96 h-40 flex items-center justify-center
                                 border-2 border-dashed border-gray-400
                                 rounded-2xl bg-gray-50
                                 hover:bg-gray-100 cursor-pointer text-gray-600">
@@ -519,35 +549,29 @@ def table_upload(table) -> None:
                     sanitize=False,
                 )
 
-                ui.run_javascript(
-                    """
-                        const dz = document.getElementById('dropzone');
-                        const hiddenInput = dz.closest('body').querySelector('input[type=file][multiple]');
-                        dz.addEventListener('click', () => hiddenInput.click());
-
-                        dz.addEventListener('dragover', e => {
-                            e.preventDefault();
-                            dz.classList.add('bg-gray-200');
-                        });
-
-                        dz.addEventListener('dragleave', () => {
-                            dz.classList.remove('bg-gray-200');
-                        });
-
-                        dz.addEventListener('drop', e => {
-                            e.preventDefault();
-                            dz.classList.remove('bg-gray-200');
-
-                            // Create a DataTransfer to set multiple files
-                            const dt = new DataTransfer();
-                            for (const file of e.dataTransfer.files) {
-                                dt.items.add(file);
-                            }
-                            hiddenInput.files = dt.files;
-
-                            hiddenInput.dispatchEvent(new Event('change', { bubbles: true }));
-                        });
-                    """
+                upload_id = upload.id
+                dropzone_id = dropzone.id
+                ui.timer(
+                    0.1,
+                    lambda: ui.run_javascript(
+                        "const dz = getHtmlElement(" + str(dropzone_id) + ");"
+                        "const upl = getElement(" + str(upload_id) + ");"
+                        "if (!dz || !upl) return;"
+                        "dz.addEventListener('click', () => upl.$refs.qRef.pickFiles());"
+                        "dz.addEventListener('dragover', e => {"
+                        "  e.preventDefault();"
+                        "  dz.querySelector('div').classList.add('bg-gray-200');"
+                        "});"
+                        "dz.addEventListener('dragleave', () => {"
+                        "  dz.querySelector('div').classList.remove('bg-gray-200');"
+                        "});"
+                        "dz.addEventListener('drop', e => {"
+                        "  e.preventDefault();"
+                        "  dz.querySelector('div').classList.remove('bg-gray-200');"
+                        "  upl.$refs.qRef.addFiles(Array.from(e.dataTransfer.files));"
+                        "});"
+                    ),
+                    once=True,
                 )
                 with ui.row().style("justify-content: flex-end; gap: 12px;"):
                     with ui.button(
@@ -570,7 +594,7 @@ async def handle_upload_with_feedback(files, dialog):
 
     for file in files.files:
         try:
-            file_name = file.name
+            file_name = sanitize_filename(file.name)
             file_data = await file.read()
 
             await asyncio.to_thread(post_file, file_data, file_name)
@@ -623,7 +647,7 @@ def table_transcribe(selected_row) -> None:
                     ui.label("Number of speakers, automatic if not chosen").classes(
                         "text-subtitle2 q-mb-sm"
                     )
-                    speakers = ui.number(value="0").classes("w-full")
+                    speakers = ui.number(value="0", min=0).classes("w-full")
 
             with ui.row().classes("justify-between w-full"):
                 ui.label("Output format").classes("text-subtitle2 q-mb-sm")
@@ -697,7 +721,7 @@ def table_bulk_transcribe(table: ui.table) -> None:
                         ).classes("text-body2 text-black")
                     if already_done:
                         with ui.row().classes("items-center"):
-                            ui.icon("skip_next", color="black").classes("text-body1")
+                            ui.icon("block", color="black").classes("text-body1")
                             ui.label(
                                 f"{len(already_done)} completed file(s) will be skipped."
                             ).classes("text-body2 text-black")
@@ -713,7 +737,7 @@ def table_bulk_transcribe(table: ui.table) -> None:
                     ui.label("Number of speakers, automatic if not chosen").classes(
                         "text-subtitle2 q-mb-sm"
                     )
-                    speakers = ui.number(value="0").classes("w-full")
+                    speakers = ui.number(value="0", min=0).classes("w-full")
 
             with ui.row().classes("justify-between w-full"):
                 ui.label("Output format").classes("text-subtitle2 q-mb-sm")
@@ -858,8 +882,8 @@ def table_bulk_export(table: ui.table) -> None:
                         f"{settings.API_URL}/api/v1/transcriber/{uuid}/result/srt",
                         headers=get_auth_header(),
                         json={
-                            "encryption_password": app.storage.user.get(
-                                "encryption_password"
+                            "encryption_password": storage_decrypt(
+                                app.storage.user.get("encryption_password"),
                             )
                         },
                     )
@@ -868,8 +892,8 @@ def table_bulk_export(table: ui.table) -> None:
                         f"{settings.API_URL}/api/v1/transcriber/{uuid}/result/txt",
                         headers=get_auth_header(),
                         json={
-                            "encryption_password": app.storage.user.get(
-                                "encryption_password"
+                            "encryption_password": storage_decrypt(
+                                app.storage.user.get("encryption_password"),
                             )
                         },
                     )

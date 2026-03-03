@@ -41,7 +41,7 @@ OIDC_APP_LOGOUT_ROUTE="http://localhost:8000/api/logout"
 
 # Storage configuration
 STORAGE_SECRET="your-secret-key"
-NICEGUI_STORAGE="redis://localhost:6379"  # Optional: Redis storage URL
+NICEGUI_REDIS_URL="redis://localhost:6379"  # Optional: Redis storage URL
 ```
 
 ### 3. Run the Application

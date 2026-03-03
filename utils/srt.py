@@ -5,7 +5,7 @@ import requests
 from nicegui import events, ui
 from typing import Callable, List, Optional
 from utils.caption import SRTCaption
-from utils.common import default_styles, get_auth_header
+from utils.common import default_styles, get_auth_header, sanitize_filename
 from utils.settings import get_settings
 from utils.undo_redo import UndoRedoManager
 
@@ -342,7 +342,7 @@ class SRTEditor:
             case "Escape":
                 # Click the "Close" button to save changes before closing
                 # This behaves the same as clicking the Close button
-                ui.run_javascript("document.querySelector('.button-close')?.click()")
+                ui.run_javascript("document.querySelector('.caption-close')?.click()")
 
             # Open find, Ctrl+F
             case "f" if event.modifiers.ctrl and not event.modifiers.shift:
@@ -1328,7 +1328,7 @@ class SRTEditor:
                     # Action buttons
                     # Row with buttons to the left
                     with ui.row().classes("w-full justify-between"):
-                        ui.button("Split", icon="call_split", color="blue").props(
+                        ui.button("Split", icon="call_split").props(
                             "flat dense"
                         ).on("click", lambda: self.split_caption(caption))
                         ui.button("Merge with previous", icon="merge_type").props(
@@ -1352,25 +1352,23 @@ class SRTEditor:
                             ),
                         )
 
-                        with ui.row().classes("gap-2"):
-                            ui.button("Close").props("flat dense").on(
-                                "click",
-                                lambda: self.select_caption(
-                                    caption,
-                                    speaker_select,
-                                    True,
-                                    new_text=text_area.value,
-                                ),
-                            ).classes("button-close")
+                        ui.button("Close").props("flat dense").on(
+                            "click",
+                            lambda: self.select_caption(
+                                caption,
+                                speaker_select,
+                                True,
+                                new_text=text_area.value,
+                            ),
+                        ).classes("caption-close")
 
-                            if self.data_format == "txt":
-                                ui.button("Add", color="green").props("flat dense").on(
-                                    "click", lambda: self.add_caption_after(caption)
-                                )
+                        ui.button("Add").props("flat dense").on(
+                            "click", lambda: self.add_caption_after(caption)
+                        )
 
-                            ui.button("Delete", color="red").props("flat dense").on(
-                                "click", lambda: self.remove_caption(caption)
-                            )
+                        ui.button("Delete", color="red").props("flat dense").on(
+                            "click", lambda: self.remove_caption(caption)
+                        )
                 else:
                     # Show text with search highlighting
                     if caption.is_highlighted and self.search_term:
@@ -1566,7 +1564,7 @@ class SRTEditor:
                 )
 
                 with ui.row().classes("w-full justify-between"):
-                    ui.button("Split", icon="call_split", color="blue").props(
+                    ui.button("Split", icon="call_split").props(
                         "flat dense"
                     ).on("click", lambda: self.split_caption(caption))
                     ui.button("Merge with previous", icon="merge_type").props(
@@ -1590,22 +1588,20 @@ class SRTEditor:
                         ),
                     )
 
-                    with ui.row().classes("gap-2"):
-                        ui.button("Close").props("flat dense").on(
-                            "click",
-                            lambda: self.select_caption(
-                                caption, speaker_select, True, new_text=text_area.value
-                            ),
-                        ).classes("button-close")
+                    ui.button("Close").props("flat dense").on(
+                        "click",
+                        lambda: self.select_caption(
+                            caption, speaker_select, True, new_text=text_area.value
+                        ),
+                    ).classes("caption-close")
 
-                        if self.data_format == "txt":
-                            ui.button("Add", color="green").props("flat dense").on(
-                                "click", lambda: self.add_caption_after(caption)
-                            )
+                    ui.button("Add").props("flat dense").on(
+                        "click", lambda: self.add_caption_after(caption)
+                    )
 
-                        ui.button("Delete", color="red").props("flat dense").on(
-                            "click", lambda: self.remove_caption(caption)
-                        )
+                    ui.button("Delete", color="red").props("flat dense").on(
+                        "click", lambda: self.remove_caption(caption)
+                    )
             else:
                 if caption.is_highlighted and self.search_term:
                     highlighted_text = self.get_highlighted_text(caption.text)
@@ -1783,7 +1779,7 @@ class SRTEditor:
         )
 
         with ui.dialog() as dialog:
-            with ui.card().classes("p-6").style("max-width: 700px; min-width: 500px;"):
+            with ui.card().classes("p-6").style("max-width: 700px; min-width: 500px; max-height: 90vh; overflow-y: auto;"):
                 # Header
                 with ui.row().classes("w-full items-center justify-between mb-4"):
                     ui.label("Subtitle Validation").classes("text-h5 font-bold")
@@ -1828,7 +1824,9 @@ class SRTEditor:
                                 ).classes("text-body2 text-green-700")
 
                 # Footer
-                with ui.row().classes("w-full justify-end mt-4"):
+                with ui.row().classes("w-full justify-end mt-4").style(
+                    "position: sticky; bottom: -24px; background: white; padding-bottom: 8px; z-index: 1;"
+                ):
                     ui.button("Close", on_click=dialog.close).props("color=primary")
 
             dialog.open()
@@ -1882,7 +1880,7 @@ class SRTEditor:
         ]
 
         with ui.dialog() as dialog:
-            with ui.card().classes("w-2/3 max-w-2xl").style("padding: 24px;"):
+            with ui.card().classes("w-2/3 max-w-2xl").style("padding: 24px; max-height: 90vh; overflow-y: auto;"):
                 ui.label("Keyboard Shortcuts").classes("text-h5 mb-4 font-bold")
 
                 with ui.column().classes("w-full gap-4"):
@@ -1900,7 +1898,9 @@ class SRTEditor:
                                         "text-body2 font-mono bg-gray-100 px-2 py-1 rounded"
                                     )
 
-                with ui.row().classes("w-full justify-end mt-4"):
+                with ui.row().classes("w-full justify-end mt-4").style(
+                    "position: sticky; bottom: -24px; background: white; padding-bottom: 8px; z-index: 1;"
+                ):
                     ui.button("Close").props("flat color=primary").on(
                         "click", dialog.close
                     )
@@ -1924,6 +1924,12 @@ class SRTEditor:
         import zipfile
         from pathlib import Path
 
+        filename = sanitize_filename(filename)
+        if bulk_editors:
+            bulk_editors = [
+                (sanitize_filename(fn), ed) for fn, ed in bulk_editors
+            ]
+
         is_bulk = bulk_editors is not None and len(bulk_editors) > 0
         # For bulk mode with txt formats: show preview using first file
         bulk_needs_preview = is_bulk and self.data_format == "txt"
@@ -1933,6 +1939,7 @@ class SRTEditor:
             card = ui.card().classes("p-6").style(
                 f"min-width: {'1000' if (not is_bulk or bulk_needs_preview) else '500'}px; "
                 f"max-width: {'1400' if (not is_bulk or bulk_needs_preview) else '700'}px; "
+                "max-height: 90vh; overflow-y: auto; "
                 "background-color: #ffffff;"
             )
             with card:
@@ -2479,7 +2486,9 @@ class SRTEditor:
                 ui.separator().classes("my-4")
 
                 # Footer
-                with ui.row().classes("w-full justify-between items-center"):
+                with ui.row().classes("w-full justify-between items-center").style(
+                    "position: sticky; bottom: -24px; background: white; padding-bottom: 8px; z-index: 1;"
+                ):
                     if is_bulk:
                         ui.label("").bind_text_from(
                             fmt, "value", backward=lambda v: f"Format: .{v}"

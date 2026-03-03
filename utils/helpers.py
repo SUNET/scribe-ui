@@ -2,10 +2,48 @@ import requests
 
 from nicegui import app, ui
 from typing import Optional
+from utils.crypto import decrypt_string, encrypt_string, get_browser_id
 from utils.settings import get_settings
 from utils.token import get_auth_header
 
 settings = get_settings()
+
+
+def storage_encrypt(plaintext: str) -> str:
+    """
+    Encrypt a string using the current user's browser-bound key.
+    """
+
+    return encrypt_string(
+        plaintext,
+        app.storage.browser["_scribe_bk"] + settings.STORAGE_SECRET,
+        get_browser_id().encode(),
+        b"scribe-secret",
+    )
+
+
+def storage_decrypt(encrypted: Optional[str]) -> Optional[str]:
+    """
+    Decrypt a string using the current user's browser-bound key.
+
+    Returns None for falsy inputs (None, empty string) and redirects
+    to the login page if decryption fails (e.g. stale or migrated data).
+    """
+
+    if not encrypted:
+        return None
+
+    try:
+        return decrypt_string(
+            encrypted,
+            app.storage.browser["_scribe_bk"] + settings.STORAGE_SECRET,
+            get_browser_id().encode(),
+            b"scribe-secret",
+        )
+    except Exception:
+        app.storage.user["encryption_password"] = None
+        ui.navigate.to("/")
+        return None
 
 
 def encryption_password_set(password: str) -> None:

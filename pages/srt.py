@@ -5,6 +5,7 @@ from nicegui import app, ui
 from utils.common import default_styles
 from utils.common import get_auth_header
 from utils.common import page_init
+from utils.helpers import storage_decrypt
 from utils.settings import get_settings
 from utils.srt import SRTEditor
 from utils.video import create_video_proxy
@@ -118,8 +119,8 @@ def create() -> None:
                     f"{settings.API_URL}/api/v1/transcriber/{uuid}/result/srt",
                     headers=get_auth_header(),
                     json={
-                        "encryption_password": app.storage.user.get(
-                            "encryption_password"
+                        "encryption_password": storage_decrypt(
+                            app.storage.user.get("encryption_password"),
                         )
                     },
                 )
@@ -128,8 +129,8 @@ def create() -> None:
                     f"{settings.API_URL}/api/v1/transcriber/{uuid}/result/txt",
                     headers=get_auth_header(),
                     json={
-                        "encryption_password": app.storage.user.get(
-                            "encryption_password"
+                        "encryption_password": storage_decrypt(
+                            app.storage.user.get("encryption_password"),
                         )
                     },
                 )
