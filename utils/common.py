@@ -488,11 +488,6 @@ def post_file(filedata: bytes, filename: str) -> None:
     return True
 
 
-def toggle_upload_status(upload_column, status_column):
-    upload_column.visible = False
-    status_column.visible = True
-
-
 def table_upload(table) -> None:
     """
     Handle the click event on the Upload button with improved UX.
@@ -501,12 +496,16 @@ def table_upload(table) -> None:
     ui.add_head_html(default_styles)
 
     with ui.dialog() as dialog:
+        dialog.props("persistent")
+
         with ui.card():
             with ui.column().classes("w-full items-center mt-10") as status_column:
-                ui.label("Uploading files, please wait...").style(
+                upload_status_label = ui.label("Uploading files, please wait...").style(
                     "width: 100%;"
                 ).classes("text-h6 q-mb-xl text-black")
-                ui.spinner(size="50px", color="black")
+                upload_progress = ui.linear_progress(value=0, show_value=False).classes(
+                    "w-full"
+                )
                 status_column.visible = False
 
             with ui.column().classes("w-full items-center mt-10") as upload_column:
@@ -514,7 +513,7 @@ def table_upload(table) -> None:
                     ui.upload(
                         label="hidden",
                         on_multi_upload=lambda e: handle_upload_with_feedback(
-                            e, dialog
+                            e, dialog, upload_status_label, upload_progress
                         ),
                         auto_upload=True,
                         multiple=True,
@@ -528,11 +527,12 @@ def table_upload(table) -> None:
                     )
                 )
 
-                upload.on(
-                    "start",
-                    lambda _: toggle_upload_status(upload_column, status_column),
-                )
-                upload.on("finish", lambda _: dialog.close())
+                def start_upload():
+                    upload_column.visible = False
+                    status_column.visible = True
+                    cancel_btn.visible = False
+
+                upload.on("start", lambda _: start_upload())
 
                 dropzone = ui.html(
                     """
@@ -573,27 +573,28 @@ def table_upload(table) -> None:
                     once=True,
                 )
                 with ui.row().style("justify-content: flex-end; gap: 12px;"):
-                    with ui.button(
+                    cancel_btn = ui.button(
                         "Cancel",
                         icon="cancel",
                         on_click=lambda: dialog.close(),
-                    ) as cancel:
-                        cancel.props("color=black flat")
-                        cancel.classes("cancel-style")
+                    )
+                    cancel_btn.props("color=black flat")
+                    cancel_btn.classes("cancel-style")
 
         dialog.open()
 
 
-async def handle_upload_with_feedback(files, dialog):
+async def handle_upload_with_feedback(files, dialog, status_label, progress_bar):
     """
     Handle file uploads with user feedback and validation.
     """
 
-    dialog.close()
-
-    for file in files.files:
+    total = len(files.files)
+    for i, file in enumerate(files.files, 1):
         try:
             file_name = sanitize_filename(file.name)
+            status_label.set_text(f"Uploading file {i} of {total}: {file_name}")
+            progress_bar.set_value(i / total)
             file_data = await file.read()
 
             await asyncio.to_thread(post_file, file_data, file_name)
@@ -605,6 +606,8 @@ async def handle_upload_with_feedback(files, dialog):
             ui.notify(
                 f"Error uploading {file_name}: {str(e)}", type="negative", timeout=5000
             )
+
+    dialog.close()
 
 
 def table_transcribe(selected_row) -> None:
