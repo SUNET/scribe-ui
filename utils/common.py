@@ -637,7 +637,9 @@ def table_transcribe(selected_row) -> None:
                     ).classes("w-full")
 
                 with ui.column().classes("col-12 col-sm-24") as verbatim_container:
-                    verbatim = ui.checkbox("Verbatim").classes("q-mt-sm")
+                    verbatim = ui.checkbox(
+                        "Verbatim (include filler words, repetitions and unfinished sentences)"
+                    ).classes("q-mt-sm")
                     verbatim_container.set_visibility(
                         language.value.lower() == "swedish"
                     )
@@ -739,7 +741,9 @@ def table_bulk_transcribe(table: ui.table) -> None:
                     ).classes("w-full")
 
                 with ui.column().classes("col-12 col-sm-24") as verbatim_container:
-                    verbatim = ui.checkbox("Verbatim").classes("q-mt-sm")
+                    verbatim = ui.checkbox(
+                        "Verbatim (include filler words, repetitions and unfinished sentences)"
+                    ).classes("q-mt-sm")
                     verbatim_container.set_visibility(
                         language.value.lower() == "swedish"
                     )
