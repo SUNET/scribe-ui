@@ -482,7 +482,7 @@ async def post_file(filedata: bytes, filename: str) -> bool:
     files_json = {"file": (filename, filedata)}
 
     try:
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=900) as client:
             response = await client.post(
                 f"{settings.API_URL}/api/v1/transcriber",
                 files=files_json,
