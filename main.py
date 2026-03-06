@@ -70,6 +70,7 @@ async def index(request: Request) -> None:
         )
     except TimeoutError:
         timezone = "UTC"
+
     app.storage.user["timezone"] = timezone
 
     if (

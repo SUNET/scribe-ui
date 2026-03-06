@@ -142,9 +142,9 @@ def create() -> None:
             """,
         )
         table.add_slot(
-            "body-cell-deletetion_date",
+            "body-cell-deletion_date",
             """
-            <q-td key="deletetion_date" :props="props">
+            <q-td key="deletion_date" :props="props">
                 <div :class="props.row.deletion_approaching ? 'deletion-warning' : ''">
                     <span>{{ props.row.deletion_date }}</span>
                     <q-icon
