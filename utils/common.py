@@ -76,7 +76,7 @@ jobs_columns = [
         "align": "left",
     },
     {
-        "name": "deletetion_date",
+        "name": "deletion_date",
         "label": "Scheduled deletion",
         "field": "deletion_date",
         "align": "left",
@@ -799,13 +799,15 @@ def table_delete(table: ui.table) -> None:
     Handle the click event on the Delete button.
     """
 
+    count = len(table.selected)
+
     with ui.dialog() as dialog:
         with ui.card().style(
             "background-color: white; align-self: center; border: 0; width: 100%;"
         ):
-            ui.label("Are you sure you want to delete the selected files?").classes(
-                "text-h6 q-mb-md text-black"
-            )
+            ui.label(
+                f"Are you sure you want to delete {count} selected file{'s' if count != 1 else ''}?"
+            ).classes("text-h6 q-mb-md text-black")
             ui.separator()
             with ui.row().classes("justify-between w-full"):
                 ui.button(
@@ -821,25 +823,42 @@ def table_delete(table: ui.table) -> None:
         dialog.open()
 
 
-def __delete_files(table: ui.table, dialog: ui.dialog) -> bool:
-    try:
-        for row in table.selected:
-            uuid = row["uuid"]
-            response = requests.delete(
-                f"{settings.API_URL}/api/v1/transcriber/{uuid}",
-                headers=get_auth_header(),
-            )
-            response.raise_for_status()
-        ui.notify("Files deleted successfully", type="positive", position="top")
-    except requests.exceptions.RequestException as e:
-        ui.notify(
-            f"Error: Failed to delete files: {str(e)}", type="negative", position="top"
-        )
-        return False
+async def __delete_files(table: ui.table, dialog: ui.dialog) -> None:
+    selected = list(table.selected)
+    total = len(selected)
+    dialog.close()
+
+    deleted = 0
+    failed = 0
+
+    for row in selected:
+        uuid = row["uuid"]
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.delete(
+                    f"{settings.API_URL}/api/v1/transcriber/{uuid}",
+                    headers=get_auth_header(),
+                )
+                response.raise_for_status()
+            deleted += 1
+        except (httpx.HTTPStatusError, httpx.RequestError):
+            failed += 1
 
     table.selected = []
+    table.update_rows(jobs_get(), clear_selection=True)
 
-    dialog.close()
+    if failed == 0:
+        ui.notify(
+            f"Successfully deleted {deleted} file{'s' if deleted != 1 else ''}",
+            type="positive",
+            position="top",
+        )
+    else:
+        ui.notify(
+            f"Deleted {deleted} of {total} files ({failed} failed)",
+            type="warning",
+            position="top",
+        )
 
 
 def table_bulk_export(table: ui.table) -> None:
