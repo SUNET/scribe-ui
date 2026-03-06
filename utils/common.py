@@ -487,11 +487,6 @@ async def post_file(filedata: bytes, filename: str) -> bool:
                 f"{settings.API_URL}/api/v1/transcriber",
                 files=files_json,
                 headers=get_auth_header(),
-                json={
-                    "encryption_password": storage_decrypt(
-                        app.storage.user.get("encryption_password"),
-                    )
-                },
             )
             response.raise_for_status()
 
