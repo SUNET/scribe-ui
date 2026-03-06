@@ -48,6 +48,7 @@ def sanitize_filename(filename: str) -> str:
     filename = filename.strip(". ")
     return filename or "unnamed"
 
+
 jobs_columns = [
     {
         "name": "filename",
@@ -803,22 +804,26 @@ def table_delete(table: ui.table) -> None:
 
     with ui.dialog() as dialog:
         with ui.card().style(
-            "background-color: white; align-self: center; border: 0; width: 100%;"
-        ):
+            "min-width: 500px; max-width: 650px; padding: 28px;"
+        ).classes("no-shadow"):
+            ui.label("Delete files").classes("text-h6 text-black q-mb-md")
+
             ui.label(
-                f"Are you sure you want to delete {count} selected file{'s' if count != 1 else ''}?"
-            ).classes("text-h6 q-mb-md text-black")
-            ui.separator()
-            with ui.row().classes("justify-between w-full"):
+                f"{str(count)} files will be permanently deleted. This action cannot be undone."
+            ).classes("text-body2 q-mb-md")
+
+            with ui.row().classes("justify-end w-full gap-2"):
                 ui.button(
                     "Cancel",
-                ).on("click", lambda: dialog.close()).classes(
-                    "cancel-style"
-                ).props("color=black flat")
+                    on_click=dialog.close,
+                ).props(
+                    "flat color=black"
+                ).classes("cancel-style")
                 ui.button(
                     "Delete",
+                    icon="delete",
                     on_click=lambda: __delete_files(table, dialog),
-                ).props("color=red").classes("delete-style")
+                ).props("color=red unelevated").style("width: 120px;")
 
         dialog.open()
 
