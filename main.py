@@ -64,9 +64,13 @@ async def index(request: Request) -> None:
         app.storage.user["token"] = token
 
     # Set the users timezone
-    timezone = await ui.run_javascript(
-        "Intl.DateTimeFormat().resolvedOptions().timeZone"
-    )
+    try:
+        timezone = await ui.run_javascript(
+            "Intl.DateTimeFormat().resolvedOptions().timeZone", timeout=5.0
+        )
+    except TimeoutError:
+        timezone = "UTC"
+
     app.storage.user["timezone"] = timezone
 
     if (
