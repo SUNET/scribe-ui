@@ -17,6 +17,7 @@
 
 import asyncio
 import re
+import httpx
 import requests
 import pytz
 
@@ -473,7 +474,7 @@ def table_click(event) -> None:
         )
 
 
-def post_file(filedata: bytes, filename: str) -> None:
+async def post_file(filedata: bytes, filename: str) -> bool:
     """
     Post a file to the API.
     """
@@ -481,27 +482,30 @@ def post_file(filedata: bytes, filename: str) -> None:
     files_json = {"file": (filename, filedata)}
 
     try:
-        response = requests.post(
-            f"{settings.API_URL}/api/v1/transcriber",
-            files=files_json,
-            headers=get_auth_header(),
-            json={
-                "encryption_password": storage_decrypt(
-                    app.storage.user.get("encryption_password"),
-                )
-            },
-        )
-        response.raise_for_status()
-
-        if response.status_code != 200:
-            raise requests.exceptions.RequestException(
-                f"Upload failed, status code: {response.status_code}"
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{settings.API_URL}/api/v1/transcriber",
+                files=files_json,
+                headers=get_auth_header(),
+                json={
+                    "encryption_password": storage_decrypt(
+                        app.storage.user.get("encryption_password"),
+                    )
+                },
             )
-    except requests.exceptions.RequestException as e:
+            response.raise_for_status()
+
+            if response.status_code != 200:
+                raise httpx.HTTPStatusError(
+                    f"Upload failed, status code: {response.status_code}",
+                    request=response.request,
+                    response=response,
+                )
+    except httpx.HTTPStatusError as e:
         ui.notify(
             f"Error when uploading file: {str(e)}", type="negative", position="top"
         )
-        return
+        return False
 
     return True
 
@@ -532,7 +536,7 @@ def table_upload(table) -> None:
                     ui.upload(
                         label="hidden",
                         on_multi_upload=lambda e: handle_upload_with_feedback(
-                            e, dialog
+                            e, dialog, table
                         ),
                         auto_upload=True,
                         multiple=True,
@@ -602,7 +606,7 @@ def table_upload(table) -> None:
         dialog.open()
 
 
-async def handle_upload_with_feedback(files, dialog):
+async def handle_upload_with_feedback(files, dialog, table):
     """
     Handle file uploads with user feedback and validation.
     """
@@ -614,7 +618,7 @@ async def handle_upload_with_feedback(files, dialog):
             file_name = sanitize_filename(file.name)
             file_data = await file.read()
 
-            await asyncio.to_thread(post_file, file_data, file_name)
+            await post_file(file_data, file_name)
 
             ui.notify(
                 f"Successfully uploaded {file_name}", type="positive", timeout=3000
@@ -623,6 +627,8 @@ async def handle_upload_with_feedback(files, dialog):
             ui.notify(
                 f"Error uploading {file_name}: {str(e)}", type="negative", timeout=5000
             )
+
+    table.update_rows(jobs_get(), clear_selection=False)
 
 
 def table_transcribe(selected_row) -> None:
