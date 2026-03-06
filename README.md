@@ -1,6 +1,16 @@
 # scribe-ui
 
-User interface built on NiceGUI for the SUNET transcription service (Sunet Scribe).
+User interface built on NiceGUI for the Sunet transcription service (Sunet Scribe).
+
+## Author
+
+This project is developed by [Sunet](https://www.sunet.se). Contributor: Kristofer Hallin.
+
+## License
+
+This project is licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for details.
+
+Copyright (c) 2025-2026 Sunet. Contributor: Kristofer Hallin.
 
 ## Features
 
@@ -91,7 +101,3 @@ scribe-ui/
 ├── static/             # Static assets
 └── tests/              # Test files
 ```
-
-## License
-
-See [LICENSE](LICENSE) for details.
