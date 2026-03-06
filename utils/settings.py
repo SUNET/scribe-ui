@@ -64,6 +64,7 @@ class Settings(BaseSettings):
         "Dutch",
         "Russian",
         "Ukrainian",
+        "Icelandic",
     ]
 
 
