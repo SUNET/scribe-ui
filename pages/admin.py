@@ -1440,14 +1440,6 @@ def analytics() -> None:
         "<style>body { background-color: #f5f5f5; }</style>"
     )
 
-    with ui.row().style(
-        "justify-content: space-between; align-items: center; width: 100%;"
-    ):
-        ui.label("Analytics").classes("text-3xl font-bold")
-        ui.button("Back to Admin").classes("button-edit").props(
-            "color=white flat"
-        ).on("click", lambda: ui.navigate.to("/admin"))
-
     stats = get_total_stats()
     wow = get_week_over_week()
 
@@ -1472,36 +1464,111 @@ def analytics() -> None:
     }
     action_map = {r["path"]: r for r in action_summary}
 
-    # Summary cards — page views
-    with ui.row().classes("w-full gap-4 q-mt-md"):
-        for label, value, icon, color in [
-            ("Total Views (All Time)", stats["total_views"], "visibility", "#082954"),
-            ("Views (Last 30 Days)", stats["views_30d"], "trending_up", "#1565c0"),
-            ("Top Page (30 Days)", f'{stats["top_page"]["path"]}', "star", "#e65100"),
-            ("Week over Week", wow_display, "compare_arrows", wow_color),
-        ]:
-            with ui.card().classes("flex-1 p-4").style(
-                f"border-left: 4px solid {color}; min-width: 200px;"
-            ):
-                with ui.row().classes("items-center gap-2"):
-                    ui.icon(icon, size="sm").style(f"color: {color};")
-                    ui.label(label).classes("text-caption text-grey-7")
-                ui.label(str(value)).classes("text-h5 font-bold q-mt-sm")
+    # Summary cards
+    all_cards = [
+        ("Total Views", str(stats["total_views"]), None, "visibility", "#082954"),
+        ("Views (30 Days)", str(stats["views_30d"]), None, "trending_up", "#1565c0"),
+        ("Top Page (30 Days)", stats["top_page"]["path"], None, "star", "#e65100"),
+        ("Week over Week", wow_display, None, "compare_arrows", wow_color),
+    ]
+    for path, (label, icon, color) in action_labels.items():
+        row = action_map.get(path, {"total_views": 0, "views_30d": 0})
+        all_cards.append(
+            (label, str(row["total_views"]), f'{row["views_30d"]} last 30d', icon, color)
+        )
 
-    # Summary cards — user actions
-    with ui.row().classes("w-full gap-4 q-mt-sm"):
-        for path, (label, icon, color) in action_labels.items():
-            row = action_map.get(path, {"total_views": 0, "views_30d": 0})
-            with ui.card().classes("flex-1 p-4").style(
-                f"border-left: 4px solid {color}; min-width: 160px;"
+    with ui.grid(columns="repeat(auto-fill, minmax(180px, 1fr))").classes("w-full gap-3 q-mt-md"):
+        for label, value, subtitle, icon, color in all_cards:
+            with ui.card().classes("p-3").style(
+                f"border-left: 3px solid {color};"
             ):
-                with ui.row().classes("items-center gap-2"):
-                    ui.icon(icon, size="sm").style(f"color: {color};")
+                with ui.row().classes("items-center gap-1"):
+                    ui.icon(icon, size="xs").style(f"color: {color};")
                     ui.label(label).classes("text-caption text-grey-7")
-                ui.label(str(row["total_views"])).classes("text-h5 font-bold q-mt-sm")
-                ui.label(f'{row["views_30d"]} last 30 days').classes(
-                    "text-caption text-grey-5"
+                ui.label(value).classes("text-h6 font-bold q-mt-xs")
+                if subtitle:
+                    ui.label(subtitle).classes("text-caption text-grey-5")
+
+    # Peak hours heatmap + hourly distribution
+    with ui.row().classes("w-full gap-4 q-mt-lg"):
+        with ui.card().classes("flex-1 p-4").style("min-width: 400px;"):
+            ui.label("Peak Hours (Last 30 Days)").classes(
+                "text-h6 font-semibold q-mb-md"
+            )
+            heatmap_data = get_hourly_heatmap(days=30)
+
+            if heatmap_data:
+                day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+                hours = list(range(24))
+                # Build a 7x24 matrix (rows=days, cols=hours)
+                matrix = [[0] * 24 for _ in range(7)]
+                for r in heatmap_data:
+                    # PostgreSQL dow: 0=Sun, 1=Mon..6=Sat -> remap to Mon=0..Sun=6
+                    day_idx = (r["dow"] - 1) % 7
+                    matrix[day_idx][r["hour"]] = r["views"]
+
+                fig = go.Figure(
+                    data=go.Heatmap(
+                        z=matrix,
+                        x=[f"{h:02d}:00" for h in hours],
+                        y=day_names,
+                        colorscale=[
+                            [0, "#f5f5f5"],
+                            [0.25, "#bbdefb"],
+                            [0.5, "#42a5f5"],
+                            [0.75, "#1565c0"],
+                            [1, "#0d47a1"],
+                        ],
+                        hovertemplate="Day: %{y}<br>Hour: %{x}<br>Views: %{z}<extra></extra>",
+                        showscale=True,
+                        colorbar=dict(title="Views", thickness=15),
+                        xgap=2,
+                        ygap=2,
+                        texttemplate="%{z}",
+                        textfont=dict(size=10),
+                    )
                 )
+                fig.update_layout(
+                    template="plotly_white",
+                    height=350,
+                    margin=dict(l=50, r=20, t=20, b=40),
+                    xaxis_title="Hour of Day",
+                    xaxis=dict(dtick=1),
+                )
+                ui.plotly(fig).classes("w-full")
+            else:
+                ui.label("No data yet.").classes("text-grey-6")
+
+        with ui.card().classes("flex-1 p-4").style("min-width: 400px;"):
+            ui.label("Hourly Distribution (Last 30 Days)").classes(
+                "text-h6 font-semibold q-mb-md"
+            )
+            hourly = get_hourly_distribution(days=30)
+
+            if hourly:
+                # Fill missing hours with 0
+                hourly_map = {r["hour"]: r["views"] for r in hourly}
+                all_hours = list(range(24))
+                all_views = [hourly_map.get(h, 0) for h in all_hours]
+
+                fig = go.Figure()
+                fig.add_trace(
+                    go.Bar(
+                        x=[f"{h:02d}:00" for h in all_hours],
+                        y=all_views,
+                        marker_color="#1565c0",
+                    )
+                )
+                fig.update_layout(
+                    xaxis_title="Hour of Day",
+                    yaxis_title="Views",
+                    template="plotly_white",
+                    height=350,
+                    margin=dict(l=40, r=20, t=20, b=40),
+                )
+                ui.plotly(fig).classes("w-full")
+            else:
+                ui.label("No data yet.").classes("text-grey-6")
 
     # Charts
     with ui.row().classes("w-full gap-4 q-mt-lg"):
@@ -1574,76 +1641,8 @@ def analytics() -> None:
             else:
                 ui.label("No data yet.").classes("text-grey-6")
 
-    # Peak hours heatmap + hourly distribution
-    with ui.row().classes("w-full gap-4 q-mt-lg"):
-        with ui.card().classes("flex-1 p-4").style("min-width: 400px;"):
-            ui.label("Peak Hours (Last 30 Days)").classes(
-                "text-h6 font-semibold q-mb-md"
-            )
-            heatmap_data = get_hourly_heatmap(days=30)
-
-            if heatmap_data:
-                day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-                hours = list(range(24))
-                # Build a 7x24 matrix (rows=days, cols=hours)
-                matrix = [[0] * 24 for _ in range(7)]
-                for r in heatmap_data:
-                    # PostgreSQL dow: 0=Sun, 1=Mon..6=Sat -> remap to Mon=0..Sun=6
-                    day_idx = (r["dow"] - 1) % 7
-                    matrix[day_idx][r["hour"]] = r["views"]
-
-                fig = go.Figure(
-                    data=go.Heatmap(
-                        z=matrix,
-                        x=[f"{h:02d}:00" for h in hours],
-                        y=day_names,
-                        colorscale="Blues",
-                        hovertemplate="Day: %{y}<br>Hour: %{x}<br>Views: %{z}<extra></extra>",
-                    )
-                )
-                fig.update_layout(
-                    template="plotly_white",
-                    height=280,
-                    margin=dict(l=50, r=20, t=20, b=40),
-                    xaxis_title="Hour of Day",
-                )
-                ui.plotly(fig).classes("w-full")
-            else:
-                ui.label("No data yet.").classes("text-grey-6")
-
-        with ui.card().classes("flex-1 p-4").style("min-width: 400px;"):
-            ui.label("Hourly Distribution (Last 30 Days)").classes(
-                "text-h6 font-semibold q-mb-md"
-            )
-            hourly = get_hourly_distribution(days=30)
-
-            if hourly:
-                # Fill missing hours with 0
-                hourly_map = {r["hour"]: r["views"] for r in hourly}
-                all_hours = list(range(24))
-                all_views = [hourly_map.get(h, 0) for h in all_hours]
-
-                fig = go.Figure()
-                fig.add_trace(
-                    go.Bar(
-                        x=[f"{h:02d}:00" for h in all_hours],
-                        y=all_views,
-                        marker_color="#1565c0",
-                    )
-                )
-                fig.update_layout(
-                    xaxis_title="Hour of Day",
-                    yaxis_title="Views",
-                    template="plotly_white",
-                    height=280,
-                    margin=dict(l=40, r=20, t=20, b=40),
-                )
-                ui.plotly(fig).classes("w-full")
-            else:
-                ui.label("No data yet.").classes("text-grey-6")
-
     # Daily traffic chart + recent views table
-    with ui.row().classes("w-full gap-4 q-mt-lg"):
+    with ui.row().classes("w-full gap-4 q-mt-lg items-stretch"):
         with ui.card().classes("flex-1 p-4").style("min-width: 400px;"):
             ui.label("Total Traffic Per Day (Last 30 Days)").classes(
                 "text-h6 font-semibold q-mb-md"
@@ -1663,7 +1662,7 @@ def analytics() -> None:
                     xaxis_title="Date",
                     yaxis_title="Page Views",
                     template="plotly_white",
-                    height=300,
+                    height=350,
                     margin=dict(l=40, r=20, t=20, b=40),
                 )
                 ui.plotly(fig).classes("w-full")
@@ -1685,7 +1684,7 @@ def analytics() -> None:
                     columns=columns,
                     rows=recent,
                     row_key="timestamp",
-                ).classes("w-full table-style").props("dense").style("max-height: 300px;")
+                ).classes("w-full table-style").props("dense").style("max-height: 350px;")
             else:
                 ui.label("No data yet.").classes("text-grey-6")
 
