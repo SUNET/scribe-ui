@@ -198,9 +198,6 @@ def create() -> None:
             """
             Update the rows in the table.
             """
-            if getattr(table, '_uploading', False):
-                return
-
             rows = jobs_get()
 
             if not rows:
