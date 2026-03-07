@@ -506,9 +506,22 @@ async def post_file(filedata: bytes, filename: str) -> bool:
     return True
 
 
-def toggle_upload_status(upload_column, status_column):
+def format_size(bytes_val) -> str:
+    """Format bytes into a human-readable string."""
+    if bytes_val < 1024:
+        return f"{bytes_val} B"
+    elif bytes_val < 1024 * 1024:
+        return f"{bytes_val / 1024:.1f} KB"
+    elif bytes_val < 1024 * 1024 * 1024:
+        return f"{bytes_val / (1024 * 1024):.1f} MB"
+    else:
+        return f"{bytes_val / (1024 * 1024 * 1024):.1f} GB"
+
+
+def toggle_upload_status(upload_column, status_column, dialog):
     upload_column.visible = False
     status_column.visible = True
+    dialog.props("persistent")
 
 
 def table_upload(table) -> None:
@@ -519,11 +532,12 @@ def table_upload(table) -> None:
     ui.add_head_html(default_styles)
 
     with ui.dialog() as dialog:
-        with ui.card():
-            with ui.column().classes("w-full items-center mt-10") as status_column:
-                ui.label("Uploading files, please wait...").style(
-                    "width: 100%;"
-                ).classes("text-h6 q-mb-xl text-black")
+        with ui.card().style("min-width: 400px; padding: 32px;"):
+            with ui.column().classes("w-full items-center") as status_column:
+                ui.label("Uploading files").classes("text-h6 q-mb-sm text-black")
+                status_label = ui.label("Please wait...").classes(
+                    "text-body1 q-mb-lg text-grey-7"
+                )
                 ui.spinner(size="50px", color="black")
                 status_column.visible = False
 
@@ -548,9 +562,19 @@ def table_upload(table) -> None:
 
                 upload.on(
                     "start",
-                    lambda _: toggle_upload_status(upload_column, status_column),
+                    lambda _: toggle_upload_status(upload_column, status_column, dialog),
                 )
                 upload.on("finish", lambda _: dialog.close())
+
+                def on_byte_progress(e):
+                    uploaded = e.args.get("uploaded", 0)
+                    total = e.args.get("total", 0)
+                    if total > 0:
+                        status_label.set_text(
+                            f"{format_size(uploaded)} / {format_size(total)}"
+                        )
+
+                upload.on("byte_progress", on_byte_progress)
 
                 dropzone = ui.html(
                     """
@@ -587,6 +611,21 @@ def table_upload(table) -> None:
                         "  dz.querySelector('div').classList.remove('bg-gray-200');"
                         "  upl.$refs.qRef.addFiles(Array.from(e.dataTransfer.files));"
                         "});"
+                        "setInterval(() => {"
+                        "  const qRef = upl.$refs.qRef;"
+                        "  if (!qRef || !qRef.files || qRef.files.length === 0) return;"
+                        "  let totalSize = 0, uploaded = 0, currentFile = '';"
+                        "  qRef.files.forEach(f => {"
+                        "    totalSize += f.size || 0;"
+                        "    uploaded += f.__uploaded || 0;"
+                        "    if (f.__status === 'uploading') currentFile = f.name;"
+                        "  });"
+                        "  if (currentFile) {"
+                        "    getElement(" + str(upload_id) + ").$emit('byte_progress', {"
+                        "      uploaded: uploaded, total: totalSize, current_file: currentFile"
+                        "    });"
+                        "  }"
+                        "}, 500);"
                     ),
                     once=True,
                 )
@@ -609,6 +648,35 @@ async def handle_upload_with_feedback(files, dialog, table):
 
     dialog.close()
 
+    # Signal that uploads are in progress so periodic refresh skips
+    table._uploading = True
+
+    # Add temporary "Processing..." rows for each file immediately
+    current_rows = list(table.rows)
+    temp_ids = []
+    for file in files.files:
+        file_name = sanitize_filename(file.name)
+        temp_id = f"temp-{file_name}-{id(file)}"
+        temp_ids.append(temp_id)
+        current_rows.insert(
+            0,
+            {
+                "id": temp_id,
+                "uuid": "",
+                "filename": file_name,
+                "created_at": "",
+                "updated_at": "",
+                "deletion_date": "",
+                "deletion_approaching": False,
+                "language": "",
+                "status": "Uploading",
+                "model_type": "",
+                "output_format": "",
+                "job_type": "",
+            },
+        )
+    table.update_rows(current_rows, clear_selection=False)
+
     for file in files.files:
         try:
             file_name = sanitize_filename(file.name)
@@ -624,6 +692,7 @@ async def handle_upload_with_feedback(files, dialog, table):
                 f"Error uploading {file_name}: {str(e)}", type="negative", timeout=5000
             )
 
+    table._uploading = False
     table.update_rows(jobs_get(), clear_selection=False)
 
 
