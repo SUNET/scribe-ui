@@ -724,12 +724,18 @@ def table_transcribe(selected_row) -> None:
                         value=settings.WHISPER_LANGUAGES[0],
                     ).classes("w-full")
 
-                # Remove the option to pick model for now. People always use the large models anyway.
-                # with ui.column().classes("col-12 col-sm-24"):
-                #     ui.label("Accuracy").classes("text-subtitle2 q-mb-sm")
-                #     model = ui.radio(
-                #         settings.WHISPER_MODELS, value=settings.WHISPER_MODELS[0]
-                #     )
+                with ui.column().classes("col-12 col-sm-24") as verbatim_container:
+                    verbatim = ui.checkbox(
+                        "Verbatim (include filler words, repetitions and unfinished sentences)"
+                    ).classes("q-mt-sm")
+                    verbatim_container.set_visibility(
+                        language.value.lower() == "swedish"
+                    )
+                    language.on_value_change(
+                        lambda e: verbatim_container.set_visibility(
+                            e.value.lower() == "swedish"
+                        )
+                    )
 
                 with ui.column().classes("col-12 col-sm-24"):
                     ui.label("Number of speakers, automatic if not chosen").classes(
@@ -761,8 +767,9 @@ def table_transcribe(selected_row) -> None:
                     "Start transcribing",
                     on_click=lambda: start_transcription(
                         [selected_row],
-                        language.value,
-                        # model.value,
+                        f"{language.value} (verbatim)"
+                        if verbatim.value
+                        else language.value,
                         speakers.value,
                         output_format.value,
                         dialog,
@@ -821,6 +828,19 @@ def table_bulk_transcribe(table: ui.table) -> None:
                         value=settings.WHISPER_LANGUAGES[0],
                     ).classes("w-full")
 
+                with ui.column().classes("col-12 col-sm-24") as verbatim_container:
+                    verbatim = ui.checkbox(
+                        "Verbatim (include filler words, repetitions and unfinished sentences)"
+                    ).classes("q-mt-sm")
+                    verbatim_container.set_visibility(
+                        language.value.lower() == "swedish"
+                    )
+                    language.on_value_change(
+                        lambda e: verbatim_container.set_visibility(
+                            e.value.lower() == "swedish"
+                        )
+                    )
+
                 with ui.column().classes("col-12 col-sm-24"):
                     ui.label("Number of speakers, automatic if not chosen").classes(
                         "text-subtitle2 q-mb-sm"
@@ -853,7 +873,9 @@ def table_bulk_transcribe(table: ui.table) -> None:
                         log_action("bulk_transcription"),
                         start_transcription(
                             uploadable,
-                            language.value,
+                            f"{language.value} (verbatim)"
+                            if verbatim.value
+                            else language.value,
                             speakers.value,
                             output_format.value,
                             dialog,
