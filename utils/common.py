@@ -646,55 +646,31 @@ async def handle_upload_with_feedback(files, dialog, table):
     Handle file uploads with user feedback and validation.
     """
 
+    client = ui.context.client
+
     dialog.close()
 
-    # Signal that uploads are in progress so periodic refresh skips
-    table._uploading = True
-
-    # Add temporary "Processing..." rows for each file immediately
-    current_rows = list(table.rows)
-    temp_ids = []
     for file in files.files:
-        file_name = sanitize_filename(file.name)
-        temp_id = f"temp-{file_name}-{id(file)}"
-        temp_ids.append(temp_id)
-        current_rows.insert(
-            0,
-            {
-                "id": temp_id,
-                "uuid": "",
-                "filename": file_name,
-                "created_at": "",
-                "updated_at": "",
-                "deletion_date": "",
-                "deletion_approaching": False,
-                "language": "",
-                "status": "Uploading",
-                "model_type": "",
-                "output_format": "",
-                "job_type": "",
-            },
-        )
-    table.update_rows(current_rows, clear_selection=False)
+        try:
+            file_name = sanitize_filename(file.name)
+            file_data = await file.read()
 
-    with table:
-        for file in files.files:
-            try:
-                file_name = sanitize_filename(file.name)
-                file_data = await file.read()
+            await post_file(file_data, file_name)
 
-                await post_file(file_data, file_name)
+            if not client.is_deleted:
+                with table:
+                    ui.notify(
+                        f"Successfully uploaded {file_name}", type="positive", timeout=3000
+                    )
+        except Exception as e:
+            if not client.is_deleted:
+                with table:
+                    ui.notify(
+                        f"Error uploading {file_name}: {str(e)}", type="negative", timeout=5000
+                    )
 
-                ui.notify(
-                    f"Successfully uploaded {file_name}", type="positive", timeout=3000
-                )
-            except Exception as e:
-                ui.notify(
-                    f"Error uploading {file_name}: {str(e)}", type="negative", timeout=5000
-                )
-
-    table._uploading = False
-    table.update_rows(jobs_get(), clear_selection=False)
+    if not client.is_deleted:
+        table.update_rows(jobs_get(), clear_selection=False)
 
 
 def table_transcribe(selected_row) -> None:
