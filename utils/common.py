@@ -677,20 +677,21 @@ async def handle_upload_with_feedback(files, dialog, table):
         )
     table.update_rows(current_rows, clear_selection=False)
 
-    for file in files.files:
-        try:
-            file_name = sanitize_filename(file.name)
-            file_data = await file.read()
+    with table:
+        for file in files.files:
+            try:
+                file_name = sanitize_filename(file.name)
+                file_data = await file.read()
 
-            await post_file(file_data, file_name)
+                await post_file(file_data, file_name)
 
-            ui.notify(
-                f"Successfully uploaded {file_name}", type="positive", timeout=3000
-            )
-        except Exception as e:
-            ui.notify(
-                f"Error uploading {file_name}: {str(e)}", type="negative", timeout=5000
-            )
+                ui.notify(
+                    f"Successfully uploaded {file_name}", type="positive", timeout=3000
+                )
+            except Exception as e:
+                ui.notify(
+                    f"Error uploading {file_name}: {str(e)}", type="negative", timeout=5000
+                )
 
     table._uploading = False
     table.update_rows(jobs_get(), clear_selection=False)
