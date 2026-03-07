@@ -665,27 +665,35 @@ async def handle_upload_with_feedback(files, dialog, table):
 
     dialog.close()
 
+    # Read file data while the client context is still active
+    file_items = []
     for file in files.files:
-        try:
-            file_name = sanitize_filename(file.name)
-            file_data = await file.read()
+        file_name = sanitize_filename(file.name)
+        file_data = await file.read()
+        file_items.append((file_name, file_data))
 
-            await post_file(file_data, file_name)
+    # Upload to backend in a background task so the UI stays responsive
+    async def _upload():
+        for file_name, file_data in file_items:
+            try:
+                await post_file(file_data, file_name)
 
-            if not client.is_deleted:
-                with table:
-                    ui.notify(
-                        f"Successfully uploaded {file_name}", type="positive", timeout=3000
-                    )
-        except Exception as e:
-            if not client.is_deleted:
-                with table:
-                    ui.notify(
-                        f"Error uploading {file_name}: {str(e)}", type="negative", timeout=5000
-                    )
+                if not client._deleted:
+                    with table:
+                        ui.notify(
+                            f"Successfully uploaded {file_name}", type="positive", timeout=3000
+                        )
+            except Exception as e:
+                if not client._deleted:
+                    with table:
+                        ui.notify(
+                            f"Error uploading {file_name}: {str(e)}", type="negative", timeout=5000
+                        )
 
-    if not client.is_deleted:
-        table.update_rows(jobs_get(), clear_selection=False)
+        if not client._deleted:
+            table.update_rows(jobs_get(), clear_selection=False)
+
+    asyncio.create_task(_upload())
 
 
 def table_transcribe(selected_row) -> None:
