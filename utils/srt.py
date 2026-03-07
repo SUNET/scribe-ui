@@ -22,6 +22,7 @@ import requests
 from nicegui import events, ui
 from typing import Callable, List, Optional
 from utils.caption import SRTCaption
+from db.analytics import log_action
 from utils.common import default_styles, get_auth_header, sanitize_filename
 from utils.settings import get_settings
 from utils.undo_redo import UndoRedoManager
@@ -2740,6 +2741,7 @@ class SRTEditor:
                                         zip_buffer.getvalue(),
                                         filename="bulk_export.zip",
                                     )
+                                    log_action("export")
                                     ui.notify(
                                         f"Exported {len(bulk_editors)} files as {chosen_fmt.upper()}",
                                         type="positive",
@@ -2750,6 +2752,7 @@ class SRTEditor:
                                         c.encode("utf-8"),
                                         filename=f"{Path(filename).stem}.{fmt.value}",
                                     )
+                                    log_action("export")
                                     ui.notify(
                                         f"Exported as {fmt.value.upper()}",
                                         type="positive",

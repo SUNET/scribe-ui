@@ -18,9 +18,20 @@
 import plotly.graph_objects as go
 import requests
 
+from collections import defaultdict
 from datetime import datetime
 from nicegui import ui
 from utils.common import add_timezone_to_timestamp, default_styles, page_init
+from db.analytics import (
+    get_page_views,
+    get_page_views_summary,
+    get_views_per_day,
+    get_recent_views,
+    get_hourly_heatmap,
+    get_hourly_distribution,
+    get_week_over_week,
+    get_total_stats,
+)
 from utils.helpers import (
     groups_get,
     realms_get,
@@ -572,6 +583,14 @@ def create() -> None:
                     ui.button("Users").classes("button-edit").props("color=white flat")
                 )
                 users.on("click", lambda: ui.navigate.to("/admin/users"))
+
+                if get_bofh_status():
+                    analytics_btn = (
+                        ui.button("Analytics")
+                        .classes("button-edit")
+                        .props("color=white flat")
+                    )
+                    analytics_btn.on("click", lambda: ui.navigate.to("/admin/analytics"))
 
                 if get_bofh_status():
                     customers = (
@@ -1405,3 +1424,341 @@ def customers() -> None:
                 base_fee=customer["base_fee"],
             )
             c.create_card()
+
+
+@ui.page("/admin/analytics")
+def analytics() -> None:
+    """Page view analytics dashboard. BOFH only."""
+    page_init()
+
+    if not get_bofh_status():
+        ui.navigate.to("/home")
+        return
+
+    ui.add_head_html(default_styles)
+    ui.add_head_html(
+        "<style>body { background-color: #f5f5f5; }</style>"
+    )
+
+    with ui.row().style(
+        "justify-content: space-between; align-items: center; width: 100%;"
+    ):
+        ui.label("Analytics").classes("text-3xl font-bold")
+        ui.button("Back to Admin").classes("button-edit").props(
+            "color=white flat"
+        ).on("click", lambda: ui.navigate.to("/admin"))
+
+    stats = get_total_stats()
+    wow = get_week_over_week()
+
+    if wow["change_pct"] is not None:
+        sign = "+" if wow["change_pct"] >= 0 else ""
+        wow_color = "#2e7d32" if wow["change_pct"] >= 0 else "#c62828"
+        wow_display = f'{sign}{wow["change_pct"]}%'
+    else:
+        wow_color = "#757575"
+        wow_display = "N/A"
+
+    summary = get_page_views_summary()
+
+    # Action data (reused below for cards and charts)
+    action_summary = [r for r in summary if r["path"].startswith("/action/")]
+    action_labels = {
+        "/action/upload": ("Uploads", "upload_file", "#2e7d32"),
+        "/action/transcription": ("Transcriptions", "record_voice_over", "#1565c0"),
+        "/action/bulk_transcription": ("Bulk Transcriptions", "dynamic_feed", "#6a1b9a"),
+        "/action/export": ("Exports", "download", "#e65100"),
+        "/action/bulk_export": ("Bulk Exports", "folder_zip", "#00695c"),
+    }
+    action_map = {r["path"]: r for r in action_summary}
+
+    # Summary cards — page views
+    with ui.row().classes("w-full gap-4 q-mt-md"):
+        for label, value, icon, color in [
+            ("Total Views (All Time)", stats["total_views"], "visibility", "#082954"),
+            ("Views (Last 30 Days)", stats["views_30d"], "trending_up", "#1565c0"),
+            ("Top Page (30 Days)", f'{stats["top_page"]["path"]}', "star", "#e65100"),
+            ("Week over Week", wow_display, "compare_arrows", wow_color),
+        ]:
+            with ui.card().classes("flex-1 p-4").style(
+                f"border-left: 4px solid {color}; min-width: 200px;"
+            ):
+                with ui.row().classes("items-center gap-2"):
+                    ui.icon(icon, size="sm").style(f"color: {color};")
+                    ui.label(label).classes("text-caption text-grey-7")
+                ui.label(str(value)).classes("text-h5 font-bold q-mt-sm")
+
+    # Summary cards — user actions
+    with ui.row().classes("w-full gap-4 q-mt-sm"):
+        for path, (label, icon, color) in action_labels.items():
+            row = action_map.get(path, {"total_views": 0, "views_30d": 0})
+            with ui.card().classes("flex-1 p-4").style(
+                f"border-left: 4px solid {color}; min-width: 160px;"
+            ):
+                with ui.row().classes("items-center gap-2"):
+                    ui.icon(icon, size="sm").style(f"color: {color};")
+                    ui.label(label).classes("text-caption text-grey-7")
+                ui.label(str(row["total_views"])).classes("text-h5 font-bold q-mt-sm")
+                ui.label(f'{row["views_30d"]} last 30 days').classes(
+                    "text-caption text-grey-5"
+                )
+
+    # Charts
+    with ui.row().classes("w-full gap-4 q-mt-lg"):
+        # Line chart: page views per day per path
+        with ui.card().classes("flex-1 p-4").style("min-width: 400px;"):
+            ui.label("Page Views Per Day (Last 30 Days)").classes(
+                "text-h6 font-semibold q-mb-md"
+            )
+            page_views = get_page_views(days=30)
+
+            if page_views:
+                by_path = defaultdict(lambda: {"dates": [], "views": []})
+                for row in page_views:
+                    by_path[row["path"]]["dates"].append(row["date"])
+                    by_path[row["path"]]["views"].append(row["views"])
+
+                fig = go.Figure()
+                for path, data in sorted(by_path.items()):
+                    fig.add_trace(
+                        go.Scatter(
+                            x=data["dates"],
+                            y=data["views"],
+                            mode="lines+markers",
+                            name=path,
+                        )
+                    )
+                fig.update_layout(
+                    xaxis_title="Date",
+                    yaxis_title="Views",
+                    template="plotly_white",
+                    height=350,
+                    margin=dict(l=40, r=20, t=20, b=40),
+                )
+                ui.plotly(fig).classes("w-full")
+            else:
+                ui.label("No data yet.").classes("text-grey-6")
+
+        # Bar chart: total views per page
+        with ui.card().classes("flex-1 p-4").style("min-width: 400px;"):
+            ui.label("Total Views Per Page").classes(
+                "text-h6 font-semibold q-mb-md"
+            )
+            if summary:
+                fig = go.Figure()
+                fig.add_trace(
+                    go.Bar(
+                        x=[r["path"] for r in summary],
+                        y=[r["total_views"] for r in summary],
+                        name="All Time",
+                        marker_color="#082954",
+                    )
+                )
+                fig.add_trace(
+                    go.Bar(
+                        x=[r["path"] for r in summary],
+                        y=[r["views_30d"] for r in summary],
+                        name="Last 30 Days",
+                        marker_color="#4caf50",
+                    )
+                )
+                fig.update_layout(
+                    barmode="group",
+                    xaxis_title="Page",
+                    yaxis_title="Views",
+                    template="plotly_white",
+                    height=350,
+                    margin=dict(l=40, r=20, t=20, b=40),
+                )
+                ui.plotly(fig).classes("w-full")
+            else:
+                ui.label("No data yet.").classes("text-grey-6")
+
+    # Peak hours heatmap + hourly distribution
+    with ui.row().classes("w-full gap-4 q-mt-lg"):
+        with ui.card().classes("flex-1 p-4").style("min-width: 400px;"):
+            ui.label("Peak Hours (Last 30 Days)").classes(
+                "text-h6 font-semibold q-mb-md"
+            )
+            heatmap_data = get_hourly_heatmap(days=30)
+
+            if heatmap_data:
+                day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+                hours = list(range(24))
+                # Build a 7x24 matrix (rows=days, cols=hours)
+                matrix = [[0] * 24 for _ in range(7)]
+                for r in heatmap_data:
+                    # PostgreSQL dow: 0=Sun, 1=Mon..6=Sat -> remap to Mon=0..Sun=6
+                    day_idx = (r["dow"] - 1) % 7
+                    matrix[day_idx][r["hour"]] = r["views"]
+
+                fig = go.Figure(
+                    data=go.Heatmap(
+                        z=matrix,
+                        x=[f"{h:02d}:00" for h in hours],
+                        y=day_names,
+                        colorscale="Blues",
+                        hovertemplate="Day: %{y}<br>Hour: %{x}<br>Views: %{z}<extra></extra>",
+                    )
+                )
+                fig.update_layout(
+                    template="plotly_white",
+                    height=280,
+                    margin=dict(l=50, r=20, t=20, b=40),
+                    xaxis_title="Hour of Day",
+                )
+                ui.plotly(fig).classes("w-full")
+            else:
+                ui.label("No data yet.").classes("text-grey-6")
+
+        with ui.card().classes("flex-1 p-4").style("min-width: 400px;"):
+            ui.label("Hourly Distribution (Last 30 Days)").classes(
+                "text-h6 font-semibold q-mb-md"
+            )
+            hourly = get_hourly_distribution(days=30)
+
+            if hourly:
+                # Fill missing hours with 0
+                hourly_map = {r["hour"]: r["views"] for r in hourly}
+                all_hours = list(range(24))
+                all_views = [hourly_map.get(h, 0) for h in all_hours]
+
+                fig = go.Figure()
+                fig.add_trace(
+                    go.Bar(
+                        x=[f"{h:02d}:00" for h in all_hours],
+                        y=all_views,
+                        marker_color="#1565c0",
+                    )
+                )
+                fig.update_layout(
+                    xaxis_title="Hour of Day",
+                    yaxis_title="Views",
+                    template="plotly_white",
+                    height=280,
+                    margin=dict(l=40, r=20, t=20, b=40),
+                )
+                ui.plotly(fig).classes("w-full")
+            else:
+                ui.label("No data yet.").classes("text-grey-6")
+
+    # Daily traffic chart + recent views table
+    with ui.row().classes("w-full gap-4 q-mt-lg"):
+        with ui.card().classes("flex-1 p-4").style("min-width: 400px;"):
+            ui.label("Total Traffic Per Day (Last 30 Days)").classes(
+                "text-h6 font-semibold q-mb-md"
+            )
+            daily = get_views_per_day(days=30)
+
+            if daily:
+                fig = go.Figure()
+                fig.add_trace(
+                    go.Bar(
+                        x=[r["date"] for r in daily],
+                        y=[r["views"] for r in daily],
+                        marker_color="#082954",
+                    )
+                )
+                fig.update_layout(
+                    xaxis_title="Date",
+                    yaxis_title="Page Views",
+                    template="plotly_white",
+                    height=300,
+                    margin=dict(l=40, r=20, t=20, b=40),
+                )
+                ui.plotly(fig).classes("w-full")
+            else:
+                ui.label("No data yet.").classes("text-grey-6")
+
+        with ui.card().classes("flex-1 p-4").style("min-width: 400px;"):
+            ui.label("Last Visited Pages").classes(
+                "text-h6 font-semibold q-mb-md"
+            )
+            recent = get_recent_views(limit=50)
+
+            if recent:
+                columns = [
+                    {"name": "path", "label": "Page", "field": "path", "align": "left"},
+                    {"name": "timestamp", "label": "Time", "field": "timestamp", "align": "left"},
+                ]
+                ui.table(
+                    columns=columns,
+                    rows=recent,
+                    row_key="timestamp",
+                ).classes("w-full table-style").props("dense").style("max-height: 300px;")
+            else:
+                ui.label("No data yet.").classes("text-grey-6")
+
+    # Action charts
+    with ui.row().classes("w-full gap-4 q-mt-lg"):
+        with ui.card().classes("flex-1 p-4").style("min-width: 400px;"):
+            ui.label("Actions Per Day (Last 30 Days)").classes(
+                "text-h6 font-semibold q-mb-md"
+            )
+            action_views = [
+                r for r in get_page_views(days=30) if r["path"].startswith("/action/")
+            ]
+
+            if action_views:
+                by_action = defaultdict(lambda: {"dates": [], "views": []})
+                for row in action_views:
+                    action_name = row["path"].replace("/action/", "")
+                    by_action[action_name]["dates"].append(row["date"])
+                    by_action[action_name]["views"].append(row["views"])
+
+                fig = go.Figure()
+                for action_name, data in sorted(by_action.items()):
+                    fig.add_trace(
+                        go.Bar(
+                            x=data["dates"],
+                            y=data["views"],
+                            name=action_name,
+                        )
+                    )
+                fig.update_layout(
+                    barmode="stack",
+                    xaxis_title="Date",
+                    yaxis_title="Count",
+                    template="plotly_white",
+                    height=350,
+                    margin=dict(l=40, r=20, t=20, b=40),
+                )
+                ui.plotly(fig).classes("w-full")
+            else:
+                ui.label("No action data yet.").classes("text-grey-6")
+
+        with ui.card().classes("flex-1 p-4").style("min-width: 400px;"):
+            ui.label("Total Actions By Type").classes(
+                "text-h6 font-semibold q-mb-md"
+            )
+
+            if action_summary:
+                action_names = [r["path"].replace("/action/", "") for r in action_summary]
+                fig = go.Figure()
+                fig.add_trace(
+                    go.Bar(
+                        x=action_names,
+                        y=[r["total_views"] for r in action_summary],
+                        name="All Time",
+                        marker_color="#082954",
+                    )
+                )
+                fig.add_trace(
+                    go.Bar(
+                        x=action_names,
+                        y=[r["views_30d"] for r in action_summary],
+                        name="Last 30 Days",
+                        marker_color="#4caf50",
+                    )
+                )
+                fig.update_layout(
+                    barmode="group",
+                    xaxis_title="Action",
+                    yaxis_title="Count",
+                    template="plotly_white",
+                    height=350,
+                    margin=dict(l=40, r=20, t=20, b=40),
+                )
+                ui.plotly(fig).classes("w-full")
+            else:
+                ui.label("No action data yet.").classes("text-grey-6")

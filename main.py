@@ -33,6 +33,7 @@ from utils.helpers import (
     reset_password,
     storage_encrypt,
 )
+from db.analytics import log_page_view
 
 settings = get_settings()
 
@@ -78,6 +79,11 @@ async def index(request: Request) -> None:
         and app.storage.user.get("refresh_token")
         and get_user_status()
     ):
+        try:
+            log_page_view("/")
+        except Exception:
+            pass
+
         user_data = get_user_data()
 
         if not user_data["encryption_settings"]:
