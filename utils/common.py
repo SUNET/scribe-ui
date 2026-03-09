@@ -577,7 +577,9 @@ def table_upload(table) -> None:
 
                 upload.on(
                     "start",
-                    lambda _: toggle_upload_status(upload_column, status_column, dialog),
+                    lambda _: toggle_upload_status(
+                        upload_column, status_column, dialog
+                    ),
                 )
                 upload.on("finish", lambda _: dialog.close())
 
@@ -636,7 +638,9 @@ def table_upload(table) -> None:
                         "    if (f.__status === 'uploading') currentFile = f.name;"
                         "  });"
                         "  if (currentFile) {"
-                        "    getElement(" + str(upload_id) + ").$emit('byte_progress', {"
+                        "    getElement("
+                        + str(upload_id)
+                        + ").$emit('byte_progress', {"
                         "      uploaded: uploaded, total: totalSize, current_file: currentFile"
                         "    });"
                         "  }"
@@ -681,13 +685,17 @@ async def handle_upload_with_feedback(files, dialog, table):
                 if not client._deleted:
                     with table:
                         ui.notify(
-                            f"Successfully uploaded {file_name}", type="positive", timeout=3000
+                            f"Successfully uploaded {file_name}",
+                            type="positive",
+                            timeout=3000,
                         )
             except Exception as e:
                 if not client._deleted:
                     with table:
                         ui.notify(
-                            f"Error uploading {file_name}: {str(e)}", type="negative", timeout=5000
+                            f"Error uploading {file_name}: {str(e)}",
+                            type="negative",
+                            timeout=5000,
                         )
 
         if not client._deleted:
@@ -1065,7 +1073,6 @@ def table_bulk_export(table: ui.table) -> None:
 def start_transcription(
     rows: list,
     language: str,
-    # model: str,
     speakers: str,
     output_format: str,
     dialog: ui.dialog,
@@ -1091,6 +1098,9 @@ def start_transcription(
                     "language": f"{selected_language}",
                     "speakers": int(speakers),
                     "output_format": output_format,
+                    "encryption_password": storage_decrypt(
+                        app.storage.user.get("encryption_password"),
+                    ),
                 },
                 headers=get_auth_header(),
             )

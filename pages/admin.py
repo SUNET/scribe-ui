@@ -35,6 +35,7 @@ from db.analytics import (
 from utils.helpers import (
     groups_get,
     realms_get,
+    remove_user,
     save_customer,
     save_group,
     set_active_status,
@@ -585,14 +586,6 @@ def create() -> None:
                 users.on("click", lambda: ui.navigate.to("/admin/users"))
 
                 if get_bofh_status():
-                    analytics_btn = (
-                        ui.button("Analytics")
-                        .classes("button-edit")
-                        .props("color=white flat")
-                    )
-                    analytics_btn.on("click", lambda: ui.navigate.to("/admin/analytics"))
-
-                if get_bofh_status():
                     customers = (
                         ui.button("Customers")
                         .classes("button-edit")
@@ -813,6 +806,40 @@ def users() -> None:
             ).style("width: 150px").on(
                 "click", lambda: set_admin_status(users_table.selected, False, None, "")
             )
+
+            def confirm_remove_user():
+                selected = users_table.selected
+                if not selected:
+                    ui.notify("No users selected", type="warning")
+                    return
+
+                usernames = ", ".join(u["username"] for u in selected)
+
+                with ui.dialog() as dialog:
+                    with ui.card():
+                        ui.label("Remove users").classes("text-h6")
+                        ui.label(
+                            f"Are you sure you want to remove: {usernames}? "
+                            "Statistics will be preserved until all associated data has been cleaned up."
+                        ).classes("text-subtitle2").style("margin-bottom: 10px;")
+
+                        with ui.row().classes("justify-between w-full"):
+                            ui.button("Cancel", on_click=lambda: dialog.close()).props(
+                                "color=black"
+                            )
+                            ui.button(
+                                "Remove",
+                                on_click=lambda: (
+                                    dialog.close(),
+                                    remove_user(selected),
+                                ),
+                            ).props("color=red")
+
+                dialog.open()
+
+            ui.button("Remove user").classes("button-close").props(
+                "color=red flat"
+            ).style("width: 150px").on("click", confirm_remove_user)
 
 
 @ui.page("/health")
@@ -1436,9 +1463,7 @@ def analytics() -> None:
         return
 
     ui.add_head_html(default_styles)
-    ui.add_head_html(
-        "<style>body { background-color: #f5f5f5; }</style>"
-    )
+    ui.add_head_html("<style>body { background-color: #f5f5f5; }</style>")
 
     stats = get_total_stats()
     wow = get_week_over_week()
@@ -1458,7 +1483,11 @@ def analytics() -> None:
     action_labels = {
         "/action/upload": ("Uploads", "upload_file", "#2e7d32"),
         "/action/transcription": ("Transcriptions", "record_voice_over", "#1565c0"),
-        "/action/bulk_transcription": ("Bulk Transcriptions", "dynamic_feed", "#6a1b9a"),
+        "/action/bulk_transcription": (
+            "Bulk Transcriptions",
+            "dynamic_feed",
+            "#6a1b9a",
+        ),
         "/action/export": ("Exports", "download", "#e65100"),
         "/action/bulk_export": ("Bulk Exports", "folder_zip", "#00695c"),
     }
@@ -1474,14 +1503,20 @@ def analytics() -> None:
     for path, (label, icon, color) in action_labels.items():
         row = action_map.get(path, {"total_views": 0, "views_30d": 0})
         all_cards.append(
-            (label, str(row["total_views"]), f'{row["views_30d"]} last 30d', icon, color)
+            (
+                label,
+                str(row["total_views"]),
+                f'{row["views_30d"]} last 30d',
+                icon,
+                color,
+            )
         )
 
-    with ui.grid(columns="repeat(auto-fill, minmax(180px, 1fr))").classes("w-full gap-3 q-mt-md"):
+    with ui.grid(columns="repeat(auto-fill, minmax(180px, 1fr))").classes(
+        "w-full gap-3 q-mt-md"
+    ):
         for label, value, subtitle, icon, color in all_cards:
-            with ui.card().classes("p-3").style(
-                f"border-left: 3px solid {color};"
-            ):
+            with ui.card().classes("p-3").style(f"border-left: 3px solid {color};"):
                 with ui.row().classes("items-center gap-1"):
                     ui.icon(icon, size="xs").style(f"color: {color};")
                     ui.label(label).classes("text-caption text-grey-7")
@@ -1608,9 +1643,7 @@ def analytics() -> None:
 
         # Bar chart: total views per page
         with ui.card().classes("flex-1 p-4").style("min-width: 400px;"):
-            ui.label("Total Views Per Page").classes(
-                "text-h6 font-semibold q-mb-md"
-            )
+            ui.label("Total Views Per Page").classes("text-h6 font-semibold q-mb-md")
             if summary:
                 fig = go.Figure()
                 fig.add_trace(
@@ -1670,21 +1703,26 @@ def analytics() -> None:
                 ui.label("No data yet.").classes("text-grey-6")
 
         with ui.card().classes("flex-1 p-4").style("min-width: 400px;"):
-            ui.label("Last Visited Pages").classes(
-                "text-h6 font-semibold q-mb-md"
-            )
+            ui.label("Last Visited Pages").classes("text-h6 font-semibold q-mb-md")
             recent = get_recent_views(limit=50)
 
             if recent:
                 columns = [
                     {"name": "path", "label": "Page", "field": "path", "align": "left"},
-                    {"name": "timestamp", "label": "Time", "field": "timestamp", "align": "left"},
+                    {
+                        "name": "timestamp",
+                        "label": "Time",
+                        "field": "timestamp",
+                        "align": "left",
+                    },
                 ]
                 ui.table(
                     columns=columns,
                     rows=recent,
                     row_key="timestamp",
-                ).classes("w-full table-style").props("dense").style("max-height: 350px;")
+                ).classes(
+                    "w-full table-style"
+                ).props("dense").style("max-height: 350px;")
             else:
                 ui.label("No data yet.").classes("text-grey-6")
 
@@ -1727,12 +1765,12 @@ def analytics() -> None:
                 ui.label("No action data yet.").classes("text-grey-6")
 
         with ui.card().classes("flex-1 p-4").style("min-width: 400px;"):
-            ui.label("Total Actions By Type").classes(
-                "text-h6 font-semibold q-mb-md"
-            )
+            ui.label("Total Actions By Type").classes("text-h6 font-semibold q-mb-md")
 
             if action_summary:
-                action_names = [r["path"].replace("/action/", "") for r in action_summary]
+                action_names = [
+                    r["path"].replace("/action/", "") for r in action_summary
+                ]
                 fig = go.Figure()
                 fig.add_trace(
                     go.Bar(

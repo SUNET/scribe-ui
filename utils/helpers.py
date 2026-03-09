@@ -473,6 +473,28 @@ def save_group(
         dialog.open()
 
 
+def remove_user(selected_rows: list) -> None:
+    """
+    Remove selected users via the backend API.
+    """
+
+    for user in selected_rows:
+        try:
+            res = requests.delete(
+                settings.API_URL + f"/api/v1/admin/{user['username']}",
+                headers=get_auth_header(),
+            )
+            res.raise_for_status()
+        except requests.RequestException as e:
+            ui.notify(
+                f"Error removing user {user['username']}: {e}",
+                type="negative",
+            )
+            return
+
+    ui.navigate.to("/admin/users")
+
+
 def set_active_status(selected_rows: list, make_active: bool) -> None:
     """
     Set or remove active status for selected users.
