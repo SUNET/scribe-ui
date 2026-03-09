@@ -905,27 +905,20 @@ def table_delete(table: ui.table) -> None:
     count = len(table.selected)
 
     with ui.dialog() as dialog:
-        with ui.card().style(
-            "min-width: 500px; max-width: 650px; padding: 28px;"
-        ).classes("no-shadow"):
-            ui.label("Delete files").classes("text-h6 text-black q-mb-md")
-
+        with ui.card():
+            ui.label("Delete files").classes("text-h6")
             ui.label(
                 f"{str(count)} files will be permanently deleted. This action cannot be undone."
-            ).classes("text-body2 q-mb-md")
+            ).classes("text-subtitle2").style("margin-bottom: 10px;")
 
-            with ui.row().classes("justify-end w-full gap-2"):
-                ui.button(
-                    "Cancel",
-                    on_click=dialog.close,
-                ).props(
-                    "flat color=black"
-                ).classes("cancel-style")
+            with ui.row().classes("justify-between w-full"):
+                ui.button("Cancel", on_click=lambda: dialog.close()).props(
+                    "color=black"
+                )
                 ui.button(
                     "Delete",
-                    icon="delete",
                     on_click=lambda: __delete_files(table, dialog),
-                ).props("color=red unelevated").style("width: 120px;")
+                ).props("color=red")
 
         dialog.open()
 
