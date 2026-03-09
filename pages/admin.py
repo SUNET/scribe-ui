@@ -23,6 +23,7 @@ from datetime import datetime
 from nicegui import ui
 from utils.common import add_timezone_to_timestamp, default_styles, page_init
 from db.analytics import (
+    log_action,
     get_page_views,
     get_page_views_summary,
     get_views_per_day,
@@ -92,6 +93,7 @@ def create_group_dialog(page: callable) -> None:
                                 "quota_seconds": int(quota.value) * 60,
                             },
                         ),
+                        log_action("create_group"),
                         create_group_dialog.close(),
                         ui.navigate.to("/admin"),
                     ),
@@ -1490,6 +1492,15 @@ def analytics() -> None:
         ),
         "/action/export": ("Exports", "download", "#e65100"),
         "/action/bulk_export": ("Bulk Exports", "folder_zip", "#00695c"),
+        "/action/create_group": ("Groups Created", "group_add", "#00838f"),
+        "/action/edit_group": ("Groups Edited", "edit", "#4527a0"),
+        "/action/delete_group": ("Groups Deleted", "group_remove", "#b71c1c"),
+        "/action/remove_user": ("Users Removed", "person_remove", "#c62828"),
+        "/action/activate_user": ("Users Activated", "person_add", "#2e7d32"),
+        "/action/deactivate_user": ("Users Deactivated", "person_off", "#e65100"),
+        "/action/set_admin": ("Admin Granted", "admin_panel_settings", "#1565c0"),
+        "/action/remove_admin": ("Admin Revoked", "remove_moderator", "#bf360c"),
+        "/action/set_domains": ("Domains Updated", "domain", "#6a1b9a"),
     }
     action_map = {r["path"]: r for r in action_summary}
 
