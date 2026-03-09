@@ -19,6 +19,7 @@ import requests
 
 from nicegui import app, ui
 from typing import Optional
+from db.analytics import log_action
 from utils.crypto import decrypt_string, encrypt_string, get_browser_id
 from utils.settings import get_settings
 from utils.token import get_auth_header
@@ -458,6 +459,7 @@ def save_group(
             },
         )
         res.raise_for_status()
+        log_action("edit_group")
         ui.navigate.to("/admin")
     except requests.RequestException:
         error = res.json()
@@ -485,6 +487,7 @@ def remove_user(selected_rows: list) -> None:
                 headers=get_auth_header(),
             )
             res.raise_for_status()
+            log_action("remove_user")
         except requests.RequestException as e:
             ui.notify(
                 f"Error removing user {user['username']}: {e}",
@@ -508,6 +511,7 @@ def set_active_status(selected_rows: list, make_active: bool) -> None:
                 json={"active": make_active},
             )
             res.raise_for_status()
+            log_action("activate_user" if make_active else "deactivate_user")
             ui.navigate.to("/admin/users")
         except requests.RequestException as e:
             ui.notify(
@@ -531,6 +535,7 @@ def set_admin_status(
                 json={"admin": make_admin},
             )
             res.raise_for_status()
+            log_action("set_admin" if make_admin else "remove_admin")
 
             if dialog:
                 dialog.close()
@@ -564,6 +569,7 @@ def save_domains(
                 json={"admin_domains": domains_str},
             )
             res.raise_for_status()
+            log_action("set_domains")
             ui.navigate.to("/admin/users")
         except requests.RequestException as e:
             ui.notify(
