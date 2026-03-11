@@ -37,7 +37,7 @@ def create() -> None:
         """
         Main page of the application.
         """
-        page_init()
+        page_init(use_drawer=True)
 
         def toggle_buttons(selected: list) -> None:
             """

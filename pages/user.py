@@ -55,7 +55,7 @@ def create() -> None:
         """
         User page for managing user settings and information.
         """
-        page_init()
+        page_init(use_drawer=True)
         userdata = get_user_data()
 
         ui.add_head_html(default_styles)

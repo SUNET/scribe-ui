@@ -171,7 +171,7 @@ def edit_group(group_id: str) -> None:
     """
     Page to edit a group.
     """
-    page_init()
+    page_init(use_drawer=True)
 
     ui.add_head_html(default_styles)
     ui.add_head_html(
@@ -302,7 +302,7 @@ def statistics(group_id: str) -> None:
     """
     Page to show statistics of a group with improved layout and design.
     """
-    page_init()
+    page_init(use_drawer=True)
 
     ui.add_head_html(default_styles)
     ui.add_head_html(
@@ -548,7 +548,7 @@ def create() -> None:
         """
         Main page of the application.
         """
-        page_init()
+        page_init(use_drawer=True)
 
         ui.add_head_html(default_styles)
         ui.add_head_html(
@@ -684,7 +684,7 @@ def users() -> None:
     """
     Page to show all users.
     """
-    page_init()
+    page_init(use_drawer=True)
 
     ui.add_head_html(default_styles)
     ui.add_head_html(
@@ -850,7 +850,7 @@ def health() -> None:
     Health check dashboard displaying backend system metrics.
     """
 
-    page_init()
+    page_init(use_drawer=True)
 
     ui.add_head_html(default_styles)
     ui.add_head_html(
@@ -1228,7 +1228,7 @@ def edit_customer(customer_id: str) -> None:
     """
     Page to edit a customer.
     """
-    page_init()
+    page_init(use_drawer=True)
 
     ui.add_head_html(default_styles)
     ui.add_head_html(
@@ -1378,7 +1378,7 @@ def customers() -> None:
     """
     Customer management page.
     """
-    page_init()
+    page_init(use_drawer=True)
 
     ui.add_head_html(default_styles)
     ui.add_head_html(
@@ -1458,7 +1458,7 @@ def customers() -> None:
 @ui.page("/admin/analytics")
 def analytics() -> None:
     """Page view analytics dashboard. BOFH only."""
-    page_init()
+    page_init(use_drawer=True)
 
     if not get_bofh_status():
         ui.navigate.to("/home")

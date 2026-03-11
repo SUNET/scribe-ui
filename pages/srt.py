@@ -63,7 +63,7 @@ def create() -> None:
         """
         Display the result of the transcription job.
         """
-        page_init()
+        page_init(use_drawer=True)
         editor = SRTEditor(uuid, data_format, filename)
         editor.setup_beforeunload_warning()
 

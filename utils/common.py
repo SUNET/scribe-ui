@@ -280,7 +280,7 @@ def logout() -> None:
     ui.navigate.to(settings.OIDC_APP_LOGOUT_ROUTE)
 
 
-def page_init(header_text: Optional[str] = "") -> None:
+def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None:
     """
     Initialize the page with a header and background color.
     """
@@ -317,57 +317,170 @@ def page_init(header_text: Optional[str] = "") -> None:
     if is_admin:
         header_text += " (Administrator)"
 
-    with (
-        ui.header()
-        .style("justify-content: space-between; background-color: #ffffff;")
-        .classes("drop-shadow-md")
-    ):
-        with ui.element("div").style("display: flex; gap: 0px;"):
-            ui.image(f"static/{settings.LOGO_TOPBAR}").classes("q-mr-sm").style(
-                "height: 30px; width: 30px;"
-            )
-            ui.label(settings.TOPBAR_TEXT + header_text).classes("text-h6 text-black")
+    if use_drawer:
+        drawer = ui.left_drawer(value=False, elevated=True).style(
+            "background-color: #f5f5f5; padding: 0;"
+        )
+        menu_item_style = "display: flex; align-items: center; gap: 12px; padding: 10px 16px; cursor: pointer;"
 
-        with ui.element("div").style("display: flex; gap: 0px;"):
-            if is_admin:
-                with ui.button(
-                    icon="settings",
-                    on_click=lambda: ui.navigate.to("/admin"),
-                ).props("flat color=red"):
-                    ui.tooltip("Admin settings")
+        with drawer:
+            with ui.column().classes("w-full").style("gap: 0;"):
+                ui.separator()
 
-            if is_bofh:
+                with ui.element("div").style(menu_item_style).on(
+                    "click", lambda: ui.navigate.to("/home")
+                ):
+                    ui.icon("folder", color="black").style("font-size: 20px;")
+                    ui.label("My files")
+
+                with ui.element("div").style(menu_item_style).on(
+                    "click", lambda: ui.navigate.to("/user")
+                ):
+                    ui.icon("person", color="black").style("font-size: 20px;")
+                    ui.label("User settings")
+
+                if is_admin:
+                    ui.separator()
+                    ui.label("Administration").style(
+                        "padding: 10px 16px 4px; font-weight: bold; font-size: 0.85rem; color: #666;"
+                    )
+
+                    with ui.element("div").style(menu_item_style).on(
+                        "click", lambda: ui.navigate.to("/admin/users")
+                    ):
+                        ui.icon("people", color="black").style("font-size: 20px;")
+                        ui.label("Users")
+
+                    with ui.element("div").style(menu_item_style).on(
+                        "click", lambda: ui.navigate.to("/admin")
+                    ):
+                        ui.icon("group_work", color="black").style("font-size: 20px;")
+                        ui.label("Groups")
+
+                    with ui.element("div").style(menu_item_style).on(
+                        "click",
+                        lambda: ui.navigate.to("/admin/customers"),
+                    ):
+                        ui.icon("business", color="black").style("font-size: 20px;")
+                        ui.label("Customers" if is_bofh else "Account")
+
+                    with ui.element("div").style(menu_item_style).on(
+                        "click",
+                        lambda: ui.run_javascript(
+                            f"window.open('{settings.API_URL}/api/docs', '_blank')"
+                        ),
+                    ):
+                        ui.icon("description", color="black").style("font-size: 20px;")
+                        ui.label("API Documentation")
+
+                if is_bofh:
+                    ui.separator()
+                    ui.label("System").style(
+                        "padding: 10px 16px 4px; font-weight: bold; font-size: 0.85rem; color: #666;"
+                    )
+
+                    with ui.element("div").style(menu_item_style).on(
+                        "click", lambda: ui.navigate.to("/health")
+                    ):
+                        ui.icon("health_and_safety", color="black").style("font-size: 20px;")
+                        ui.label("System status")
+
+                    with ui.element("div").style(menu_item_style).on(
+                        "click", lambda: ui.navigate.to("/admin/analytics")
+                    ):
+                        ui.icon("analytics", color="black").style("font-size: 20px;")
+                        ui.label("Activity overview")
+
+                ui.separator()
+
+                with ui.element("div").style(menu_item_style).on(
+                    "click", lambda: ui.navigate.to("/logout")
+                ):
+                    ui.icon("logout", color="black").style("font-size: 20px;")
+                    ui.label("Logout")
+
+        with (
+            ui.header()
+            .style("justify-content: space-between; background-color: #ffffff;")
+            .classes("drop-shadow-md")
+        ):
+            with ui.element("div").style(
+                "display: flex; gap: 0px; align-items: center;"
+            ):
                 with ui.button(
-                    icon="health_and_safety",
-                    on_click=lambda: ui.navigate.to("/health"),
-                ).props("flat color=red"):
-                    ui.tooltip("System status")
+                    icon="menu",
+                    on_click=lambda: drawer.toggle(),
+                ).props("flat color=black"):
+                    ui.tooltip("Menu")
+                ui.image(f"static/{settings.LOGO_TOPBAR}").classes("q-mr-sm").style(
+                    "height: 30px; width: 30px;"
+                )
+                ui.label(settings.TOPBAR_TEXT + header_text).classes(
+                    "text-h6 text-black"
+                )
+
+            with ui.element("div").style("display: flex; gap: 0px;"):
                 with ui.button(
-                    icon="analytics",
-                    on_click=lambda: ui.navigate.to("/admin/analytics"),
-                ).props("flat color=red"):
-                    ui.tooltip("Page view statistics")
-            with ui.button(
-                icon="home",
-                on_click=lambda: ui.navigate.to("/home"),
-            ).props("flat color=black"):
-                ui.tooltip("Home")
-            with ui.button(
-                icon="person",
-                on_click=lambda: ui.navigate.to("/user"),
-            ).props("flat color=black"):
-                ui.tooltip("User settings")
-            with ui.button(
-                icon="help",
-                on_click=lambda: show_help_dialog(),
-            ).props("flat color=black"):
-                ui.tooltip("Help")
-            with ui.button(
-                icon="logout",
-                on_click=lambda: ui.navigate.to("/logout"),
-            ).props("flat color=black"):
-                ui.tooltip("Logout")
+                    icon="help",
+                    on_click=lambda: show_help_dialog(),
+                ).props("flat color=black"):
+                    ui.tooltip("Help")
+
             ui.add_head_html("<style>body {background-color: #ffffff;}</style>")
+    else:
+        with (
+            ui.header()
+            .style("justify-content: space-between; background-color: #ffffff;")
+            .classes("drop-shadow-md")
+        ):
+            with ui.element("div").style("display: flex; gap: 0px;"):
+                ui.image(f"static/{settings.LOGO_TOPBAR}").classes("q-mr-sm").style(
+                    "height: 30px; width: 30px;"
+                )
+                ui.label(settings.TOPBAR_TEXT + header_text).classes(
+                    "text-h6 text-black"
+                )
+
+            with ui.element("div").style("display: flex; gap: 0px;"):
+                if is_admin:
+                    with ui.button(
+                        icon="settings",
+                        on_click=lambda: ui.navigate.to("/admin"),
+                    ).props("flat color=red"):
+                        ui.tooltip("Admin settings")
+
+                if is_bofh:
+                    with ui.button(
+                        icon="health_and_safety",
+                        on_click=lambda: ui.navigate.to("/health"),
+                    ).props("flat color=red"):
+                        ui.tooltip("System status")
+                    with ui.button(
+                        icon="analytics",
+                        on_click=lambda: ui.navigate.to("/admin/analytics"),
+                    ).props("flat color=red"):
+                        ui.tooltip("Page view statistics")
+                with ui.button(
+                    icon="home",
+                    on_click=lambda: ui.navigate.to("/home"),
+                ).props("flat color=black"):
+                    ui.tooltip("Home")
+                with ui.button(
+                    icon="person",
+                    on_click=lambda: ui.navigate.to("/user"),
+                ).props("flat color=black"):
+                    ui.tooltip("User settings")
+                with ui.button(
+                    icon="help",
+                    on_click=lambda: show_help_dialog(),
+                ).props("flat color=black"):
+                    ui.tooltip("Help")
+                with ui.button(
+                    icon="logout",
+                    on_click=lambda: ui.navigate.to("/logout"),
+                ).props("flat color=black"):
+                    ui.tooltip("Logout")
+                ui.add_head_html("<style>body {background-color: #ffffff;}</style>")
 
 
 def add_timezone_to_timestamp(timestamp: str) -> str:
