@@ -55,7 +55,7 @@ def create() -> None:
         )
 
         with ui.column().classes("w-full items-center").style("padding: 40px;"):
-            ui.label("System Status").classes("text-h4").style("margin-bottom: 32px;")
+            ui.label("System status").classes("text-h4").style("margin-bottom: 32px;")
 
             with ui.column().style("width: 100%; max-width: 600px;"):
                 with ui.row().classes("status-card status-ok items-center w-full"):

@@ -37,7 +37,7 @@ def create() -> None:
         """
         Main page of the application.
         """
-        page_init()
+        page_init(use_drawer=True)
 
         def toggle_buttons(selected: list) -> None:
             """
@@ -161,7 +161,7 @@ def create() -> None:
         table.on("table_handle_row_click", table_handle_row_click)
 
         with table.add_slot("top-left"):
-            ui.label("My files").classes("text-h5")
+            ui.label("My files").classes("text-3xl font-bold")
 
         with table.add_slot("top-right"):
             with ui.row().classes("items-center"):

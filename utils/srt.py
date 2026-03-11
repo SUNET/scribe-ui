@@ -146,7 +146,7 @@ class SRTEditor:
                 on_cancel()
 
         with ui.dialog() as dialog, ui.card().classes("w-96"):
-            ui.label("Unsaved Changes").classes("text-h6 q-mb-md")
+            ui.label("Unsaved changes").classes("text-h6 q-mb-md")
             ui.label("You have unsaved changes. What would you like to do?").classes(
                 "q-mb-lg"
             )
@@ -1800,7 +1800,7 @@ class SRTEditor:
             with ui.card().classes("p-6").style("max-width: 700px; min-width: 500px; max-height: 90vh; overflow-y: auto;"):
                 # Header
                 with ui.row().classes("w-full items-center justify-between mb-4"):
-                    ui.label("Subtitle Validation").classes("text-h5 font-bold")
+                    ui.label("Subtitle validation").classes("text-h5 font-bold")
                     ui.button(icon="close", on_click=dialog.close).props(
                         "flat round dense color=grey-7"
                     )
@@ -1899,7 +1899,7 @@ class SRTEditor:
 
         with ui.dialog() as dialog:
             with ui.card().classes("w-2/3 max-w-2xl").style("padding: 24px; max-height: 90vh; overflow-y: auto;"):
-                ui.label("Keyboard Shortcuts").classes("text-h5 mb-4 font-bold")
+                ui.label("Keyboard shortcuts").classes("text-h5 mb-4 font-bold")
 
                 with ui.column().classes("w-full gap-4"):
                     for group_name, shortcuts in shortcut_groups:
@@ -1963,7 +1963,7 @@ class SRTEditor:
             with card:
                 # Header
                 with ui.row().classes("w-full items-center justify-between mb-4"):
-                    ui.label("Export Transcript").classes(
+                    ui.label("Export transcript").classes(
                         "text-h5 font-bold text-black"
                     )
                     ui.button(icon="close", on_click=dialog.close).props(
@@ -2068,7 +2068,7 @@ class SRTEditor:
                             # Text options (for txt only)
                             txt_section = ui.column().classes("gap-2")
                             with txt_section:
-                                ui.label("Text Options").classes(
+                                ui.label("Text options").classes(
                                     "text-subtitle1 font-semibold"
                                 )
                                 txt_spk_incl = ui.checkbox(

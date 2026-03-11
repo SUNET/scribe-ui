@@ -171,14 +171,14 @@ def edit_group(group_id: str) -> None:
     """
     Page to edit a group.
     """
-    page_init()
+    page_init(use_drawer=True)
 
     ui.add_head_html(default_styles)
     ui.add_head_html(
         """
         <style>
             body {
-                background-color: #f5f5f5;
+                background-color: #ffffff;
             }
         </style>
         """
@@ -202,10 +202,11 @@ def edit_group(group_id: str) -> None:
         ui.label(f"Error fetching group: {e}").classes("text-lg text-red-500")
         return
 
+    ui.label(f"Edit group: {group['name']}").classes("text-3xl font-bold mb-4")
+
     with ui.card().style(
-        "width: 100%; box-shadow: none; border: 1px solid #e0e0e0; align-self: center;"
+        "width: 100%; box-shadow: none; align-self: center;"
     ):
-        ui.label(f"Edit group: {group['name']}").classes("text-3xl font-bold mb-4")
         with ui.row().classes("gap-4 w-full"):
             name_input = (
                 ui.input("Group name", value=group["name"])
@@ -272,28 +273,24 @@ def edit_group(group_id: str) -> None:
             ).add_slot("append"):
                 ui.icon("search")
 
-    with ui.footer().style("background-color: #ffffff;"):
-        with ui.row().style(
-            "justify-content: flex-left; width: 100%; padding: 16px; gap: 8px;"
-        ):
-            ui.button("Save group").classes("default-style").props(
-                "color=black flat"
-            ).style("width: 150px").on(
-                "click",
-                lambda: save_group(
-                    users_table.selected,
-                    name_input.value,
-                    description_input.value,
-                    group_id,
-                    quota.value,
-                ),
-            )
-            # ui.button("Administrators").classes("button-close").props(
-            #     "color=black flat"
-            # ).style("width: 150px").on("click", lambda: admin_dialog(users_table.selected, group_id))
-            ui.button("Cancel").classes("button-close").props("color=black flat").style(
-                "width: 150px;"
-            ).on("click", lambda: ui.navigate.to("/admin"))
+    with ui.row().style(
+        "justify-content: flex-end; width: 100%; padding: 16px; gap: 8px;"
+    ):
+        ui.button("Save group").classes("default-style").props(
+            "color=black flat"
+        ).style("width: 150px").on(
+            "click",
+            lambda: save_group(
+                users_table.selected,
+                name_input.value,
+                description_input.value,
+                group_id,
+                quota.value,
+            ),
+        )
+        ui.button("Cancel").classes("delete-style").props("color=black flat").on(
+            "click", lambda: ui.navigate.to("/admin")
+        )
 
 
 @ui.refreshable
@@ -302,14 +299,14 @@ def statistics(group_id: str) -> None:
     """
     Page to show statistics of a group with improved layout and design.
     """
-    page_init()
+    page_init(use_drawer=True)
 
     ui.add_head_html(default_styles)
     ui.add_head_html(
         """
         <style>
             body {
-                background-color: #f5f5f5;
+                background-color: #ffffff;
             }
             .stats-container {
                 max-width: 1500px;
@@ -377,11 +374,10 @@ def statistics(group_id: str) -> None:
     for job in job_queue:
         job["created_at"] = add_timezone_to_timestamp(job["created_at"])
 
+    ui.label("Group statistics").classes("text-3xl font-bold mb-4")
+
     with ui.element("div").classes("stats-container w-full"):
         with ui.element("div").classes("stats-card w-full"):
-            ui.label("Group Statistics").classes(
-                "text-3xl font-bold mb-3 text-gray-800"
-            )
             ui.label(f"Number of users: {total_users}").classes("text-lg text-gray-600")
             ui.label(
                 f"Transcribed files this month: {result.get('transcribed_files', 0)} files"
@@ -548,32 +544,24 @@ def create() -> None:
         """
         Main page of the application.
         """
-        page_init()
+        page_init(use_drawer=True)
 
         ui.add_head_html(default_styles)
         ui.add_head_html(
             """
             <style>
                 body {
-                    background-color: #f5f5f5;
+                    background-color: #ffffff;
                 }
             </style>
             """
         )
 
-        with ui.footer().style("background-color: #ffffff; color: black;"):
-            with ui.row().style(
-                "justify-content: flex-left; width: 100%; padding: 16px; gap: 8px;"
-            ):
-                ui.link(
-                    "API Documentation", settings.API_URL + "/api/docs", new_tab=True
-                )
-
         with ui.row().style(
             "justify-content: space-between; align-items: center; width: 100%;"
         ):
             with ui.element("div").style("display: flex; gap: 0px;"):
-                ui.label("Admin controls").classes("text-3xl font-bold")
+                ui.label("Groups").classes("text-3xl font-bold")
 
             with ui.element("div").style("display: flex; gap: 10px;"):
                 create = (
@@ -582,27 +570,6 @@ def create() -> None:
                     .props("color=black flat")
                 )
                 create.on("click", lambda: create_group_dialog(page=admin))
-                users = (
-                    ui.button("Users").classes("button-edit").props("color=white flat")
-                )
-                users.on("click", lambda: ui.navigate.to("/admin/users"))
-
-                if get_bofh_status():
-                    customers = (
-                        ui.button("Customers")
-                        .classes("button-edit")
-                        .props("color=white flat")
-                    )
-                    customers.on("click", lambda: ui.navigate.to("/admin/customers"))
-                elif get_admin_status():
-                    customers = (
-                        ui.button("Account")
-                        .classes("button-edit")
-                        .props("color=white flat")
-                    )
-                    customers.on("click", lambda: ui.navigate.to("/admin/customers"))
-                else:
-                    pass
 
                 groups = groups_get()
 
@@ -684,14 +651,14 @@ def users() -> None:
     """
     Page to show all users.
     """
-    page_init()
+    page_init(use_drawer=True)
 
     ui.add_head_html(default_styles)
     ui.add_head_html(
         """
         <style>
             body {
-                background-color: #f5f5f5;
+                background-color: #ffffff;
             }
         </style>
         """
@@ -714,10 +681,11 @@ def users() -> None:
         ui.label(f"Error fetching users: {e}").classes("text-lg text-red-500")
         return
 
+    ui.label("Users").classes("text-3xl font-bold mb-4")
+
     with ui.card().style(
-        "width: 100%; box-shadow: none; border: 1px solid #e0e0e0; align-self: center;"
+        "width: 100%; box-shadow: none; align-self: center;"
     ):
-        ui.label("All users").classes("text-3xl font-bold mb-4")
         users_table = ui.table(
             columns=[
                 {
@@ -778,70 +746,66 @@ def users() -> None:
             ).add_slot("append"):
                 ui.icon("search")
 
-    with ui.footer().style("background-color: #ffffff;"):
-        with ui.row().style(
-            "justify-content: flex-left; width: 100%; padding: 16px; gap: 8px;"
-        ):
-            ui.button("Back to groups").classes("button-close").props(
-                "color=black flat"
-            ).style("width: 150px ").on("click", lambda: ui.navigate.to("/admin"))
-            ui.button("Enable").classes("button-close").props("color=black flat").style(
-                "width: 150px"
-            ).on("click", lambda: set_active_status(users_table.selected, True))
-            ui.button("Disable").classes("button-close").props(
-                "color=black flat"
-            ).style("width: 150px").on(
-                "click", lambda: set_active_status(users_table.selected, False)
-            )
-            ui.button("Domains").classes("button-close").props(
-                "color=black flat"
-            ).style("width: 150px").on(
-                "click", lambda: set_domains(users_table.selected)
-            )
-            ui.button("Make admin").classes("button-close").props(
-                "color=black flat"
-            ).style("width: 150px").on(
-                "click", lambda: set_admin_status(users_table.selected, True, None, "")
-            )
-            ui.button("Remove admin").classes("button-close").props(
-                "color=black flat"
-            ).style("width: 150px").on(
-                "click", lambda: set_admin_status(users_table.selected, False, None, "")
-            )
+    with ui.row().style(
+        "justify-content: flex-end; width: 100%; padding: 16px; gap: 8px;"
+    ):
+        ui.button("Enable").classes("button-close").props("color=black flat").style(
+            "width: 150px"
+        ).on("click", lambda: set_active_status(users_table.selected, True))
+        ui.button("Disable").classes("delete-style").props(
+            "color=black flat"
+        ).on(
+            "click", lambda: set_active_status(users_table.selected, False)
+        )
+        ui.button("Domains").classes("button-close").props(
+            "color=black flat"
+        ).style("width: 150px").on(
+            "click", lambda: set_domains(users_table.selected)
+        )
+        ui.button("Make admin").classes("button-close").props(
+            "color=black flat"
+        ).style("width: 150px").on(
+            "click", lambda: set_admin_status(users_table.selected, True, None, "")
+        )
+        ui.button("Remove admin").classes("delete-style").props(
+            "color=black flat"
+        ).on(
+            "click", lambda: set_admin_status(users_table.selected, False, None, "")
+        )
 
-            def confirm_remove_user():
-                selected = users_table.selected
-                if not selected:
-                    ui.notify("No users selected", type="warning")
-                    return
+        def confirm_remove_user():
+            selected = users_table.selected
+            if not selected:
+                ui.notify("No users selected", type="warning")
+                return
 
-                usernames = ", ".join(u["username"] for u in selected)
+            usernames = ", ".join(u["username"] for u in selected)
 
-                with ui.dialog() as dialog:
-                    with ui.card():
-                        ui.label("Remove users").classes("text-h6")
-                        ui.label(
-                            f"Are you sure you want to remove: {usernames}? "
-                            "Statistics will be preserved until all associated data has been cleaned up."
-                        ).classes("text-subtitle2").style("margin-bottom: 10px;")
+            with ui.dialog() as dialog:
+                with ui.card():
+                    ui.label("Remove users").classes("text-h6")
+                    ui.label(
+                        f"Are you sure you want to remove: {usernames}? "
+                        "Statistics will be preserved until all associated data has been cleaned up."
+                    ).classes("text-subtitle2").style("margin-bottom: 10px;")
 
-                        with ui.row().classes("justify-between w-full"):
-                            ui.button("Cancel", on_click=lambda: dialog.close()).props(
-                                "color=black"
-                            )
-                            ui.button(
-                                "Remove",
-                                on_click=lambda: (
-                                    dialog.close(),
-                                    remove_user(selected),
-                                ),
-                            ).props("color=red")
+                    with ui.row().classes("justify-between w-full"):
+                        ui.button("Cancel", on_click=lambda: dialog.close()).props(
+                            "color=black"
+                        )
+                        ui.button(
+                            "Remove",
+                            on_click=lambda: (
+                                dialog.close(),
+                                remove_user(selected),
+                            ),
+                        ).props("color=red")
 
-                dialog.open()
+            dialog.open()
 
-            ui.button("Remove user").classes("button-close").props(
-                "color=red flat"
-            ).style("width: 150px").on("click", confirm_remove_user)
+        ui.button("Remove user").classes("delete-style").props(
+            "color=black flat"
+        ).on("click", confirm_remove_user)
 
 
 @ui.page("/health")
@@ -850,14 +814,14 @@ def health() -> None:
     Health check dashboard displaying backend system metrics.
     """
 
-    page_init()
+    page_init(use_drawer=True)
 
     ui.add_head_html(default_styles)
     ui.add_head_html(
         """
         <style>
             body {
-                background-color: #f5f5f5;
+                background-color: #ffffff;
             }
             .card {
                 background-color: white;
@@ -891,6 +855,8 @@ def health() -> None:
         </style>
         """
     )
+
+    ui.label("System status").classes("text-3xl font-bold mb-4")
 
     @ui.refreshable
     def render_health():
@@ -1228,14 +1194,14 @@ def edit_customer(customer_id: str) -> None:
     """
     Page to edit a customer.
     """
-    page_init()
+    page_init(use_drawer=True)
 
     ui.add_head_html(default_styles)
     ui.add_head_html(
         """
         <style>
             body {
-                background-color: #f5f5f5;
+                background-color: #ffffff;
             }
         </style>
         """
@@ -1258,12 +1224,13 @@ def edit_customer(customer_id: str) -> None:
         ui.label(f"Error fetching customer: {e}").classes("text-lg text-red-500")
         return
 
+    ui.label(f"Edit customer: {customer['name']}").classes(
+        "text-3xl font-bold mb-4"
+    )
+
     with ui.card().style(
-        "width: 100%; box-shadow: none; border: 1px solid #e0e0e0; align-self: center;"
+        "width: 100%; box-shadow: none; align-self: center;"
     ):
-        ui.label(f"Edit customer: {customer['name']}").classes(
-            "text-3xl font-bold mb-4"
-        )
         with ui.column().classes("gap-4 w-full"):
             customer_abbr_input = (
                 ui.input(
@@ -1346,31 +1313,30 @@ def edit_customer(customer_id: str) -> None:
                 .props("outlined")
             )
 
-    with ui.footer().style("background-color: #ffffff;"):
-        with ui.row().style(
-            "justify-content: flex-left; width: 100%; padding: 16px; gap: 8px;"
-        ):
-            ui.button("Save customer").classes("default-style").props(
-                "color=black flat"
-            ).style("width: 150px").on(
-                "click",
-                lambda: save_customer(
-                    customer_abbr_input.value,
-                    customer_id,
-                    partner_id_input.value,
-                    name_input.value,
-                    contact_email_input.value,
-                    priceplan_select.value,
-                    base_fee.value,
-                    realm_select.value if realm_select.value else [],
-                    new_realms_input.value,
-                    notes_input.value,
-                    blocks_input.value,
-                ),
-            )
-            ui.button("Cancel").classes("button-close").props("color=black flat").style(
-                "width: 150px;"
-            ).on("click", lambda: ui.navigate.to("/admin/customers"))
+    with ui.row().style(
+        "justify-content: flex-end; width: 100%; padding: 16px; gap: 8px;"
+    ):
+        ui.button("Save customer").classes("default-style").props(
+            "color=black flat"
+        ).style("width: 150px").on(
+            "click",
+            lambda: save_customer(
+                customer_abbr_input.value,
+                customer_id,
+                partner_id_input.value,
+                name_input.value,
+                contact_email_input.value,
+                priceplan_select.value,
+                base_fee.value,
+                realm_select.value if realm_select.value else [],
+                new_realms_input.value,
+                notes_input.value,
+                blocks_input.value,
+            ),
+        )
+        ui.button("Cancel").classes("delete-style").props("color=black flat").on(
+            "click", lambda: ui.navigate.to("/admin/customers")
+        )
 
 
 @ui.page("/admin/customers")
@@ -1378,35 +1344,27 @@ def customers() -> None:
     """
     Customer management page.
     """
-    page_init()
+    page_init(use_drawer=True)
 
     ui.add_head_html(default_styles)
     ui.add_head_html(
         """
         <style>
             body {
-                background-color: #f5f5f5;
+                background-color: #ffffff;
             }
         </style>
         """
     )
-
-    with ui.footer().style("background-color: #ffffff; color: black;"):
-        with ui.row().style(
-            "justify-content: flex-left; width: 100%; padding: 16px; gap: 8px;"
-        ):
-            ui.button("Back to groups").classes("button-close").props(
-                "color=black flat"
-            ).style("width: 150px").on("click", lambda: ui.navigate.to("/admin"))
 
     with ui.row().style(
         "justify-content: space-between; align-items: center; width: 100%;"
     ):
         with ui.element("div").style("display: flex; gap: 0px;"):
             if get_bofh_status():
-                ui.label("Customer Management").classes("text-3xl font-bold")
+                ui.label("Customers").classes("text-3xl font-bold")
             elif get_admin_status():
-                ui.label("Account Information").classes("text-3xl font-bold")
+                ui.label("Account information").classes("text-3xl font-bold")
             else:
                 pass
 
@@ -1458,14 +1416,16 @@ def customers() -> None:
 @ui.page("/admin/analytics")
 def analytics() -> None:
     """Page view analytics dashboard. BOFH only."""
-    page_init()
+    page_init(use_drawer=True)
 
     if not get_bofh_status():
         ui.navigate.to("/home")
         return
 
     ui.add_head_html(default_styles)
-    ui.add_head_html("<style>body { background-color: #f5f5f5; }</style>")
+    ui.add_head_html("<style>body { background-color: #ffffff; }</style>")
+
+    ui.label("Activity overview").classes("text-3xl font-bold mb-4")
 
     stats = get_total_stats()
     wow = get_week_over_week()
@@ -1538,7 +1498,7 @@ def analytics() -> None:
     # Peak hours heatmap + hourly distribution
     with ui.row().classes("w-full gap-4 q-mt-lg"):
         with ui.card().classes("flex-1 p-4").style("min-width: 400px;"):
-            ui.label("Peak Hours (Last 30 Days)").classes(
+            ui.label("Peak hours (last 30 days)").classes(
                 "text-h6 font-semibold q-mb-md"
             )
             heatmap_data = get_hourly_heatmap(days=30)
@@ -1586,7 +1546,7 @@ def analytics() -> None:
                 ui.label("No data yet.").classes("text-grey-6")
 
         with ui.card().classes("flex-1 p-4").style("min-width: 400px;"):
-            ui.label("Hourly Distribution (Last 30 Days)").classes(
+            ui.label("Hourly distribution (last 30 days)").classes(
                 "text-h6 font-semibold q-mb-md"
             )
             hourly = get_hourly_distribution(days=30)
@@ -1620,7 +1580,7 @@ def analytics() -> None:
     with ui.row().classes("w-full gap-4 q-mt-lg"):
         # Line chart: page views per day per path
         with ui.card().classes("flex-1 p-4").style("min-width: 400px;"):
-            ui.label("Page Views Per Day (Last 30 Days)").classes(
+            ui.label("Page views per day (last 30 days)").classes(
                 "text-h6 font-semibold q-mb-md"
             )
             page_views = get_page_views(days=30)
@@ -1654,7 +1614,7 @@ def analytics() -> None:
 
         # Bar chart: total views per page
         with ui.card().classes("flex-1 p-4").style("min-width: 400px;"):
-            ui.label("Total Views Per Page").classes("text-h6 font-semibold q-mb-md")
+            ui.label("Total views per page").classes("text-h6 font-semibold q-mb-md")
             if summary:
                 fig = go.Figure()
                 fig.add_trace(
@@ -1688,7 +1648,7 @@ def analytics() -> None:
     # Daily traffic chart + recent views table
     with ui.row().classes("w-full gap-4 q-mt-lg items-stretch"):
         with ui.card().classes("flex-1 p-4").style("min-width: 400px;"):
-            ui.label("Total Traffic Per Day (Last 30 Days)").classes(
+            ui.label("Total traffic per day (last 30 days)").classes(
                 "text-h6 font-semibold q-mb-md"
             )
             daily = get_views_per_day(days=30)
@@ -1714,7 +1674,7 @@ def analytics() -> None:
                 ui.label("No data yet.").classes("text-grey-6")
 
         with ui.card().classes("flex-1 p-4").style("min-width: 400px;"):
-            ui.label("Last Visited Pages").classes("text-h6 font-semibold q-mb-md")
+            ui.label("Last visited pages").classes("text-h6 font-semibold q-mb-md")
             recent = get_recent_views(limit=50)
 
             if recent:
@@ -1740,7 +1700,7 @@ def analytics() -> None:
     # Action charts
     with ui.row().classes("w-full gap-4 q-mt-lg"):
         with ui.card().classes("flex-1 p-4").style("min-width: 400px;"):
-            ui.label("Actions Per Day (Last 30 Days)").classes(
+            ui.label("Actions per day (last 30 days)").classes(
                 "text-h6 font-semibold q-mb-md"
             )
             action_views = [
@@ -1776,7 +1736,7 @@ def analytics() -> None:
                 ui.label("No action data yet.").classes("text-grey-6")
 
         with ui.card().classes("flex-1 p-4").style("min-width: 400px;"):
-            ui.label("Total Actions By Type").classes("text-h6 font-semibold q-mb-md")
+            ui.label("Total actions by type").classes("text-h6 font-semibold q-mb-md")
 
             if action_summary:
                 action_names = [
