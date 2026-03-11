@@ -233,7 +233,7 @@ async def index(request: Request) -> None:
                         ):
                             with ui.column().classes("items-center gap-3"):
                                 ui.icon("warning", size="lg").style("color: #ff9800;")
-                                ui.label("Account Pending Activation").classes(
+                                ui.label("Account pending activation").classes(
                                     "text-h6"
                                 )
                                 ui.label(

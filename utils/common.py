@@ -211,7 +211,7 @@ def show_help_dialog() -> None:
                         "A powerful transcription service using Whisper AI models to convert audio and video files into searchable text or time-coded subtitles with high accuracy."
                     ).classes("text-body1")
 
-                ui.label("Getting Started").classes("text-h6 font-bold mt-2")
+                ui.label("Getting started").classes("text-h6 font-bold mt-2")
 
                 with ui.grid(columns=2).classes("w-full gap-4"):
                     for step_num, step_title, step_desc, step_icon in [
@@ -384,7 +384,7 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                         ),
                     ):
                         ui.icon("description", color="black").style("font-size: 20px;")
-                        ui.label("API Documentation")
+                        ui.label("API documentation")
                         ui.tooltip("Open API documentation in a new tab")
 
                 if is_bofh:
@@ -847,7 +847,7 @@ def table_transcribe(selected_row) -> None:
             .classes("w-full no-shadow no-border")
         ):
             with ui.row().classes("w-full"):
-                ui.label("Transcription Settings").style("width: 100%;").classes(
+                ui.label("Transcription settings").style("width: 100%;").classes(
                     "text-h6 q-mb-xl text-black"
                 )
 
@@ -940,7 +940,7 @@ def table_bulk_transcribe(table: ui.table) -> None:
             .classes("w-full no-shadow no-border")
         ):
             with ui.row().classes("w-full"):
-                ui.label("Transcription Settings").style("width: 100%;").classes(
+                ui.label("Transcription settings").style("width: 100%;").classes(
                     "text-h6 q-mb-xl text-black"
                 )
 

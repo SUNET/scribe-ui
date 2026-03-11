@@ -135,7 +135,7 @@ def reset_password() -> None:
 
     with ui.dialog() as dialog:
         with ui.card():
-            ui.label("Reset Encryption Passphrase").classes("text-h6")
+            ui.label("Reset encryption passphrase").classes("text-h6")
             ui.label(
                 "Are you sure you want to reset your encryption passphrase? This will remove all your files and cannot be undone."
             ).classes("text-subtitle2").style("margin-bottom: 10px;")
