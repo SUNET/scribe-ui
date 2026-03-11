@@ -272,28 +272,24 @@ def edit_group(group_id: str) -> None:
             ).add_slot("append"):
                 ui.icon("search")
 
-    with ui.footer().style("background-color: #ffffff;"):
-        with ui.row().style(
-            "justify-content: flex-end; width: 100%; padding: 16px; gap: 8px;"
-        ):
-            ui.button("Save group").classes("default-style").props(
-                "color=black flat"
-            ).style("width: 150px").on(
-                "click",
-                lambda: save_group(
-                    users_table.selected,
-                    name_input.value,
-                    description_input.value,
-                    group_id,
-                    quota.value,
-                ),
-            )
-            # ui.button("Administrators").classes("button-close").props(
-            #     "color=black flat"
-            # ).style("width: 150px").on("click", lambda: admin_dialog(users_table.selected, group_id))
-            ui.button("Cancel").classes("button-close").props("color=black flat").style(
-                "width: 150px;"
-            ).on("click", lambda: ui.navigate.to("/admin"))
+    with ui.row().style(
+        "justify-content: flex-end; width: 100%; padding: 16px; gap: 8px;"
+    ):
+        ui.button("Save group").classes("default-style").props(
+            "color=black flat"
+        ).style("width: 150px").on(
+            "click",
+            lambda: save_group(
+                users_table.selected,
+                name_input.value,
+                description_input.value,
+                group_id,
+                quota.value,
+            ),
+        )
+        ui.button("Cancel").classes("delete-style").props("color=black flat").on(
+            "click", lambda: ui.navigate.to("/admin")
+        )
 
 
 @ui.refreshable
@@ -749,67 +745,66 @@ def users() -> None:
             ).add_slot("append"):
                 ui.icon("search")
 
-    with ui.footer().style("background-color: #ffffff;"):
-        with ui.row().style(
-            "justify-content: flex-end; width: 100%; padding: 16px; gap: 8px;"
-        ):
-            ui.button("Enable").classes("button-close").props("color=black flat").style(
-                "width: 150px"
-            ).on("click", lambda: set_active_status(users_table.selected, True))
-            ui.button("Disable").classes("button-close").props(
-                "color=black flat"
-            ).style("width: 150px").on(
-                "click", lambda: set_active_status(users_table.selected, False)
-            )
-            ui.button("Domains").classes("button-close").props(
-                "color=black flat"
-            ).style("width: 150px").on(
-                "click", lambda: set_domains(users_table.selected)
-            )
-            ui.button("Make admin").classes("button-close").props(
-                "color=black flat"
-            ).style("width: 150px").on(
-                "click", lambda: set_admin_status(users_table.selected, True, None, "")
-            )
-            ui.button("Remove admin").classes("button-close").props(
-                "color=black flat"
-            ).style("width: 150px").on(
-                "click", lambda: set_admin_status(users_table.selected, False, None, "")
-            )
+    with ui.row().style(
+        "justify-content: flex-end; width: 100%; padding: 16px; gap: 8px;"
+    ):
+        ui.button("Enable").classes("button-close").props("color=black flat").style(
+            "width: 150px"
+        ).on("click", lambda: set_active_status(users_table.selected, True))
+        ui.button("Disable").classes("delete-style").props(
+            "color=black flat"
+        ).on(
+            "click", lambda: set_active_status(users_table.selected, False)
+        )
+        ui.button("Domains").classes("button-close").props(
+            "color=black flat"
+        ).style("width: 150px").on(
+            "click", lambda: set_domains(users_table.selected)
+        )
+        ui.button("Make admin").classes("button-close").props(
+            "color=black flat"
+        ).style("width: 150px").on(
+            "click", lambda: set_admin_status(users_table.selected, True, None, "")
+        )
+        ui.button("Remove admin").classes("delete-style").props(
+            "color=black flat"
+        ).on(
+            "click", lambda: set_admin_status(users_table.selected, False, None, "")
+        )
 
-            def confirm_remove_user():
-                selected = users_table.selected
-                if not selected:
-                    ui.notify("No users selected", type="warning")
-                    return
+        def confirm_remove_user():
+            selected = users_table.selected
+            if not selected:
+                ui.notify("No users selected", type="warning")
+                return
 
-                usernames = ", ".join(u["username"] for u in selected)
+            usernames = ", ".join(u["username"] for u in selected)
 
-                with ui.dialog() as dialog:
-                    with ui.card():
-                        ui.label("Remove users").classes("text-h6")
-                        ui.label(
-                            f"Are you sure you want to remove: {usernames}? "
-                            "Statistics will be preserved until all associated data has been cleaned up."
-                        ).classes("text-subtitle2").style("margin-bottom: 10px;")
+            with ui.dialog() as dialog:
+                with ui.card():
+                    ui.label("Remove users").classes("text-h6")
+                    ui.label(
+                        f"Are you sure you want to remove: {usernames}? "
+                        "Statistics will be preserved until all associated data has been cleaned up."
+                    ).classes("text-subtitle2").style("margin-bottom: 10px;")
 
-                        with ui.row().classes("justify-between w-full"):
-                            ui.button("Cancel", on_click=lambda: dialog.close()).props(
-                                "color=black"
-                            )
-                            ui.button(
-                                "Remove",
-                                on_click=lambda: (
-                                    dialog.close(),
-                                    remove_user(selected),
-                                ),
-                            ).props("color=red")
+                    with ui.row().classes("justify-between w-full"):
+                        ui.button("Cancel", on_click=lambda: dialog.close()).props(
+                            "color=black"
+                        )
+                        ui.button(
+                            "Remove",
+                            on_click=lambda: (
+                                dialog.close(),
+                                remove_user(selected),
+                            ),
+                        ).props("color=red")
 
-                dialog.open()
+            dialog.open()
 
-            ui.button("Remove user").classes("button-close").props(
-                "color=red flat"
-            ).style("width: 150px").on("click", confirm_remove_user)
+        ui.button("Remove user").classes("delete-style").props(
+            "color=black flat"
+        ).on("click", confirm_remove_user)
 
 
 @ui.page("/health")
@@ -1314,31 +1309,30 @@ def edit_customer(customer_id: str) -> None:
                 .props("outlined")
             )
 
-    with ui.footer().style("background-color: #ffffff;"):
-        with ui.row().style(
-            "justify-content: flex-end; width: 100%; padding: 16px; gap: 8px;"
-        ):
-            ui.button("Save customer").classes("default-style").props(
-                "color=black flat"
-            ).style("width: 150px").on(
-                "click",
-                lambda: save_customer(
-                    customer_abbr_input.value,
-                    customer_id,
-                    partner_id_input.value,
-                    name_input.value,
-                    contact_email_input.value,
-                    priceplan_select.value,
-                    base_fee.value,
-                    realm_select.value if realm_select.value else [],
-                    new_realms_input.value,
-                    notes_input.value,
-                    blocks_input.value,
-                ),
-            )
-            ui.button("Cancel").classes("button-close").props("color=black flat").style(
-                "width: 150px;"
-            ).on("click", lambda: ui.navigate.to("/admin/customers"))
+    with ui.row().style(
+        "justify-content: flex-end; width: 100%; padding: 16px; gap: 8px;"
+    ):
+        ui.button("Save customer").classes("default-style").props(
+            "color=black flat"
+        ).style("width: 150px").on(
+            "click",
+            lambda: save_customer(
+                customer_abbr_input.value,
+                customer_id,
+                partner_id_input.value,
+                name_input.value,
+                contact_email_input.value,
+                priceplan_select.value,
+                base_fee.value,
+                realm_select.value if realm_select.value else [],
+                new_realms_input.value,
+                notes_input.value,
+                blocks_input.value,
+            ),
+        )
+        ui.button("Cancel").classes("delete-style").props("color=black flat").on(
+            "click", lambda: ui.navigate.to("/admin/customers")
+        )
 
 
 @ui.page("/admin/customers")
