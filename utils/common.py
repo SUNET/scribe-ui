@@ -437,6 +437,13 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                 )
 
             with ui.element("div").style("display: flex; gap: 0px;"):
+                if is_bofh:
+                    dark = ui.dark_mode()
+                    with ui.button(
+                        icon="dark_mode",
+                        on_click=lambda: dark.toggle(),
+                    ).props("flat color=black"):
+                        ui.tooltip("Toggle dark mode")
                 with ui.button(
                     icon="help",
                     on_click=lambda: show_help_dialog(),
