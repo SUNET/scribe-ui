@@ -374,7 +374,7 @@ def statistics(group_id: str) -> None:
     for job in job_queue:
         job["created_at"] = add_timezone_to_timestamp(job["created_at"])
 
-    ui.label("Group Statistics").classes("text-3xl font-bold mb-4")
+    ui.label("Group statistics").classes("text-3xl font-bold mb-4")
 
     with ui.element("div").classes("stats-container w-full"):
         with ui.element("div").classes("stats-card w-full"):
@@ -1364,7 +1364,7 @@ def customers() -> None:
             if get_bofh_status():
                 ui.label("Customers").classes("text-3xl font-bold")
             elif get_admin_status():
-                ui.label("Account Information").classes("text-3xl font-bold")
+                ui.label("Account information").classes("text-3xl font-bold")
             else:
                 pass
 
@@ -1498,7 +1498,7 @@ def analytics() -> None:
     # Peak hours heatmap + hourly distribution
     with ui.row().classes("w-full gap-4 q-mt-lg"):
         with ui.card().classes("flex-1 p-4").style("min-width: 400px;"):
-            ui.label("Peak Hours (Last 30 Days)").classes(
+            ui.label("Peak hours (last 30 days)").classes(
                 "text-h6 font-semibold q-mb-md"
             )
             heatmap_data = get_hourly_heatmap(days=30)
@@ -1546,7 +1546,7 @@ def analytics() -> None:
                 ui.label("No data yet.").classes("text-grey-6")
 
         with ui.card().classes("flex-1 p-4").style("min-width: 400px;"):
-            ui.label("Hourly Distribution (Last 30 Days)").classes(
+            ui.label("Hourly distribution (last 30 days)").classes(
                 "text-h6 font-semibold q-mb-md"
             )
             hourly = get_hourly_distribution(days=30)
@@ -1580,7 +1580,7 @@ def analytics() -> None:
     with ui.row().classes("w-full gap-4 q-mt-lg"):
         # Line chart: page views per day per path
         with ui.card().classes("flex-1 p-4").style("min-width: 400px;"):
-            ui.label("Page Views Per Day (Last 30 Days)").classes(
+            ui.label("Page views per day (last 30 days)").classes(
                 "text-h6 font-semibold q-mb-md"
             )
             page_views = get_page_views(days=30)
@@ -1614,7 +1614,7 @@ def analytics() -> None:
 
         # Bar chart: total views per page
         with ui.card().classes("flex-1 p-4").style("min-width: 400px;"):
-            ui.label("Total Views Per Page").classes("text-h6 font-semibold q-mb-md")
+            ui.label("Total views per page").classes("text-h6 font-semibold q-mb-md")
             if summary:
                 fig = go.Figure()
                 fig.add_trace(
@@ -1648,7 +1648,7 @@ def analytics() -> None:
     # Daily traffic chart + recent views table
     with ui.row().classes("w-full gap-4 q-mt-lg items-stretch"):
         with ui.card().classes("flex-1 p-4").style("min-width: 400px;"):
-            ui.label("Total Traffic Per Day (Last 30 Days)").classes(
+            ui.label("Total traffic per day (last 30 days)").classes(
                 "text-h6 font-semibold q-mb-md"
             )
             daily = get_views_per_day(days=30)
@@ -1674,7 +1674,7 @@ def analytics() -> None:
                 ui.label("No data yet.").classes("text-grey-6")
 
         with ui.card().classes("flex-1 p-4").style("min-width: 400px;"):
-            ui.label("Last Visited Pages").classes("text-h6 font-semibold q-mb-md")
+            ui.label("Last visited pages").classes("text-h6 font-semibold q-mb-md")
             recent = get_recent_views(limit=50)
 
             if recent:
@@ -1700,7 +1700,7 @@ def analytics() -> None:
     # Action charts
     with ui.row().classes("w-full gap-4 q-mt-lg"):
         with ui.card().classes("flex-1 p-4").style("min-width: 400px;"):
-            ui.label("Actions Per Day (Last 30 Days)").classes(
+            ui.label("Actions per day (last 30 days)").classes(
                 "text-h6 font-semibold q-mb-md"
             )
             action_views = [
@@ -1736,7 +1736,7 @@ def analytics() -> None:
                 ui.label("No action data yet.").classes("text-grey-6")
 
         with ui.card().classes("flex-1 p-4").style("min-width: 400px;"):
-            ui.label("Total Actions By Type").classes("text-h6 font-semibold q-mb-md")
+            ui.label("Total actions by type").classes("text-h6 font-semibold q-mb-md")
 
             if action_summary:
                 action_names = [

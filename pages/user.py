@@ -34,7 +34,7 @@ settings = get_settings()
 def show_user_token() -> None:
     with ui.dialog() as dialog:
         with ui.card().style("max-width: 50%; width: 500px; min-width: 500px;"):
-            ui.label("User Token").classes("text-2xl font-bold")
+            ui.label("User token").classes("text-2xl font-bold")
             ui.label("Your user token is used to authenticate API requests.").classes(
                 "my-4"
             )
@@ -83,7 +83,7 @@ def create() -> None:
 
                         with ui.row().classes("items-center gap-2 mt-2"):
                             ui.icon("fingerprint").classes("text-gray-500")
-                            ui.label("User ID").classes("font-medium text-gray-600")
+                            ui.label("User id").classes("font-medium text-gray-600")
                             ui.label(userdata["user_id"]).classes(
                                 "text-gray-500 text-sm break-all"
                             )
@@ -91,7 +91,7 @@ def create() -> None:
                     with ui.column().classes("gap-3"):
                         with ui.row().classes("items-center gap-2"):
                             ui.icon("schedule").classes("text-orange-500")
-                            ui.label("Transcribed Time").classes(
+                            ui.label("Transcribed time").classes(
                                 "font-medium text-gray-600"
                             )
 
