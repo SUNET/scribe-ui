@@ -450,7 +450,12 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                 ).props("flat color=black"):
                     ui.tooltip("Help")
 
-            ui.add_head_html("<style>body {background-color: #ffffff;}</style>")
+            ui.add_head_html(
+                "<style>"
+                "body { background-color: #ffffff; }"
+                ".nicegui-content { padding-left: 2rem; padding-right: 2rem; max-width: 100%; }"
+                "</style>"
+            )
     else:
         with (
             ui.header()
