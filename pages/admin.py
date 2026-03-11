@@ -178,7 +178,7 @@ def edit_group(group_id: str) -> None:
         """
         <style>
             body {
-                background-color: #f5f5f5;
+                background-color: #ffffff;
             }
         </style>
         """
@@ -203,7 +203,7 @@ def edit_group(group_id: str) -> None:
         return
 
     with ui.card().style(
-        "width: 100%; box-shadow: none; border: 1px solid #e0e0e0; align-self: center;"
+        "width: 100%; box-shadow: none; align-self: center;"
     ):
         ui.label(f"Edit group: {group['name']}").classes("text-3xl font-bold mb-4")
         with ui.row().classes("gap-4 w-full"):
@@ -309,7 +309,7 @@ def statistics(group_id: str) -> None:
         """
         <style>
             body {
-                background-color: #f5f5f5;
+                background-color: #ffffff;
             }
             .stats-container {
                 max-width: 1500px;
@@ -555,7 +555,7 @@ def create() -> None:
             """
             <style>
                 body {
-                    background-color: #f5f5f5;
+                    background-color: #ffffff;
                 }
             </style>
             """
@@ -662,7 +662,7 @@ def users() -> None:
         """
         <style>
             body {
-                background-color: #f5f5f5;
+                background-color: #ffffff;
             }
         </style>
         """
@@ -686,7 +686,7 @@ def users() -> None:
         return
 
     with ui.card().style(
-        "width: 100%; box-shadow: none; border: 1px solid #e0e0e0; align-self: center;"
+        "width: 100%; box-shadow: none; align-self: center;"
     ):
         ui.label("All users").classes("text-3xl font-bold mb-4")
         users_table = ui.table(
@@ -828,7 +828,7 @@ def health() -> None:
         """
         <style>
             body {
-                background-color: #f5f5f5;
+                background-color: #ffffff;
             }
             .card {
                 background-color: white;
@@ -1206,7 +1206,7 @@ def edit_customer(customer_id: str) -> None:
         """
         <style>
             body {
-                background-color: #f5f5f5;
+                background-color: #ffffff;
             }
         </style>
         """
@@ -1230,7 +1230,7 @@ def edit_customer(customer_id: str) -> None:
         return
 
     with ui.card().style(
-        "width: 100%; box-shadow: none; border: 1px solid #e0e0e0; align-self: center;"
+        "width: 100%; box-shadow: none; align-self: center;"
     ):
         ui.label(f"Edit customer: {customer['name']}").classes(
             "text-3xl font-bold mb-4"
@@ -1356,7 +1356,7 @@ def customers() -> None:
         """
         <style>
             body {
-                background-color: #f5f5f5;
+                background-color: #ffffff;
             }
         </style>
         """
@@ -1436,7 +1436,7 @@ def analytics() -> None:
         return
 
     ui.add_head_html(default_styles)
-    ui.add_head_html("<style>body { background-color: #f5f5f5; }</style>")
+    ui.add_head_html("<style>body { background-color: #ffffff; }</style>")
 
     stats = get_total_stats()
     wow = get_week_over_week()
