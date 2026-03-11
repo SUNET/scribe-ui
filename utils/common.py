@@ -326,12 +326,18 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
         if not drawer_open:
             drawer.props(add='mini')
 
+        menu_tooltips = []
+
         def toggle_drawer():
             is_open = app.storage.user.get("drawer_open", False)
             if is_open:
                 drawer.props(add='mini')
+                for t in menu_tooltips:
+                    t.set_visibility(True)
             else:
                 drawer.props(remove='mini')
+                for t in menu_tooltips:
+                    t.set_visibility(False)
             app.storage.user["drawer_open"] = not is_open
         menu_item_style = (
             "display: flex; align-items: center; gap: 12px; padding: 10px 16px;"
@@ -377,12 +383,17 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
             with ui.column().classes("w-full").style("gap: 0;"):
                 ui.separator()
 
+                show_tips = not drawer_open
+
                 for path, icon, label in menu_items:
                     with ui.element("div").style(menu_style(path)).classes("menu-item").on(
                         "click", lambda p=path: ui.navigate.to(p)
                     ):
                         ui.icon(icon, color="black").style("font-size: 20px;")
                         ui.label(label).classes("menu-label")
+                        t = ui.tooltip(label)
+                        t.set_visibility(show_tips)
+                        menu_tooltips.append(t)
 
                 if is_admin:
                     ui.separator().classes("menu-separator")
@@ -396,6 +407,9 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                         ):
                             ui.icon(icon, color="black").style("font-size: 20px;")
                             ui.label(label).classes("menu-label")
+                            t = ui.tooltip(label)
+                            t.set_visibility(show_tips)
+                            menu_tooltips.append(t)
 
                     with ui.element("div").style(menu_item_style).classes("menu-item").on(
                         "click",
@@ -405,6 +419,9 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                     ):
                         ui.icon("description", color="black").style("font-size: 20px;")
                         ui.label("API documentation").classes("menu-label")
+                        t = ui.tooltip("API documentation")
+                        t.set_visibility(show_tips)
+                        menu_tooltips.append(t)
 
                 if is_bofh:
                     ui.separator().classes("menu-separator")
@@ -418,6 +435,9 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                         ):
                             ui.icon(icon, color="black").style("font-size: 20px;")
                             ui.label(label).classes("menu-label")
+                            t = ui.tooltip(label)
+                            t.set_visibility(show_tips)
+                            menu_tooltips.append(t)
 
                 ui.separator()
 
@@ -426,6 +446,9 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                 ):
                     ui.icon("logout", color="black").style("font-size: 20px;")
                     ui.label("Logout").classes("menu-label")
+                    t = ui.tooltip("Logout")
+                    t.set_visibility(show_tips)
+                    menu_tooltips.append(t)
 
         with (
             ui.header()
@@ -435,11 +458,10 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
             with ui.element("div").style(
                 "display: flex; gap: 0px; align-items: center; margin-left: -12px;"
             ):
-                with ui.button(
+                ui.button(
                     icon="menu",
                     on_click=lambda: toggle_drawer(),
-                ).props("flat color=black"):
-                    ui.tooltip("Menu")
+                ).props("flat color=black")
                 ui.image(f"static/{settings.LOGO_TOPBAR}").classes("q-mr-sm").style(
                     "height: 30px; width: 30px;"
                 )
