@@ -458,10 +458,13 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
             with ui.element("div").style(
                 "display: flex; gap: 0px; align-items: center; margin-left: -12px;"
             ):
-                ui.button(
+                with ui.button(
                     icon="menu",
                     on_click=lambda: toggle_drawer(),
-                ).props("flat color=black")
+                ).props("flat color=black"):
+                    menu_btn_tooltip = ui.tooltip("Expand menu")
+                    menu_btn_tooltip.set_visibility(not drawer_open)
+                    menu_tooltips.append(menu_btn_tooltip)
                 ui.image(f"static/{settings.LOGO_TOPBAR}").classes("q-mr-sm").style(
                     "height: 30px; width: 30px;"
                 )
