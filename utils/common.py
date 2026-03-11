@@ -325,25 +325,50 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
         drawer.on_value_change(
             lambda e: app.storage.user.update({"drawer_open": e.value})
         )
-        menu_item_style = "display: flex; align-items: center; gap: 12px; padding: 10px 16px; cursor: pointer; font-size: 1.05rem;"
+        menu_item_style = (
+            "display: flex; align-items: center; gap: 12px; padding: 10px 16px;"
+            " cursor: pointer; font-size: 1.05rem;"
+            " transition: background-color 0.15s; width: 100%;"
+        )
+        menu_active_style = " background-color: #e0e0e0; font-weight: 600;"
+        menu_hover_css = """
+            <style>
+                .menu-item:hover { background-color: #e0e0e0; }
+            </style>
+        """
+
+        def menu_style(path: str) -> str:
+            active = current_path == path
+            return menu_item_style + (menu_active_style if active else "")
+
+        # Menu items: (path, icon, label)
+        menu_items = [
+            ("/home", "folder", "My files"),
+            ("/user", "person", "User settings"),
+        ]
+
+        admin_items = [
+            ("/admin/users", "people", "Users"),
+            ("/admin", "group_work", "Groups"),
+            ("/admin/customers", "business", "Customers" if is_bofh else "Account"),
+        ]
+
+        system_items = [
+            ("/health", "health_and_safety", "System status"),
+            ("/admin/analytics", "analytics", "Activity overview"),
+        ]
 
         with drawer:
+            ui.add_head_html(menu_hover_css)
             with ui.column().classes("w-full").style("gap: 0;"):
                 ui.separator()
 
-                with ui.element("div").style(menu_item_style).on(
-                    "click", lambda: ui.navigate.to("/home")
-                ):
-                    ui.icon("folder", color="black").style("font-size: 20px;")
-                    ui.label("My files")
-                    ui.tooltip("View and manage your files")
-
-                with ui.element("div").style(menu_item_style).on(
-                    "click", lambda: ui.navigate.to("/user")
-                ):
-                    ui.icon("person", color="black").style("font-size: 20px;")
-                    ui.label("User settings")
-                    ui.tooltip("Manage your profile and preferences")
+                for path, icon, label in menu_items:
+                    with ui.element("div").style(menu_style(path)).classes("menu-item").on(
+                        "click", lambda p=path: ui.navigate.to(p)
+                    ):
+                        ui.icon(icon, color="black").style("font-size: 20px;")
+                        ui.label(label)
 
                 if is_admin:
                     ui.separator()
@@ -351,33 +376,14 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                         "padding: 10px 16px 4px; font-weight: bold; font-size: 0.85rem; color: #666;"
                     )
 
-                    with ui.element("div").style(menu_item_style).on(
-                        "click", lambda: ui.navigate.to("/admin/users")
-                    ):
-                        ui.icon("people", color="black").style("font-size: 20px;")
-                        ui.label("Users")
-                        ui.tooltip("Manage users")
+                    for path, icon, label in admin_items:
+                        with ui.element("div").style(menu_style(path)).classes("menu-item").on(
+                            "click", lambda p=path: ui.navigate.to(p)
+                        ):
+                            ui.icon(icon, color="black").style("font-size: 20px;")
+                            ui.label(label)
 
-                    with ui.element("div").style(menu_item_style).on(
-                        "click", lambda: ui.navigate.to("/admin")
-                    ):
-                        ui.icon("group_work", color="black").style("font-size: 20px;")
-                        ui.label("Groups")
-                        ui.tooltip("Manage groups")
-
-                    with ui.element("div").style(menu_item_style).on(
-                        "click",
-                        lambda: ui.navigate.to("/admin/customers"),
-                    ):
-                        ui.icon("business", color="black").style("font-size: 20px;")
-                        ui.label("Customers" if is_bofh else "Account")
-                        ui.tooltip(
-                            "Manage customer accounts"
-                            if is_bofh
-                            else "Manage your account"
-                        )
-
-                    with ui.element("div").style(menu_item_style).on(
+                    with ui.element("div").style(menu_item_style).classes("menu-item").on(
                         "click",
                         lambda: ui.run_javascript(
                             f"window.open('{settings.API_URL}/api/docs', '_blank')"
@@ -385,7 +391,6 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                     ):
                         ui.icon("description", color="black").style("font-size: 20px;")
                         ui.label("API documentation")
-                        ui.tooltip("Open API documentation in a new tab")
 
                 if is_bofh:
                     ui.separator()
@@ -393,28 +398,20 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                         "padding: 10px 16px 4px; font-weight: bold; font-size: 0.85rem; color: #666;"
                     )
 
-                    with ui.element("div").style(menu_item_style).on(
-                        "click", lambda: ui.navigate.to("/health")
-                    ):
-                        ui.icon("health_and_safety", color="black").style("font-size: 20px;")
-                        ui.label("System status")
-                        ui.tooltip("View system health and status")
-
-                    with ui.element("div").style(menu_item_style).on(
-                        "click", lambda: ui.navigate.to("/admin/analytics")
-                    ):
-                        ui.icon("analytics", color="black").style("font-size: 20px;")
-                        ui.label("Activity overview")
-                        ui.tooltip("View page view statistics")
+                    for path, icon, label in system_items:
+                        with ui.element("div").style(menu_style(path)).classes("menu-item").on(
+                            "click", lambda p=path: ui.navigate.to(p)
+                        ):
+                            ui.icon(icon, color="black").style("font-size: 20px;")
+                            ui.label(label)
 
                 ui.separator()
 
-                with ui.element("div").style(menu_item_style).on(
+                with ui.element("div").style(menu_item_style).classes("menu-item").on(
                     "click", lambda: ui.navigate.to("/logout")
                 ):
                     ui.icon("logout", color="black").style("font-size: 20px;")
                     ui.label("Logout")
-                    ui.tooltip("Sign out of the application")
 
         with (
             ui.header()
