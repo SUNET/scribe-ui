@@ -1464,37 +1464,6 @@ def analytics() -> None:
     }
     action_map = {r["path"]: r for r in action_summary}
 
-    # Summary cards
-    all_cards = [
-        ("Total Views", str(stats["total_views"]), None, "visibility", "#082954"),
-        ("Views (30 Days)", str(stats["views_30d"]), None, "trending_up", "#1565c0"),
-        ("Top Page (30 Days)", stats["top_page"]["path"], None, "star", "#e65100"),
-        ("Week over Week", wow_display, None, "compare_arrows", wow_color),
-    ]
-    for path, (label, icon, color) in action_labels.items():
-        row = action_map.get(path, {"total_views": 0, "views_30d": 0})
-        all_cards.append(
-            (
-                label,
-                str(row["total_views"]),
-                f'{row["views_30d"]} last 30d',
-                icon,
-                color,
-            )
-        )
-
-    with ui.grid(columns="repeat(auto-fill, minmax(180px, 1fr))").classes(
-        "w-full gap-3 q-mt-md"
-    ):
-        for label, value, subtitle, icon, color in all_cards:
-            with ui.card().classes("p-3").style(f"border-left: 3px solid {color};"):
-                with ui.row().classes("items-center gap-1"):
-                    ui.icon(icon, size="xs").style(f"color: {color};")
-                    ui.label(label).classes("text-caption text-grey-7")
-                ui.label(value).classes("text-h6 font-bold q-mt-xs")
-                if subtitle:
-                    ui.label(subtitle).classes("text-caption text-grey-5")
-
     # Peak hours heatmap + hourly distribution
     with ui.row().classes("w-full gap-4 q-mt-lg"):
         with ui.card().classes("flex-1 p-4").style("min-width: 400px;"):
