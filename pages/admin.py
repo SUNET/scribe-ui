@@ -274,7 +274,7 @@ def edit_group(group_id: str) -> None:
 
     with ui.footer().style("background-color: #ffffff;"):
         with ui.row().style(
-            "justify-content: flex-left; width: 100%; padding: 16px; gap: 8px;"
+            "justify-content: flex-end; width: 100%; padding: 16px; gap: 8px;"
         ):
             ui.button("Save group").classes("default-style").props(
                 "color=black flat"
@@ -751,11 +751,8 @@ def users() -> None:
 
     with ui.footer().style("background-color: #ffffff;"):
         with ui.row().style(
-            "justify-content: flex-left; width: 100%; padding: 16px; gap: 8px;"
+            "justify-content: flex-end; width: 100%; padding: 16px; gap: 8px;"
         ):
-            ui.button("Back to groups").classes("button-close").props(
-                "color=black flat"
-            ).style("width: 150px ").on("click", lambda: ui.navigate.to("/admin"))
             ui.button("Enable").classes("button-close").props("color=black flat").style(
                 "width: 150px"
             ).on("click", lambda: set_active_status(users_table.selected, True))
@@ -1319,7 +1316,7 @@ def edit_customer(customer_id: str) -> None:
 
     with ui.footer().style("background-color: #ffffff;"):
         with ui.row().style(
-            "justify-content: flex-left; width: 100%; padding: 16px; gap: 8px;"
+            "justify-content: flex-end; width: 100%; padding: 16px; gap: 8px;"
         ):
             ui.button("Save customer").classes("default-style").props(
                 "color=black flat"
@@ -1361,14 +1358,6 @@ def customers() -> None:
         </style>
         """
     )
-
-    with ui.footer().style("background-color: #ffffff; color: black;"):
-        with ui.row().style(
-            "justify-content: flex-left; width: 100%; padding: 16px; gap: 8px;"
-        ):
-            ui.button("Back to groups").classes("button-close").props(
-                "color=black flat"
-            ).style("width: 150px").on("click", lambda: ui.navigate.to("/admin"))
 
     with ui.row().style(
         "justify-content: space-between; align-items: center; width: 100%;"
