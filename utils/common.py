@@ -332,12 +332,14 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                 ):
                     ui.icon("folder", color="black").style("font-size: 20px;")
                     ui.label("My files")
+                    ui.tooltip("View and manage your files")
 
                 with ui.element("div").style(menu_item_style).on(
                     "click", lambda: ui.navigate.to("/user")
                 ):
                     ui.icon("person", color="black").style("font-size: 20px;")
                     ui.label("User settings")
+                    ui.tooltip("Manage your profile and preferences")
 
                 if is_admin:
                     ui.separator()
@@ -350,12 +352,14 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                     ):
                         ui.icon("people", color="black").style("font-size: 20px;")
                         ui.label("Users")
+                        ui.tooltip("Manage users")
 
                     with ui.element("div").style(menu_item_style).on(
                         "click", lambda: ui.navigate.to("/admin")
                     ):
                         ui.icon("group_work", color="black").style("font-size: 20px;")
                         ui.label("Groups")
+                        ui.tooltip("Manage groups")
 
                     with ui.element("div").style(menu_item_style).on(
                         "click",
@@ -363,6 +367,11 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                     ):
                         ui.icon("business", color="black").style("font-size: 20px;")
                         ui.label("Customers" if is_bofh else "Account")
+                        ui.tooltip(
+                            "Manage customer accounts"
+                            if is_bofh
+                            else "Manage your account"
+                        )
 
                     with ui.element("div").style(menu_item_style).on(
                         "click",
@@ -372,6 +381,7 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                     ):
                         ui.icon("description", color="black").style("font-size: 20px;")
                         ui.label("API Documentation")
+                        ui.tooltip("Open API documentation in a new tab")
 
                 if is_bofh:
                     ui.separator()
@@ -384,12 +394,14 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                     ):
                         ui.icon("health_and_safety", color="black").style("font-size: 20px;")
                         ui.label("System status")
+                        ui.tooltip("View system health and status")
 
                     with ui.element("div").style(menu_item_style).on(
                         "click", lambda: ui.navigate.to("/admin/analytics")
                     ):
                         ui.icon("analytics", color="black").style("font-size: 20px;")
                         ui.label("Activity overview")
+                        ui.tooltip("View page view statistics")
 
                 ui.separator()
 
@@ -398,6 +410,7 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                 ):
                     ui.icon("logout", color="black").style("font-size: 20px;")
                     ui.label("Logout")
+                    ui.tooltip("Sign out of the application")
 
         with (
             ui.header()
