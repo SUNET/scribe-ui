@@ -319,21 +319,35 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
 
     if use_drawer:
         drawer_open = app.storage.user.get("drawer_open", False)
-        drawer = ui.left_drawer(value=drawer_open, elevated=True).style(
+        drawer = ui.left_drawer(value=True, elevated=True).style(
             "background-color: #f5f5f5; padding: 0;"
         )
-        drawer.on_value_change(
-            lambda e: app.storage.user.update({"drawer_open": e.value})
-        )
+        drawer.props(f':mini-width="56" :width="250"')
+        if not drawer_open:
+            drawer.props(add='mini')
+
+        def toggle_drawer():
+            is_open = app.storage.user.get("drawer_open", False)
+            if is_open:
+                drawer.props(add='mini')
+            else:
+                drawer.props(remove='mini')
+            app.storage.user["drawer_open"] = not is_open
         menu_item_style = (
             "display: flex; align-items: center; gap: 12px; padding: 10px 16px;"
             " cursor: pointer; font-size: 1.05rem;"
             " transition: background-color 0.15s; width: 100%;"
+            " white-space: nowrap; overflow: hidden;"
         )
         menu_active_style = " background-color: #e0e0e0; font-weight: 600;"
         menu_hover_css = """
             <style>
                 .menu-item:hover { background-color: #e0e0e0; }
+                .q-drawer--mini .menu-header { display: none; }
+                .q-drawer--mini .menu-separator { margin: 4px 0; }
+                .q-drawer--mini .menu-item { justify-content: center; padding: 10px 0; gap: 0; }
+                .q-drawer--mini .menu-item .q-icon { margin: 0; }
+                .q-drawer--mini .menu-label { display: none; }
             </style>
         """
 
@@ -368,11 +382,11 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                         "click", lambda p=path: ui.navigate.to(p)
                     ):
                         ui.icon(icon, color="black").style("font-size: 20px;")
-                        ui.label(label)
+                        ui.label(label).classes("menu-label")
 
                 if is_admin:
-                    ui.separator()
-                    ui.label("Administration").style(
+                    ui.separator().classes("menu-separator")
+                    ui.label("Administration").classes("menu-header").style(
                         "padding: 10px 16px 4px; font-weight: bold; font-size: 0.85rem; color: #666;"
                     )
 
@@ -381,7 +395,7 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                             "click", lambda p=path: ui.navigate.to(p)
                         ):
                             ui.icon(icon, color="black").style("font-size: 20px;")
-                            ui.label(label)
+                            ui.label(label).classes("menu-label")
 
                     with ui.element("div").style(menu_item_style).classes("menu-item").on(
                         "click",
@@ -390,11 +404,11 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                         ),
                     ):
                         ui.icon("description", color="black").style("font-size: 20px;")
-                        ui.label("API documentation")
+                        ui.label("API documentation").classes("menu-label")
 
                 if is_bofh:
-                    ui.separator()
-                    ui.label("System").style(
+                    ui.separator().classes("menu-separator")
+                    ui.label("System").classes("menu-header").style(
                         "padding: 10px 16px 4px; font-weight: bold; font-size: 0.85rem; color: #666;"
                     )
 
@@ -403,7 +417,7 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                             "click", lambda p=path: ui.navigate.to(p)
                         ):
                             ui.icon(icon, color="black").style("font-size: 20px;")
-                            ui.label(label)
+                            ui.label(label).classes("menu-label")
 
                 ui.separator()
 
@@ -411,7 +425,7 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                     "click", lambda: ui.navigate.to("/logout")
                 ):
                     ui.icon("logout", color="black").style("font-size: 20px;")
-                    ui.label("Logout")
+                    ui.label("Logout").classes("menu-label")
 
         with (
             ui.header()
@@ -419,11 +433,11 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
             .classes("drop-shadow-md")
         ):
             with ui.element("div").style(
-                "display: flex; gap: 0px; align-items: center;"
+                "display: flex; gap: 0px; align-items: center; margin-left: -12px;"
             ):
                 with ui.button(
                     icon="menu",
-                    on_click=lambda: drawer.toggle(),
+                    on_click=lambda: toggle_drawer(),
                 ).props("flat color=black"):
                     ui.tooltip("Menu")
                 ui.image(f"static/{settings.LOGO_TOPBAR}").classes("q-mr-sm").style(
