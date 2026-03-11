@@ -325,7 +325,7 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
         drawer.on_value_change(
             lambda e: app.storage.user.update({"drawer_open": e.value})
         )
-        menu_item_style = "display: flex; align-items: center; gap: 12px; padding: 10px 16px; cursor: pointer;"
+        menu_item_style = "display: flex; align-items: center; gap: 12px; padding: 10px 16px; cursor: pointer; font-size: 1.05rem;"
 
         with drawer:
             with ui.column().classes("w-full").style("gap: 0;"):
