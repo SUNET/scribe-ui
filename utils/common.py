@@ -318,12 +318,8 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
         header_text += " (Administrator)"
 
     if use_drawer:
-        drawer_open = app.storage.user.get("drawer_open", False)
-        drawer = ui.left_drawer(value=drawer_open, elevated=True).style(
+        drawer = ui.left_drawer(value=False, elevated=True).style(
             "background-color: #f5f5f5; padding: 0;"
-        )
-        drawer.on_value_change(
-            lambda e: app.storage.user.update({"drawer_open": e.value})
         )
         menu_item_style = "display: flex; align-items: center; gap: 12px; padding: 10px 16px; cursor: pointer;"
 

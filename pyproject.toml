@@ -68,10 +68,3 @@ dependencies = [
     "wsproto>=1.2.0",
     "yarl>=1.20.1",
 ]
-
-[dependency-groups]
-dev = [
-    "httpx>=0.28.1",
-    "oidc-provider-mock>=0.3.4",
-    "pytest-playwright>=0.7.2",
-]
