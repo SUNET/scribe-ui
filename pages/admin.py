@@ -202,10 +202,11 @@ def edit_group(group_id: str) -> None:
         ui.label(f"Error fetching group: {e}").classes("text-lg text-red-500")
         return
 
+    ui.label(f"Edit group: {group['name']}").classes("text-3xl font-bold mb-4")
+
     with ui.card().style(
         "width: 100%; box-shadow: none; align-self: center;"
     ):
-        ui.label(f"Edit group: {group['name']}").classes("text-3xl font-bold mb-4")
         with ui.row().classes("gap-4 w-full"):
             name_input = (
                 ui.input("Group name", value=group["name"])
@@ -373,11 +374,10 @@ def statistics(group_id: str) -> None:
     for job in job_queue:
         job["created_at"] = add_timezone_to_timestamp(job["created_at"])
 
+    ui.label("Group Statistics").classes("text-3xl font-bold mb-4")
+
     with ui.element("div").classes("stats-container w-full"):
         with ui.element("div").classes("stats-card w-full"):
-            ui.label("Group Statistics").classes(
-                "text-3xl font-bold mb-3 text-gray-800"
-            )
             ui.label(f"Number of users: {total_users}").classes("text-lg text-gray-600")
             ui.label(
                 f"Transcribed files this month: {result.get('transcribed_files', 0)} files"
@@ -561,7 +561,7 @@ def create() -> None:
             "justify-content: space-between; align-items: center; width: 100%;"
         ):
             with ui.element("div").style("display: flex; gap: 0px;"):
-                ui.label("Admin controls").classes("text-3xl font-bold")
+                ui.label("Groups").classes("text-3xl font-bold")
 
             with ui.element("div").style("display: flex; gap: 10px;"):
                 create = (
@@ -681,10 +681,11 @@ def users() -> None:
         ui.label(f"Error fetching users: {e}").classes("text-lg text-red-500")
         return
 
+    ui.label("Users").classes("text-3xl font-bold mb-4")
+
     with ui.card().style(
         "width: 100%; box-shadow: none; align-self: center;"
     ):
-        ui.label("All users").classes("text-3xl font-bold mb-4")
         users_table = ui.table(
             columns=[
                 {
@@ -854,6 +855,8 @@ def health() -> None:
         </style>
         """
     )
+
+    ui.label("System status").classes("text-3xl font-bold mb-4")
 
     @ui.refreshable
     def render_health():
@@ -1221,12 +1224,13 @@ def edit_customer(customer_id: str) -> None:
         ui.label(f"Error fetching customer: {e}").classes("text-lg text-red-500")
         return
 
+    ui.label(f"Edit customer: {customer['name']}").classes(
+        "text-3xl font-bold mb-4"
+    )
+
     with ui.card().style(
         "width: 100%; box-shadow: none; align-self: center;"
     ):
-        ui.label(f"Edit customer: {customer['name']}").classes(
-            "text-3xl font-bold mb-4"
-        )
         with ui.column().classes("gap-4 w-full"):
             customer_abbr_input = (
                 ui.input(
@@ -1358,7 +1362,7 @@ def customers() -> None:
     ):
         with ui.element("div").style("display: flex; gap: 0px;"):
             if get_bofh_status():
-                ui.label("Customer Management").classes("text-3xl font-bold")
+                ui.label("Customers").classes("text-3xl font-bold")
             elif get_admin_status():
                 ui.label("Account Information").classes("text-3xl font-bold")
             else:
@@ -1420,6 +1424,8 @@ def analytics() -> None:
 
     ui.add_head_html(default_styles)
     ui.add_head_html("<style>body { background-color: #ffffff; }</style>")
+
+    ui.label("Activity overview").classes("text-3xl font-bold mb-4")
 
     stats = get_total_stats()
     wow = get_week_over_week()

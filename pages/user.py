@@ -67,9 +67,10 @@ def create() -> None:
             ui.navigate.to("/")
             return
 
+        ui.label("User settings").classes("text-3xl font-bold mb-4")
+
         with ui.card().classes("w-full mx-auto mb-6 no-border no-shadow"):
             with ui.card_section():
-                ui.label("User Information").classes("text-xl font-semibold mb-6")
 
                 with ui.grid(columns=3).classes("gap-6"):
                     with ui.column().classes("gap-3"):
