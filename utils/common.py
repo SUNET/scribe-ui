@@ -178,6 +178,7 @@ default_styles = """
         }
         .q-tooltip {
             font-size: 14px;
+            white-space: nowrap;
         }
     </style>
 """
