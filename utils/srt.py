@@ -477,22 +477,36 @@ class SRTEditor:
         if not raw_segments:
             return
 
+        max_words = 50
+
         concatenated = []
         current = raw_segments[0].copy()
 
         for segment in raw_segments[1:]:
-            if segment["speaker"] == current["speaker"]:
+            word_count = len(current["text"].split())
+            past_limit = word_count >= max_words
+            if segment["speaker"] != current["speaker"]:
+                concatenated.append(current)
+                current = segment.copy()
+            elif past_limit and current["text"].rstrip().endswith("."):
+                concatenated.append(current)
+                current = segment.copy()
+            else:
                 current["text"] += " " + segment["text"]
                 current["end"] = segment["end"]
                 current["duration"] = current["end"] - current["start"]
-            else:
-                concatenated.append(current)
-                current = segment.copy()
 
         concatenated.append(current)
 
+        import re
+
+        def capitalize_after_periods(text: str) -> str:
+            return re.sub(r'(\.\s+)([a-z])', lambda m: m.group(1) + m.group(2).upper(), text)
+
         for index, seg in enumerate(concatenated):
             if seg.get("text", "").strip():
+                seg["text"] = capitalize_after_periods(seg["text"])
+                seg["text"] = seg["text"][0].upper() + seg["text"][1:]
                 start_time = self.seconds_to_timestamp(seg.get("start", 0.0))
                 end_time = self.seconds_to_timestamp(seg.get("end", 0.0))
 
