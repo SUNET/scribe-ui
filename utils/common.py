@@ -30,9 +30,10 @@ from utils.token import (
     get_admin_status,
     get_auth_header,
     get_bofh_status,
+    get_user_data,
     token_refresh,
 )
-from utils.helpers import storage_decrypt
+from utils.helpers import storage_decrypt, customers_get
 from db.analytics import log_action, log_page_view
 
 MultiPartParser.spool_max_size = 1024 * 1024 * 4096
@@ -188,6 +189,36 @@ default_styles = """
 """
 
 
+def _get_support_contact_email() -> str:
+    """
+    Look up the support contact email for the current user's customer.
+    """
+
+    try:
+        user_data = get_user_data() or {}
+        user_realm = user_data.get("realm", "")
+        if not user_realm:
+            return ""
+
+        customers_data = customers_get()
+        customers = (
+            customers_data.get("result", [])
+            if isinstance(customers_data, dict)
+            else []
+        )
+
+        for c in customers:
+            c_realms = [
+                r.strip() for r in (c.get("realms") or "").split(",") if r.strip()
+            ]
+            if user_realm in c_realms:
+                return c.get("support_contact_email", "")
+    except Exception:
+        pass
+
+    return ""
+
+
 def show_help_dialog() -> None:
     """
     Show a help dialog with information about the application.
@@ -253,7 +284,7 @@ def show_help_dialog() -> None:
                                 )
                             ui.label(step_desc).classes("text-body2 text-grey-8")
 
-                with ui.row().classes("w-full gap-4"):
+                with ui.row().classes("w-full gap-4 items-stretch"):
                     with ui.card().classes("flex-1 bg-amber-50 p-4"):
                         with ui.row().classes("items-center gap-2 mb-2"):
                             ui.icon("security", size="sm").classes("text-amber-800")
@@ -266,9 +297,18 @@ def show_help_dialog() -> None:
                         with ui.row().classes("items-center gap-2 mb-2"):
                             ui.icon("help", size="sm").classes("text-green-800")
                             ui.label("Support").classes("text-subtitle1 font-semibold")
+
                         ui.label(
                             "Contact your institution's IT department for technical support or questions."
                         ).classes("text-body2")
+
+                        support_email = _get_support_contact_email()
+                        if support_email:
+                            with ui.row().classes("items-center gap-1"):
+                                ui.label("Support email:").classes("text-body2")
+                                ui.link(
+                                    support_email, f"mailto:{support_email}"
+                                ).classes("text-body2")
 
         dialog.open()
 
@@ -479,13 +519,6 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                 )
 
             with ui.element("div").style("display: flex; gap: 0px;"):
-                if is_bofh:
-                    dark = ui.dark_mode()
-                    with ui.button(
-                        icon="dark_mode",
-                        on_click=lambda: dark.toggle(),
-                    ).props("flat color=black"):
-                        ui.tooltip("Toggle dark mode")
                 with ui.button(
                     icon="help",
                     on_click=lambda: show_help_dialog(),

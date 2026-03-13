@@ -1077,6 +1077,9 @@ def create_customer_dialog(page: callable) -> None:
             contact_email_input = (
                 ui.input("Contact email").classes("w-full").props("outlined")
             )
+            support_contact_email_input = (
+                ui.input("Support contact email").classes("w-full").props("outlined")
+            )
 
             priceplan_select = (
                 ui.select(["fixed", "variable"], label="Price plan", value="variable")
@@ -1156,6 +1159,7 @@ def create_customer_dialog(page: callable) -> None:
                                 "partner_id": partner_id_input.value,
                                 "name": name_input.value,
                                 "contact_email": contact_email_input.value,
+                                "support_contact_email": support_contact_email_input.value,
                                 "priceplan": priceplan_select.value,
                                 "base_fee": int(base_fee.value)
                                 if base_fee.value
@@ -1252,6 +1256,14 @@ def edit_customer(customer_id: str) -> None:
                 .props("outlined")
                 .classes("w-full")
             )
+            support_contact_email_input = (
+                ui.input(
+                    "Support contact email",
+                    value=customer.get("support_contact_email", ""),
+                )
+                .props("outlined")
+                .classes("w-full")
+            )
 
             priceplan_select = (
                 ui.select(
@@ -1324,6 +1336,7 @@ def edit_customer(customer_id: str) -> None:
                 partner_id_input.value,
                 name_input.value,
                 contact_email_input.value,
+                support_contact_email_input.value,
                 priceplan_select.value,
                 base_fee.value,
                 realm_select.value if realm_select.value else [],
@@ -1400,6 +1413,7 @@ def customers() -> None:
                 partner_id=customer["partner_id"],
                 name=customer["name"],
                 contact_email=customer.get("contact_email", ""),
+                support_contact_email=customer.get("support_contact_email", ""),
                 priceplan=customer["priceplan"],
                 realms=customer["realms"],
                 notes=customer.get("notes", ""),

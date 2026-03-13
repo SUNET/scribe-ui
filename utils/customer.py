@@ -32,6 +32,7 @@ class Customer:
         partner_id: str,
         name: str,
         contact_email: str,
+        support_contact_email: str,
         priceplan: str,
         base_fee: int,
         realms: str,
@@ -45,6 +46,7 @@ class Customer:
         self.partner_id = partner_id
         self.name = name
         self.contact_email = contact_email
+        self.support_contact_email = support_contact_email
         self.priceplan = priceplan
         self.base_fee = (base_fee,)
         self.realms = realms
