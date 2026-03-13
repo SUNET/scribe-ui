@@ -371,6 +371,7 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
         admin_items = [
             ("/admin/users", "people", "Users"),
             ("/admin", "group_work", "Groups"),
+            ("/admin/rules", "rule", "Onboarding"),
             ("/admin/customers", "business", "Customers" if is_bofh else "Account"),
         ]
 

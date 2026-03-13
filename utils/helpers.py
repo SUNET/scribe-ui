@@ -17,9 +17,9 @@
 
 import requests
 
+from db.analytics import log_action
 from nicegui import app, ui
 from typing import Optional
-from db.analytics import log_action
 from utils.crypto import decrypt_string, encrypt_string, get_browser_id
 from utils.settings import get_settings
 from utils.token import get_auth_header
@@ -445,6 +445,10 @@ def test_all_notifications() -> None:
 def save_group(
     selected_rows: list, name: str, description: str, group_id: str, quota_seconds: int
 ) -> None:
+    """
+    Save group details and assigned users via the backend API.
+    """
+
     usernames = [row["username"] for row in selected_rows]
 
     try:
@@ -458,8 +462,11 @@ def save_group(
                 "quota": int(quota_seconds) * 60,
             },
         )
+
         res.raise_for_status()
+
         log_action("edit_group")
+
         ui.navigate.to("/admin")
     except requests.RequestException:
         error = res.json()
@@ -635,3 +642,144 @@ def set_domains(selected_rows: list) -> None:
                 )
 
         domain_dialog.open()
+
+
+def rules_get() -> list:
+    """
+    Fetch all attribute rules from backend.
+    """
+
+    try:
+        res = requests.get(
+            settings.API_URL + "/api/v1/admin/rules", headers=get_auth_header()
+        )
+        res.raise_for_status()
+        return res.json()
+    except requests.RequestException as e:
+        print(f"Error fetching rules: {e}")
+        return []
+
+
+def rule_create(data: dict) -> dict | None:
+    """
+    Create a new attribute rule.
+    """
+
+    try:
+        res = requests.post(
+            settings.API_URL + "/api/v1/admin/rules",
+            headers=get_auth_header(),
+            json=data,
+        )
+        res.raise_for_status()
+        return res.json()
+    except requests.RequestException as e:
+        print(f"Error creating rule: {e}")
+        return None
+
+
+def rule_update(rule_id: int, data: dict) -> dict | None:
+    """
+    Update an existing attribute rule.
+    """
+
+    try:
+        res = requests.put(
+            settings.API_URL + f"/api/v1/admin/rules/{rule_id}",
+            headers=get_auth_header(),
+            json=data,
+        )
+        res.raise_for_status()
+        return res.json()
+    except requests.RequestException as e:
+        print(f"Error updating rule: {e}")
+        if hasattr(e, "response") and e.response is not None:
+            print(f"Response body: {e.response.text}")
+        return None
+
+
+def rule_delete(rule_id: int) -> bool:
+    """
+    Delete an attribute rule.
+    """
+
+    try:
+        res = requests.delete(
+            settings.API_URL + f"/api/v1/admin/rules/{rule_id}",
+            headers=get_auth_header(),
+        )
+        res.raise_for_status()
+        return True
+    except requests.RequestException as e:
+        print(f"Error deleting rule: {e}")
+        return False
+
+
+def attributes_get() -> list:
+    """
+    Fetch all onboarding attributes from backend.
+    """
+
+    try:
+        res = requests.get(
+            settings.API_URL + "/api/v1/admin/attributes",
+            headers=get_auth_header(),
+        )
+        res.raise_for_status()
+        return res.json().get("result", [])
+    except requests.RequestException as e:
+        print(f"Error fetching attributes: {e}")
+        return []
+
+
+def attribute_create(data: dict) -> dict | None:
+    """
+    Add a new onboarding attribute.
+    """
+
+    try:
+        res = requests.post(
+            settings.API_URL + "/api/v1/admin/attributes",
+            headers=get_auth_header(),
+            json=data,
+        )
+        res.raise_for_status()
+        return res.json()
+    except requests.RequestException as e:
+        print(f"Error creating attribute: {e}")
+        return None
+
+
+def attribute_delete(attribute_id: int) -> bool:
+    """
+    Delete an onboarding attribute.
+    """
+
+    try:
+        res = requests.delete(
+            settings.API_URL + f"/api/v1/admin/attributes/{attribute_id}",
+            headers=get_auth_header(),
+        )
+        res.raise_for_status()
+        return True
+    except requests.RequestException as e:
+        print(f"Error deleting attribute: {e}")
+        return False
+
+
+def rules_test(rule_ids: list[int]) -> list:
+    """
+    Test which users would be matched by the given rules.
+    """
+
+    try:
+        res = requests.post(
+            settings.API_URL + "/api/v1/admin/rules/test",
+            headers=get_auth_header(),
+            json={"rule_ids": rule_ids},
+        )
+        res.raise_for_status()
+        return res.json().get("result", [])
+    except requests.RequestException as e:
+        print(f"Error testing rules: {e}")
+        return []

@@ -45,9 +45,22 @@ from utils.helpers import (
     user_statistics_get,
     export_customers_csv,
     customers_get,
+    rules_get,
+    rule_create,
+    rule_update,
+    rule_delete,
+    rules_test,
+    attributes_get,
+    attribute_create,
+    attribute_delete,
 )
 from utils.settings import get_settings
-from utils.token import get_admin_status, get_auth_header, get_bofh_status
+from utils.token import (
+    get_admin_status,
+    get_auth_header,
+    get_bofh_status,
+    get_user_data,
+)
 from utils.group import Group
 from utils.customer import Customer
 
@@ -204,9 +217,7 @@ def edit_group(group_id: str) -> None:
 
     ui.label(f"Edit group: {group['name']}").classes("text-3xl font-bold mb-4")
 
-    with ui.card().style(
-        "width: 100%; box-shadow: none; align-self: center;"
-    ):
+    with ui.card().style("width: 100%; box-shadow: none; align-self: center;"):
         with ui.row().classes("gap-4 w-full"):
             name_input = (
                 ui.input("Group name", value=group["name"])
@@ -683,9 +694,7 @@ def users() -> None:
 
     ui.label("Users").classes("text-3xl font-bold mb-4")
 
-    with ui.card().style(
-        "width: 100%; box-shadow: none; align-self: center;"
-    ):
+    with ui.card().style("width: 100%; box-shadow: none; align-self: center;"):
         users_table = ui.table(
             columns=[
                 {
@@ -752,24 +761,16 @@ def users() -> None:
         ui.button("Enable").classes("button-close").props("color=black flat").style(
             "width: 150px"
         ).on("click", lambda: set_active_status(users_table.selected, True))
-        ui.button("Disable").classes("delete-style").props(
-            "color=black flat"
-        ).on(
+        ui.button("Disable").classes("delete-style").props("color=black flat").on(
             "click", lambda: set_active_status(users_table.selected, False)
         )
-        ui.button("Domains").classes("button-close").props(
-            "color=black flat"
-        ).style("width: 150px").on(
-            "click", lambda: set_domains(users_table.selected)
-        )
-        ui.button("Make admin").classes("button-close").props(
-            "color=black flat"
-        ).style("width: 150px").on(
-            "click", lambda: set_admin_status(users_table.selected, True, None, "")
-        )
-        ui.button("Remove admin").classes("delete-style").props(
-            "color=black flat"
-        ).on(
+        ui.button("Domains").classes("button-close").props("color=black flat").style(
+            "width: 150px"
+        ).on("click", lambda: set_domains(users_table.selected))
+        ui.button("Make admin").classes("button-close").props("color=black flat").style(
+            "width: 150px"
+        ).on("click", lambda: set_admin_status(users_table.selected, True, None, ""))
+        ui.button("Remove admin").classes("delete-style").props("color=black flat").on(
             "click", lambda: set_admin_status(users_table.selected, False, None, "")
         )
 
@@ -803,9 +804,9 @@ def users() -> None:
 
             dialog.open()
 
-        ui.button("Remove user").classes("delete-style").props(
-            "color=black flat"
-        ).on("click", confirm_remove_user)
+        ui.button("Remove user").classes("delete-style").props("color=black flat").on(
+            "click", confirm_remove_user
+        )
 
 
 @ui.page("/health")
@@ -1057,7 +1058,7 @@ def health() -> None:
 
 
 def create_customer_dialog(page: callable) -> None:
-    realms = realms_get()
+    realms = _get_valid_realms()
 
     with ui.dialog() as create_customer_dialog:
         with ui.card().style("width: 600px; max-width: 90vw;"):
@@ -1215,7 +1216,7 @@ def edit_customer(customer_id: str) -> None:
         res.raise_for_status()
         customer = res.json()["result"]
 
-        realms = realms_get()
+        realms = _get_valid_realms()
         customer_realms = [
             r.strip() for r in customer["realms"].split(",") if r.strip()
         ]
@@ -1224,13 +1225,9 @@ def edit_customer(customer_id: str) -> None:
         ui.label(f"Error fetching customer: {e}").classes("text-lg text-red-500")
         return
 
-    ui.label(f"Edit customer: {customer['name']}").classes(
-        "text-3xl font-bold mb-4"
-    )
+    ui.label(f"Edit customer: {customer['name']}").classes("text-3xl font-bold mb-4")
 
-    with ui.card().style(
-        "width: 100%; box-shadow: none; align-self: center;"
-    ):
+    with ui.card().style("width: 100%; box-shadow: none; align-self: center;"):
         with ui.column().classes("gap-4 w-full"):
             customer_abbr_input = (
                 ui.input(
@@ -1413,9 +1410,913 @@ def customers() -> None:
             c.create_card()
 
 
+CONDITION_OPTIONS = {
+    "equals": "Equals",
+    "not_equals": "Not equals",
+    "contains": "Contains",
+    "not_contains": "Not contains",
+    "starts_with": "Starts with",
+    "ends_with": "Ends with",
+    "regex_match": "Regex match",
+}
+
+
+def _get_valid_realms() -> list[str]:
+    """
+    Return realms that look like real domains (contain a dot for TLD).
+    """
+
+    return [r for r in realms_get() if r and "." in r]
+
+
+def create_rule_dialog(page: callable) -> None:
+    """
+    Show a dialog to create a new attribute rule.
+    """
+
+    onboarding_attrs = attributes_get()
+    attr_names = [a["name"] for a in onboarding_attrs]
+    all_groups = groups_get()
+    group_options = {}
+
+    if all_groups and "result" in all_groups:
+        group_options = {
+            g["id"]: g["name"] for g in all_groups["result"] if g["name"] != "All users"
+        }
+
+    is_bofh = get_bofh_status()
+    user_data = get_user_data() or {}
+    allowed_realms = []
+
+    if not is_bofh:
+        if user_data.get("realm"):
+            allowed_realms.append(user_data["realm"])
+        for d in (user_data.get("admin_domains") or "").split(","):
+            d = d.strip()
+            if d and d not in allowed_realms:
+                allowed_realms.append(d)
+
+    with ui.dialog() as dialog:
+        with ui.card().style("width: 650px; max-width: 90vw;"):
+            ui.label("Create attribute rule").classes("text-2xl font-bold")
+
+            name_input = ui.input("Rule name").classes("w-full").props("outlined")
+
+            attr_select = (
+                ui.select(attr_names, label="Attribute name", with_input=True)
+                .classes("w-full")
+                .props("outlined")
+            )
+            condition_select = (
+                ui.select(CONDITION_OPTIONS, label="Condition")
+                .classes("w-full")
+                .props("outlined")
+            )
+
+            value_input = (
+                ui.input("Attribute value").classes("w-full").props("outlined")
+            )
+
+            ui.label("Scope").classes("text-lg font-semibold mt-2")
+            if is_bofh:
+                all_realms = _get_valid_realms()
+                realm_input = (
+                    ui.select(
+                        all_realms,
+                        label="Realm",
+                        multiple=True,
+                        with_input=True,
+                    )
+                    .classes("w-full")
+                    .props("outlined use-chips")
+                )
+            else:
+                realm_input = (
+                    ui.select(
+                        allowed_realms,
+                        label="Realm",
+                        multiple=True,
+                        value=[allowed_realms[0]] if allowed_realms else [],
+                    )
+                    .classes("w-full")
+                    .props("outlined use-chips")
+                )
+
+            ui.label("Actions").classes("text-lg font-semibold mt-2")
+            with ui.row().classes("w-full gap-4"):
+                activate_cb = ui.checkbox("Auto-activate user")
+                admin_cb = ui.checkbox("Grant admin")
+                deny_cb = ui.checkbox("Deny access")
+
+            group_select = (
+                ui.select(
+                    group_options,
+                    label="Assign to group (optional)",
+                    clearable=True,
+                )
+                .classes("w-full")
+                .props("outlined")
+            )
+
+            all_realms = _get_valid_realms()
+
+            admin_domains_select = (
+                ui.select(
+                    all_realms,
+                    label="Admin domains (optional)",
+                    multiple=True,
+                )
+                .classes("w-full")
+                .props("outlined")
+            )
+
+            with ui.row().style("justify-content: flex-end; width: 100%;"):
+                ui.button("Cancel").classes("button-close").props(
+                    "color=black flat"
+                ).on("click", lambda: dialog.close())
+                ui.button("Create").classes("default-style").props(
+                    "color=black flat"
+                ).on(
+                    "click",
+                    lambda: (
+                        _do_create_rule(
+                            name=name_input.value,
+                            attribute_name=attr_select.value,
+                            attribute_condition=condition_select.value,
+                            attribute_value=value_input.value,
+                            realm=realm_input.value,
+                            activate=activate_cb.value,
+                            admin=admin_cb.value,
+                            deny=deny_cb.value,
+                            assign_to_group=group_select.value,
+                            admin_domains=admin_domains_select.value,
+                        )
+                        and (dialog.close(), ui.navigate.to("/admin/rules"))
+                    ),
+                )
+
+        dialog.open()
+
+
+def _do_create_rule(**kwargs) -> bool:
+    """
+    Helper to create a rule from dialog values. Returns True on success.
+    """
+
+    realm_val = kwargs["realm"]
+
+    if not realm_val or (isinstance(realm_val, list) and len(realm_val) == 0):
+        with ui.dialog() as warn_dlg, ui.card().classes("p-6"):
+            ui.label("Realm required").classes("text-h6")
+            ui.label("At least one realm must be selected.")
+            ui.button("OK", on_click=warn_dlg.close).classes("mt-4 self-end")
+        warn_dlg.open()
+
+        return False
+
+    domains = kwargs["admin_domains"]
+    domains_str = ",".join(domains) if isinstance(domains, list) and domains else None
+    data = {
+        "name": kwargs["name"],
+        "attribute_name": kwargs["attribute_name"],
+        "attribute_condition": kwargs["attribute_condition"],
+        "attribute_value": kwargs["attribute_value"],
+        "realm": ",".join(realm_val) if isinstance(realm_val, list) else realm_val,
+        "activate": kwargs["activate"],
+        "admin": kwargs["admin"],
+        "deny": kwargs["deny"],
+        "assign_to_group": str(kwargs["assign_to_group"])
+        if kwargs["assign_to_group"]
+        else None,
+        "assign_to_admin_domains": domains_str,
+    }
+
+    result = rule_create(data)
+
+    if result:
+        ui.notify("Rule created successfully.", color="positive")
+        return True
+
+    ui.notify("Failed to create rule.", color="negative")
+
+    return False
+
+
+def edit_rule_dialog(rule: dict, page: callable) -> None:
+    """
+    Show a dialog to edit an existing attribute rule.
+    """
+
+    onboarding_attrs = attributes_get()
+    attr_names = [a["name"] for a in onboarding_attrs]
+    all_groups = groups_get()
+    group_options = {}
+
+    if all_groups and "result" in all_groups:
+        group_options = {
+            g["id"]: g["name"] for g in all_groups["result"] if g["name"] != "All users"
+        }
+
+    is_bofh = get_bofh_status()
+    user_data = get_user_data() or {}
+    allowed_realms = []
+
+    if not is_bofh:
+        if user_data.get("realm"):
+            allowed_realms.append(user_data["realm"])
+        for d in (user_data.get("admin_domains") or "").split(","):
+            d = d.strip()
+            if d and d not in allowed_realms:
+                allowed_realms.append(d)
+
+    with ui.dialog() as dialog:
+        with ui.card().style("width: 650px; max-width: 90vw;"):
+            ui.label("Edit attribute rule").classes("text-2xl font-bold")
+
+            name_input = (
+                ui.input("Rule name", value=rule["name"])
+                .classes("w-full")
+                .props("outlined")
+            )
+
+            attr_select = (
+                ui.select(
+                    attr_names,
+                    label="Attribute name",
+                    value=rule["attribute_name"],
+                    with_input=True,
+                )
+                .classes("w-full")
+                .props("outlined")
+            )
+            condition_select = (
+                ui.select(
+                    CONDITION_OPTIONS,
+                    label="Condition",
+                    value=rule["attribute_condition"],
+                )
+                .classes("w-full")
+                .props("outlined")
+            )
+
+            value_input = (
+                ui.input("Attribute value", value=rule["attribute_value"])
+                .classes("w-full")
+                .props("outlined")
+            )
+
+            ui.label("Scope").classes("text-lg font-semibold mt-2")
+            existing_realms = [
+                r.strip() for r in (rule.get("realm") or "").split(",") if r.strip()
+            ]
+            if is_bofh:
+                all_realms = _get_valid_realms()
+                realm_input = (
+                    ui.select(
+                        all_realms,
+                        label="Realm",
+                        multiple=True,
+                        value=existing_realms,
+                        with_input=True,
+                    )
+                    .classes("w-full")
+                    .props("outlined use-chips")
+                )
+            else:
+                realm_input = (
+                    ui.select(
+                        allowed_realms,
+                        label="Realm",
+                        multiple=True,
+                        value=existing_realms
+                        or ([allowed_realms[0]] if allowed_realms else []),
+                    )
+                    .classes("w-full")
+                    .props("outlined use-chips")
+                )
+
+            ui.label("Actions").classes("text-lg font-semibold mt-2")
+            with ui.row().classes("w-full gap-4"):
+                activate_cb = ui.checkbox(
+                    "Auto-activate user", value=rule.get("activate", False)
+                )
+                admin_cb = ui.checkbox("Grant admin", value=rule.get("admin", False))
+                deny_cb = ui.checkbox("Deny access", value=rule.get("deny", False))
+
+            group_value = rule.get("assign_to_group")
+            try:
+                group_value = int(group_value) if group_value else None
+            except (ValueError, TypeError):
+                group_value = None
+
+            group_select = (
+                ui.select(
+                    group_options,
+                    label="Assign to group (optional)",
+                    value=group_value,
+                    clearable=True,
+                )
+                .classes("w-full")
+                .props("outlined")
+            )
+
+            all_realms = _get_valid_realms()
+            existing_domains = [
+                d.strip()
+                for d in (rule.get("assign_to_admin_domains") or "").split(",")
+                if d.strip()
+            ]
+
+            admin_domains_select = (
+                ui.select(
+                    all_realms,
+                    label="Admin domains (optional)",
+                    multiple=True,
+                    value=existing_domains,
+                )
+                .classes("w-full")
+                .props("outlined")
+            )
+
+            with ui.row().style("justify-content: flex-end; width: 100%;"):
+                ui.button("Cancel").classes("button-close").props(
+                    "color=black flat"
+                ).on("click", lambda: dialog.close())
+                ui.button("Save").classes("default-style").props("color=black flat").on(
+                    "click",
+                    lambda: (
+                        _do_update_rule(
+                            rule_id=rule["id"],
+                            name=name_input.value,
+                            attribute_name=attr_select.value,
+                            attribute_condition=condition_select.value,
+                            attribute_value=value_input.value,
+                            realm=realm_input.value,
+                            activate=activate_cb.value,
+                            admin=admin_cb.value,
+                            deny=deny_cb.value,
+                            assign_to_group=group_select.value,
+                            admin_domains=admin_domains_select.value,
+                        )
+                        and (dialog.close(), ui.navigate.to("/admin/rules"))
+                    ),
+                )
+
+        dialog.open()
+
+
+def _do_update_rule(**kwargs) -> bool:
+    """
+    Helper to update a rule from dialog values. Returns True on success.
+    """
+
+    realm_val = kwargs["realm"]
+
+    if not realm_val or (isinstance(realm_val, list) and len(realm_val) == 0):
+        with ui.dialog() as warn_dlg, ui.card().classes("p-6"):
+            ui.label("Realm required").classes("text-h6")
+            ui.label("At least one realm must be selected.")
+            ui.button("OK", on_click=warn_dlg.close).classes("mt-4 self-end")
+        warn_dlg.open()
+
+        return False
+
+    domains = kwargs["admin_domains"]
+    domains_str = ",".join(domains) if isinstance(domains, list) and domains else None
+    data = {
+        "name": kwargs["name"],
+        "attribute_name": kwargs["attribute_name"],
+        "attribute_condition": kwargs["attribute_condition"],
+        "attribute_value": kwargs["attribute_value"],
+        "realm": ",".join(realm_val) if isinstance(realm_val, list) else realm_val,
+        "activate": kwargs["activate"],
+        "admin": kwargs["admin"],
+        "deny": kwargs["deny"],
+        "assign_to_group": str(kwargs["assign_to_group"])
+        if kwargs["assign_to_group"]
+        else None,
+        "assign_to_admin_domains": domains_str,
+    }
+
+    if rule_update(kwargs["rule_id"], data):
+        ui.notify("Rule updated successfully.", color="positive")
+        return True
+
+    ui.notify("Failed to update rule.", color="negative")
+
+    return False
+
+
+def delete_rule_dialog(rule: dict) -> None:
+    """
+    Show confirmation dialog to delete a rule.
+    """
+
+    with ui.dialog() as dialog:
+        with ui.card().style("width: 400px; max-width: 90vw;"):
+            ui.label("Delete rule").classes("text-2xl font-bold")
+            ui.label(f'Are you sure you want to delete rule "{rule["name"]}"?').classes(
+                "text-body1"
+            )
+
+            with ui.row().style("justify-content: flex-end; width: 100%;"):
+                ui.button("Cancel").classes("button-close").props(
+                    "color=black flat"
+                ).on("click", lambda: dialog.close())
+                ui.button("Delete").classes("delete-style").props("color=red flat").on(
+                    "click",
+                    lambda: (
+                        _do_delete_rule(rule["id"]),
+                        dialog.close(),
+                        ui.navigate.to("/admin/rules"),
+                    ),
+                )
+        dialog.open()
+
+
+def _do_delete_rule(rule_id: int) -> None:
+    """
+    Helper to delete a rule.
+    """
+
+    if rule_delete(rule_id):
+        ui.notify("Rule deleted.", color="positive")
+    else:
+        ui.notify("Failed to delete rule.", color="negative")
+
+
+def add_attribute_dialog() -> None:
+    """
+    Show a dialog to add a new onboarding attribute.
+    """
+
+    with ui.dialog() as dialog:
+        with ui.card().style("width: 450px; max-width: 90vw;"):
+            ui.label("Add onboarding attribute").classes("text-2xl font-bold")
+            name_input = ui.input("Attribute name").classes("w-full").props("outlined")
+            desc_input = ui.input("Description").classes("w-full").props("outlined")
+            example_input = (
+                ui.input("Example value").classes("w-full").props("outlined")
+            )
+
+            with ui.row().style("justify-content: flex-end; width: 100%;"):
+                ui.button("Cancel").classes("button-close").props(
+                    "color=black flat"
+                ).on("click", lambda: dialog.close())
+                ui.button("Add").classes("default-style").props("color=black flat").on(
+                    "click",
+                    lambda: (
+                        _do_add_attribute(
+                            name_input.value,
+                            desc_input.value,
+                            example_input.value,
+                        ),
+                        dialog.close(),
+                        ui.navigate.to("/admin/rules"),
+                    ),
+                )
+        dialog.open()
+
+
+def _do_add_attribute(name: str, description: str, example: str) -> None:
+    """
+    Helper to add an onboarding attribute.
+    """
+
+    result = attribute_create(
+        {"name": name, "description": description, "example": example}
+    )
+
+    if result:
+        ui.notify("Attribute added.", color="positive")
+    else:
+        ui.notify("Failed to add attribute. It may already exist.", color="negative")
+
+
+def test_rules_dialog(selected_rules: list[dict]) -> None:
+    """
+    Show a dialog with test results for selected rules.
+    """
+
+    rule_ids = [r["id"] for r in selected_rules]
+    matches = rules_test(rule_ids)
+
+    with ui.dialog() as dialog, ui.card().style("min-width: 700px; max-width: 900px;"):
+        ui.label("Test rules result").classes("text-xl font-bold")
+
+        if not matches:
+            ui.label("No users matched the selected rules.").classes("text-grey-7")
+        else:
+            columns = [
+                {
+                    "name": "username",
+                    "label": "Username",
+                    "field": "username",
+                    "align": "left",
+                },
+                {"name": "email", "label": "Email", "field": "email", "align": "left"},
+                {"name": "realm", "label": "Realm", "field": "realm", "align": "left"},
+                {
+                    "name": "matched_rules",
+                    "label": "Matched Rules",
+                    "field": "matched_rules",
+                    "align": "left",
+                },
+                {
+                    "name": "actions",
+                    "label": "Actions",
+                    "field": "actions",
+                    "align": "left",
+                },
+            ]
+            rows = []
+            for m in matches:
+                all_actions = []
+                for r in m.get("matched_rules", []):
+                    all_actions.extend(r.get("actions", []))
+                rows.append(
+                    {
+                        "username": m.get("username", ""),
+                        "email": m.get("email", ""),
+                        "realm": m.get("realm", ""),
+                        "matched_rules": ", ".join(
+                            r.get("name", str(r.get("id", "")))
+                            for r in m.get("matched_rules", [])
+                        ),
+                        "actions": ", ".join(dict.fromkeys(all_actions)),
+                    }
+                )
+
+            ui.label(f"{len(rows)} user(s) matched").classes("text-grey-7")
+            ui.table(columns=columns, rows=rows).classes("w-full")
+
+        with ui.row().classes("w-full justify-end mt-4"):
+            ui.button("Close", on_click=dialog.close).props("flat")
+
+    dialog.open()
+
+
+def _show_rules_help() -> None:
+    """
+    Show a help dialog explaining how onboarding rules work.
+    """
+
+    with ui.dialog() as dialog, ui.card().style(
+        "min-width: 550px; max-width: 700px; padding: 32px;"
+    ):
+        ui.label("How onboarding rules work").classes("text-2xl font-bold mb-4")
+
+        with ui.column().classes("gap-4"):
+            ui.label(
+                "Onboarding rules automatically provision user accounts based on "
+                "attributes received at login. Rules are evaluated once per login."
+            ).classes("text-body1")
+
+            ui.separator()
+
+            with ui.column().classes("gap-1"):
+                ui.label("Rule matching").classes("text-lg font-semibold")
+                ui.label(
+                    "Each rule specifies an attribute name (e.g. preferred_username, "
+                    "email, domain), a condition (equals, contains, starts with, etc.), "
+                    "and a value to match against. If a user's attribute matches, "
+                    "the rule's actions are applied."
+                ).classes("text-body2 text-grey-8")
+
+            with ui.column().classes("gap-1"):
+                ui.label("Available actions").classes("text-lg font-semibold")
+                with ui.column().classes("gap-0 pl-2"):
+                    for action, desc in [
+                        ("Activate", "Automatically activate the user account"),
+                        ("Admin", "Grant admin privileges"),
+                        ("Deny", "Deactivate the user account"),
+                        ("Assign to group", "Add the user to a specific group"),
+                        ("Admin domains", "Set admin domains for the user"),
+                    ]:
+                        with ui.row().classes("items-start gap-2"):
+                            ui.label(f"• {action}").classes(
+                                "text-body2 font-medium"
+                            ).style("min-width: 140px;")
+                            ui.label(f"— {desc}").classes("text-body2 text-grey-8")
+
+            with ui.column().classes("gap-1"):
+                ui.label("Scoping").classes("text-lg font-semibold")
+                ui.label(
+                    "The Realm field limits which users the rule applies to. "
+                    "Non-BOFH admins can only create rules for their own realm(s)."
+                ).classes("text-body2 text-grey-8")
+
+            with ui.column().classes("gap-1"):
+                ui.label("Manual override").classes("text-lg font-semibold")
+                ui.label(
+                    "If an admin manually deactivates a user, onboarding rules will "
+                    "not override that decision. The user stays deactivated until "
+                    "an admin reactivates them."
+                ).classes("text-body2 text-grey-8")
+
+            with ui.column().classes("gap-1"):
+                ui.label("Testing").classes("text-lg font-semibold")
+                ui.label(
+                    "Use the test button on each rule row to see which existing "
+                    "users would match. Testing uses stored user data, not live "
+                    "login attributes."
+                ).classes("text-body2 text-grey-8")
+
+        with ui.row().classes("w-full justify-end mt-4"):
+            ui.button("Close", on_click=dialog.close).props("flat")
+
+    dialog.open()
+
+
+@ui.page("/admin/rules")
+def rules_page() -> None:
+    """
+    Onboarding management page.
+    """
+
+    page_init(use_drawer=True)
+
+    ui.add_head_html(default_styles)
+    ui.add_head_html(
+        """
+        <style>
+            body {
+                background-color: #ffffff;
+            }
+        </style>
+        """
+    )
+
+    with ui.row().style(
+        "justify-content: space-between; align-items: center; width: 100%;"
+    ):
+        with ui.row().classes("items-center gap-2"):
+            ui.label("Onboarding").classes("text-3xl font-bold")
+            ui.button(icon="help_outline").props("flat round dense color=grey-7").on(
+                "click", lambda: _show_rules_help()
+            )
+        with ui.element("div").style("display: flex; gap: 10px;"):
+            ui.button("Add rule").classes("default-style").props(
+                "color=black flat"
+            ).style("min-width: 160px;").on(
+                "click", lambda: create_rule_dialog(page=rules_page)
+            )
+
+    rules_data = rules_get()
+    rules_list = rules_data.get("result", []) if rules_data else []
+
+    if not rules_list:
+        ui.label("No attribute rules defined yet.").classes("text-lg mt-4")
+    else:
+        for idx, rule in enumerate(rules_list):
+            rule["_idx"] = idx
+            actions = []
+            if rule.get("activate"):
+                actions.append("Activate")
+            if rule.get("admin"):
+                actions.append("Admin")
+            if rule.get("deny"):
+                actions.append("Deny")
+            if rule.get("assign_to_group"):
+                actions.append("Group")
+            rule["actions_summary"] = ", ".join(actions) if actions else "None"
+            rule["enabled_label"] = "Yes" if rule.get("enabled") else "No"
+            cond = rule.get("attribute_condition", "")
+            rule["condition_label"] = CONDITION_OPTIONS.get(cond, cond)
+
+        rules_table = ui.table(
+            columns=[
+                {
+                    "name": "name",
+                    "label": "Name",
+                    "field": "name",
+                    "align": "left",
+                    "sortable": True,
+                },
+                {
+                    "name": "attribute_name",
+                    "label": "Attribute",
+                    "field": "attribute_name",
+                    "align": "left",
+                    "sortable": True,
+                },
+                {
+                    "name": "condition_label",
+                    "label": "Condition",
+                    "field": "condition_label",
+                    "align": "left",
+                    "sortable": True,
+                },
+                {
+                    "name": "attribute_value",
+                    "label": "Value",
+                    "field": "attribute_value",
+                    "align": "left",
+                    "sortable": True,
+                },
+                {
+                    "name": "actions_summary",
+                    "label": "Actions",
+                    "field": "actions_summary",
+                    "align": "left",
+                },
+                {
+                    "name": "enabled_label",
+                    "label": "Enabled",
+                    "field": "enabled_label",
+                    "align": "left",
+                    "sortable": True,
+                },
+                {
+                    "name": "realm",
+                    "label": "Realm",
+                    "field": "realm",
+                    "align": "left",
+                    "sortable": True,
+                },
+                {
+                    "name": "row_actions",
+                    "label": "",
+                    "field": "row_actions",
+                    "align": "right",
+                    "sortable": False,
+                },
+            ],
+            rows=rules_list,
+            row_key="id",
+            pagination=20,
+        ).style("width: 100%; box-shadow: none; font-size: 18px;")
+
+        with rules_table.add_slot("top-right"):
+            with ui.input(placeholder="Search").props("type=search").bind_value(
+                rules_table, "filter"
+            ).add_slot("append"):
+                ui.icon("search")
+
+        rules_table.add_slot(
+            "body-cell-enabled_label",
+            r"""
+            <q-td :props="props">
+                <q-toggle
+                    :model-value="props.row.enabled"
+                    @update:model-value="val => $parent.$emit('toggle_enabled', {id: props.row.id, enabled: val})"
+                    color="positive"
+                    dense
+                />
+            </q-td>
+            """,
+        )
+
+        def handle_toggle(msg) -> None:
+            rule_id = msg.args["id"]
+            new_enabled = msg.args["enabled"]
+            result = rule_update(rule_id, {"enabled": new_enabled})
+            if result:
+                ui.notify(
+                    f"Rule {'enabled' if new_enabled else 'disabled'}.",
+                    color="positive",
+                )
+                ui.navigate.to("/admin/rules")
+            else:
+                ui.notify("Failed to update rule.", color="negative")
+
+        rules_table.on("toggle_enabled", handle_toggle)
+
+        rules_table.add_slot(
+            "body-cell-name",
+            r"""
+            <q-td :props="props">
+                <a
+                    class="cursor-pointer text-primary"
+                    @click="$parent.$emit('edit_rule', props.row)"
+                    style="text-decoration: underline;"
+                >
+                    {{ props.row.name }}
+                </a>
+            </q-td>
+            """,
+        )
+
+        def handle_edit(msg) -> None:
+            rule = msg.args
+            edit_rule_dialog(rule, page=rules_page)
+
+        rules_table.on("edit_rule", handle_edit)
+        rules_table.add_slot(
+            "body-cell-row_actions",
+            r"""
+            <q-td :props="props">
+                <q-btn flat dense round icon="science" color="primary" size="sm"
+                    @click="$parent.$emit('test_rule', props.row)"
+                >
+                    <q-tooltip>Test rule</q-tooltip>
+                </q-btn>
+                <q-btn flat dense round icon="delete" color="negative" size="sm"
+                    @click="$parent.$emit('delete_rule', props.row)"
+                >
+                    <q-tooltip>Delete rule</q-tooltip>
+                </q-btn>
+            </q-td>
+            """,
+        )
+
+        def handle_test(msg) -> None:
+            test_rules_dialog([msg.args])
+
+        def handle_delete(msg) -> None:
+            delete_rule_dialog(msg.args)
+
+        rules_table.on("test_rule", handle_test)
+        rules_table.on("delete_rule", handle_delete)
+
+    if get_bofh_status():
+        ui.separator().classes("mt-6 mb-4")
+        with ui.row().style(
+            "justify-content: space-between; align-items: center; width: 100%;"
+        ):
+            ui.label("Attributes (BOFH)").classes("text-2xl font-bold")
+            ui.button("Add attribute").classes("default-style").props(
+                "color=black flat"
+            ).style("min-width: 160px;").on("click", lambda: add_attribute_dialog())
+
+        ui.label(
+            "These are the known attribute names available when creating rules."
+        ).classes("text-body2 text-grey-7 mb-2")
+
+        attrs = attributes_get()
+        if not attrs:
+            ui.label("No attributes defined.").classes("text-lg")
+        else:
+            attrs_table = ui.table(
+                columns=[
+                    {
+                        "name": "name",
+                        "label": "Claim name",
+                        "field": "name",
+                        "align": "left",
+                        "sortable": True,
+                    },
+                    {
+                        "name": "description",
+                        "label": "Description",
+                        "field": "description",
+                        "align": "left",
+                    },
+                    {
+                        "name": "example",
+                        "label": "Example",
+                        "field": "example",
+                        "align": "left",
+                    },
+                    {
+                        "name": "attr_actions",
+                        "label": "",
+                        "field": "attr_actions",
+                        "align": "right",
+                        "sortable": False,
+                    },
+                ],
+                rows=attrs,
+                row_key="id",
+                pagination=20,
+            ).style("width: 100%; box-shadow: none; font-size: 18px;")
+
+            attrs_table.add_slot(
+                "body-cell-attr_actions",
+                r"""
+                <q-td :props="props">
+                    <q-btn flat dense round icon="delete" color="negative" size="sm"
+                        @click="$parent.$emit('delete_attr', props.row)"
+                    >
+                        <q-tooltip>Delete attribute</q-tooltip>
+                    </q-btn>
+                </q-td>
+                """,
+            )
+
+            def handle_delete_attr(msg) -> None:
+                _do_delete_attribute(msg.args)
+
+            attrs_table.on("delete_attr", handle_delete_attr)
+
+
+def _do_delete_attribute(attr: dict) -> None:
+    """
+    Delete a single onboarding attribute.
+    """
+
+    attribute_delete(attr["id"])
+
+    ui.notify(f"Deleted attribute '{attr['name']}'.", color="positive")
+    ui.navigate.to("/admin/rules")
+
+
 @ui.page("/admin/analytics")
 def analytics() -> None:
-    """Page view analytics dashboard. BOFH only."""
+    """
+    Page view analytics dashboard. BOFH only.
+    """
+
     page_init(use_drawer=True)
 
     if not get_bofh_status():
@@ -1440,7 +2341,6 @@ def analytics() -> None:
 
     summary = get_page_views_summary()
 
-    # Action data (reused below for cards and charts)
     action_summary = [r for r in summary if r["path"].startswith("/action/")]
     action_labels = {
         "/action/upload": ("Uploads", "upload_file", "#2e7d32"),
