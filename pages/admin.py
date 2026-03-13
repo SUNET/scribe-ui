@@ -1852,7 +1852,7 @@ def add_attribute_dialog() -> None:
 
     with ui.dialog() as dialog:
         with ui.card().style("width: 450px; max-width: 90vw;"):
-            ui.label("Add onboarding attribute").classes("text-2xl font-bold")
+            ui.label("Add provisioning attribute").classes("text-2xl font-bold")
             name_input = ui.input("Attribute name").classes("w-full").props("outlined")
             desc_input = ui.input("Description").classes("w-full").props("outlined")
             example_input = (
@@ -1964,11 +1964,11 @@ def _show_rules_help() -> None:
     with ui.dialog() as dialog, ui.card().style(
         "min-width: 550px; max-width: 700px; padding: 32px;"
     ):
-        ui.label("How onboarding rules work").classes("text-2xl font-bold mb-4")
+        ui.label("How provisioning rules work").classes("text-2xl font-bold mb-4")
 
         with ui.column().classes("gap-4"):
             ui.label(
-                "Onboarding rules automatically provision user accounts based on "
+                "Provisioning rules automatically provision user accounts based on "
                 "attributes received at login. Rules are evaluated once per login."
             ).classes("text-body1")
 
@@ -2003,13 +2003,13 @@ def _show_rules_help() -> None:
                 ui.label("Scoping").classes("text-lg font-semibold")
                 ui.label(
                     "The Realm field limits which users the rule applies to. "
-                    "Non-BOFH admins can only create rules for their own realm(s)."
+                    "Local administrators can only create rules for their own realm(s)."
                 ).classes("text-body2 text-grey-8")
 
             with ui.column().classes("gap-1"):
                 ui.label("Manual override").classes("text-lg font-semibold")
                 ui.label(
-                    "If an admin manually deactivates a user, onboarding rules will "
+                    "If an admin manually deactivates a user, provisioning rules will "
                     "not override that decision. The user stays deactivated until "
                     "an admin reactivates them."
                 ).classes("text-body2 text-grey-8")
@@ -2051,7 +2051,7 @@ def rules_page() -> None:
         "justify-content: space-between; align-items: center; width: 100%;"
     ):
         with ui.row().classes("items-center gap-2"):
-            ui.label("Onboarding").classes("text-3xl font-bold")
+            ui.label("User provisioning").classes("text-3xl font-bold")
             ui.button(icon="help_outline").props("flat round dense color=grey-7").on(
                 "click", lambda: _show_rules_help()
             )
