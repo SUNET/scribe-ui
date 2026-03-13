@@ -42,6 +42,7 @@ from utils.helpers import (
     set_active_status,
     set_admin_status,
     set_domains,
+    get_customer_realms,
     user_statistics_get,
     export_customers_csv,
     customers_get,
@@ -766,7 +767,7 @@ def users() -> None:
         )
         ui.button("Domains").classes("button-close").props("color=black flat").style(
             "width: 150px"
-        ).on("click", lambda: set_domains(users_table.selected))
+        ).on("click", lambda: set_domains(users_table.selected, users))
         ui.button("Make admin").classes("button-close").props("color=black flat").style(
             "width: 150px"
         ).on("click", lambda: set_admin_status(users_table.selected, True, None, ""))
@@ -1295,7 +1296,7 @@ def edit_customer(customer_id: str) -> None:
                     value=customer_realms,
                 )
                 .classes("w-full")
-                .props("outlined")
+                .props("outlined use-chips")
             )
 
             new_realms_input = (
@@ -1445,16 +1446,11 @@ def create_rule_dialog(page: callable) -> None:
         }
 
     is_bofh = get_bofh_status()
-    user_data = get_user_data() or {}
-    allowed_realms = []
 
     if not is_bofh:
-        if user_data.get("realm"):
-            allowed_realms.append(user_data["realm"])
-        for d in (user_data.get("admin_domains") or "").split(","):
-            d = d.strip()
-            if d and d not in allowed_realms:
-                allowed_realms.append(d)
+        user_data = get_user_data() or {}
+        user_realm = user_data.get("realm", "")
+        allowed_realms = get_customer_realms({user_realm} if user_realm else set())
 
     with ui.dialog() as dialog:
         with ui.card().style("width: 650px; max-width: 90vw;"):
@@ -1517,16 +1513,20 @@ def create_rule_dialog(page: callable) -> None:
                 .props("outlined")
             )
 
-            all_realms = _get_valid_realms()
+            user_data_for_domains = get_user_data() or {}
+            user_realm_for_domains = user_data_for_domains.get("realm", "")
+            admin_domain_options = get_customer_realms(
+                {user_realm_for_domains} if user_realm_for_domains else set()
+            )
 
             admin_domains_select = (
                 ui.select(
-                    all_realms,
+                    admin_domain_options,
                     label="Admin domains (optional)",
                     multiple=True,
                 )
                 .classes("w-full")
-                .props("outlined")
+                .props("outlined use-chips")
             )
 
             with ui.row().style("justify-content: flex-end; width: 100%;"):
@@ -1615,16 +1615,11 @@ def edit_rule_dialog(rule: dict, page: callable) -> None:
         }
 
     is_bofh = get_bofh_status()
-    user_data = get_user_data() or {}
-    allowed_realms = []
 
     if not is_bofh:
-        if user_data.get("realm"):
-            allowed_realms.append(user_data["realm"])
-        for d in (user_data.get("admin_domains") or "").split(","):
-            d = d.strip()
-            if d and d not in allowed_realms:
-                allowed_realms.append(d)
+        user_data = get_user_data() or {}
+        user_realm = user_data.get("realm", "")
+        allowed_realms = get_customer_realms({user_realm} if user_realm else set())
 
     with ui.dialog() as dialog:
         with ui.card().style("width: 650px; max-width: 90vw;"):
@@ -1668,9 +1663,10 @@ def edit_rule_dialog(rule: dict, page: callable) -> None:
             ]
             if is_bofh:
                 all_realms = _get_valid_realms()
+                realm_options = sorted(set(all_realms + existing_realms))
                 realm_input = (
                     ui.select(
-                        all_realms,
+                        realm_options,
                         label="Realm",
                         multiple=True,
                         value=existing_realms,
@@ -1680,9 +1676,10 @@ def edit_rule_dialog(rule: dict, page: callable) -> None:
                     .props("outlined use-chips")
                 )
             else:
+                realm_options = sorted(set(allowed_realms + existing_realms))
                 realm_input = (
                     ui.select(
-                        allowed_realms,
+                        realm_options,
                         label="Realm",
                         multiple=True,
                         value=existing_realms
@@ -1716,7 +1713,7 @@ def edit_rule_dialog(rule: dict, page: callable) -> None:
                 .props("outlined")
             )
 
-            all_realms = _get_valid_realms()
+            admin_domain_options = get_customer_realms(set(existing_realms))
             existing_domains = [
                 d.strip()
                 for d in (rule.get("assign_to_admin_domains") or "").split(",")
@@ -1725,13 +1722,13 @@ def edit_rule_dialog(rule: dict, page: callable) -> None:
 
             admin_domains_select = (
                 ui.select(
-                    all_realms,
+                    admin_domain_options,
                     label="Admin domains (optional)",
                     multiple=True,
                     value=existing_domains,
                 )
                 .classes("w-full")
-                .props("outlined")
+                .props("outlined use-chips")
             )
 
             with ui.row().style("justify-content: flex-end; width: 100%;"):

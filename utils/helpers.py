@@ -557,16 +557,13 @@ def set_admin_status(
 
 
 def save_domains(
-    selected_rows: list, domains: list, domains_str: str, dialog: ui.dialog
+    selected_rows: list, domains: list, dialog: ui.dialog
 ) -> None:
     """
     Save allowed domains for selected users.
     """
 
-    selected_domains = domains if domains else []
-    new_domains = [r.strip() for r in domains_str.split(",") if r.strip()]
-    all_domains = list(set(selected_domains + new_domains))
-    domains_str = ",".join(all_domains)
+    domains_str = ",".join(domains) if domains else ""
 
     for user in selected_rows:
         try:
@@ -586,15 +583,48 @@ def save_domains(
     dialog.close()
 
 
-def set_domains(selected_rows: list) -> None:
+def get_customer_realms(user_realms: set[str]) -> list[str]:
     """
-    Show a dialog with an input to set allowed domains.
-    Domains should be separated by commas.
+    Return the realms belonging to the customer(s) that match the given user realms.
+    Falls back to realms_get() if the customers API is not accessible.
     """
 
-    realms = realms_get()
+    customers_data = customers_get()
+    customers = (
+        customers_data.get("result", [])
+        if isinstance(customers_data, dict)
+        else []
+    )
+
+    customer_realms = []
+    for c in customers:
+        c_realms = [
+            r.strip() for r in (c.get("realms") or "").split(",") if r.strip()
+        ]
+        if user_realms & set(c_realms):
+            customer_realms.extend(c_realms)
+    realms = sorted(set(customer_realms))
+
+    if not realms:
+        realms = [r for r in realms_get() if r and "." in r]
+
+    return realms
+
+
+def set_domains(selected_rows: list, all_users: list) -> None:
+    """
+    Show a dialog with an input to set allowed domains.
+    """
+
+    user_realms = {u["realm"] for u in selected_rows if u.get("realm")}
+    realms = get_customer_realms(user_realms)
+
+    if not realms:
+        realms = sorted(
+            {u["realm"] for u in all_users if u.get("realm") and "." in u["realm"]}
+        )
+
     domains = []
-    domains_str = ""
 
     for user in selected_rows:
         if not user.get("admin_domains"):
@@ -602,8 +632,6 @@ def set_domains(selected_rows: list) -> None:
         for domain in user["admin_domains"].split(","):
             if domain.strip() in realms:
                 domains.append(domain.strip())
-            else:
-                domains_str += domain.strip() + ", "
 
     with ui.dialog() as domain_dialog:
         with ui.card().style("width: 500px; max-width: 90vw;"):
@@ -613,18 +641,12 @@ def set_domains(selected_rows: list) -> None:
             domains_select = (
                 ui.select(
                     realms,
-                    label="Allowed domains (existing domains)",
+                    label="Allowed domains",
                     multiple=True,
                     value=domains,
                 )
                 .classes("w-full")
-                .props("outlined")
-            )
-
-            domains_input = (
-                ui.input("Add new domains (comma-separated)", value=domains_str.strip())
-                .classes("w-full")
-                .props("outlined")
+                .props("outlined use-chips")
             )
 
             with ui.row().style("justify-content: flex-end; width: 100%;"):
@@ -636,7 +658,6 @@ def set_domains(selected_rows: list) -> None:
                     lambda: save_domains(
                         selected_rows,
                         domains_select.value,
-                        domains_input.value,
                         domain_dialog,
                     ),
                 )

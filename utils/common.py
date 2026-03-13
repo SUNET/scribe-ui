@@ -94,6 +94,10 @@ jobs_columns = [
 
 default_styles = """
     <style>
+        .q-chip {
+            background-color: #d3ecbe !important;
+            color: #000000 !important;
+        }
         .default-style {
             background-color: #d3ecbe;
             border: 1px solid #000000;
