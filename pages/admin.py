@@ -1505,7 +1505,6 @@ def create_rule_dialog(page: callable) -> None:
             ui.label("Actions").classes("text-lg font-semibold mt-2")
             with ui.row().classes("w-full gap-4"):
                 activate_cb = ui.checkbox("Auto-activate user")
-                admin_cb = ui.checkbox("Grant admin")
                 deny_cb = ui.checkbox("Deny access")
 
             group_select = (
@@ -1546,7 +1545,6 @@ def create_rule_dialog(page: callable) -> None:
                             attribute_value=value_input.value,
                             realm=realm_input.value,
                             activate=activate_cb.value,
-                            admin=admin_cb.value,
                             deny=deny_cb.value,
                             assign_to_group=group_select.value,
                             admin_domains=admin_domains_select.value,
@@ -1583,7 +1581,6 @@ def _do_create_rule(**kwargs) -> bool:
         "attribute_value": kwargs["attribute_value"],
         "realm": ",".join(realm_val) if isinstance(realm_val, list) else realm_val,
         "activate": kwargs["activate"],
-        "admin": kwargs["admin"],
         "deny": kwargs["deny"],
         "assign_to_group": str(kwargs["assign_to_group"])
         if kwargs["assign_to_group"]
@@ -1700,7 +1697,6 @@ def edit_rule_dialog(rule: dict, page: callable) -> None:
                 activate_cb = ui.checkbox(
                     "Auto-activate user", value=rule.get("activate", False)
                 )
-                admin_cb = ui.checkbox("Grant admin", value=rule.get("admin", False))
                 deny_cb = ui.checkbox("Deny access", value=rule.get("deny", False))
 
             group_value = rule.get("assign_to_group")
@@ -1753,7 +1749,6 @@ def edit_rule_dialog(rule: dict, page: callable) -> None:
                             attribute_value=value_input.value,
                             realm=realm_input.value,
                             activate=activate_cb.value,
-                            admin=admin_cb.value,
                             deny=deny_cb.value,
                             assign_to_group=group_select.value,
                             admin_domains=admin_domains_select.value,
@@ -1790,7 +1785,6 @@ def _do_update_rule(**kwargs) -> bool:
         "attribute_value": kwargs["attribute_value"],
         "realm": ",".join(realm_val) if isinstance(realm_val, list) else realm_val,
         "activate": kwargs["activate"],
-        "admin": kwargs["admin"],
         "deny": kwargs["deny"],
         "assign_to_group": str(kwargs["assign_to_group"])
         if kwargs["assign_to_group"]
@@ -1988,7 +1982,6 @@ def _show_rules_help() -> None:
                 with ui.column().classes("gap-0 pl-2"):
                     for action, desc in [
                         ("Activate", "Automatically activate the user account"),
-                        ("Admin", "Grant admin privileges"),
                         ("Deny", "Deactivate the user account"),
                         ("Assign to group", "Add the user to a specific group"),
                         ("Admin domains", "Set admin domains for the user"),
