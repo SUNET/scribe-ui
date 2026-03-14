@@ -1516,7 +1516,14 @@ def create_rule_dialog(page: callable) -> None:
             ui.label("Actions").classes("text-lg font-semibold mt-2")
             with ui.row().classes("w-full gap-4"):
                 activate_cb = ui.checkbox("Auto-activate user")
-                deny_cb = ui.checkbox("Deny access")
+                deny_cb = ui.checkbox("Deactivate user")
+
+            activate_cb.on_value_change(
+                lambda e: deny_cb.set_value(False) if e.value else None
+            )
+            deny_cb.on_value_change(
+                lambda e: activate_cb.set_value(False) if e.value else None
+            )
 
             group_select = (
                 ui.select(
@@ -1689,7 +1696,14 @@ def edit_rule_dialog(rule: dict, page: callable) -> None:
                 activate_cb = ui.checkbox(
                     "Auto-activate user", value=rule.get("activate", False)
                 )
-                deny_cb = ui.checkbox("Deny access", value=rule.get("deny", False))
+                deny_cb = ui.checkbox("Deactivate user", value=rule.get("deny", False))
+
+            activate_cb.on_value_change(
+                lambda e: deny_cb.set_value(False) if e.value else None
+            )
+            deny_cb.on_value_change(
+                lambda e: activate_cb.set_value(False) if e.value else None
+            )
 
             group_value = rule.get("assign_to_group")
             try:
@@ -1972,7 +1986,7 @@ def _show_rules_help() -> None:
                 with ui.column().classes("gap-0 pl-2"):
                     for action, desc in [
                         ("Activate", "Automatically activate the user account"),
-                        ("Deny", "Deactivate the user account"),
+                        ("Deactivate", "Deactivate the user account"),
                         ("Assign to group", "Add the user to a specific group"),
                     ]:
                         with ui.row().classes("items-start gap-2"):
@@ -2059,7 +2073,7 @@ def rules_page() -> None:
             if rule.get("admin"):
                 actions.append("Admin")
             if rule.get("deny"):
-                actions.append("Deny")
+                actions.append("Deactivate")
             if rule.get("assign_to_group"):
                 actions.append("Group")
             rule["actions_summary"] = ", ".join(actions) if actions else "None"
