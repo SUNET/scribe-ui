@@ -1464,8 +1464,10 @@ def create_rule_dialog(page: callable) -> None:
 
     if not is_bofh:
         user_data = get_user_data() or {}
-        user_realm = user_data.get("realm", "")
-        allowed_realms = get_customer_realms({user_realm} if user_realm else set())
+        admin_domains = user_data.get("admin_domains", "")
+        allowed_realms = [
+            d.strip() for d in admin_domains.split(",") if d.strip() and "." in d.strip()
+        ]
 
     with ui.dialog() as dialog:
         with ui.card().style("width: 650px; max-width: 90vw;"):
@@ -1620,8 +1622,10 @@ def edit_rule_dialog(rule: dict, page: callable) -> None:
 
     if not is_bofh:
         user_data = get_user_data() or {}
-        user_realm = user_data.get("realm", "")
-        allowed_realms = get_customer_realms({user_realm} if user_realm else set())
+        admin_domains = user_data.get("admin_domains", "")
+        allowed_realms = [
+            d.strip() for d in admin_domains.split(",") if d.strip() and "." in d.strip()
+        ]
 
     with ui.dialog() as dialog:
         with ui.card().style("width: 650px; max-width: 90vw;"):
