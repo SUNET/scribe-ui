@@ -18,6 +18,8 @@
 import plotly.graph_objects as go
 import requests
 
+import re
+
 from collections import defaultdict
 from datetime import datetime
 from nicegui import ui
@@ -50,7 +52,6 @@ from utils.helpers import (
     rule_create,
     rule_update,
     rule_delete,
-    rules_test,
     attributes_get,
     attribute_create,
     attribute_delete,
@@ -1527,22 +1528,6 @@ def create_rule_dialog(page: callable) -> None:
                 .props("outlined")
             )
 
-            user_data_for_domains = get_user_data() or {}
-            user_realm_for_domains = user_data_for_domains.get("realm", "")
-            admin_domain_options = get_customer_realms(
-                {user_realm_for_domains} if user_realm_for_domains else set()
-            )
-
-            admin_domains_select = (
-                ui.select(
-                    admin_domain_options,
-                    label="Admin domains (optional)",
-                    multiple=True,
-                )
-                .classes("w-full")
-                .props("outlined use-chips")
-            )
-
             with ui.row().style("justify-content: flex-end; width: 100%;"):
                 ui.button("Cancel").classes("button-close").props(
                     "color=black flat"
@@ -1561,7 +1546,6 @@ def create_rule_dialog(page: callable) -> None:
                             activate=activate_cb.value,
                             deny=deny_cb.value,
                             assign_to_group=group_select.value,
-                            admin_domains=admin_domains_select.value,
                         )
                         and (dialog.close(), ui.navigate.to("/admin/rules"))
                     ),
@@ -1586,8 +1570,6 @@ def _do_create_rule(**kwargs) -> bool:
 
         return False
 
-    domains = kwargs["admin_domains"]
-    domains_str = ",".join(domains) if isinstance(domains, list) and domains else None
     data = {
         "name": kwargs["name"],
         "attribute_name": kwargs["attribute_name"],
@@ -1599,7 +1581,6 @@ def _do_create_rule(**kwargs) -> bool:
         "assign_to_group": str(kwargs["assign_to_group"])
         if kwargs["assign_to_group"]
         else None,
-        "assign_to_admin_domains": domains_str,
     }
 
     result = rule_create(data)
@@ -1727,24 +1708,6 @@ def edit_rule_dialog(rule: dict, page: callable) -> None:
                 .props("outlined")
             )
 
-            admin_domain_options = get_customer_realms(set(existing_realms))
-            existing_domains = [
-                d.strip()
-                for d in (rule.get("assign_to_admin_domains") or "").split(",")
-                if d.strip()
-            ]
-
-            admin_domains_select = (
-                ui.select(
-                    admin_domain_options,
-                    label="Admin domains (optional)",
-                    multiple=True,
-                    value=existing_domains,
-                )
-                .classes("w-full")
-                .props("outlined use-chips")
-            )
-
             with ui.row().style("justify-content: flex-end; width: 100%;"):
                 ui.button("Cancel").classes("button-close").props(
                     "color=black flat"
@@ -1762,7 +1725,6 @@ def edit_rule_dialog(rule: dict, page: callable) -> None:
                             activate=activate_cb.value,
                             deny=deny_cb.value,
                             assign_to_group=group_select.value,
-                            admin_domains=admin_domains_select.value,
                         )
                         and (dialog.close(), ui.navigate.to("/admin/rules"))
                     ),
@@ -1787,8 +1749,6 @@ def _do_update_rule(**kwargs) -> bool:
 
         return False
 
-    domains = kwargs["admin_domains"]
-    domains_str = ",".join(domains) if isinstance(domains, list) and domains else None
     data = {
         "name": kwargs["name"],
         "attribute_name": kwargs["attribute_name"],
@@ -1800,7 +1760,6 @@ def _do_update_rule(**kwargs) -> bool:
         "assign_to_group": str(kwargs["assign_to_group"])
         if kwargs["assign_to_group"]
         else None,
-        "assign_to_admin_domains": domains_str,
     }
 
     if rule_update(kwargs["rule_id"], data):
@@ -1898,64 +1857,84 @@ def _do_add_attribute(name: str, description: str, example: str) -> None:
         ui.notify("Failed to add attribute. It may already exist.", color="negative")
 
 
+def _evaluate_condition(condition: str, actual_value: str, expected_value: str) -> bool:
+    """
+    Evaluate a rule condition against an actual attribute value.
+    For list-type attributes (comma-separated), check if any item matches.
+    """
+
+    values = [v.strip() for v in actual_value.split(",")]
+
+    for val in values:
+        if condition == "equals" and val == expected_value:
+            return True
+        if condition == "not_equals" and val != expected_value:
+            return True
+        if condition == "contains" and expected_value in val:
+            return True
+        if condition == "not_contains" and expected_value not in val:
+            return True
+        if condition == "starts_with" and val.startswith(expected_value):
+            return True
+        if condition == "ends_with" and val.endswith(expected_value):
+            return True
+        if condition == "regex_match":
+            try:
+                if re.search(expected_value, val):
+                    return True
+            except re.error:
+                return False
+
+    return False
+
+
 def test_rules_dialog(selected_rules: list[dict]) -> None:
     """
-    Show a dialog with test results for selected rules.
+    Show a dialog where the user enters a value and tests it against the rule.
+    The rule already defines which attribute and condition to use.
+    For list-type values (e.g. affiliations), enter items separated by commas.
     """
 
-    rule_ids = [r["id"] for r in selected_rules]
-    matches = rules_test(rule_ids)
+    rule = selected_rules[0]
+    attr_name = rule.get("attribute_name", "")
+    condition = rule.get("attribute_condition", "")
+    expected = rule.get("attribute_value", "")
+    cond_label = CONDITION_OPTIONS.get(condition, condition)
 
-    with ui.dialog() as dialog, ui.card().style("min-width: 700px; max-width: 900px;"):
-        ui.label("Test rules result").classes("text-xl font-bold")
+    with ui.dialog() as dialog, ui.card().style("min-width: 600px; max-width: 800px;"):
+        ui.label("Test rule").classes("text-xl font-bold")
+        ui.label(f"{rule.get('name', '')}").classes("text-grey-7")
+        ui.label(
+            f"{attr_name} {cond_label} \"{expected}\""
+        ).classes("text-grey-7 text-sm")
 
-        if not matches:
-            ui.label("No users matched the selected rules.").classes("text-grey-7")
-        else:
-            columns = [
-                {
-                    "name": "username",
-                    "label": "Username",
-                    "field": "username",
-                    "align": "left",
-                },
-                {"name": "email", "label": "Email", "field": "email", "align": "left"},
-                {"name": "realm", "label": "Realm", "field": "realm", "align": "left"},
-                {
-                    "name": "matched_rules",
-                    "label": "Matched Rules",
-                    "field": "matched_rules",
-                    "align": "left",
-                },
-                {
-                    "name": "actions",
-                    "label": "Actions",
-                    "field": "actions",
-                    "align": "left",
-                },
-            ]
-            rows = []
-            for m in matches:
-                all_actions = []
-                for r in m.get("matched_rules", []):
-                    all_actions.extend(r.get("actions", []))
-                rows.append(
-                    {
-                        "username": m.get("username", ""),
-                        "email": m.get("email", ""),
-                        "realm": m.get("realm", ""),
-                        "matched_rules": ", ".join(
-                            r.get("name", str(r.get("id", "")))
-                            for r in m.get("matched_rules", [])
-                        ),
-                        "actions": ", ".join(dict.fromkeys(all_actions)),
-                    }
-                )
+        ui.separator()
 
-            ui.label(f"{len(rows)} user(s) matched").classes("text-grey-7")
-            ui.table(columns=columns, rows=rows).classes("w-full")
+        test_input = ui.input(
+            label=f"Value for {attr_name}",
+            placeholder="For lists, separate with commas",
+        ).classes("w-full").on("keydown.enter", lambda: run_test())
 
-        with ui.row().classes("w-full justify-end mt-4"):
+        result_container = ui.column().classes("w-full mt-2")
+
+        def run_test() -> None:
+            result_container.clear()
+            actual = test_input.value or ""
+
+            matched = _evaluate_condition(condition, actual, expected)
+
+            with result_container:
+                if matched:
+                    with ui.row().classes("items-center gap-2"):
+                        ui.icon("check_circle", color="positive").classes("text-lg")
+                        ui.label("Match!").classes("text-positive font-bold")
+                else:
+                    with ui.row().classes("items-center gap-2"):
+                        ui.icon("cancel", color="negative").classes("text-lg")
+                        ui.label("No match.").classes("text-negative")
+
+        with ui.row().classes("w-full justify-end mt-4 gap-2"):
+            ui.button("Test", icon="science", on_click=run_test).props("color=primary")
             ui.button("Close", on_click=dialog.close).props("flat")
 
     dialog.open()
@@ -1995,7 +1974,6 @@ def _show_rules_help() -> None:
                         ("Activate", "Automatically activate the user account"),
                         ("Deny", "Deactivate the user account"),
                         ("Assign to group", "Add the user to a specific group"),
-                        ("Admin domains", "Set admin domains for the user"),
                     ]:
                         with ui.row().classes("items-start gap-2"):
                             ui.label(f"• {action}").classes(
@@ -2021,9 +1999,10 @@ def _show_rules_help() -> None:
             with ui.column().classes("gap-1"):
                 ui.label("Testing").classes("text-lg font-semibold")
                 ui.label(
-                    "Use the test button on each rule row to see which existing "
-                    "users would match. Testing uses stored user data, not live "
-                    "login attributes."
+                    "Use the test button on each rule row to check whether a "
+                    "value would match the rule. Enter the value you want to test "
+                    "against the rule's attribute and condition. For list-type "
+                    "attributes (e.g. affiliations), enter items separated by commas."
                 ).classes("text-body2 text-grey-8")
 
         with ui.row().classes("w-full justify-end mt-4"):
