@@ -1974,8 +1974,9 @@ def _show_rules_help() -> None:
 
         with ui.column().classes("gap-4"):
             ui.label(
-                "Provisioning rules automatically provision user accounts based on "
-                "attributes received at login. Rules are evaluated once per login."
+                "Provisioning rules automatically update user accounts based on "
+                "attributes received at login. "
+                "Rules are evaluated each time a user logs in."
             ).classes("text-body1")
 
             ui.separator()
@@ -1983,19 +1984,23 @@ def _show_rules_help() -> None:
             with ui.column().classes("gap-1"):
                 ui.label("Rule matching").classes("text-lg font-semibold")
                 ui.label(
-                    "Each rule specifies an attribute name (e.g. preferred_username, "
-                    "email, domain), a condition (equals, contains, starts with, etc.), "
-                    "and a value to match against. If a user's attribute matches, "
-                    "the rule's actions are applied."
+                    "Each rule specifies an attribute name (for example "
+                    "preferred_username, email, or domain), a condition (such as "
+                    "equals, contains or starts with), and a value to compare against. "
+                    "If the condition matches the user's attribute value, the rule's "
+                    "actions are applied."
                 ).classes("text-body2 text-grey-8")
 
             with ui.column().classes("gap-1"):
                 ui.label("Available actions").classes("text-lg font-semibold")
                 with ui.column().classes("gap-0 pl-2"):
                     for action, desc in [
-                        ("Activate", "Automatically activate the user account"),
-                        ("Deactivate", "Deactivate the user account"),
-                        ("Assign user to group", "Add the user to a specific group"),
+                        ("Activate", "Automatically activate the user account."),
+                        ("Deactivate", "Prevent the user from accessing the service."),
+                        (
+                            "Assign user to group",
+                            "Place the user in a specific group.",
+                        ),
                     ]:
                         with ui.row().classes("items-start gap-2"):
                             ui.label(f"• {action}").classes(
@@ -2006,40 +2011,43 @@ def _show_rules_help() -> None:
             with ui.column().classes("gap-1"):
                 ui.label("Scoping").classes("text-lg font-semibold")
                 ui.label(
-                    "The Realm field limits which users the rule applies to. "
-                    "Local administrators can only create rules for their own realm(s)."
+                    "The Realm field limits which login domains the rule applies to. "
+                    "Local administrators can only create rules for the realms "
+                    "assigned to their account."
                 ).classes("text-body2 text-grey-8")
 
             with ui.column().classes("gap-1"):
-                ui.label("Rule evaluation order").classes("text-lg font-semibold")
+                ui.label("Rule evaluation").classes("text-lg font-semibold")
                 ui.label(
-                    "All enabled rules are evaluated for every login — the order "
-                    "they are listed in does not matter for activate/deactivate. "
-                    "If conflicting rules match:"
+                    "All enabled rules are evaluated on every login. "
+                    "If rules conflict:"
                 ).classes("text-body2 text-grey-8")
                 with ui.column().classes("gap-0 pl-2"):
                     for line in [
-                        "Deactivate always wins over activate.",
-                        "For group assignment, the last matching rule wins — "
-                        "a user can only belong to one group.",
+                        "Deactivate always wins over Activate.",
+                        "For group assignment, the last matching rule wins. "
+                        "A user can only belong to one group.",
                     ]:
                         ui.label(f"• {line}").classes("text-body2 text-grey-8")
 
             with ui.column().classes("gap-1"):
                 ui.label("Manual override").classes("text-lg font-semibold")
                 ui.label(
-                    "If an admin manually deactivates a user, provisioning rules will "
-                    "not override that decision. The user stays deactivated until "
-                    "an admin reactivates them."
+                    "If an administrator manually deactivates a user, provisioning "
+                    "rules that would activate that user will not automatically "
+                    "override that decision. "
+                    "The user will remain deactivated until an administrator "
+                    "reactivates the account."
                 ).classes("text-body2 text-grey-8")
 
             with ui.column().classes("gap-1"):
                 ui.label("Testing").classes("text-lg font-semibold")
                 ui.label(
-                    "Use the test button on each rule row to check whether a "
-                    "value would match the rule. Enter the value you want to test "
-                    "against the rule's attribute and condition. For list-type "
-                    "attributes (e.g. affiliations), enter items separated by commas."
+                    "Use the Test button on each rule to check whether a value would "
+                    "match the rule. Enter the value you want to test against the "
+                    "rule's attribute and condition. "
+                    "For list-type attributes (for example affiliations), enter "
+                    "multiple values separated by commas."
                 ).classes("text-body2 text-grey-8")
 
         with ui.row().classes("w-full justify-end mt-4"):
@@ -2081,6 +2089,12 @@ def rules_page() -> None:
             ).style("min-width: 160px;").on(
                 "click", lambda: create_rule_dialog(page=rules_page)
             )
+
+    ui.label(
+        "Rules are evaluated on every login. "
+        "Deactivate overrides Activate. "
+        "The last matching rule determines the user's group."
+    ).classes("text-body2 text-black")
 
     rules_data = rules_get()
     rules_list = rules_data.get("result", []) if rules_data else []
