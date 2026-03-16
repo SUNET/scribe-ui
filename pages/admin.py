@@ -1471,7 +1471,7 @@ def create_rule_dialog(page: callable) -> None:
 
     with ui.dialog() as dialog:
         with ui.card().style("width: 650px; max-width: 90vw;"):
-            ui.label("Create attribute rule").classes("text-2xl font-bold")
+            ui.label("Create provisioning rule").classes("text-2xl font-bold")
 
             name_input = ui.input("Rule name").classes("w-full").props("outlined")
 
@@ -1517,7 +1517,7 @@ def create_rule_dialog(page: callable) -> None:
 
             ui.label("Actions").classes("text-lg font-semibold mt-2")
             with ui.row().classes("w-full gap-4"):
-                activate_cb = ui.checkbox("Auto-activate user")
+                activate_cb = ui.checkbox("Activate user")
                 deny_cb = ui.checkbox("Deactivate user")
 
             activate_cb.on_value_change(
@@ -1530,7 +1530,7 @@ def create_rule_dialog(page: callable) -> None:
             group_select = (
                 ui.select(
                     group_options,
-                    label="Assign to group (optional)",
+                    label="Assign user to group (optional)",
                     clearable=True,
                 )
                 .classes("w-full")
@@ -1629,7 +1629,7 @@ def edit_rule_dialog(rule: dict, page: callable) -> None:
 
     with ui.dialog() as dialog:
         with ui.card().style("width: 650px; max-width: 90vw;"):
-            ui.label("Edit attribute rule").classes("text-2xl font-bold")
+            ui.label("Edit provisioning rule").classes("text-2xl font-bold")
 
             name_input = (
                 ui.input("Rule name", value=rule["name"])
@@ -1698,7 +1698,7 @@ def edit_rule_dialog(rule: dict, page: callable) -> None:
             ui.label("Actions").classes("text-lg font-semibold mt-2")
             with ui.row().classes("w-full gap-4"):
                 activate_cb = ui.checkbox(
-                    "Auto-activate user", value=rule.get("activate", False)
+                    "Activate user", value=rule.get("activate", False)
                 )
                 deny_cb = ui.checkbox("Deactivate user", value=rule.get("deny", False))
 
@@ -1718,7 +1718,7 @@ def edit_rule_dialog(rule: dict, page: callable) -> None:
             group_select = (
                 ui.select(
                     group_options,
-                    label="Assign to group (optional)",
+                    label="Assign user to group (optional)",
                     value=group_value,
                     clearable=True,
                 )
@@ -1991,7 +1991,7 @@ def _show_rules_help() -> None:
                     for action, desc in [
                         ("Activate", "Automatically activate the user account"),
                         ("Deactivate", "Deactivate the user account"),
-                        ("Assign to group", "Add the user to a specific group"),
+                        ("Assign user to group", "Add the user to a specific group"),
                     ]:
                         with ui.row().classes("items-start gap-2"):
                             ui.label(f"• {action}").classes(
@@ -2005,6 +2005,21 @@ def _show_rules_help() -> None:
                     "The Realm field limits which users the rule applies to. "
                     "Local administrators can only create rules for their own realm(s)."
                 ).classes("text-body2 text-grey-8")
+
+            with ui.column().classes("gap-1"):
+                ui.label("Rule evaluation order").classes("text-lg font-semibold")
+                ui.label(
+                    "All enabled rules are evaluated for every login — the order "
+                    "they are listed in does not matter for activate/deactivate. "
+                    "If conflicting rules match:"
+                ).classes("text-body2 text-grey-8")
+                with ui.column().classes("gap-0 pl-2"):
+                    for line in [
+                        "Deactivate always wins over activate.",
+                        "For group assignment, the last matching rule wins — "
+                        "a user can only belong to one group.",
+                    ]:
+                        ui.label(f"• {line}").classes("text-body2 text-grey-8")
 
             with ui.column().classes("gap-1"):
                 ui.label("Manual override").classes("text-lg font-semibold")
@@ -2067,7 +2082,7 @@ def rules_page() -> None:
     rules_list = rules_data.get("result", []) if rules_data else []
 
     if not rules_list:
-        ui.label("No attribute rules defined yet.").classes("text-lg mt-4")
+        ui.label("No provisioning rules defined yet.").classes("text-lg mt-4")
     else:
         for idx, rule in enumerate(rules_list):
             rule["_idx"] = idx
