@@ -1962,6 +1962,152 @@ def test_rules_dialog(selected_rules: list[dict]) -> None:
     dialog.open()
 
 
+def test_all_rules_dialog() -> None:
+    """
+    Show a dialog where the user enters attribute name/value pairs and tests
+    them against all enabled rules to see which ones would match.
+    """
+
+    rules_data = rules_get()
+    all_rules = rules_data.get("result", []) if rules_data else []
+    enabled_rules = [r for r in all_rules if r.get("enabled")]
+
+    onboarding_attrs = attributes_get()
+    attr_names = [a["name"] for a in onboarding_attrs] if onboarding_attrs else []
+
+    with ui.dialog() as dialog, ui.card().style("min-width: 600px; max-width: 800px;"):
+        ui.label("Test all rules").classes("text-xl font-bold")
+        ui.label(
+            "Enter attribute values to see which enabled rules would match."
+        ).classes("text-grey-7")
+
+        ui.separator()
+
+        attr_rows: list[dict] = []
+        attrs_container = ui.column().classes("w-full gap-2")
+
+        def add_attr_row(name: str | None = None, value: str = "") -> None:
+            row = {}
+            with attrs_container:
+                with ui.row().classes("w-full items-center gap-2") as row_el:
+                    row["element"] = row_el
+                    row["name"] = ui.select(
+                        attr_names,
+                        label="Attribute",
+                        value=name,
+                        with_input=True,
+                        new_value_mode="add",
+                    ).classes("w-1/3")
+                    row["value"] = ui.input(
+                        label="Value",
+                        value=value,
+                        placeholder="For lists, separate with commas",
+                    ).classes("flex-grow").on("keydown.enter", lambda: run_test())
+                    ui.button(
+                        icon="close",
+                        on_click=lambda r=row: remove_attr_row(r),
+                    ).props("flat round dense color=grey-6 size=sm")
+            attr_rows.append(row)
+
+        def remove_attr_row(row: dict) -> None:
+            if len(attr_rows) <= 1:
+                return
+            attrs_container.remove(row["element"])
+            attr_rows.remove(row)
+
+        add_attr_row()
+
+        ui.button(
+            "Add attribute", icon="add", on_click=lambda: add_attr_row()
+        ).props("flat dense color=primary")
+
+        result_container = ui.column().classes("w-full mt-2")
+
+        def run_test() -> None:
+            result_container.clear()
+
+            user_attrs = {}
+            for row in attr_rows:
+                name = row["name"].value
+                value = row["value"].value
+                if name and value:
+                    user_attrs[name] = value
+
+            if not user_attrs:
+                with result_container:
+                    ui.label("Enter at least one attribute and value.").classes(
+                        "text-negative"
+                    )
+                return
+
+            matched_rules = []
+            unmatched_rules = []
+
+            for rule in enabled_rules:
+                attr_name = rule.get("attribute_name", "")
+                condition = rule.get("attribute_condition", "")
+                expected = rule.get("attribute_value", "")
+
+                actual = user_attrs.get(attr_name)
+                if actual is not None and _evaluate_condition(
+                    condition, actual, expected
+                ):
+                    matched_rules.append(rule)
+                else:
+                    unmatched_rules.append(rule)
+
+            with result_container:
+                for rule in matched_rules:
+                    cond_label = CONDITION_OPTIONS.get(
+                        rule.get("attribute_condition", ""),
+                        rule.get("attribute_condition", ""),
+                    )
+                    actions = []
+                    if rule.get("activate"):
+                        actions.append("Activate")
+                    if rule.get("deny"):
+                        actions.append("Deactivate")
+                    if rule.get("assign_to_group"):
+                        actions.append("Assign to group")
+                    with ui.row().classes("items-center gap-2"):
+                        ui.icon("check_circle", color="positive").classes("text-lg")
+                        ui.label(f"{rule.get('name', '')}").classes(
+                            "text-positive font-bold"
+                        )
+                        ui.label(
+                            f'{rule.get("attribute_name")} {cond_label} '
+                            f'"{rule.get("attribute_value")}"'
+                        ).classes("text-grey-7 text-sm")
+                    if actions:
+                        ui.label(
+                            f"Actions: {', '.join(actions)}"
+                        ).classes("text-body2 text-grey-8 ml-8")
+
+                for rule in unmatched_rules:
+                    cond_label = CONDITION_OPTIONS.get(
+                        rule.get("attribute_condition", ""),
+                        rule.get("attribute_condition", ""),
+                    )
+                    with ui.row().classes("items-center gap-2"):
+                        ui.icon("cancel", color="negative").classes("text-lg")
+                        ui.label(f"{rule.get('name', '')}").classes("text-negative")
+                        ui.label(
+                            f'{rule.get("attribute_name")} {cond_label} '
+                            f'"{rule.get("attribute_value")}"'
+                        ).classes("text-grey-7 text-sm")
+
+                if not matched_rules and not unmatched_rules:
+                    ui.label("No enabled rules to test.").classes("text-grey-7")
+
+        with ui.row().classes("w-full justify-end mt-4 gap-2"):
+            ui.button("Test", icon="science", on_click=run_test).props(
+                "color=primary"
+            )
+            ui.button("Close", on_click=dialog.close).props("flat")
+
+    dialog.open()
+
+
 def _show_rules_help() -> None:
     """
     Show a help dialog explaining how onboarding rules work.
@@ -2088,6 +2234,11 @@ def rules_page() -> None:
                 "color=black flat"
             ).style("min-width: 160px;").on(
                 "click", lambda: create_rule_dialog(page=rules_page)
+            )
+            ui.button("Test all rules").classes(
+                "default-style"
+            ).props("color=black flat").style("min-width: 160px; background-color: white;").on(
+                "click", lambda: test_all_rules_dialog()
             )
 
     ui.label(
