@@ -1595,6 +1595,7 @@ def _do_create_rule(**kwargs) -> bool:
     result = rule_create(data)
 
     if result:
+        log_action("create_rule")
         ui.notify("Rule created successfully.", color="positive")
         return True
 
@@ -1781,6 +1782,7 @@ def _do_update_rule(**kwargs) -> bool:
     }
 
     if rule_update(kwargs["rule_id"], data):
+        log_action("edit_rule")
         ui.notify("Rule updated successfully.", color="positive")
         return True
 
@@ -1822,6 +1824,7 @@ def _do_delete_rule(rule_id: int) -> None:
     """
 
     if rule_delete(rule_id):
+        log_action("delete_rule")
         ui.notify("Rule deleted.", color="positive")
     else:
         ui.notify("Failed to delete rule.", color="negative")
@@ -1870,6 +1873,7 @@ def _do_add_attribute(name: str, description: str, example: str) -> None:
     )
 
     if result:
+        log_action("create_attribute")
         ui.notify("Attribute added.", color="positive")
     else:
         ui.notify("Failed to add attribute. It may already exist.", color="negative")
@@ -2188,6 +2192,7 @@ def rules_page() -> None:
             new_enabled = msg.args["enabled"]
             result = rule_update(rule_id, {"enabled": new_enabled})
             if result:
+                log_action("toggle_rule")
                 ui.notify(
                     f"Rule {'enabled' if new_enabled else 'disabled'}.",
                     color="positive",
@@ -2323,6 +2328,7 @@ def _do_delete_attribute(attr: dict) -> None:
 
     attribute_delete(attr["id"])
 
+    log_action("delete_attribute")
     ui.notify(f"Deleted attribute '{attr['name']}'.", color="positive")
     ui.navigate.to("/admin/rules")
 
