@@ -69,8 +69,9 @@ def create() -> None:
 
         ui.label("User settings").classes("text-3xl font-bold mb-4")
 
-        minutes = userdata["transcribed_seconds"] // 60
-        seconds = userdata["transcribed_seconds"] % 60
+        total_seconds = userdata["transcribed_seconds"]
+        hours = int(total_seconds) // 3600
+        minutes = int(total_seconds) % 3600 // 60
 
         # -- Profile section --
         ui.label("Profile").classes("text-lg font-semibold mb-2")
@@ -99,7 +100,7 @@ def create() -> None:
                 ui.label("Transcribed time").classes(
                     "font-medium text-gray-600"
                 ).style("min-width: 140px;")
-                ui.label(f"{minutes} min {seconds} s").classes("text-gray-900")
+                ui.label(f"{hours}h {minutes}min").classes("text-gray-900")
 
             with ui.row().classes("items-center gap-3"):
                 ui.icon("public", color="black").style("font-size: 20px;")
