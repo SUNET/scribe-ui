@@ -2268,15 +2268,15 @@ def rules_page() -> None:
                 "click", lambda: _show_rules_help()
             )
         with ui.element("div").style("display: flex; gap: 10px;"):
-            ui.button("Add rule").classes("default-style").props(
-                "color=black flat"
-            ).style("min-width: 160px;").on(
-                "click", lambda: create_rule_dialog(page=rules_page)
-            )
             ui.button("Simulate provisioning").classes(
                 "default-style"
             ).props("color=black flat").style("min-width: 160px; background-color: white;").on(
                 "click", lambda: test_all_rules_dialog()
+            )
+            ui.button("Add rule").classes("default-style").props(
+                "color=black flat"
+            ).style("min-width: 160px;").on(
+                "click", lambda: create_rule_dialog(page=rules_page)
             )
 
     ui.label(
