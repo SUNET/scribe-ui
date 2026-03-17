@@ -97,6 +97,9 @@ jobs_columns = [
 
 default_styles = """
     <style>
+        :root {
+            --banner-offset: 0px;
+        }
         .q-chip {
             background-color: #d3ecbe !important;
             color: #000000 !important;
@@ -340,12 +343,21 @@ def _show_announcement_banners() -> None:
 
     dismissed = app.storage.user.get("dismissed_announcements", [])
 
+    visible_count = sum(
+        1 for a in announcements if a.get("id") not in dismissed
+    )
+
+    if visible_count > 0:
+        ui.add_head_html(
+            f"<style>:root {{ --banner-offset: {visible_count * 40}px; }}</style>"
+        )
+
     for announcement in announcements:
         ann_id = announcement.get("id")
         if ann_id in dismissed:
             continue
 
-        banner_container = ui.element("div").style(
+        banner_container = ui.element("div").classes("announcement-banner").style(
             "background-color: #e3f2fd; border-bottom: 1px solid #90caf9;"
             " padding: 8px 20px; display: flex; align-items: center;"
             " justify-content: space-between;"

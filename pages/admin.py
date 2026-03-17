@@ -276,7 +276,7 @@ def edit_group(group_id: str) -> None:
             pagination=20,
             on_select=lambda e: None,
         ).style(
-            "width: 100%; box-shadow: none; font-size: 18px; height: calc(100vh - 550px);"
+            "width: 100%; box-shadow: none; font-size: 18px; height: calc(100vh - 550px - var(--banner-offset));"
         )
 
         users_table.selected = [
@@ -493,7 +493,7 @@ def statistics(group_id: str) -> None:
                     rows=user_rows,
                     pagination=20,
                 ).style(
-                    "width: 100%; box-shadow: none; font-size: 16px; margin: auto; height: calc(100vh - 160px);"
+                    "width: 100%; box-shadow: none; font-size: 16px; margin: auto; height: calc(100vh - 160px - var(--banner-offset));"
                 )
 
                 with stats_table.add_slot("top-right"):
@@ -543,7 +543,7 @@ def statistics(group_id: str) -> None:
                     rows=job_queue,
                     pagination=20,
                 ).style(
-                    "width: 100%; box-shadow: none; font-size: 16px; margin: auto; height: calc(100vh - 160px);"
+                    "width: 100%; box-shadow: none; font-size: 16px; margin: auto; height: calc(100vh - 160px - var(--banner-offset));"
                 )
 
                 with stats_table.add_slot("top-right"):
@@ -595,7 +595,7 @@ def create() -> None:
                 )
                 return
 
-            with ui.scroll_area().style("height: calc(100vh - 160px); width: 100%;"):
+            with ui.scroll_area().style("height: calc(100vh - 160px - var(--banner-offset)); width: 100%;"):
                 groups = sorted(
                     groups_get()["result"],
                     key=lambda x: (
@@ -751,7 +751,7 @@ def users() -> None:
             pagination=20,
             on_select=lambda e: None,
         ).style(
-            "width: 100%; box-shadow: none; font-size: 18px; height: calc(100vh - 300px);"
+            "width: 100%; box-shadow: none; font-size: 18px; height: calc(100vh - 300px - var(--banner-offset));"
         )
 
         with users_table.add_slot("top-right"):
@@ -760,58 +760,59 @@ def users() -> None:
             ).add_slot("append"):
                 ui.icon("search")
 
-    with ui.row().style(
-        "justify-content: flex-end; width: 100%; padding: 16px; gap: 8px;"
-    ):
-        ui.button("Enable").classes("button-close").props("color=black flat").style(
-            "width: 150px"
-        ).on("click", lambda: set_active_status(users_table.selected, True))
-        ui.button("Disable").classes("delete-style").props("color=black flat").on(
-            "click", lambda: set_active_status(users_table.selected, False)
-        )
-        ui.button("Domains").classes("button-close").props("color=black flat").style(
-            "width: 150px"
-        ).on("click", lambda: set_domains(users_table.selected, users))
-        ui.button("Make admin").classes("button-close").props("color=black flat").style(
-            "width: 150px"
-        ).on("click", lambda: set_admin_status(users_table.selected, True, None, ""))
-        ui.button("Remove admin").classes("delete-style").props("color=black flat").on(
-            "click", lambda: set_admin_status(users_table.selected, False, None, "")
-        )
+        with users_table.add_slot("bottom"):
+            with ui.row().style(
+                "justify-content: flex-end; width: 100%; padding: 8px 0; gap: 8px;"
+            ):
+                ui.button("Enable").classes("button-close").props("color=black flat").style(
+                    "width: 150px"
+                ).on("click", lambda: set_active_status(users_table.selected, True))
+                ui.button("Disable").classes("delete-style").props("color=black flat").on(
+                    "click", lambda: set_active_status(users_table.selected, False)
+                )
+                ui.button("Domains").classes("button-close").props("color=black flat").style(
+                    "width: 150px"
+                ).on("click", lambda: set_domains(users_table.selected, users))
+                ui.button("Make admin").classes("button-close").props("color=black flat").style(
+                    "width: 150px"
+                ).on("click", lambda: set_admin_status(users_table.selected, True, None, ""))
+                ui.button("Remove admin").classes("delete-style").props("color=black flat").on(
+                    "click", lambda: set_admin_status(users_table.selected, False, None, "")
+                )
 
-        def confirm_remove_user():
-            selected = users_table.selected
-            if not selected:
-                ui.notify("No users selected", type="warning")
-                return
+                def confirm_remove_user():
+                    selected = users_table.selected
+                    if not selected:
+                        ui.notify("No users selected", type="warning")
+                        return
 
-            usernames = ", ".join(u["username"] for u in selected)
+                    usernames = ", ".join(u["username"] for u in selected)
 
-            with ui.dialog() as dialog:
-                with ui.card():
-                    ui.label("Remove users").classes("text-h6")
-                    ui.label(
-                        f"Are you sure you want to remove: {usernames}? "
-                        "Statistics will be preserved until all associated data has been cleaned up."
-                    ).classes("text-subtitle2").style("margin-bottom: 10px;")
+                    with ui.dialog() as dialog:
+                        with ui.card():
+                            ui.label("Remove users").classes("text-h6")
+                            ui.label(
+                                f"Are you sure you want to remove: {usernames}? "
+                                "Statistics will be preserved until all associated data has been cleaned up."
+                            ).classes("text-subtitle2").style("margin-bottom: 10px;")
 
-                    with ui.row().classes("justify-between w-full"):
-                        ui.button("Cancel", on_click=lambda: dialog.close()).props(
-                            "color=black"
-                        )
-                        ui.button(
-                            "Remove",
-                            on_click=lambda: (
-                                dialog.close(),
-                                remove_user(selected),
-                            ),
-                        ).props("color=red")
+                            with ui.row().classes("justify-between w-full"):
+                                ui.button("Cancel", on_click=lambda: dialog.close()).props(
+                                    "color=black"
+                                )
+                                ui.button(
+                                    "Remove",
+                                    on_click=lambda: (
+                                        dialog.close(),
+                                        remove_user(selected),
+                                    ),
+                                ).props("color=red")
 
-            dialog.open()
+                    dialog.open()
 
-        ui.button("Remove user").classes("delete-style").props("color=black flat").on(
-            "click", confirm_remove_user
-        )
+                ui.button("Remove user").classes("delete-style").props("color=black flat").on(
+                    "click", confirm_remove_user
+                )
 
 
 @ui.page("/health")
@@ -1406,7 +1407,7 @@ def customers() -> None:
         )
         return
 
-    with ui.scroll_area().style("height: calc(100vh - 160px); width: 100%;"):
+    with ui.scroll_area().style("height: calc(100vh - 160px - var(--banner-offset)); width: 100%;"):
         customers_list = sorted(
             customers_data["result"], key=lambda x: x["name"].lower()
         )
