@@ -1964,8 +1964,8 @@ def test_rules_dialog(selected_rules: list[dict]) -> None:
 
 def test_all_rules_dialog() -> None:
     """
-    Show a dialog where the user enters attribute name/value pairs and tests
-    them against all enabled rules to see which ones would match.
+    Show a dialog where the user enters attribute name/value pairs and
+    simulates provisioning against all enabled rules.
     """
 
     rules_data = rules_get()
@@ -1975,10 +1975,15 @@ def test_all_rules_dialog() -> None:
     onboarding_attrs = attributes_get()
     attr_names = [a["name"] for a in onboarding_attrs] if onboarding_attrs else []
 
+    all_groups = groups_get()
+    group_names: dict[int, str] = {}
+    if all_groups and "result" in all_groups:
+        group_names = {g["id"]: g["name"] for g in all_groups["result"]}
+
     with ui.dialog() as dialog, ui.card().style("min-width: 600px; max-width: 800px;"):
-        ui.label("Test all rules").classes("text-xl font-bold")
+        ui.label("Simulate provisioning").classes("text-xl font-bold")
         ui.label(
-            "Enter attribute values to see which enabled rules would match."
+            "Enter attribute values to simulate what would happen when a user logs in."
         ).classes("text-grey-7")
 
         ui.separator()
@@ -2099,8 +2104,41 @@ def test_all_rules_dialog() -> None:
                 if not matched_rules and not unmatched_rules:
                     ui.label("No enabled rules to test.").classes("text-grey-7")
 
+                # Final provisioning result summary
+                ui.separator().classes("my-2")
+                ui.label("Simulated result").classes("font-bold")
+                if not matched_rules:
+                    ui.label("None").classes("text-grey-7")
+                else:
+                    will_activate = any(r.get("activate") for r in matched_rules)
+                    will_deny = any(r.get("deny") for r in matched_rules)
+                    # Last matching rule with a group wins
+                    final_group = None
+                    for r in matched_rules:
+                        grp = r.get("assign_to_group")
+                        if grp:
+                            try:
+                                final_group = int(grp)
+                            except (ValueError, TypeError):
+                                pass
+
+                    results = []
+                    if will_deny:
+                        results.append("User deactivated")
+                    elif will_activate:
+                        results.append("User activated")
+                    if final_group and final_group in group_names:
+                        results.append(
+                            f"User assigned to group: {group_names[final_group]}"
+                        )
+                    if results:
+                        for r in results:
+                            ui.label(r)
+                    else:
+                        ui.label("None").classes("text-grey-7")
+
         with ui.row().classes("w-full justify-end mt-4 gap-2"):
-            ui.button("Test", icon="science", on_click=run_test).props(
+            ui.button("Simulate", icon="science", on_click=run_test).props(
                 "color=primary"
             )
             ui.button("Close", on_click=dialog.close).props("flat")
@@ -2235,7 +2273,7 @@ def rules_page() -> None:
             ).style("min-width: 160px;").on(
                 "click", lambda: create_rule_dialog(page=rules_page)
             )
-            ui.button("Test all rules").classes(
+            ui.button("Simulate provisioning").classes(
                 "default-style"
             ).props("color=black flat").style("min-width: 160px; background-color: white;").on(
                 "click", lambda: test_all_rules_dialog()
