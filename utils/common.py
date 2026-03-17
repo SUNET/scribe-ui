@@ -327,6 +327,53 @@ def logout() -> None:
     ui.navigate.to(settings.OIDC_APP_LOGOUT_ROUTE)
 
 
+def _show_announcement_banners() -> None:
+    """Show active announcement banners below the header."""
+
+    user_data = get_user_data()
+    if not user_data:
+        return
+
+    announcements = user_data.get("announcements", [])
+    if not announcements:
+        return
+
+    dismissed = app.storage.user.get("dismissed_announcements", [])
+
+    for announcement in announcements:
+        ann_id = announcement.get("id")
+        if ann_id in dismissed:
+            continue
+
+        banner_container = ui.element("div").style(
+            "background-color: #e3f2fd; border-bottom: 1px solid #90caf9;"
+            " padding: 8px 20px; display: flex; align-items: center;"
+            " justify-content: space-between;"
+            " margin-left: -2rem; margin-right: -2rem; margin-top: -1rem;"
+            " width: calc(100% + 4rem);"
+        )
+
+        with banner_container:
+            with ui.element("div").style(
+                "display: flex; align-items: center; gap: 10px; flex: 1;"
+            ):
+                ui.icon("campaign", size="sm").style("color: #1565c0;")
+                ui.html(announcement.get("message", "")).style(
+                    "color: #000000; font-size: 0.95rem;"
+                )
+
+            def dismiss(a_id=ann_id, container=banner_container):
+                current = app.storage.user.get("dismissed_announcements", [])
+                if a_id not in current:
+                    current.append(a_id)
+                    app.storage.user["dismissed_announcements"] = current
+                container.set_visibility(False)
+
+            ui.button(icon="close", on_click=dismiss).props(
+                "flat round dense size=sm color=grey-7"
+            )
+
+
 def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None:
     """
     Initialize the page with a header and background color.
@@ -424,6 +471,7 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
         system_items = [
             ("/health", "health_and_safety", "System status"),
             ("/admin/analytics", "analytics", "Activity overview"),
+            ("/admin/announcements", "campaign", "Announcements"),
         ]
 
         with drawer:
@@ -587,6 +635,8 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                 ).props("flat color=black"):
                     ui.tooltip("Logout")
                 ui.add_head_html("<style>body {background-color: #ffffff;}</style>")
+
+    _show_announcement_banners()
 
 
 def add_timezone_to_timestamp(timestamp: str) -> str:

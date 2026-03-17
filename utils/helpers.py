@@ -806,3 +806,65 @@ def rules_test(rule_ids: list[int]) -> list:
     except requests.RequestException as e:
         print(f"Error testing rules: {e}")
         return []
+
+
+def announcements_get() -> list:
+    """Fetch all announcements from backend."""
+
+    try:
+        res = requests.get(
+            settings.API_URL + "/api/v1/admin/announcements",
+            headers=get_auth_header(),
+        )
+        res.raise_for_status()
+        return res.json().get("result", [])
+    except requests.RequestException as e:
+        print(f"Error fetching announcements: {e}")
+        return []
+
+
+def announcement_create(data: dict) -> dict | None:
+    """Create a new announcement."""
+
+    try:
+        res = requests.post(
+            settings.API_URL + "/api/v1/admin/announcements",
+            headers=get_auth_header(),
+            json=data,
+        )
+        res.raise_for_status()
+        return res.json()
+    except requests.RequestException as e:
+        print(f"Error creating announcement: {e}")
+        return None
+
+
+def announcement_update(announcement_id: int, data: dict) -> dict | None:
+    """Update an existing announcement."""
+
+    try:
+        res = requests.put(
+            settings.API_URL + f"/api/v1/admin/announcements/{announcement_id}",
+            headers=get_auth_header(),
+            json=data,
+        )
+        res.raise_for_status()
+        return res.json()
+    except requests.RequestException as e:
+        print(f"Error updating announcement: {e}")
+        return None
+
+
+def announcement_delete(announcement_id: int) -> bool:
+    """Delete an announcement."""
+
+    try:
+        res = requests.delete(
+            settings.API_URL + f"/api/v1/admin/announcements/{announcement_id}",
+            headers=get_auth_header(),
+        )
+        res.raise_for_status()
+        return True
+    except requests.RequestException as e:
+        print(f"Error deleting announcement: {e}")
+        return False
