@@ -41,7 +41,9 @@ settings = get_settings()
 
 
 def sanitize_filename(filename: str) -> str:
-    """Remove or replace characters that are unsafe in filenames."""
+    """
+    Remove or replace characters that are unsafe in filenames.
+    """
     # Replace path separators and null bytes
     filename = filename.replace("/", "_").replace("\\", "_").replace("\x00", "")
     # Remove other problematic characters
@@ -739,7 +741,9 @@ async def post_file(filedata: bytes, filename: str) -> bool:
 
 
 def format_size(bytes_val) -> str:
-    """Format bytes into a human-readable string."""
+    """
+    Format bytes into a human-readable string.
+    """
     if bytes_val < 1024:
         return f"{bytes_val} B"
     elif bytes_val < 1024 * 1024:

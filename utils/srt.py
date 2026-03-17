@@ -178,7 +178,9 @@ class SRTEditor:
         do_close()
 
     def save_state_for_undo(self) -> None:
-        """Save the current state before making changes."""
+        """
+        Save the current state before making changes.
+        """
 
         self.undo_redo_manager.save_state(self.captions)
         self._update_undo_redo_buttons()
@@ -187,7 +189,9 @@ class SRTEditor:
         self.update_beforeunload_state()
 
     def undo(self) -> None:
-        """Undo the last action."""
+        """
+        Undo the last action.
+        """
         previous_state = self.undo_redo_manager.undo(self.captions)
         if previous_state is not None:
             self.captions = previous_state
@@ -203,7 +207,9 @@ class SRTEditor:
             ui.notify("Nothing to undo", type="info", position="bottom")
 
     def redo(self) -> None:
-        """Redo the last undone action."""
+        """
+        Redo the last undone action.
+        """
         next_state = self.undo_redo_manager.redo(self.captions)
         if next_state is not None:
             self.captions = next_state
@@ -219,7 +225,9 @@ class SRTEditor:
             ui.notify("Nothing to redo", type="info", position="bottom")
 
     def _update_undo_redo_buttons(self) -> None:
-        """Update the enabled state of undo/redo buttons."""
+        """
+        Update the enabled state of undo/redo buttons.
+        """
         if self.undo_button:
             if self.undo_redo_manager.can_undo():
                 self.undo_button.enable()
@@ -237,7 +245,9 @@ class SRTEditor:
                 self.redo_button.props("flat dense color=grey")
 
     def create_undo_redo_panel(self) -> None:
-        """Create the undo/redo buttons panel."""
+        """
+        Create the undo/redo buttons panel.
+        """
         with ui.row().classes("gap-2"):
             self.undo_button = (
                 ui.button("Undo", icon="undo")
@@ -596,7 +606,9 @@ class SRTEditor:
         """
 
         def fmt_ts(ts: str, f: str) -> str:
-            """Format timestamp according to selected format."""
+            """
+            Format timestamp according to selected format.
+            """
             p = ts.replace(",", ":").split(":")
             h, m, s, ms = int(p[0]), int(p[1]), int(p[2]), int(p[3])
             if f == "seconds":
@@ -1217,7 +1229,9 @@ class SRTEditor:
             return
 
         current_time = await ui.run_javascript(
-            """(() => { return document.querySelector("video").currentTime })()"""
+            """
+            (() => { return document.querySelector("video").currentTime })()
+            """
         )
 
         caption = self.get_caption_from_time(current_time)
@@ -1531,7 +1545,9 @@ class SRTEditor:
                                 self.update_caption_card_content(caption)
 
     def update_caption_card_content(self, caption: SRTCaption) -> None:
-        """Update the content of an existing caption card"""
+        """
+        Update the content of an existing caption card
+        """
         card_class = "cursor-pointer border-0 transition-all duration-200 w-full"
 
         if not caption.is_valid:
@@ -2220,7 +2236,9 @@ class SRTEditor:
                         bulk_preview_col = None
 
                         def update_options_visibility():
-                            """Show/hide options based on selected format"""
+                            """
+                            Show/hide options based on selected format
+                            """
                             current_fmt = fmt.value
 
                             # SRT/VTT - no options
@@ -2301,7 +2319,9 @@ class SRTEditor:
                                 return ts  # srt format
 
                             def build_ts_str(cap):
-                                """Build timestamp string based on options"""
+                                """
+                                Build timestamp string based on options
+                                """
                                 if not ts_incl.value:
                                     return ""
                                 parts = []
@@ -2553,7 +2573,9 @@ class SRTEditor:
                                     return ts
 
                                 def build_ts_str(cap):
-                                    """Build timestamp string based on options"""
+                                    """
+                                    Build timestamp string based on options
+                                    """
                                     if not ts_incl.value:
                                         return ""
                                     parts = []
@@ -2566,7 +2588,9 @@ class SRTEditor:
                                     return " - ".join(parts) if parts else ""
 
                                 def export_one(editor):
-                                    """Export a single editor to string content."""
+                                    """
+                                    Export a single editor to string content.
+                                    """
                                     c = None
                                     if fmt.value == "srt":
                                         c = editor.export_srt()
