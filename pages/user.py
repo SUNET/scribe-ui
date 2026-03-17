@@ -23,10 +23,9 @@ from utils.helpers import (
     email_save,
     email_save_notifications,
     email_save_notifications_get,
-    test_all_notifications,
 )
 from utils.settings import get_settings
-from utils.token import get_admin_status, get_user_data, get_bofh_status
+from utils.token import get_admin_status, get_user_data
 
 settings = get_settings()
 

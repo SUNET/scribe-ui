@@ -44,7 +44,6 @@ from utils.helpers import (
     set_active_status,
     set_admin_status,
     set_domains,
-    get_customer_realms,
     user_statistics_get,
     export_customers_csv,
     customers_get,
