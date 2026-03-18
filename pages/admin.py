@@ -706,15 +706,6 @@ def users() -> None:
             ui.button("Disable").classes("delete-style").props("color=black flat").on(
                 "click", lambda: set_active_status(users_table.selected, False)
             )
-            ui.button("Domains").classes("button-close").props("color=black flat").style(
-                "width: 150px"
-            ).on("click", lambda: set_domains(users_table.selected, users))
-            ui.button("Make admin").classes("button-close").props("color=black flat").style(
-                "width: 150px"
-            ).on("click", lambda: set_admin_status(users_table.selected, True, None, ""))
-            ui.button("Remove admin").classes("delete-style").props("color=black flat").on(
-                "click", lambda: set_admin_status(users_table.selected, False, None, "")
-            )
 
             def confirm_remove_user():
                 selected = users_table.selected
@@ -746,9 +737,28 @@ def users() -> None:
 
                 dialog.open()
 
-            ui.button("Remove user").classes("delete-style").props("color=black flat").on(
-                "click", confirm_remove_user
-            )
+            with ui.button("More").classes("button-close").props("color=black flat icon-right=arrow_drop_down"):
+                with ui.menu():
+                    ui.menu_item(
+                        "Domains",
+                        on_click=lambda: set_domains(users_table.selected, users),
+                    )
+                    ui.menu_item(
+                        "Make admin",
+                        on_click=lambda: set_admin_status(
+                            users_table.selected, True, None, ""
+                        ),
+                    )
+                    ui.menu_item(
+                        "Remove admin",
+                        on_click=lambda: set_admin_status(
+                            users_table.selected, False, None, ""
+                        ),
+                    )
+                    ui.menu_item(
+                        "Remove user",
+                        on_click=confirm_remove_user,
+                    )
 
     with ui.card().style("width: 100%; box-shadow: none; align-self: center;"):
         users_table = ui.table(
