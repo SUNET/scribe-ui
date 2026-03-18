@@ -34,7 +34,6 @@ from utils.token import (
     token_refresh,
 )
 from utils.helpers import storage_decrypt, customers_get
-from db.analytics import log_action, log_page_view
 
 MultiPartParser.spool_max_size = 1024 * 1024 * 4096
 settings = get_settings()
@@ -477,10 +476,8 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
     try:
         client = ui.context.client
         current_path = client.page.path if client and client.page else ""
-        if current_path:
-            log_page_view(current_path)
     except Exception:
-        pass
+        current_path = ""
 
     if header_text:
         header_text = f" - {header_text}"
@@ -850,7 +847,6 @@ async def post_file(filedata: bytes, filename: str) -> bool:
                 headers=get_auth_header(),
             )
             response.raise_for_status()
-            log_action("upload")
 
             if response.status_code != 200:
                 raise httpx.HTTPStatusError(
@@ -1226,7 +1222,6 @@ def table_bulk_transcribe(table: ui.table) -> None:
                 with ui.button(
                     "Start transcribing",
                     on_click=lambda: (
-                        log_action("bulk_transcription"),
                         start_transcription(
                             uploadable,
                             f"{language.value} (verbatim)"
@@ -1403,7 +1398,6 @@ def table_bulk_export(table: ui.table) -> None:
             await asyncio.sleep(0)  # yield to UI to update progress
 
         progress_dialog.close()
-        log_action("bulk_export")
         # Use the first editor to show the export dialog with all editors
         first_filename, first_editor = editors[0]
         first_editor.show_export_dialog(first_filename, bulk_editors=editors)
@@ -1446,7 +1440,6 @@ def start_transcription(
                 headers=get_auth_header(),
             )
             response.raise_for_status()
-            log_action("transcription")
         except requests.exceptions.RequestException:
             if response.status_code == 403:
                 error = response.json()["result"]["error"]

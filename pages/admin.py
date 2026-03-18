@@ -25,7 +25,6 @@ from datetime import datetime
 from nicegui import ui
 from utils.common import add_timezone_to_timestamp, default_styles, page_init
 from db.analytics import (
-    log_action,
     get_page_views,
     get_page_views_summary,
     get_views_per_day,
@@ -111,7 +110,6 @@ def create_group_dialog(page: callable) -> None:
                                 "quota_seconds": int(quota.value) * 60,
                             },
                         ),
-                        log_action("create_group"),
                         create_group_dialog.close(),
                         ui.navigate.to("/admin"),
                     ),
@@ -220,7 +218,26 @@ def edit_group(group_id: str) -> None:
         ui.label(f"Error fetching group: {e}").classes("text-lg text-red-500")
         return
 
-    ui.label(f"Edit group: {group['name']}").classes("text-3xl font-bold mb-4")
+    with ui.row().style(
+        "justify-content: space-between; align-items: center; width: 100%;"
+    ):
+        ui.label(f"Edit group: {group['name']}").classes("text-3xl font-bold")
+        with ui.element("div").style("display: flex; gap: 8px;"):
+            ui.button("Save group").classes("default-style").props(
+                "color=black flat"
+            ).style("width: 150px").on(
+                "click",
+                lambda: save_group(
+                    users_table.selected,
+                    name_input.value,
+                    description_input.value,
+                    group_id,
+                    quota.value,
+                ),
+            )
+            ui.button("Cancel").classes("delete-style").props("color=black flat").on(
+                "click", lambda: ui.navigate.to("/admin")
+            )
 
     with ui.card().style("width: 100%; box-shadow: none; align-self: center;"):
         with ui.row().classes("gap-4 w-full"):
@@ -288,25 +305,6 @@ def edit_group(group_id: str) -> None:
                 users_table, "filter"
             ).add_slot("append"):
                 ui.icon("search")
-
-    with ui.row().style(
-        "justify-content: flex-end; width: 100%; padding: 16px; gap: 8px;"
-    ):
-        ui.button("Save group").classes("default-style").props(
-            "color=black flat"
-        ).style("width: 150px").on(
-            "click",
-            lambda: save_group(
-                users_table.selected,
-                name_input.value,
-                description_input.value,
-                group_id,
-                quota.value,
-            ),
-        )
-        ui.button("Cancel").classes("delete-style").props("color=black flat").on(
-            "click", lambda: ui.navigate.to("/admin")
-        )
 
 
 @ui.refreshable
@@ -1598,7 +1596,6 @@ def _do_create_rule(**kwargs) -> bool:
     result = rule_create(data)
 
     if result:
-        log_action("create_rule")
         ui.notify("Rule created successfully.", color="positive")
         return True
 
@@ -1785,7 +1782,6 @@ def _do_update_rule(**kwargs) -> bool:
     }
 
     if rule_update(kwargs["rule_id"], data):
-        log_action("edit_rule")
         ui.notify("Rule updated successfully.", color="positive")
         return True
 
@@ -1827,7 +1823,6 @@ def _do_delete_rule(rule_id: int) -> None:
     """
 
     if rule_delete(rule_id):
-        log_action("delete_rule")
         ui.notify("Rule deleted.", color="positive")
     else:
         ui.notify("Failed to delete rule.", color="negative")
@@ -1876,7 +1871,6 @@ def _do_add_attribute(name: str, description: str, example: str) -> None:
     )
 
     if result:
-        log_action("create_attribute")
         ui.notify("Attribute added.", color="positive")
     else:
         ui.notify("Failed to add attribute. It may already exist.", color="negative")
@@ -2398,7 +2392,6 @@ def rules_page() -> None:
             new_enabled = msg.args["enabled"]
             result = rule_update(rule_id, {"enabled": new_enabled})
             if result:
-                log_action("toggle_rule")
                 ui.notify(
                     f"Rule {'enabled' if new_enabled else 'disabled'}.",
                     color="positive",
@@ -2534,7 +2527,6 @@ def _do_delete_attribute(attr: dict) -> None:
 
     attribute_delete(attr["id"])
 
-    log_action("delete_attribute")
     ui.notify(f"Deleted attribute '{attr['name']}'.", color="positive")
     ui.navigate.to("/admin/rules")
 

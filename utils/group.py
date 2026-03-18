@@ -18,7 +18,6 @@
 import requests
 
 from nicegui import ui
-from db.analytics import log_action
 from utils.settings import get_settings
 from utils.token import get_auth_header
 settings = get_settings()
@@ -56,7 +55,6 @@ class Group:
                                 settings.API_URL + f"/api/v1/admin/groups/{self.group_id}",
                                 headers=get_auth_header(),
                             ),
-                            log_action("delete_group"),
                             delete_group_dialog.close(),
                             ui.navigate.to("/admin"),
                         ),

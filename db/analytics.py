@@ -1,43 +1,9 @@
-import threading
-
 import requests
 
 from utils.settings import get_settings
 from utils.token import get_auth_header
 
 settings = get_settings()
-
-
-def log_action(action: str) -> None:
-    """
-    Log a user action (upload, transcription, export, etc.).
-    """
-    log_page_view(f"/action/{action}")
-
-
-def log_page_view(path: str) -> None:
-    """
-    Log an anonymous page view via the backend API (fire-and-forget).
-    """
-    if not path:
-        return
-    # Capture auth header on the calling thread (NiceGUI storage is thread-local)
-    headers = get_auth_header()
-    threading.Thread(
-        target=_send_page_view, args=(path, headers), daemon=True
-    ).start()
-
-
-def _send_page_view(path: str, headers: dict) -> None:
-    try:
-        requests.post(
-            f"{settings.API_URL}/api/v1/admin/analytics/log",
-            headers=headers,
-            json={"path": path},
-            timeout=2,
-        )
-    except Exception:
-        pass
 
 
 def get_page_views(days: int = 30) -> list[dict]:
