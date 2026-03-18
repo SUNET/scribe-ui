@@ -493,7 +493,7 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
         drawer = ui.left_drawer(value=True, elevated=True).style(
             "background-color: #f5f5f5; padding: 0;"
         )
-        drawer.props(f':mini-width="56" :width="250"')
+        drawer.props(f':mini-width="56" :width="250" :breakpoint="0"')
         if not drawer_open:
             drawer.props(add='mini')
 
