@@ -189,6 +189,10 @@ def edit_group(group_id: str) -> None:
     """
     page_init(use_drawer=True)
 
+    if not get_admin_status():
+        ui.navigate.to("/home")
+        return
+
     ui.add_head_html(default_styles)
     ui.add_head_html(
         """
@@ -314,6 +318,10 @@ def statistics(group_id: str) -> None:
     Page to show statistics of a group with improved layout and design.
     """
     page_init(use_drawer=True)
+
+    if not get_admin_status():
+        ui.navigate.to("/home")
+        return
 
     ui.add_head_html(default_styles)
     ui.add_head_html(
@@ -560,6 +568,10 @@ def create() -> None:
         """
         page_init(use_drawer=True)
 
+        if not get_admin_status():
+            ui.navigate.to("/home")
+            return
+
         ui.add_head_html(default_styles)
         ui.add_head_html(
             """
@@ -666,6 +678,10 @@ def users() -> None:
     Page to show all users.
     """
     page_init(use_drawer=True)
+
+    if not get_admin_status():
+        ui.navigate.to("/home")
+        return
 
     ui.add_head_html(default_styles)
     ui.add_head_html(
@@ -829,6 +845,10 @@ def health() -> None:
     """
 
     page_init(use_drawer=True)
+
+    if not get_admin_status():
+        ui.navigate.to("/home")
+        return
 
     ui.add_head_html(default_styles)
     ui.add_head_html(
@@ -1214,6 +1234,10 @@ def edit_customer(customer_id: str) -> None:
     """
     page_init(use_drawer=True)
 
+    if not get_admin_status():
+        ui.navigate.to("/home")
+        return
+
     ui.add_head_html(default_styles)
     ui.add_head_html(
         """
@@ -1368,6 +1392,10 @@ def customers() -> None:
     Customer management page.
     """
     page_init(use_drawer=True)
+
+    if not get_admin_status():
+        ui.navigate.to("/home")
+        return
 
     ui.add_head_html(default_styles)
     ui.add_head_html(
@@ -2254,6 +2282,10 @@ def rules_page() -> None:
     """
 
     page_init(use_drawer=True)
+
+    if not get_admin_status():
+        ui.navigate.to("/home")
+        return
 
     ui.add_head_html(default_styles)
     ui.add_head_html(
