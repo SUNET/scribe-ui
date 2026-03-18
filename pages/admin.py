@@ -697,7 +697,60 @@ def users() -> None:
         ui.label(f"Error fetching users: {e}").classes("text-lg text-red-500")
         return
 
-    ui.label("Users").classes("text-3xl font-bold mb-4")
+    with ui.row().style(
+        "justify-content: space-between; align-items: center; width: 100%;"
+    ):
+        ui.label("Users").classes("text-3xl font-bold")
+        with ui.element("div").style("display: flex; gap: 8px;"):
+            ui.button("Enable").classes("button-close").props("color=black flat").style(
+                "width: 150px"
+            ).on("click", lambda: set_active_status(users_table.selected, True))
+            ui.button("Disable").classes("delete-style").props("color=black flat").on(
+                "click", lambda: set_active_status(users_table.selected, False)
+            )
+            ui.button("Domains").classes("button-close").props("color=black flat").style(
+                "width: 150px"
+            ).on("click", lambda: set_domains(users_table.selected, users))
+            ui.button("Make admin").classes("button-close").props("color=black flat").style(
+                "width: 150px"
+            ).on("click", lambda: set_admin_status(users_table.selected, True, None, ""))
+            ui.button("Remove admin").classes("delete-style").props("color=black flat").on(
+                "click", lambda: set_admin_status(users_table.selected, False, None, "")
+            )
+
+            def confirm_remove_user():
+                selected = users_table.selected
+                if not selected:
+                    ui.notify("No users selected", type="warning")
+                    return
+
+                usernames = ", ".join(u["username"] for u in selected)
+
+                with ui.dialog() as dialog:
+                    with ui.card():
+                        ui.label("Remove users").classes("text-h6")
+                        ui.label(
+                            f"Are you sure you want to remove: {usernames}? "
+                            "Statistics will be preserved until all associated data has been cleaned up."
+                        ).classes("text-subtitle2").style("margin-bottom: 10px;")
+
+                        with ui.row().classes("justify-between w-full"):
+                            ui.button("Cancel", on_click=lambda: dialog.close()).props(
+                                "color=black"
+                            )
+                            ui.button(
+                                "Remove",
+                                on_click=lambda: (
+                                    dialog.close(),
+                                    remove_user(selected),
+                                ),
+                            ).props("color=red")
+
+                dialog.open()
+
+            ui.button("Remove user").classes("delete-style").props("color=black flat").on(
+                "click", confirm_remove_user
+            )
 
     with ui.card().style("width: 100%; box-shadow: none; align-self: center;"):
         users_table = ui.table(
@@ -753,58 +806,6 @@ def users() -> None:
         ).style(
             "width: 100%; box-shadow: none; font-size: 18px; height: calc(100vh - 350px - var(--banner-offset, 0px));"
         )
-
-        with users_table.add_slot("top-left"):
-            with ui.row().classes("items-center gap-2"):
-                ui.button("Enable").classes("button-close").props("color=black flat").style(
-                    "width: 150px"
-                ).on("click", lambda: set_active_status(users_table.selected, True))
-                ui.button("Disable").classes("delete-style").props("color=black flat").on(
-                    "click", lambda: set_active_status(users_table.selected, False)
-                )
-                ui.button("Domains").classes("button-close").props("color=black flat").style(
-                    "width: 150px"
-                ).on("click", lambda: set_domains(users_table.selected, users))
-                ui.button("Make admin").classes("button-close").props("color=black flat").style(
-                    "width: 150px"
-                ).on("click", lambda: set_admin_status(users_table.selected, True, None, ""))
-                ui.button("Remove admin").classes("delete-style").props("color=black flat").on(
-                    "click", lambda: set_admin_status(users_table.selected, False, None, "")
-                )
-
-                def confirm_remove_user():
-                    selected = users_table.selected
-                    if not selected:
-                        ui.notify("No users selected", type="warning")
-                        return
-
-                    usernames = ", ".join(u["username"] for u in selected)
-
-                    with ui.dialog() as dialog:
-                        with ui.card():
-                            ui.label("Remove users").classes("text-h6")
-                            ui.label(
-                                f"Are you sure you want to remove: {usernames}? "
-                                "Statistics will be preserved until all associated data has been cleaned up."
-                            ).classes("text-subtitle2").style("margin-bottom: 10px;")
-
-                            with ui.row().classes("justify-between w-full"):
-                                ui.button("Cancel", on_click=lambda: dialog.close()).props(
-                                    "color=black"
-                                )
-                                ui.button(
-                                    "Remove",
-                                    on_click=lambda: (
-                                        dialog.close(),
-                                        remove_user(selected),
-                                    ),
-                                ).props("color=red")
-
-                    dialog.open()
-
-                ui.button("Remove user").classes("delete-style").props("color=black flat").on(
-                    "click", confirm_remove_user
-                )
 
         with users_table.add_slot("top-right"):
             with ui.input(placeholder="Search").props("type=search").bind_value(
