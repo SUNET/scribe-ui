@@ -1092,6 +1092,8 @@ def table_transcribe(selected_row) -> None:
                     language.on_value_change(
                         lambda e: verbatim_container.set_visibility(
                             e.value.lower() == "swedish"
+                            or e.value.lower() == "english"
+                            or e.value.lower() == "norwegian"
                         )
                     )
 
