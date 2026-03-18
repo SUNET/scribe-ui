@@ -119,7 +119,7 @@ def create() -> None:
         ui.add_head_html(default_styles)
 
         table.style(
-            "width: 100%; height: calc(100vh - 160px - var(--banner-offset)); box-shadow: none; font-size: 18px;"
+            "width: 100%; height: calc(100vh - 240px - var(--banner-offset, 0px)); box-shadow: none; font-size: 18px;"
         )
         table.classes("table-style")
         table.add_slot(
@@ -165,13 +165,6 @@ def create() -> None:
 
         with table.add_slot("top-right"):
             with ui.row().classes("items-center"):
-                with ui.button("Upload", icon="upload") as upload:
-                    upload.props("color=black flat")
-                    upload.classes("default-style")
-                    upload.on("click", lambda: table_upload(table))
-
-        with table.add_slot("bottom"):
-            with ui.row().classes("items-center"):
                 with ui.button("Delete", icon="delete") as delete:
                     delete.props("color=black flat")
                     delete.classes("delete-style")
@@ -194,6 +187,11 @@ def create() -> None:
                     transcribe_tooltip = ui.tooltip(
                         "Select one or more files to transcribe"
                     )
+
+                with ui.button("Upload", icon="upload") as upload:
+                    upload.props("color=black flat")
+                    upload.classes("default-style")
+                    upload.on("click", lambda: table_upload(table))
 
         def update_rows():
             """

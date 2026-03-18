@@ -751,19 +751,11 @@ def users() -> None:
             pagination=20,
             on_select=lambda e: None,
         ).style(
-            "width: 100%; box-shadow: none; font-size: 18px; height: calc(100vh - 300px - var(--banner-offset));"
+            "width: 100%; box-shadow: none; font-size: 18px; height: calc(100vh - 350px - var(--banner-offset, 0px));"
         )
 
-        with users_table.add_slot("top-right"):
-            with ui.input(placeholder="Search").props("type=search").bind_value(
-                users_table, "filter"
-            ).add_slot("append"):
-                ui.icon("search")
-
-        with users_table.add_slot("bottom"):
-            with ui.row().style(
-                "justify-content: flex-end; width: 100%; padding: 8px 0; gap: 8px;"
-            ):
+        with users_table.add_slot("top-left"):
+            with ui.row().classes("items-center gap-2"):
                 ui.button("Enable").classes("button-close").props("color=black flat").style(
                     "width: 150px"
                 ).on("click", lambda: set_active_status(users_table.selected, True))
@@ -813,6 +805,12 @@ def users() -> None:
                 ui.button("Remove user").classes("delete-style").props("color=black flat").on(
                     "click", confirm_remove_user
                 )
+
+        with users_table.add_slot("top-right"):
+            with ui.input(placeholder="Search").props("type=search").bind_value(
+                users_table, "filter"
+            ).add_slot("append"):
+                ui.icon("search")
 
 
 @ui.page("/health")
@@ -2910,6 +2908,21 @@ def announcements_page() -> None:
         ).classes("w-full").props("flat bordered")
 
         ann_table.add_slot(
+            "body-cell-message_short",
+            r"""
+            <q-td :props="props">
+                <a
+                    class="cursor-pointer text-primary"
+                    @click="$parent.$emit('edit', props.row)"
+                    style="text-decoration: underline;"
+                >
+                    {{ props.row.message_short }}
+                </a>
+            </q-td>
+            """,
+        )
+
+        ann_table.add_slot(
             "body-cell-enabled",
             """
             <q-td :props="props">
@@ -2928,8 +2941,6 @@ def announcements_page() -> None:
             <q-td :props="props">
                 <q-btn flat round dense icon="visibility" size="sm" color="grey-7"
                     @click="$parent.$emit('preview', props.row)" />
-                <q-btn flat round dense icon="edit" size="sm" color="grey-7"
-                    @click="$parent.$emit('edit', props.row)" />
                 <q-btn flat round dense icon="delete" size="sm" color="red"
                     @click="$parent.$emit('delete', props.row)" />
             </q-td>
