@@ -2848,7 +2848,7 @@ def announcements_page() -> None:
             ann["severity_label"] = SEVERITY_OPTIONS.get(
                 ann.get("severity", "info"), "Info"
             )
-            msg = ann.get("message", "")
+            msg = re.sub(r"<[^>]+>", "", ann.get("message", ""))
             ann["message_short"] = (msg[:80] + "…") if len(msg) > 80 else msg
 
         def _toggle_enabled(ann_row: dict) -> None:
