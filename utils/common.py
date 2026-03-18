@@ -398,7 +398,7 @@ def _show_announcement_banners() -> None:
         "document.addEventListener('DOMContentLoaded', function() {"
         "  new MutationObserver(function() {"
         "    document.querySelectorAll('.announcement-banner a').forEach(function(a) {"
-        "      a.setAttribute('target', '_top');"
+        "      if (!a.getAttribute('target')) a.setAttribute('target', '_top');"
         "      try { var u = new URL(a.href, location.origin);"
         "        if (u.origin !== location.origin)"
         "          a.setAttribute('rel', 'noopener noreferrer');"
