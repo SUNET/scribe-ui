@@ -2543,26 +2543,62 @@ def _do_delete_attribute(attr: dict) -> None:
 # ── Announcements ────────────────────────────────────────────────────────
 
 
-def _announcement_preview_dialog(message: str) -> None:
+SEVERITY_OPTIONS = {
+    "info": "Info",
+    "maintenance": "Maintenance",
+    "major_incident": "Major incident",
+}
+
+SEVERITY_STYLES = {
+    "info": {
+        "bg": "#e3f2fd",
+        "border": "#90caf9",
+        "icon": "campaign",
+        "icon_color": "#1565c0",
+        "dismissible": True,
+    },
+    "maintenance": {
+        "bg": "#fff3e0",
+        "border": "#ffb74d",
+        "icon": "construction",
+        "icon_color": "#e65100",
+        "dismissible": True,
+    },
+    "major_incident": {
+        "bg": "#fce4ec",
+        "border": "#ef9a9a",
+        "icon": "crisis_alert",
+        "icon_color": "#c62828",
+        "dismissible": False,
+    },
+}
+
+
+def _announcement_preview_dialog(message: str, severity: str = "info") -> None:
     """Show a preview of how the announcement banner will look."""
+
+    style = SEVERITY_STYLES.get(severity, SEVERITY_STYLES["info"])
 
     with ui.dialog() as preview_dialog:
         with ui.card().style("width: 700px; max-width: 90vw; padding: 24px;"):
             ui.label("Banner preview").classes("text-h6 font-bold mb-4")
-            with ui.element("div").style(
-                "background-color: #e3f2fd; border: 1px solid #90caf9;"
+            with ui.element("div").classes("announcement-banner").style(
+                f"background-color: {style['bg']}; border: 1px solid {style['border']};"
                 " border-radius: 4px; padding: 10px 20px; display: flex;"
                 " align-items: center; gap: 10px; width: 100%;"
             ):
-                ui.icon("campaign", size="sm").style("color: #1565c0;")
-                ui.html(message).style("color: #0d47a1; font-size: 0.95rem;")
-                ui.button(icon="close").props(
-                    "flat round dense size=sm color=grey-7 disable"
+                ui.icon(style["icon"], size="sm").style(
+                    f"color: {style['icon_color']};"
                 )
+                ui.html(message).style("color: #000000; font-size: 0.95rem;")
+                if style["dismissible"]:
+                    ui.button(icon="close").props(
+                        "flat round dense size=sm color=grey-7 disable"
+                    )
             with ui.row().classes("w-full justify-end mt-4"):
-                ui.button("Close", on_click=preview_dialog.close).props(
-                    "color=black flat"
-                )
+                ui.button("Close", on_click=preview_dialog.close).classes(
+                    "button-close"
+                ).props("color=black flat")
         preview_dialog.open()
 
 
@@ -2579,6 +2615,12 @@ def _announcement_create_dialog() -> None:
             ).classes("text-body2 text-grey-7 mb-2")
 
             message_input = ui.textarea("Message").classes("w-full").props("outlined")
+
+            severity_select = ui.select(
+                options=SEVERITY_OPTIONS,
+                label="Severity",
+                value="info",
+            ).classes("w-full").props("outlined")
 
             with ui.row().classes("w-full gap-4"):
                 starts_input = ui.input("Start date/time (optional)").classes(
@@ -2619,13 +2661,15 @@ def _announcement_create_dialog() -> None:
                 ui.button(
                     "Preview",
                     icon="visibility",
-                    on_click=lambda: _announcement_preview_dialog(message_input.value),
+                    on_click=lambda: _announcement_preview_dialog(
+                        message_input.value, severity_select.value
+                    ),
                 ).props("color=black flat")
 
                 with ui.row().classes("gap-2"):
-                    ui.button("Cancel", on_click=dialog.close).props(
-                        "color=black flat"
-                    )
+                    ui.button("Cancel", on_click=dialog.close).classes(
+                        "button-close"
+                    ).props("color=black flat")
                     ui.button(
                         "Create",
                         on_click=lambda: (
@@ -2633,6 +2677,7 @@ def _announcement_create_dialog() -> None:
                             and announcement_create(
                                 {
                                     "message": message_input.value.strip(),
+                                    "severity": severity_select.value,
                                     "starts_at": starts_input.value or None,
                                     "ends_at": ends_input.value or None,
                                     "enabled": enabled_switch.value,
@@ -2643,7 +2688,7 @@ def _announcement_create_dialog() -> None:
                                 ui.navigate.to("/admin/announcements"),
                             )
                         ),
-                    ).props("color=black flat")
+                    ).classes("default-style").props("color=black flat")
 
         dialog.open()
 
@@ -2663,6 +2708,12 @@ def _announcement_edit_dialog(ann: dict) -> None:
             message_input = ui.textarea("Message", value=ann.get("message", "")).classes(
                 "w-full"
             ).props("outlined")
+
+            severity_select = ui.select(
+                options=SEVERITY_OPTIONS,
+                label="Severity",
+                value=ann.get("severity", "info"),
+            ).classes("w-full").props("outlined")
 
             starts_val = (ann.get("starts_at") or "").split(" ")[0] if ann.get("starts_at") else ""
             ends_val = (ann.get("ends_at") or "").split(" ")[0] if ann.get("ends_at") else ""
@@ -2702,13 +2753,15 @@ def _announcement_edit_dialog(ann: dict) -> None:
                 ui.button(
                     "Preview",
                     icon="visibility",
-                    on_click=lambda: _announcement_preview_dialog(message_input.value),
+                    on_click=lambda: _announcement_preview_dialog(
+                        message_input.value, severity_select.value
+                    ),
                 ).props("color=black flat")
 
                 with ui.row().classes("gap-2"):
-                    ui.button("Cancel", on_click=dialog.close).props(
-                        "color=black flat"
-                    )
+                    ui.button("Cancel", on_click=dialog.close).classes(
+                        "button-close"
+                    ).props("color=black flat")
                     ui.button(
                         "Save",
                         on_click=lambda: (
@@ -2717,6 +2770,7 @@ def _announcement_edit_dialog(ann: dict) -> None:
                                 ann["id"],
                                 {
                                     "message": message_input.value.strip(),
+                                    "severity": severity_select.value,
                                     "starts_at": starts_input.value or None,
                                     "ends_at": ends_input.value or None,
                                     "enabled": enabled_switch.value,
@@ -2727,7 +2781,7 @@ def _announcement_edit_dialog(ann: dict) -> None:
                                 ui.navigate.to("/admin/announcements"),
                             )
                         ),
-                    ).props("color=black flat")
+                    ).classes("default-style").props("color=black flat")
 
         dialog.open()
 
@@ -2744,7 +2798,9 @@ def _announcement_delete_confirm(ann: dict) -> None:
             ui.html(f'<em>"{ann.get("message", "")[:100]}..."</em>').classes("mb-4")
 
             with ui.row().classes("w-full justify-end gap-2"):
-                ui.button("Cancel", on_click=dialog.close).props("color=black flat")
+                ui.button("Cancel", on_click=dialog.close).classes(
+                    "button-close"
+                ).props("color=black flat")
                 ui.button(
                     "Delete",
                     on_click=lambda: (
@@ -2752,7 +2808,7 @@ def _announcement_delete_confirm(ann: dict) -> None:
                         dialog.close(),
                         ui.navigate.to("/admin/announcements"),
                     ),
-                ).props("color=red flat")
+                ).classes("delete-style").props("color=red flat")
 
         dialog.open()
 
@@ -2789,12 +2845,18 @@ def announcements_page() -> None:
         ui.label("No announcements yet.").classes("text-lg mt-4 text-grey-6")
     else:
         for ann in ann_list:
-            ann["enabled_label"] = "Yes" if ann.get("enabled") else "No"
             ann["starts_label"] = ann.get("starts_at") or "—"
             ann["ends_label"] = ann.get("ends_at") or "—"
-            # Truncate long messages for display
+            ann["severity_label"] = SEVERITY_OPTIONS.get(
+                ann.get("severity", "info"), "Info"
+            )
             msg = ann.get("message", "")
             ann["message_short"] = (msg[:80] + "…") if len(msg) > 80 else msg
+
+        def _toggle_enabled(ann_row: dict) -> None:
+            new_val = not ann_row.get("enabled", True)
+            announcement_update(ann_row["id"], {"enabled": new_val})
+            ui.navigate.to("/admin/announcements")
 
         ann_table = ui.table(
             columns=[
@@ -2804,7 +2866,13 @@ def announcements_page() -> None:
                     "field": "message_short",
                     "align": "left",
                     "classes": "text-weight-medium",
-                    "style": "max-width: 400px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;",
+                    "style": "max-width: 350px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;",
+                },
+                {
+                    "name": "severity_label",
+                    "label": "Severity",
+                    "field": "severity_label",
+                    "align": "left",
                 },
                 {
                     "name": "starts_label",
@@ -2819,10 +2887,10 @@ def announcements_page() -> None:
                     "align": "left",
                 },
                 {
-                    "name": "enabled_label",
+                    "name": "enabled",
                     "label": "Enabled",
-                    "field": "enabled_label",
-                    "align": "left",
+                    "field": "enabled",
+                    "align": "center",
                 },
                 {
                     "name": "created_by",
@@ -2842,6 +2910,19 @@ def announcements_page() -> None:
         ).classes("w-full").props("flat bordered")
 
         ann_table.add_slot(
+            "body-cell-enabled",
+            """
+            <q-td :props="props">
+                <q-toggle
+                    :model-value="props.row.enabled"
+                    @update:model-value="$parent.$emit('toggle_enabled', props.row)"
+                    color="black"
+                />
+            </q-td>
+            """,
+        )
+
+        ann_table.add_slot(
             "body-cell-actions",
             """
             <q-td :props="props">
@@ -2855,7 +2936,13 @@ def announcements_page() -> None:
             """,
         )
 
-        ann_table.on("preview", lambda e: _announcement_preview_dialog(e.args["message"]))
+        ann_table.on("toggle_enabled", lambda e: _toggle_enabled(e.args))
+        ann_table.on(
+            "preview",
+            lambda e: _announcement_preview_dialog(
+                e.args["message"], e.args.get("severity", "info")
+            ),
+        )
         ann_table.on("edit", lambda e: _announcement_edit_dialog(e.args))
         ann_table.on("delete", lambda e: _announcement_delete_confirm(e.args))
 

@@ -343,22 +343,84 @@ def _show_announcement_banners() -> None:
 
     dismissed = app.storage.user.get("dismissed_announcements", [])
 
-    visible_count = sum(
-        1 for a in announcements if a.get("id") not in dismissed
-    )
+    severity_styles = {
+        "info": {
+            "bg": "#e3f2fd",
+            "border": "#90caf9",
+            "icon": "campaign",
+            "icon_color": "#1565c0",
+            "dismissible": True,
+        },
+        "maintenance": {
+            "bg": "#fff3e0",
+            "border": "#ffb74d",
+            "icon": "construction",
+            "icon_color": "#e65100",
+            "dismissible": True,
+        },
+        "major_incident": {
+            "bg": "#fce4ec",
+            "border": "#ef9a9a",
+            "icon": "crisis_alert",
+            "icon_color": "#c62828",
+            "dismissible": False,
+        },
+    }
+
+    visible_count = 0
+    for a in announcements:
+        sev = a.get("severity", "info")
+        style = severity_styles.get(sev, severity_styles["info"])
+        if style["dismissible"] and a.get("id") in dismissed:
+            continue
+        visible_count += 1
 
     if visible_count > 0:
         ui.add_head_html(
             f"<style>:root {{ --banner-offset: {visible_count * 40}px; }}</style>"
         )
 
+    # CSS for links inside banners
+    ui.add_head_html(
+        "<style>"
+        ".announcement-banner a { color: #1565c0; text-decoration: underline;"
+        " font-weight: 500; }"
+        ".announcement-banner a:hover { text-decoration: underline;"
+        " opacity: 0.8; }"
+        ".announcement-banner.severity-maintenance a { color: #bf360c; }"
+        ".announcement-banner.severity-major_incident a { color: #b71c1c; }"
+        "</style>"
+    )
+
+    # JS to fix link attributes (target, rel) for all banner links
+    ui.add_head_html(
+        "<script>"
+        "document.addEventListener('DOMContentLoaded', function() {"
+        "  new MutationObserver(function() {"
+        "    document.querySelectorAll('.announcement-banner a').forEach(function(a) {"
+        "      a.setAttribute('target', '_top');"
+        "      try { var u = new URL(a.href, location.origin);"
+        "        if (u.origin !== location.origin)"
+        "          a.setAttribute('rel', 'noopener noreferrer');"
+        "      } catch(e) {}"
+        "    });"
+        "  }).observe(document.body, {childList: true, subtree: true});"
+        "});"
+        "</script>"
+    )
+
     for announcement in announcements:
         ann_id = announcement.get("id")
-        if ann_id in dismissed:
+        sev = announcement.get("severity", "info")
+        style = severity_styles.get(sev, severity_styles["info"])
+
+        if style["dismissible"] and ann_id in dismissed:
             continue
 
-        banner_container = ui.element("div").classes("announcement-banner").style(
-            "background-color: #e3f2fd; border-bottom: 1px solid #90caf9;"
+        banner_container = ui.element("div").classes(
+            f"announcement-banner severity-{sev}"
+        ).style(
+            f"background-color: {style['bg']}; border-bottom: 1px solid {style['border']};"
             " padding: 8px 20px; display: flex; align-items: center;"
             " justify-content: space-between;"
             " margin-left: -2rem; margin-right: -2rem; margin-top: -1rem;"
@@ -369,21 +431,24 @@ def _show_announcement_banners() -> None:
             with ui.element("div").style(
                 "display: flex; align-items: center; gap: 10px; flex: 1;"
             ):
-                ui.icon("campaign", size="sm").style("color: #1565c0;")
+                ui.icon(style["icon"], size="sm").style(
+                    f"color: {style['icon_color']};"
+                )
                 ui.html(announcement.get("message", "")).style(
                     "color: #000000; font-size: 0.95rem;"
                 )
 
-            def dismiss(a_id=ann_id, container=banner_container):
-                current = app.storage.user.get("dismissed_announcements", [])
-                if a_id not in current:
-                    current.append(a_id)
-                    app.storage.user["dismissed_announcements"] = current
-                container.set_visibility(False)
+            if style["dismissible"]:
+                def dismiss(a_id=ann_id, container=banner_container):
+                    current = app.storage.user.get("dismissed_announcements", [])
+                    if a_id not in current:
+                        current.append(a_id)
+                        app.storage.user["dismissed_announcements"] = current
+                    container.set_visibility(False)
 
-            ui.button(icon="close", on_click=dismiss).props(
-                "flat round dense size=sm color=grey-7"
-            )
+                ui.button(icon="close", on_click=dismiss).props(
+                    "flat round dense size=sm color=grey-7"
+                )
 
 
 def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None:
