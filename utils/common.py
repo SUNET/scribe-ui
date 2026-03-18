@@ -206,9 +206,7 @@ def _get_support_contact_email() -> str:
 
         customers_data = customers_get()
         customers = (
-            customers_data.get("result", [])
-            if isinstance(customers_data, dict)
-            else []
+            customers_data.get("result", []) if isinstance(customers_data, dict) else []
         )
 
         for c in customers:
@@ -416,14 +414,16 @@ def _show_announcement_banners() -> None:
         if style["dismissible"] and ann_id in dismissed:
             continue
 
-        banner_container = ui.element("div").classes(
-            f"announcement-banner severity-{sev}"
-        ).style(
-            f"background-color: {style['bg']}; border-bottom: 1px solid {style['border']};"
-            " padding: 8px 20px; display: flex; align-items: center;"
-            " justify-content: space-between;"
-            " margin-left: -2rem; margin-right: -2rem; margin-top: -1rem;"
-            " width: calc(100% + 4rem);"
+        banner_container = (
+            ui.element("div")
+            .classes(f"announcement-banner severity-{sev}")
+            .style(
+                f"background-color: {style['bg']}; border-bottom: 1px solid {style['border']};"
+                " padding: 8px 20px; display: flex; align-items: center;"
+                " justify-content: space-between;"
+                " margin-left: -2rem; margin-right: -2rem; margin-top: -1rem;"
+                " width: calc(100% + 4rem);"
+            )
         )
 
         with banner_container:
@@ -438,6 +438,7 @@ def _show_announcement_banners() -> None:
                 )
 
             if style["dismissible"]:
+
                 def dismiss(a_id=ann_id, container=banner_container):
                     current = app.storage.user.get("dismissed_announcements", [])
                     if a_id not in current:
@@ -490,23 +491,26 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
         drawer = ui.left_drawer(value=True, elevated=True).style(
             "background-color: #f5f5f5; padding: 0;"
         )
-        drawer.props(f':mini-width="56" :width="250" :breakpoint="0"')
+
+        drawer.props(':mini-width="56" :width="250" :breakpoint="0"')
+
         if not drawer_open:
-            drawer.props(add='mini')
+            drawer.props(add="mini")
 
         menu_tooltips = []
 
         def toggle_drawer():
             is_open = app.storage.user.get("drawer_open", False)
             if is_open:
-                drawer.props(add='mini')
+                drawer.props(add="mini")
                 for t in menu_tooltips:
                     t.set_visibility(True)
             else:
-                drawer.props(remove='mini')
+                drawer.props(remove="mini")
                 for t in menu_tooltips:
                     t.set_visibility(False)
             app.storage.user["drawer_open"] = not is_open
+
         menu_item_style = (
             "display: flex; align-items: center; gap: 12px; padding: 10px 16px;"
             " cursor: pointer; font-size: 1.05rem;"
@@ -556,9 +560,9 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                 show_tips = not drawer_open
 
                 for path, icon, label in menu_items:
-                    with ui.element("div").style(menu_style(path)).classes("menu-item").on(
-                        "click", lambda p=path: ui.navigate.to(p)
-                    ):
+                    with ui.element("div").style(menu_style(path)).classes(
+                        "menu-item"
+                    ).on("click", lambda p=path: ui.navigate.to(p)):
                         ui.icon(icon, color="black").style("font-size: 20px;")
                         ui.label(label).classes("menu-label")
                         t = ui.tooltip(label)
@@ -572,16 +576,18 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                     )
 
                     for path, icon, label in admin_items:
-                        with ui.element("div").style(menu_style(path)).classes("menu-item").on(
-                            "click", lambda p=path: ui.navigate.to(p)
-                        ):
+                        with ui.element("div").style(menu_style(path)).classes(
+                            "menu-item"
+                        ).on("click", lambda p=path: ui.navigate.to(p)):
                             ui.icon(icon, color="black").style("font-size: 20px;")
                             ui.label(label).classes("menu-label")
                             t = ui.tooltip(label)
                             t.set_visibility(show_tips)
                             menu_tooltips.append(t)
 
-                    with ui.element("div").style(menu_item_style).classes("menu-item").on(
+                    with ui.element("div").style(menu_item_style).classes(
+                        "menu-item"
+                    ).on(
                         "click",
                         lambda: ui.run_javascript(
                             f"window.open('{settings.API_URL}/api/docs', '_blank')"
@@ -600,9 +606,9 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                     )
 
                     for path, icon, label in system_items:
-                        with ui.element("div").style(menu_style(path)).classes("menu-item").on(
-                            "click", lambda p=path: ui.navigate.to(p)
-                        ):
+                        with ui.element("div").style(menu_style(path)).classes(
+                            "menu-item"
+                        ).on("click", lambda p=path: ui.navigate.to(p)):
                             ui.icon(icon, color="black").style("font-size: 20px;")
                             ui.label(label).classes("menu-label")
                             t = ui.tooltip(label)
