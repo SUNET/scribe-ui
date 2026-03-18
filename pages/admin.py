@@ -2588,7 +2588,7 @@ def _announcement_preview_dialog(message: str, severity: str = "info") -> None:
                 ui.icon(style["icon"], size="sm").style(
                     f"color: {style['icon_color']};"
                 )
-                ui.html(message).style("color: #000000; font-size: 0.95rem;")
+                ui.html(message, sanitize=False).style("color: #000000; font-size: 0.95rem;")
                 if style["dismissible"]:
                     ui.button(icon="close").props(
                         "flat round dense size=sm color=grey-7 disable"

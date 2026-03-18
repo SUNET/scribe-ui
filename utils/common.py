@@ -434,7 +434,7 @@ def _show_announcement_banners() -> None:
                 ui.icon(style["icon"], size="sm").style(
                     f"color: {style['icon_color']};"
                 )
-                ui.html(announcement.get("message", "")).style(
+                ui.html(announcement.get("message", ""), sanitize=False).style(
                     "color: #000000; font-size: 0.95rem;"
                 )
 
