@@ -707,7 +707,7 @@ def users() -> None:
             user["id"] = index
             user["admin"] = "Yes" if user.get("admin", True) else "No"
             user["active"] = "Yes" if user.get("active", True) else "No"
-            user["manual"] = "Yes" if user.get("manually_activated") or user.get("manually_deactivated") else "No"
+            user["provisioning"] = "Manual" if user.get("manually_activated") or user.get("manually_deactivated") else "Auto"
 
     except requests.RequestException as e:
         ui.label(f"Error fetching users: {e}").classes("text-lg text-red-500")
@@ -829,9 +829,9 @@ def users() -> None:
                     "sortable": True,
                 },
                 {
-                    "name": "manual",
-                    "label": "Manual",
-                    "field": "manual",
+                    "name": "provisioning",
+                    "label": "Provisioning",
+                    "field": "provisioning",
                     "align": "left",
                     "sortable": True,
                 },
