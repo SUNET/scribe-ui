@@ -552,6 +552,29 @@ def set_admin_status(
             )
 
 
+def reset_manual_override(selected_rows: list) -> None:
+    """
+    Reset manual override flags for selected users, returning them to rule-based provisioning.
+    """
+
+    for user in selected_rows:
+        try:
+            res = requests.put(
+                settings.API_URL + f"/api/v1/admin/{user['username']}",
+                headers=get_auth_header(),
+                json={"reset_manual": True},
+            )
+            res.raise_for_status()
+        except requests.RequestException as e:
+            ui.notify(
+                f"Error resetting manual override for {user['username']}: {e}",
+                type="negative",
+            )
+            return
+
+    ui.navigate.to("/admin/users")
+
+
 def save_domains(
     selected_rows: list, domains: list, dialog: ui.dialog
 ) -> None:

@@ -38,6 +38,7 @@ from utils.helpers import (
     groups_get,
     realms_get,
     remove_user,
+    reset_manual_override,
     save_customer,
     save_group,
     set_active_status,
@@ -706,6 +707,7 @@ def users() -> None:
             user["id"] = index
             user["admin"] = "Yes" if user.get("admin", True) else "No"
             user["active"] = "Yes" if user.get("active", True) else "No"
+            user["manual"] = "Yes" if user.get("manually_activated") or user.get("manually_deactivated") else "No"
 
     except requests.RequestException as e:
         ui.label(f"Error fetching users: {e}").classes("text-lg text-red-500")
@@ -772,6 +774,10 @@ def users() -> None:
                         ),
                     )
                     ui.menu_item(
+                        "Reset to auto provisioning",
+                        on_click=lambda: reset_manual_override(users_table.selected),
+                    )
+                    ui.menu_item(
                         "Remove user",
                         on_click=confirm_remove_user,
                     )
@@ -819,6 +825,13 @@ def users() -> None:
                     "name": "active",
                     "label": "Active",
                     "field": "active",
+                    "align": "left",
+                    "sortable": True,
+                },
+                {
+                    "name": "manual",
+                    "label": "Manual",
+                    "field": "manual",
                     "align": "left",
                     "sortable": True,
                 },
