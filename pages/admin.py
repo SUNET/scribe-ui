@@ -1767,6 +1767,10 @@ def edit_rule_dialog(rule: dict, page: callable) -> None:
             except (ValueError, TypeError):
                 group_value = None
 
+            # If the group was deleted, clear the reference
+            if group_value and group_value not in group_options:
+                group_value = None
+
             group_select = (
                 ui.select(
                     group_options,
