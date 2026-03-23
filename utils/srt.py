@@ -305,15 +305,15 @@ class SRTEditor:
             return
 
         match event.key:
-            # Next block of captions, Ctrl+Down
+            # Next block of captions, Alt+Down
             case "ArrowDown" if event.modifiers.alt and not event.modifiers.shift and not event.modifiers.ctrl and not event.modifiers.meta:
                 self.select_next_caption()
 
-            # Prev block of captions, Ctrl+Up
+            # Prev block of captions, Alt+Up
             case "ArrowUp" if event.modifiers.alt and not event.modifiers.shift and not event.modifiers.ctrl and not event.modifiers.meta:
                 self.select_prev_caption()
 
-            # Split block, Alt+Enter
+            # Split block, Ctrl/⌘+Enter
             case "Enter" if event.modifiers.ctrl and not event.modifiers.shift and not event.modifiers.alt and not event.modifiers.meta:
                 self.split_caption(self.selected_caption)
             case "Enter" if event.modifiers.meta and not event.modifiers.shift and not event.modifiers.alt and not event.modifiers.ctrl:
@@ -333,12 +333,12 @@ class SRTEditor:
             case "Enter" if event.modifiers.meta and event.modifiers.shift:
                 self.add_caption_after(self.selected_caption)
 
-            # Delete block, Ctrl+Shift+D
+            # Delete block, Ctrl+D
             case "d" if event.modifiers.ctrl:
                 self.remove_caption(self.selected_caption)
 
             # Validate captions, Ctrl+Shift+V
-            case "v" if event.modifiers.ctrl:
+            case "V" if event.modifiers.ctrl and event.modifiers.shift:
                 self.validate_captions()
 
             # Play/pause video, Ctrl+Space
@@ -1908,7 +1908,7 @@ class SRTEditor:
                     ("Save file", "Ctrl/⌘ + S"),
                     ("Export file", "Ctrl/⌘ + E"),
                     ("Find", "Ctrl/⌘ + F"),
-                    ("Validate captions", "Ctrl + V"),
+                    ("Validate captions", "Ctrl + Shift + V"),
                 ],
             ),
             (
