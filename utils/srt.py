@@ -386,11 +386,6 @@ class SRTEditor:
                 self.show_export_dialog(self.filename)
             case "e" if event.modifiers.meta and not event.modifiers.shift:
                 self.show_export_dialog(self.filename)
-
-            # ? to show help
-            case "?" if event.modifiers.shift and not event.modifiers.ctrl:
-                self.show_keyboard_shortcuts(open_window=True)
-
             # Everything else
             case _:
                 pass
