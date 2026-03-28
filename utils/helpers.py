@@ -134,7 +134,7 @@ def reset_password() -> None:
 
     with ui.dialog() as dialog:
         with ui.card():
-            ui.label("Reset Encryption Passphrase").classes("text-h6")
+            ui.label("Reset encryption passphrase").classes("text-h6")
             ui.label(
                 "Are you sure you want to reset your encryption passphrase? This will remove all your files and cannot be undone."
             ).classes("text-subtitle2").style("margin-bottom: 10px;")
@@ -179,6 +179,7 @@ def save_customer(
     partner_id: str,
     name: str,
     contact_email: str,
+    support_contact_email: str,
     priceplan: str,
     base_fee: int,
     selected_realms: list,
@@ -200,6 +201,7 @@ def save_customer(
                 "partner_id": partner_id,
                 "name": name,
                 "contact_email": contact_email,
+                "support_contact_email": support_contact_email,
                 "priceplan": priceplan,
                 "base_fee": int(base_fee) if base_fee else 0,
                 "realms": realms_str,
@@ -338,6 +340,7 @@ def email_save_notifications(
     deletion: Optional[bool] = None,
     user: Optional[bool] = None,
     quota: Optional[bool] = None,
+    weekly_report: Optional[bool] = None,
 ) -> None:
     """
     Save notification preferences for the user.
@@ -346,6 +349,8 @@ def email_save_notifications(
         job (bool | None): Whether to receive notifications for transcription jobs.
         deletion (bool | None): Whether to receive notifications for file deletions.
         user (bool | None): Whether to receive notifications for new users.
+        quota (bool | None): Whether to receive notifications when quota nears limit.
+        weekly_report (bool | None): Whether to receive weekly usage reports.
     """
 
     payload = {
@@ -353,7 +358,8 @@ def email_save_notifications(
             "notify_on_job": job,
             "notify_on_deletion": deletion,
             "notify_on_user": user,
-            # "notify_on_quota": quota,
+            "notify_on_quota": quota,
+            "notify_on_weekly_report": weekly_report,
         }
     }
 
@@ -407,9 +413,43 @@ def email_save_notifications_get() -> dict:
         return {}
 
 
+def test_all_notifications() -> None:
+    """
+    Trigger all notification types to be sent to the current user's email.
+    Temporary function for testing email notifications.
+    """
+
+    try:
+        response = requests.post(
+            f"{settings.API_URL}/api/v1/me/test-notifications",
+            headers=get_auth_header(),
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        if "error" in data:
+            ui.notify(f"Error: {data['error']}", color="red")
+            return
+
+        result = data.get("result", {})
+        count = result.get("count", 0)
+        sent_to = result.get("sent_to", "unknown")
+        ui.notify(
+            f"{count} test notifications queued for {sent_to}",
+            color="green",
+        )
+
+    except requests.exceptions.RequestException:
+        ui.notify("Failed to send test notifications", color="red")
+
+
 def save_group(
     selected_rows: list, name: str, description: str, group_id: str, quota_seconds: int
 ) -> None:
+    """
+    Save group details and assigned users via the backend API.
+    """
+
     usernames = [row["username"] for row in selected_rows]
 
     try:
@@ -423,7 +463,9 @@ def save_group(
                 "quota": int(quota_seconds) * 60,
             },
         )
+
         res.raise_for_status()
+
         ui.navigate.to("/admin")
     except requests.RequestException:
         error = res.json()
@@ -437,6 +479,28 @@ def save_group(
                 ).style("margin-top: 10px;")
 
         dialog.open()
+
+
+def remove_user(selected_rows: list) -> None:
+    """
+    Remove selected users via the backend API.
+    """
+
+    for user in selected_rows:
+        try:
+            res = requests.delete(
+                settings.API_URL + f"/api/v1/admin/{user['username']}",
+                headers=get_auth_header(),
+            )
+            res.raise_for_status()
+        except requests.RequestException as e:
+            ui.notify(
+                f"Error removing user {user['username']}: {e}",
+                type="negative",
+            )
+            return
+
+    ui.navigate.to("/admin/users")
 
 
 def set_active_status(selected_rows: list, make_active: bool) -> None:
@@ -488,17 +552,37 @@ def set_admin_status(
             )
 
 
+def reset_manual_override(selected_rows: list) -> None:
+    """
+    Reset manual override flags for selected users, returning them to rule-based provisioning.
+    """
+
+    for user in selected_rows:
+        try:
+            res = requests.put(
+                settings.API_URL + f"/api/v1/admin/{user['username']}",
+                headers=get_auth_header(),
+                json={"reset_manual": True},
+            )
+            res.raise_for_status()
+        except requests.RequestException as e:
+            ui.notify(
+                f"Error resetting manual override for {user['username']}: {e}",
+                type="negative",
+            )
+            return
+
+    ui.navigate.to("/admin/users")
+
+
 def save_domains(
-    selected_rows: list, domains: list, domains_str: str, dialog: ui.dialog
+    selected_rows: list, domains: list, dialog: ui.dialog
 ) -> None:
     """
     Save allowed domains for selected users.
     """
 
-    selected_domains = domains if domains else []
-    new_domains = [r.strip() for r in domains_str.split(",") if r.strip()]
-    all_domains = list(set(selected_domains + new_domains))
-    domains_str = ",".join(all_domains)
+    domains_str = ",".join(domains) if domains else ""
 
     for user in selected_rows:
         try:
@@ -517,15 +601,48 @@ def save_domains(
     dialog.close()
 
 
-def set_domains(selected_rows: list) -> None:
+def get_customer_realms(user_realms: set[str]) -> list[str]:
     """
-    Show a dialog with an input to set allowed domains.
-    Domains should be separated by commas.
+    Return the realms belonging to the customer(s) that match the given user realms.
+    Falls back to realms_get() if the customers API is not accessible.
     """
 
-    realms = realms_get()
+    customers_data = customers_get()
+    customers = (
+        customers_data.get("result", [])
+        if isinstance(customers_data, dict)
+        else []
+    )
+
+    customer_realms = []
+    for c in customers:
+        c_realms = [
+            r.strip() for r in (c.get("realms") or "").split(",") if r.strip()
+        ]
+        if user_realms & set(c_realms):
+            customer_realms.extend(c_realms)
+    realms = sorted(set(customer_realms))
+
+    if not realms:
+        realms = [r for r in realms_get() if r and "." in r]
+
+    return realms
+
+
+def set_domains(selected_rows: list, all_users: list) -> None:
+    """
+    Show a dialog with an input to set allowed domains.
+    """
+
+    user_realms = {u["realm"] for u in selected_rows if u.get("realm")}
+    realms = get_customer_realms(user_realms)
+
+    if not realms:
+        realms = sorted(
+            {u["realm"] for u in all_users if u.get("realm") and "." in u["realm"]}
+        )
+
     domains = []
-    domains_str = ""
 
     for user in selected_rows:
         if not user.get("admin_domains"):
@@ -533,8 +650,6 @@ def set_domains(selected_rows: list) -> None:
         for domain in user["admin_domains"].split(","):
             if domain.strip() in realms:
                 domains.append(domain.strip())
-            else:
-                domains_str += domain.strip() + ", "
 
     with ui.dialog() as domain_dialog:
         with ui.card().style("width: 500px; max-width: 90vw;"):
@@ -544,18 +659,12 @@ def set_domains(selected_rows: list) -> None:
             domains_select = (
                 ui.select(
                     realms,
-                    label="Allowed domains (existing domains)",
+                    label="Allowed domains",
                     multiple=True,
                     value=domains,
                 )
                 .classes("w-full")
-                .props("outlined")
-            )
-
-            domains_input = (
-                ui.input("Add new domains (comma-separated)", value=domains_str.strip())
-                .classes("w-full")
-                .props("outlined")
+                .props("outlined use-chips")
             )
 
             with ui.row().style("justify-content: flex-end; width: 100%;"):
@@ -567,9 +676,211 @@ def set_domains(selected_rows: list) -> None:
                     lambda: save_domains(
                         selected_rows,
                         domains_select.value,
-                        domains_input.value,
                         domain_dialog,
                     ),
                 )
 
         domain_dialog.open()
+
+
+def rules_get() -> list:
+    """
+    Fetch all attribute rules from backend.
+    """
+
+    try:
+        res = requests.get(
+            settings.API_URL + "/api/v1/admin/rules", headers=get_auth_header()
+        )
+        res.raise_for_status()
+        return res.json()
+    except requests.RequestException as e:
+        print(f"Error fetching rules: {e}")
+        return []
+
+
+def rule_create(data: dict) -> dict | None:
+    """
+    Create a new attribute rule.
+    """
+
+    try:
+        res = requests.post(
+            settings.API_URL + "/api/v1/admin/rules",
+            headers=get_auth_header(),
+            json=data,
+        )
+        res.raise_for_status()
+        return res.json()
+    except requests.RequestException as e:
+        print(f"Error creating rule: {e}")
+        return None
+
+
+def rule_update(rule_id: int, data: dict) -> dict | None:
+    """
+    Update an existing attribute rule.
+    """
+
+    try:
+        res = requests.put(
+            settings.API_URL + f"/api/v1/admin/rules/{rule_id}",
+            headers=get_auth_header(),
+            json=data,
+        )
+        res.raise_for_status()
+        return res.json()
+    except requests.RequestException as e:
+        print(f"Error updating rule: {e}")
+        if hasattr(e, "response") and e.response is not None:
+            print(f"Response body: {e.response.text}")
+        return None
+
+
+def rule_delete(rule_id: int) -> bool:
+    """
+    Delete an attribute rule.
+    """
+
+    try:
+        res = requests.delete(
+            settings.API_URL + f"/api/v1/admin/rules/{rule_id}",
+            headers=get_auth_header(),
+        )
+        res.raise_for_status()
+        return True
+    except requests.RequestException as e:
+        print(f"Error deleting rule: {e}")
+        return False
+
+
+def attributes_get() -> list:
+    """
+    Fetch all onboarding attributes from backend.
+    """
+
+    try:
+        res = requests.get(
+            settings.API_URL + "/api/v1/admin/attributes",
+            headers=get_auth_header(),
+        )
+        res.raise_for_status()
+        return res.json().get("result", [])
+    except requests.RequestException as e:
+        print(f"Error fetching attributes: {e}")
+        return []
+
+
+def attribute_create(data: dict) -> dict | None:
+    """
+    Add a new onboarding attribute.
+    """
+
+    try:
+        res = requests.post(
+            settings.API_URL + "/api/v1/admin/attributes",
+            headers=get_auth_header(),
+            json=data,
+        )
+        res.raise_for_status()
+        return res.json()
+    except requests.RequestException as e:
+        print(f"Error creating attribute: {e}")
+        return None
+
+
+def attribute_delete(attribute_id: int) -> bool:
+    """
+    Delete an onboarding attribute.
+    """
+
+    try:
+        res = requests.delete(
+            settings.API_URL + f"/api/v1/admin/attributes/{attribute_id}",
+            headers=get_auth_header(),
+        )
+        res.raise_for_status()
+        return True
+    except requests.RequestException as e:
+        print(f"Error deleting attribute: {e}")
+        return False
+
+
+def rules_test(rule_ids: list[int]) -> list:
+    """
+    Test which users would be matched by the given rules.
+    """
+
+    try:
+        res = requests.post(
+            settings.API_URL + "/api/v1/admin/rules/test",
+            headers=get_auth_header(),
+            json={"rule_ids": rule_ids},
+        )
+        res.raise_for_status()
+        return res.json().get("result", [])
+    except requests.RequestException as e:
+        print(f"Error testing rules: {e}")
+        return []
+
+
+def announcements_get() -> list:
+    """Fetch all announcements from backend."""
+
+    try:
+        res = requests.get(
+            settings.API_URL + "/api/v1/admin/announcements",
+            headers=get_auth_header(),
+        )
+        res.raise_for_status()
+        return res.json().get("result", [])
+    except requests.RequestException as e:
+        print(f"Error fetching announcements: {e}")
+        return []
+
+
+def announcement_create(data: dict) -> dict | None:
+    """Create a new announcement."""
+
+    try:
+        res = requests.post(
+            settings.API_URL + "/api/v1/admin/announcements",
+            headers=get_auth_header(),
+            json=data,
+        )
+        res.raise_for_status()
+        return res.json()
+    except requests.RequestException as e:
+        print(f"Error creating announcement: {e}")
+        return None
+
+
+def announcement_update(announcement_id: int, data: dict) -> dict | None:
+    """Update an existing announcement."""
+
+    try:
+        res = requests.put(
+            settings.API_URL + f"/api/v1/admin/announcements/{announcement_id}",
+            headers=get_auth_header(),
+            json=data,
+        )
+        res.raise_for_status()
+        return res.json()
+    except requests.RequestException as e:
+        print(f"Error updating announcement: {e}")
+        return None
+
+
+def announcement_delete(announcement_id: int) -> bool:
+    """Delete an announcement."""
+
+    try:
+        res = requests.delete(
+            settings.API_URL + f"/api/v1/admin/announcements/{announcement_id}",
+            headers=get_auth_header(),
+        )
+        res.raise_for_status()
+        return True
+    except requests.RequestException as e:
+        print(f"Error deleting announcement: {e}")
+        return False

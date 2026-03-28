@@ -32,6 +32,7 @@ class Customer:
         partner_id: str,
         name: str,
         contact_email: str,
+        support_contact_email: str,
         priceplan: str,
         base_fee: int,
         realms: str,
@@ -45,6 +46,7 @@ class Customer:
         self.partner_id = partner_id
         self.name = name
         self.contact_email = contact_email
+        self.support_contact_email = support_contact_email
         self.priceplan = priceplan
         self.base_fee = (base_fee,)
         self.realms = realms
@@ -178,20 +180,19 @@ class Customer:
 
     def delete_customer_dialog(self) -> None:
         with ui.dialog() as delete_customer_dialog:
-            with ui.card().style("width: 400px; max-width: 90vw;"):
-                ui.label("Delete customer").classes("text-2xl font-bold")
+            with ui.card():
+                ui.label("Delete customer").classes("text-h6")
                 ui.label(
                     "Are you sure you want to delete this customer? This action cannot be undone."
-                ).classes("my-4")
-                with ui.row().style("justify-content: flex-end; width: 100%;"):
-                    ui.button("Cancel").classes("button-close").props(
-                        "color=black flat"
-                    ).on("click", lambda: delete_customer_dialog.close())
-                    ui.button("Delete").classes("button-close").props(
-                        "color=red flat"
-                    ).on(
-                        "click",
-                        lambda: (
+                ).classes("text-subtitle2").style("margin-bottom: 10px;")
+
+                with ui.row().classes("justify-between w-full"):
+                    ui.button("Cancel", on_click=lambda: delete_customer_dialog.close()).props(
+                        "color=black"
+                    )
+                    ui.button(
+                        "Delete",
+                        on_click=lambda: (
                             requests.delete(
                                 settings.API_URL
                                 + f"/api/v1/admin/customers/{self.customer_id}",
@@ -200,6 +201,6 @@ class Customer:
                             delete_customer_dialog.close(),
                             ui.navigate.to("/admin/customers"),
                         ),
-                    )
+                    ).props("color=red")
 
             delete_customer_dialog.open()

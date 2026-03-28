@@ -37,7 +37,7 @@ def create() -> None:
         """
         Main page of the application.
         """
-        page_init()
+        page_init(use_drawer=True)
 
         def toggle_buttons(selected: list) -> None:
             """
@@ -119,7 +119,7 @@ def create() -> None:
         ui.add_head_html(default_styles)
 
         table.style(
-            "width: 100%; height: calc(100vh - 160px); box-shadow: none; font-size: 18px;"
+            "width: 100%; height: calc(100vh - 240px - var(--banner-offset, 0px)); box-shadow: none; font-size: 18px;"
         )
         table.classes("table-style")
         table.add_slot(
@@ -161,38 +161,37 @@ def create() -> None:
         table.on("table_handle_row_click", table_handle_row_click)
 
         with table.add_slot("top-left"):
-            ui.label("My files").classes("text-h5")
+            ui.label("My files").classes("text-3xl font-bold")
 
         with table.add_slot("top-right"):
             with ui.row().classes("items-center"):
+                with ui.button("Delete", icon="delete") as delete:
+                    delete.props("color=black flat")
+                    delete.classes("delete-style")
+                    delete.on("click", lambda: table_delete(table))
+                    delete.set_enabled(False)
+                    delete_tooltip = ui.tooltip("Select one or more files to delete")
+
+                with ui.button("Export", icon="download") as bulk_export:
+                    bulk_export.props("color=black flat")
+                    bulk_export.classes("default-style")
+                    bulk_export.on("click", lambda: table_bulk_export(table))
+                    bulk_export.set_enabled(False)
+                    export_tooltip = ui.tooltip("Select one or more files to export")
+
+                with ui.button("Transcribe", icon="rtt") as bulk_transcribe:
+                    bulk_transcribe.props("color=black flat")
+                    bulk_transcribe.classes("default-style")
+                    bulk_transcribe.on("click", lambda: table_bulk_transcribe(table))
+                    bulk_transcribe.set_enabled(False)
+                    transcribe_tooltip = ui.tooltip(
+                        "Select one or more files to transcribe"
+                    )
+
                 with ui.button("Upload", icon="upload") as upload:
                     upload.props("color=black flat")
                     upload.classes("default-style")
                     upload.on("click", lambda: table_upload(table))
-
-        with ui.row().classes("items-center"):
-            with ui.button("Delete", icon="delete") as delete:
-                delete.props("color=black flat")
-                delete.classes("delete-style")
-                delete.on("click", lambda: table_delete(table))
-                delete.set_enabled(False)
-                delete_tooltip = ui.tooltip("Select one or more files to delete")
-
-            with ui.button("Export", icon="download") as bulk_export:
-                bulk_export.props("color=black flat")
-                bulk_export.classes("default-style")
-                bulk_export.on("click", lambda: table_bulk_export(table))
-                bulk_export.set_enabled(False)
-                export_tooltip = ui.tooltip("Select one or more files to export")
-
-            with ui.button("Transcribe", icon="rtt") as bulk_transcribe:
-                bulk_transcribe.props("color=black flat")
-                bulk_transcribe.classes("default-style")
-                bulk_transcribe.on("click", lambda: table_bulk_transcribe(table))
-                bulk_transcribe.set_enabled(False)
-                transcribe_tooltip = ui.tooltip(
-                    "Select one or more files to transcribe"
-                )
 
         def update_rows():
             """

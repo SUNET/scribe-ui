@@ -145,7 +145,7 @@ class SRTEditor:
                 on_cancel()
 
         with ui.dialog() as dialog, ui.card().classes("w-96"):
-            ui.label("Unsaved Changes").classes("text-h6 q-mb-md")
+            ui.label("Unsaved changes").classes("text-h6 q-mb-md")
             ui.label("You have unsaved changes. What would you like to do?").classes(
                 "q-mb-lg"
             )
@@ -177,7 +177,9 @@ class SRTEditor:
         do_close()
 
     def save_state_for_undo(self) -> None:
-        """Save the current state before making changes."""
+        """
+        Save the current state before making changes.
+        """
 
         self.undo_redo_manager.save_state(self.captions)
         self._update_undo_redo_buttons()
@@ -186,7 +188,9 @@ class SRTEditor:
         self.update_beforeunload_state()
 
     def undo(self) -> None:
-        """Undo the last action."""
+        """
+        Undo the last action.
+        """
         previous_state = self.undo_redo_manager.undo(self.captions)
         if previous_state is not None:
             self.captions = previous_state
@@ -202,7 +206,9 @@ class SRTEditor:
             ui.notify("Nothing to undo", type="info", position="bottom")
 
     def redo(self) -> None:
-        """Redo the last undone action."""
+        """
+        Redo the last undone action.
+        """
         next_state = self.undo_redo_manager.redo(self.captions)
         if next_state is not None:
             self.captions = next_state
@@ -218,7 +224,9 @@ class SRTEditor:
             ui.notify("Nothing to redo", type="info", position="bottom")
 
     def _update_undo_redo_buttons(self) -> None:
-        """Update the enabled state of undo/redo buttons."""
+        """
+        Update the enabled state of undo/redo buttons.
+        """
         if self.undo_button:
             if self.undo_redo_manager.can_undo():
                 self.undo_button.enable()
@@ -236,7 +244,9 @@ class SRTEditor:
                 self.redo_button.props("flat dense color=grey")
 
     def create_undo_redo_panel(self) -> None:
-        """Create the undo/redo buttons panel."""
+        """
+        Create the undo/redo buttons panel.
+        """
         with ui.row().classes("gap-2"):
             self.undo_button = (
                 ui.button("Undo", icon="undo")
@@ -295,15 +305,15 @@ class SRTEditor:
             return
 
         match event.key:
-            # Next block of captions, Ctrl+Down
+            # Next block of captions, Alt+Down
             case "ArrowDown" if event.modifiers.alt and not event.modifiers.shift and not event.modifiers.ctrl and not event.modifiers.meta:
                 self.select_next_caption()
 
-            # Prev block of captions, Ctrl+Up
+            # Prev block of captions, Alt+Up
             case "ArrowUp" if event.modifiers.alt and not event.modifiers.shift and not event.modifiers.ctrl and not event.modifiers.meta:
                 self.select_prev_caption()
 
-            # Split block, Alt+Enter
+            # Split block, Ctrl/⌘+Enter
             case "Enter" if event.modifiers.ctrl and not event.modifiers.shift and not event.modifiers.alt and not event.modifiers.meta:
                 self.split_caption(self.selected_caption)
             case "Enter" if event.modifiers.meta and not event.modifiers.shift and not event.modifiers.alt and not event.modifiers.ctrl:
@@ -323,12 +333,12 @@ class SRTEditor:
             case "Enter" if event.modifiers.meta and event.modifiers.shift:
                 self.add_caption_after(self.selected_caption)
 
-            # Delete block, Ctrl+Shift+D
+            # Delete block, Ctrl+D
             case "d" if event.modifiers.ctrl:
                 self.remove_caption(self.selected_caption)
 
             # Validate captions, Ctrl+Shift+V
-            case "v" if event.modifiers.ctrl:
+            case "V" if event.modifiers.ctrl and event.modifiers.shift:
                 self.validate_captions()
 
             # Play/pause video, Ctrl+Space
@@ -376,11 +386,6 @@ class SRTEditor:
                 self.show_export_dialog(self.filename)
             case "e" if event.modifiers.meta and not event.modifiers.shift:
                 self.show_export_dialog(self.filename)
-
-            # ? to show help
-            case "?" if event.modifiers.shift and not event.modifiers.ctrl:
-                self.show_keyboard_shortcuts(open_window=True)
-
             # Everything else
             case _:
                 pass
@@ -476,22 +481,36 @@ class SRTEditor:
         if not raw_segments:
             return
 
+        max_words = 50
+
         concatenated = []
         current = raw_segments[0].copy()
 
         for segment in raw_segments[1:]:
-            if segment["speaker"] == current["speaker"]:
+            word_count = len(current["text"].split())
+            past_limit = word_count >= max_words
+            if segment["speaker"] != current["speaker"]:
+                concatenated.append(current)
+                current = segment.copy()
+            elif past_limit and current["text"].rstrip().endswith("."):
+                concatenated.append(current)
+                current = segment.copy()
+            else:
                 current["text"] += " " + segment["text"]
                 current["end"] = segment["end"]
                 current["duration"] = current["end"] - current["start"]
-            else:
-                concatenated.append(current)
-                current = segment.copy()
 
         concatenated.append(current)
 
+        import re
+
+        def capitalize_after_periods(text: str) -> str:
+            return re.sub(r'(\.\s+)([a-z])', lambda m: m.group(1) + m.group(2).upper(), text)
+
         for index, seg in enumerate(concatenated):
             if seg.get("text", "").strip():
+                seg["text"] = capitalize_after_periods(seg["text"])
+                seg["text"] = seg["text"][0].upper() + seg["text"][1:]
                 start_time = self.seconds_to_timestamp(seg.get("start", 0.0))
                 end_time = self.seconds_to_timestamp(seg.get("end", 0.0))
 
@@ -581,7 +600,9 @@ class SRTEditor:
         """
 
         def fmt_ts(ts: str, f: str) -> str:
-            """Format timestamp according to selected format."""
+            """
+            Format timestamp according to selected format.
+            """
             p = ts.replace(",", ":").split(":")
             h, m, s, ms = int(p[0]), int(p[1]), int(p[2]), int(p[3])
             if f == "seconds":
@@ -1202,7 +1223,9 @@ class SRTEditor:
             return
 
         current_time = await ui.run_javascript(
-            """(() => { return document.querySelector("video").currentTime })()"""
+            """
+            (() => { return document.querySelector("video").currentTime })()
+            """
         )
 
         caption = self.get_caption_from_time(current_time)
@@ -1516,7 +1539,9 @@ class SRTEditor:
                                 self.update_caption_card_content(caption)
 
     def update_caption_card_content(self, caption: SRTCaption) -> None:
-        """Update the content of an existing caption card"""
+        """
+        Update the content of an existing caption card
+        """
         card_class = "cursor-pointer border-0 transition-all duration-200 w-full"
 
         if not caption.is_valid:
@@ -1799,7 +1824,7 @@ class SRTEditor:
             with ui.card().classes("p-6").style("max-width: 700px; min-width: 500px; max-height: 90vh; overflow-y: auto;"):
                 # Header
                 with ui.row().classes("w-full items-center justify-between mb-4"):
-                    ui.label("Subtitle Validation").classes("text-h5 font-bold")
+                    ui.label("Subtitle validation").classes("text-h5 font-bold")
                     ui.button(icon="close", on_click=dialog.close).props(
                         "flat round dense color=grey-7"
                     )
@@ -1878,7 +1903,7 @@ class SRTEditor:
                     ("Save file", "Ctrl/⌘ + S"),
                     ("Export file", "Ctrl/⌘ + E"),
                     ("Find", "Ctrl/⌘ + F"),
-                    ("Validate captions", "Ctrl + V"),
+                    ("Validate captions", "Ctrl + Shift + V"),
                 ],
             ),
             (
@@ -1898,7 +1923,7 @@ class SRTEditor:
 
         with ui.dialog() as dialog:
             with ui.card().classes("w-2/3 max-w-2xl").style("padding: 24px; max-height: 90vh; overflow-y: auto;"):
-                ui.label("Keyboard Shortcuts").classes("text-h5 mb-4 font-bold")
+                ui.label("Keyboard shortcuts").classes("text-h5 mb-4 font-bold")
 
                 with ui.column().classes("w-full gap-4"):
                     for group_name, shortcuts in shortcut_groups:
@@ -1962,7 +1987,7 @@ class SRTEditor:
             with card:
                 # Header
                 with ui.row().classes("w-full items-center justify-between mb-4"):
-                    ui.label("Export Transcript").classes(
+                    ui.label("Export transcript").classes(
                         "text-h5 font-bold text-black"
                     )
                     ui.button(icon="close", on_click=dialog.close).props(
@@ -2067,7 +2092,7 @@ class SRTEditor:
                             # Text options (for txt only)
                             txt_section = ui.column().classes("gap-2")
                             with txt_section:
-                                ui.label("Text Options").classes(
+                                ui.label("Text options").classes(
                                     "text-subtitle1 font-semibold"
                                 )
                                 txt_spk_incl = ui.checkbox(
@@ -2205,7 +2230,9 @@ class SRTEditor:
                         bulk_preview_col = None
 
                         def update_options_visibility():
-                            """Show/hide options based on selected format"""
+                            """
+                            Show/hide options based on selected format
+                            """
                             current_fmt = fmt.value
 
                             # SRT/VTT - no options
@@ -2286,7 +2313,9 @@ class SRTEditor:
                                 return ts  # srt format
 
                             def build_ts_str(cap):
-                                """Build timestamp string based on options"""
+                                """
+                                Build timestamp string based on options
+                                """
                                 if not ts_incl.value:
                                     return ""
                                 parts = []
@@ -2538,7 +2567,9 @@ class SRTEditor:
                                     return ts
 
                                 def build_ts_str(cap):
-                                    """Build timestamp string based on options"""
+                                    """
+                                    Build timestamp string based on options
+                                    """
                                     if not ts_incl.value:
                                         return ""
                                     parts = []
@@ -2551,7 +2582,9 @@ class SRTEditor:
                                     return " - ".join(parts) if parts else ""
 
                                 def export_one(editor):
-                                    """Export a single editor to string content."""
+                                    """
+                                    Export a single editor to string content.
+                                    """
                                     c = None
                                     if fmt.value == "srt":
                                         c = editor.export_srt()
@@ -2740,6 +2773,7 @@ class SRTEditor:
                                         zip_buffer.getvalue(),
                                         filename="bulk_export.zip",
                                     )
+
                                     ui.notify(
                                         f"Exported {len(bulk_editors)} files as {chosen_fmt.upper()}",
                                         type="positive",
@@ -2750,6 +2784,7 @@ class SRTEditor:
                                         c.encode("utf-8"),
                                         filename=f"{Path(filename).stem}.{fmt.value}",
                                     )
+
                                     ui.notify(
                                         f"Exported as {fmt.value.upper()}",
                                         type="positive",

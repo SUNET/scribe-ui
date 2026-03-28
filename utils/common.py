@@ -30,16 +30,19 @@ from utils.token import (
     get_admin_status,
     get_auth_header,
     get_bofh_status,
+    get_user_data,
     token_refresh,
 )
-from utils.helpers import storage_decrypt
+from utils.helpers import storage_decrypt, customers_get
 
 MultiPartParser.spool_max_size = 1024 * 1024 * 4096
 settings = get_settings()
 
 
 def sanitize_filename(filename: str) -> str:
-    """Remove or replace characters that are unsafe in filenames."""
+    """
+    Remove or replace characters that are unsafe in filenames.
+    """
     # Replace path separators and null bytes
     filename = filename.replace("/", "_").replace("\\", "_").replace("\x00", "")
     # Remove other problematic characters
@@ -93,6 +96,13 @@ jobs_columns = [
 
 default_styles = """
     <style>
+        :root {
+            --banner-offset: 0px;
+        }
+        .q-chip {
+            background-color: #d3ecbe !important;
+            color: #000000 !important;
+        }
         .default-style {
             background-color: #d3ecbe;
             border: 1px solid #000000;
@@ -177,9 +187,38 @@ default_styles = """
         }
         .q-tooltip {
             font-size: 14px;
+            white-space: nowrap;
         }
     </style>
 """
+
+
+def _get_support_contact_email() -> str:
+    """
+    Look up the support contact email for the current user's customer.
+    """
+
+    try:
+        user_data = get_user_data() or {}
+        user_realm = user_data.get("realm", "")
+        if not user_realm:
+            return ""
+
+        customers_data = customers_get()
+        customers = (
+            customers_data.get("result", []) if isinstance(customers_data, dict) else []
+        )
+
+        for c in customers:
+            c_realms = [
+                r.strip() for r in (c.get("realms") or "").split(",") if r.strip()
+            ]
+            if user_realm in c_realms:
+                return c.get("support_contact_email", "")
+    except Exception:
+        pass
+
+    return ""
 
 
 def show_help_dialog() -> None:
@@ -210,7 +249,7 @@ def show_help_dialog() -> None:
                         "A powerful transcription service using Whisper AI models to convert audio and video files into searchable text or time-coded subtitles with high accuracy."
                     ).classes("text-body1")
 
-                ui.label("Getting Started").classes("text-h6 font-bold mt-2")
+                ui.label("Getting started").classes("text-h6 font-bold mt-2")
 
                 with ui.grid(columns=2).classes("w-full gap-4"):
                     for step_num, step_title, step_desc, step_icon in [
@@ -247,7 +286,7 @@ def show_help_dialog() -> None:
                                 )
                             ui.label(step_desc).classes("text-body2 text-grey-8")
 
-                with ui.row().classes("w-full gap-4"):
+                with ui.row().classes("w-full gap-4 items-stretch"):
                     with ui.card().classes("flex-1 bg-amber-50 p-4"):
                         with ui.row().classes("items-center gap-2 mb-2"):
                             ui.icon("security", size="sm").classes("text-amber-800")
@@ -260,9 +299,18 @@ def show_help_dialog() -> None:
                         with ui.row().classes("items-center gap-2 mb-2"):
                             ui.icon("help", size="sm").classes("text-green-800")
                             ui.label("Support").classes("text-subtitle1 font-semibold")
+
                         ui.label(
                             "Contact your institution's IT department for technical support or questions."
                         ).classes("text-body2")
+
+                        support_email = _get_support_contact_email()
+                        if support_email:
+                            with ui.row().classes("items-center gap-1"):
+                                ui.label("Support email:").classes("text-body2")
+                                ui.link(
+                                    support_email, f"mailto:{support_email}"
+                                ).classes("text-body2")
 
         dialog.open()
 
@@ -279,7 +327,131 @@ def logout() -> None:
     ui.navigate.to(settings.OIDC_APP_LOGOUT_ROUTE)
 
 
-def page_init(header_text: Optional[str] = "") -> None:
+def _show_announcement_banners() -> None:
+    """Show active announcement banners below the header."""
+
+    user_data = get_user_data()
+    if not user_data:
+        return
+
+    announcements = user_data.get("announcements", [])
+    if not announcements:
+        return
+
+    dismissed = app.storage.user.get("dismissed_announcements", [])
+
+    severity_styles = {
+        "info": {
+            "bg": "#e3f2fd",
+            "border": "#90caf9",
+            "icon": "campaign",
+            "icon_color": "#1565c0",
+            "dismissible": True,
+        },
+        "maintenance": {
+            "bg": "#fff3e0",
+            "border": "#ffb74d",
+            "icon": "construction",
+            "icon_color": "#e65100",
+            "dismissible": True,
+        },
+        "major_incident": {
+            "bg": "#fce4ec",
+            "border": "#ef9a9a",
+            "icon": "crisis_alert",
+            "icon_color": "#c62828",
+            "dismissible": False,
+        },
+    }
+
+    visible_count = 0
+    for a in announcements:
+        sev = a.get("severity", "info")
+        style = severity_styles.get(sev, severity_styles["info"])
+        if style["dismissible"] and a.get("id") in dismissed:
+            continue
+        visible_count += 1
+
+    if visible_count > 0:
+        ui.add_head_html(
+            f"<style>:root {{ --banner-offset: {visible_count * 40}px; }}</style>"
+        )
+
+    # CSS for links inside banners
+    ui.add_head_html(
+        "<style>"
+        ".announcement-banner a { color: #1565c0; text-decoration: underline;"
+        " font-weight: 500; }"
+        ".announcement-banner a:hover { text-decoration: underline;"
+        " opacity: 0.8; }"
+        ".announcement-banner.severity-maintenance a { color: #bf360c; }"
+        ".announcement-banner.severity-major_incident a { color: #b71c1c; }"
+        "</style>"
+    )
+
+    # JS to fix link attributes (target, rel) for all banner links
+    ui.add_head_html(
+        "<script>"
+        "document.addEventListener('DOMContentLoaded', function() {"
+        "  new MutationObserver(function() {"
+        "    document.querySelectorAll('.announcement-banner a').forEach(function(a) {"
+        "      if (!a.getAttribute('target')) a.setAttribute('target', '_top');"
+        "      try { var u = new URL(a.href, location.origin);"
+        "        if (u.origin !== location.origin)"
+        "          a.setAttribute('rel', 'noopener noreferrer');"
+        "      } catch(e) {}"
+        "    });"
+        "  }).observe(document.body, {childList: true, subtree: true});"
+        "});"
+        "</script>"
+    )
+
+    for announcement in announcements:
+        ann_id = announcement.get("id")
+        sev = announcement.get("severity", "info")
+        style = severity_styles.get(sev, severity_styles["info"])
+
+        if style["dismissible"] and ann_id in dismissed:
+            continue
+
+        banner_container = (
+            ui.element("div")
+            .classes(f"announcement-banner severity-{sev}")
+            .style(
+                f"background-color: {style['bg']}; border-bottom: 1px solid {style['border']};"
+                " padding: 8px 20px; display: flex; align-items: center;"
+                " justify-content: space-between;"
+                " margin-left: -2rem; margin-right: -2rem; margin-top: -1rem;"
+                " width: calc(100% + 4rem);"
+            )
+        )
+
+        with banner_container:
+            with ui.element("div").style(
+                "display: flex; align-items: center; gap: 10px; flex: 1;"
+            ):
+                ui.icon(style["icon"], size="sm").style(
+                    f"color: {style['icon_color']};"
+                )
+                ui.html(announcement.get("message", ""), sanitize=False).style(
+                    "color: #000000; font-size: 0.95rem;"
+                )
+
+            if style["dismissible"]:
+
+                def dismiss(a_id=ann_id, container=banner_container):
+                    current = app.storage.user.get("dismissed_announcements", [])
+                    if a_id not in current:
+                        current.append(a_id)
+                        app.storage.user["dismissed_announcements"] = current
+                    container.set_visibility(False)
+
+                ui.button(icon="close", on_click=dismiss).props(
+                    "flat round dense size=sm color=grey-7"
+                )
+
+
+def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None:
     """
     Initialize the page with a header and background color.
     """
@@ -302,58 +474,249 @@ def page_init(header_text: Optional[str] = "") -> None:
     is_bofh = get_bofh_status()
     ui.timer(30, refresh)
 
+    try:
+        client = ui.context.client
+        current_path = client.page.path if client and client.page else ""
+    except Exception:
+        current_path = ""
+
     if header_text:
         header_text = f" - {header_text}"
 
     if is_admin:
         header_text += " (Administrator)"
 
-    with (
-        ui.header()
-        .style("justify-content: space-between; background-color: #ffffff;")
-        .classes("drop-shadow-md")
-    ):
-        with ui.element("div").style("display: flex; gap: 0px;"):
-            ui.image(f"static/{settings.LOGO_TOPBAR}").classes("q-mr-sm").style(
-                "height: 30px; width: 30px;"
+    if use_drawer:
+        drawer_open = app.storage.user.get("drawer_open", False)
+        drawer = ui.left_drawer(value=True, elevated=True).style(
+            "background-color: #f5f5f5; padding: 0;"
+        )
+
+        drawer.props(':mini-width="56" :width="250" :breakpoint="0"')
+
+        if not drawer_open:
+            drawer.props(add="mini")
+
+        menu_tooltips = []
+
+        def toggle_drawer():
+            is_open = app.storage.user.get("drawer_open", False)
+            if is_open:
+                drawer.props(add="mini")
+                for t in menu_tooltips:
+                    t.set_visibility(True)
+            else:
+                drawer.props(remove="mini")
+                for t in menu_tooltips:
+                    t.set_visibility(False)
+            app.storage.user["drawer_open"] = not is_open
+
+        menu_item_style = (
+            "display: flex; align-items: center; gap: 12px; padding: 10px 16px;"
+            " cursor: pointer; font-size: 1.05rem;"
+            " transition: background-color 0.15s; width: 100%;"
+            " white-space: nowrap; overflow: hidden;"
+        )
+        menu_active_style = " background-color: #e0e0e0; font-weight: 600;"
+        menu_hover_css = """
+            <style>
+                .menu-item:hover { background-color: #e0e0e0; }
+                .q-drawer--mini .menu-header { display: none; }
+                .q-drawer--mini .menu-separator { margin: 4px 0; }
+                .q-drawer--mini .menu-item { justify-content: center; padding: 10px 0; gap: 0; }
+                .q-drawer--mini .menu-item .q-icon { margin: 0; }
+                .q-drawer--mini .menu-label { display: none; }
+            </style>
+        """
+
+        def menu_style(path: str) -> str:
+            active = current_path == path
+            return menu_item_style + (menu_active_style if active else "")
+
+        # Menu items: (path, icon, label)
+        menu_items = [
+            ("/home", "folder", "My files"),
+            ("/user", "person", "User settings"),
+        ]
+
+        admin_items = [
+            ("/admin/users", "people", "Users"),
+            ("/admin", "group_work", "Groups"),
+            ("/admin/rules", "rule", "User provisioning"),
+            ("/admin/customers", "business", "Customers" if is_bofh else "Account"),
+        ]
+
+        system_items = [
+            ("/health", "health_and_safety", "System status"),
+            ("/admin/analytics", "analytics", "Activity overview"),
+            ("/admin/announcements", "campaign", "Announcements"),
+        ]
+
+        with drawer:
+            ui.add_head_html(menu_hover_css)
+            with ui.column().classes("w-full").style("gap: 0;"):
+                ui.separator()
+
+                show_tips = not drawer_open
+
+                for path, icon, label in menu_items:
+                    with ui.element("div").style(menu_style(path)).classes(
+                        "menu-item"
+                    ).on("click", lambda p=path: ui.navigate.to(p)):
+                        ui.icon(icon, color="black").style("font-size: 20px;")
+                        ui.label(label).classes("menu-label")
+                        t = ui.tooltip(label)
+                        t.set_visibility(show_tips)
+                        menu_tooltips.append(t)
+
+                if is_admin:
+                    ui.separator().classes("menu-separator")
+                    ui.label("Administration").classes("menu-header").style(
+                        "padding: 10px 16px 4px; font-weight: bold; font-size: 0.85rem; color: #666;"
+                    )
+
+                    for path, icon, label in admin_items:
+                        with ui.element("div").style(menu_style(path)).classes(
+                            "menu-item"
+                        ).on("click", lambda p=path: ui.navigate.to(p)):
+                            ui.icon(icon, color="black").style("font-size: 20px;")
+                            ui.label(label).classes("menu-label")
+                            t = ui.tooltip(label)
+                            t.set_visibility(show_tips)
+                            menu_tooltips.append(t)
+
+                    with ui.element("div").style(menu_item_style).classes(
+                        "menu-item"
+                    ).on(
+                        "click",
+                        lambda: ui.run_javascript(
+                            f"window.open('{settings.API_URL}/api/docs', '_blank')"
+                        ),
+                    ):
+                        ui.icon("description", color="black").style("font-size: 20px;")
+                        ui.label("API documentation").classes("menu-label")
+                        t = ui.tooltip("API documentation")
+                        t.set_visibility(show_tips)
+                        menu_tooltips.append(t)
+
+                if is_bofh:
+                    ui.separator().classes("menu-separator")
+                    ui.label("System").classes("menu-header").style(
+                        "padding: 10px 16px 4px; font-weight: bold; font-size: 0.85rem; color: #666;"
+                    )
+
+                    for path, icon, label in system_items:
+                        with ui.element("div").style(menu_style(path)).classes(
+                            "menu-item"
+                        ).on("click", lambda p=path: ui.navigate.to(p)):
+                            ui.icon(icon, color="black").style("font-size: 20px;")
+                            ui.label(label).classes("menu-label")
+                            t = ui.tooltip(label)
+                            t.set_visibility(show_tips)
+                            menu_tooltips.append(t)
+
+                ui.separator()
+
+                with ui.element("div").style(menu_item_style).classes("menu-item").on(
+                    "click", lambda: ui.navigate.to("/logout")
+                ):
+                    ui.icon("logout", color="black").style("font-size: 20px;")
+                    ui.label("Logout").classes("menu-label")
+                    t = ui.tooltip("Logout")
+                    t.set_visibility(show_tips)
+                    menu_tooltips.append(t)
+
+        with (
+            ui.header()
+            .style("justify-content: space-between; background-color: #ffffff;")
+            .classes("drop-shadow-md")
+        ):
+            with ui.element("div").style(
+                "display: flex; gap: 0px; align-items: center; margin-left: -12px;"
+            ):
+                with ui.button(
+                    icon="menu",
+                    on_click=lambda: toggle_drawer(),
+                ).props("flat color=black"):
+                    menu_btn_tooltip = ui.tooltip("Expand menu")
+                    menu_btn_tooltip.set_visibility(not drawer_open)
+                    menu_tooltips.append(menu_btn_tooltip)
+                ui.image(f"static/{settings.LOGO_TOPBAR}").classes("q-mr-sm").style(
+                    "height: 30px; width: 30px;"
+                )
+                ui.label(settings.TOPBAR_TEXT + header_text).classes(
+                    "text-h6 text-black"
+                )
+
+            with ui.element("div").style("display: flex; gap: 0px;"):
+                with ui.button(
+                    icon="help",
+                    on_click=lambda: show_help_dialog(),
+                ).props("flat color=black"):
+                    ui.tooltip("Help")
+
+            ui.add_head_html(
+                "<style>"
+                "body { background-color: #ffffff; }"
+                ".nicegui-content { padding-left: 2rem; padding-right: 2rem; max-width: 100%; }"
+                "</style>"
             )
-            ui.label(settings.TOPBAR_TEXT + header_text).classes("text-h6 text-black")
+    else:
+        with (
+            ui.header()
+            .style("justify-content: space-between; background-color: #ffffff;")
+            .classes("drop-shadow-md")
+        ):
+            with ui.element("div").style("display: flex; gap: 0px;"):
+                ui.image(f"static/{settings.LOGO_TOPBAR}").classes("q-mr-sm").style(
+                    "height: 30px; width: 30px;"
+                )
+                ui.label(settings.TOPBAR_TEXT + header_text).classes(
+                    "text-h6 text-black"
+                )
 
-        with ui.element("div").style("display: flex; gap: 0px;"):
-            if is_admin:
-                with ui.button(
-                    icon="settings",
-                    on_click=lambda: ui.navigate.to("/admin"),
-                ).props("flat color=red"):
-                    ui.tooltip("Admin settings")
+            with ui.element("div").style("display: flex; gap: 0px;"):
+                if is_admin:
+                    with ui.button(
+                        icon="settings",
+                        on_click=lambda: ui.navigate.to("/admin"),
+                    ).props("flat color=red"):
+                        ui.tooltip("Admin settings")
 
-            if is_bofh:
+                if is_bofh:
+                    with ui.button(
+                        icon="health_and_safety",
+                        on_click=lambda: ui.navigate.to("/health"),
+                    ).props("flat color=red"):
+                        ui.tooltip("System status")
+                    with ui.button(
+                        icon="analytics",
+                        on_click=lambda: ui.navigate.to("/admin/analytics"),
+                    ).props("flat color=red"):
+                        ui.tooltip("Page view statistics")
                 with ui.button(
-                    icon="health_and_safety",
-                    on_click=lambda: ui.navigate.to("/health"),
-                ).props("flat color=red"):
-                    ui.tooltip("System status")
-            with ui.button(
-                icon="home",
-                on_click=lambda: ui.navigate.to("/home"),
-            ).props("flat color=black"):
-                ui.tooltip("Home")
-            with ui.button(
-                icon="person",
-                on_click=lambda: ui.navigate.to("/user"),
-            ).props("flat color=black"):
-                ui.tooltip("User settings")
-            with ui.button(
-                icon="help",
-                on_click=lambda: show_help_dialog(),
-            ).props("flat color=black"):
-                ui.tooltip("Help")
-            with ui.button(
-                icon="logout",
-                on_click=lambda: ui.navigate.to("/logout"),
-            ).props("flat color=black"):
-                ui.tooltip("Logout")
-            ui.add_head_html("<style>body {background-color: #ffffff;}</style>")
+                    icon="home",
+                    on_click=lambda: ui.navigate.to("/home"),
+                ).props("flat color=black"):
+                    ui.tooltip("Home")
+                with ui.button(
+                    icon="person",
+                    on_click=lambda: ui.navigate.to("/user"),
+                ).props("flat color=black"):
+                    ui.tooltip("User settings")
+                with ui.button(
+                    icon="help",
+                    on_click=lambda: show_help_dialog(),
+                ).props("flat color=black"):
+                    ui.tooltip("Help")
+                with ui.button(
+                    icon="logout",
+                    on_click=lambda: ui.navigate.to("/logout"),
+                ).props("flat color=black"):
+                    ui.tooltip("Logout")
+                ui.add_head_html("<style>body {background-color: #ffffff;}</style>")
+
+    _show_announcement_banners()
 
 
 def add_timezone_to_timestamp(timestamp: str) -> str:
@@ -506,9 +869,24 @@ async def post_file(filedata: bytes, filename: str) -> bool:
     return True
 
 
-def toggle_upload_status(upload_column, status_column):
+def format_size(bytes_val) -> str:
+    """
+    Format bytes into a human-readable string.
+    """
+    if bytes_val < 1024:
+        return f"{bytes_val} B"
+    elif bytes_val < 1024 * 1024:
+        return f"{bytes_val / 1024:.1f} KB"
+    elif bytes_val < 1024 * 1024 * 1024:
+        return f"{bytes_val / (1024 * 1024):.1f} MB"
+    else:
+        return f"{bytes_val / (1024 * 1024 * 1024):.1f} GB"
+
+
+def toggle_upload_status(upload_column, status_column, dialog):
     upload_column.visible = False
     status_column.visible = True
+    dialog.props("persistent")
 
 
 def table_upload(table) -> None:
@@ -519,11 +897,12 @@ def table_upload(table) -> None:
     ui.add_head_html(default_styles)
 
     with ui.dialog() as dialog:
-        with ui.card():
-            with ui.column().classes("w-full items-center mt-10") as status_column:
-                ui.label("Uploading files, please wait...").style(
-                    "width: 100%;"
-                ).classes("text-h6 q-mb-xl text-black")
+        with ui.card().style("min-width: 400px; padding: 32px;"):
+            with ui.column().classes("w-full items-center") as status_column:
+                ui.label("Uploading files").classes("text-h6 q-mb-sm text-black")
+                status_label = ui.label("Please wait...").classes(
+                    "text-body1 q-mb-lg text-grey-7"
+                )
                 ui.spinner(size="50px", color="black")
                 status_column.visible = False
 
@@ -548,9 +927,21 @@ def table_upload(table) -> None:
 
                 upload.on(
                     "start",
-                    lambda _: toggle_upload_status(upload_column, status_column),
+                    lambda _: toggle_upload_status(
+                        upload_column, status_column, dialog
+                    ),
                 )
                 upload.on("finish", lambda _: dialog.close())
+
+                def on_byte_progress(e):
+                    uploaded = e.args.get("uploaded", 0)
+                    total = e.args.get("total", 0)
+                    if total > 0:
+                        status_label.set_text(
+                            f"{format_size(uploaded)} / {format_size(total)}"
+                        )
+
+                upload.on("byte_progress", on_byte_progress)
 
                 dropzone = ui.html(
                     """
@@ -587,6 +978,23 @@ def table_upload(table) -> None:
                         "  dz.querySelector('div').classList.remove('bg-gray-200');"
                         "  upl.$refs.qRef.addFiles(Array.from(e.dataTransfer.files));"
                         "});"
+                        "setInterval(() => {"
+                        "  const qRef = upl.$refs.qRef;"
+                        "  if (!qRef || !qRef.files || qRef.files.length === 0) return;"
+                        "  let totalSize = 0, uploaded = 0, currentFile = '';"
+                        "  qRef.files.forEach(f => {"
+                        "    totalSize += f.size || 0;"
+                        "    uploaded += f.__uploaded || 0;"
+                        "    if (f.__status === 'uploading') currentFile = f.name;"
+                        "  });"
+                        "  if (currentFile) {"
+                        "    getElement("
+                        + str(upload_id)
+                        + ").$emit('byte_progress', {"
+                        "      uploaded: uploaded, total: totalSize, current_file: currentFile"
+                        "    });"
+                        "  }"
+                        "}, 500);"
                     ),
                     once=True,
                 )
@@ -607,24 +1015,43 @@ async def handle_upload_with_feedback(files, dialog, table):
     Handle file uploads with user feedback and validation.
     """
 
+    client = ui.context.client
+
     dialog.close()
 
+    # Read file data while the client context is still active
+    file_items = []
     for file in files.files:
-        try:
-            file_name = sanitize_filename(file.name)
-            file_data = await file.read()
+        file_name = sanitize_filename(file.name)
+        file_data = await file.read()
+        file_items.append((file_name, file_data))
 
-            await post_file(file_data, file_name)
+    # Upload to backend in a background task so the UI stays responsive
+    async def _upload():
+        for file_name, file_data in file_items:
+            try:
+                await post_file(file_data, file_name)
 
-            ui.notify(
-                f"Successfully uploaded {file_name}", type="positive", timeout=3000
-            )
-        except Exception as e:
-            ui.notify(
-                f"Error uploading {file_name}: {str(e)}", type="negative", timeout=5000
-            )
+                if not client._deleted:
+                    with table:
+                        ui.notify(
+                            f"Successfully uploaded {file_name}",
+                            type="positive",
+                            timeout=3000,
+                        )
+            except Exception as e:
+                if not client._deleted:
+                    with table:
+                        ui.notify(
+                            f"Error uploading {file_name}: {str(e)}",
+                            type="negative",
+                            timeout=5000,
+                        )
 
-    table.update_rows(jobs_get(), clear_selection=False)
+        if not client._deleted:
+            table.update_rows(jobs_get(), clear_selection=False)
+
+    asyncio.create_task(_upload())
 
 
 def table_transcribe(selected_row) -> None:
@@ -640,7 +1067,7 @@ def table_transcribe(selected_row) -> None:
             .classes("w-full no-shadow no-border")
         ):
             with ui.row().classes("w-full"):
-                ui.label("Transcription Settings").style("width: 100%;").classes(
+                ui.label("Transcription settings").style("width: 100%;").classes(
                     "text-h6 q-mb-xl text-black"
                 )
 
@@ -655,12 +1082,19 @@ def table_transcribe(selected_row) -> None:
                         value=settings.WHISPER_LANGUAGES[0],
                     ).classes("w-full")
 
-                # Remove the option to pick model for now. People always use the large models anyway.
-                # with ui.column().classes("col-12 col-sm-24"):
-                #     ui.label("Accuracy").classes("text-subtitle2 q-mb-sm")
-                #     model = ui.radio(
-                #         settings.WHISPER_MODELS, value=settings.WHISPER_MODELS[0]
-                #     )
+                with ui.column().classes("col-12 col-sm-24") as verbatim_container:
+                    verbatim = ui.checkbox(
+                        "Verbatim (include filler words, repetitions and unfinished sentences)"
+                    ).classes("q-mt-sm")
+                    verbatim_container.set_visibility(
+                        language.value.lower() == "swedish"
+                    )
+                    language.on_value_change(
+                        lambda e: verbatim_container.set_visibility(
+                            e.value.lower() == "swedish"
+                            or e.value.lower() == "norwegian"
+                        )
+                    )
 
                 with ui.column().classes("col-12 col-sm-24"):
                     ui.label("Number of speakers, automatic if not chosen").classes(
@@ -692,8 +1126,9 @@ def table_transcribe(selected_row) -> None:
                     "Start transcribing",
                     on_click=lambda: start_transcription(
                         [selected_row],
-                        language.value,
-                        # model.value,
+                        f"{language.value} (verbatim)"
+                        if verbatim.value
+                        else language.value,
                         speakers.value,
                         output_format.value,
                         dialog,
@@ -726,7 +1161,7 @@ def table_bulk_transcribe(table: ui.table) -> None:
             .classes("w-full no-shadow no-border")
         ):
             with ui.row().classes("w-full"):
-                ui.label("Transcription Settings").style("width: 100%;").classes(
+                ui.label("Transcription settings").style("width: 100%;").classes(
                     "text-h6 q-mb-xl text-black"
                 )
 
@@ -751,6 +1186,19 @@ def table_bulk_transcribe(table: ui.table) -> None:
                         settings.WHISPER_LANGUAGES,
                         value=settings.WHISPER_LANGUAGES[0],
                     ).classes("w-full")
+
+                with ui.column().classes("col-12 col-sm-24") as verbatim_container:
+                    verbatim = ui.checkbox(
+                        "Verbatim (include filler words, repetitions and unfinished sentences)"
+                    ).classes("q-mt-sm")
+                    verbatim_container.set_visibility(
+                        language.value.lower() == "swedish"
+                    )
+                    language.on_value_change(
+                        lambda e: verbatim_container.set_visibility(
+                            e.value.lower() == "swedish"
+                        )
+                    )
 
                 with ui.column().classes("col-12 col-sm-24"):
                     ui.label("Number of speakers, automatic if not chosen").classes(
@@ -780,13 +1228,17 @@ def table_bulk_transcribe(table: ui.table) -> None:
 
                 with ui.button(
                     "Start transcribing",
-                    on_click=lambda: start_transcription(
-                        uploadable,
-                        language.value,
-                        speakers.value,
-                        output_format.value,
-                        dialog,
-                        table,
+                    on_click=lambda: (
+                        start_transcription(
+                            uploadable,
+                            f"{language.value} (verbatim)"
+                            if verbatim.value
+                            else language.value,
+                            speakers.value,
+                            output_format.value,
+                            dialog,
+                            table,
+                        ),
                     ),
                 ) as start:
                     start.props("color=black flat")
@@ -803,27 +1255,20 @@ def table_delete(table: ui.table) -> None:
     count = len(table.selected)
 
     with ui.dialog() as dialog:
-        with ui.card().style(
-            "min-width: 500px; max-width: 650px; padding: 28px;"
-        ).classes("no-shadow"):
-            ui.label("Delete files").classes("text-h6 text-black q-mb-md")
-
+        with ui.card():
+            ui.label("Delete files").classes("text-h6")
             ui.label(
                 f"{str(count)} files will be permanently deleted. This action cannot be undone."
-            ).classes("text-body2 q-mb-md")
+            ).classes("text-subtitle2").style("margin-bottom: 10px;")
 
-            with ui.row().classes("justify-end w-full gap-2"):
-                ui.button(
-                    "Cancel",
-                    on_click=dialog.close,
-                ).props(
-                    "flat color=black"
-                ).classes("cancel-style")
+            with ui.row().classes("justify-between w-full"):
+                ui.button("Cancel", on_click=lambda: dialog.close()).props(
+                    "color=black"
+                )
                 ui.button(
                     "Delete",
-                    icon="delete",
                     on_click=lambda: __delete_files(table, dialog),
-                ).props("color=red unelevated").style("width: 120px;")
+                ).props("color=red")
 
         dialog.open()
 
@@ -970,7 +1415,6 @@ def table_bulk_export(table: ui.table) -> None:
 def start_transcription(
     rows: list,
     language: str,
-    # model: str,
     speakers: str,
     output_format: str,
     dialog: ui.dialog,
@@ -996,6 +1440,9 @@ def start_transcription(
                     "language": f"{selected_language}",
                     "speakers": int(speakers),
                     "output_format": output_format,
+                    "encryption_password": storage_decrypt(
+                        app.storage.user.get("encryption_password"),
+                    ),
                 },
                 headers=get_auth_header(),
             )

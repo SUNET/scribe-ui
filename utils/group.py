@@ -38,26 +38,27 @@ class Group:
 
     def delete_group_dialog(self) -> None:
         with ui.dialog() as delete_group_dialog:
-            with ui.card().style("width: 400px; max-width: 90vw;"):
-                ui.label("Delete group").classes("text-2xl font-bold")
-                ui.label("Are you sure you want to delete this group? This action cannot be undone.").classes("my-4")
-                with ui.row().style("justify-content: flex-end; width: 100%;"):
-                    ui.button("Cancel").classes("button-close").props(
-                        "color=black flat"
-                    ).on("click", lambda: delete_group_dialog.close())
-                    ui.button("Delete").classes("button-close").props(
-                        "color=red flat"
-                    ).on(
-                        "click",
-                        lambda: (
+            with ui.card():
+                ui.label("Delete group").classes("text-h6")
+                ui.label(
+                    "Are you sure you want to delete this group? This action cannot be undone."
+                ).classes("text-subtitle2").style("margin-bottom: 10px;")
+
+                with ui.row().classes("justify-between w-full"):
+                    ui.button("Cancel", on_click=lambda: delete_group_dialog.close()).props(
+                        "color=black"
+                    )
+                    ui.button(
+                        "Delete",
+                        on_click=lambda: (
                             requests.delete(
                                 settings.API_URL + f"/api/v1/admin/groups/{self.group_id}",
                                 headers=get_auth_header(),
                             ),
                             delete_group_dialog.close(),
-                            ui.navigate.to("/admin")
+                            ui.navigate.to("/admin"),
                         ),
-                    )
+                    ).props("color=red")
 
             delete_group_dialog.open()
 
