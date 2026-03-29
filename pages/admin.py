@@ -1123,7 +1123,7 @@ def create_customer_dialog(page: callable) -> None:
                 ui.input("Contact email").classes("w-full").props("outlined")
             )
             support_contact_email_input = (
-                ui.input("Support contact email").classes("w-full").props("outlined")
+                ui.input("Support contact address").classes("w-full").props("outlined")
             )
 
             priceplan_select = (
@@ -1307,7 +1307,7 @@ def edit_customer(customer_id: str) -> None:
             )
             support_contact_email_input = (
                 ui.input(
-                    "Support contact email",
+                    "Support contact address",
                     value=customer.get("support_contact_email", ""),
                 )
                 .props("outlined")

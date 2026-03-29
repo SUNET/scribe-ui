@@ -304,12 +304,15 @@ def show_help_dialog() -> None:
                             "Contact your institution's IT department for technical support or questions."
                         ).classes("text-body2")
 
-                        support_email = _get_support_contact_email()
-                        if support_email:
+                        support_contact = _get_support_contact_email()
+                        if support_contact:
+                            is_url = support_contact.startswith(("http://", "https://"))
+                            href = support_contact if is_url else f"mailto:{support_contact}"
+                            label = "Support:" if is_url else "Support email:"
                             with ui.row().classes("items-center gap-1"):
-                                ui.label("Support email:").classes("text-body2")
+                                ui.label(label).classes("text-body2")
                                 ui.link(
-                                    support_email, f"mailto:{support_email}"
+                                    support_contact, href
                                 ).classes("text-body2")
 
         dialog.open()
