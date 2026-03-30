@@ -15,8 +15,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import asyncio
-import requests
+import httpx
 
 from nicegui import ui
 from utils.settings import get_settings
@@ -101,11 +100,11 @@ def create() -> None:
 
                 async def check_status() -> None:
                     try:
-                        response = await asyncio.to_thread(
-                            requests.get,
-                            f"{settings.API_URL}/api/v1/status",
-                            timeout=5,
-                        )
+                        async with httpx.AsyncClient() as client:
+                            response = await client.get(
+                                f"{settings.API_URL}/api/v1/status",
+                                timeout=5,
+                            )
                         data = response.json()
 
                         if data.get("backend") == "ok":

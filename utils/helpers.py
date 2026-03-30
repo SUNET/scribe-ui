@@ -15,7 +15,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import requests
+import httpx
 
 from nicegui import app, ui
 from typing import Optional
@@ -71,7 +71,7 @@ def encryption_password_set(password: str) -> None:
     """
 
     try:
-        response = requests.put(
+        response = httpx.put(
             f"{settings.API_URL}/api/v1/me",
             headers=get_auth_header(),
             json={"encryption": True, "encryption_password": password},
@@ -81,7 +81,7 @@ def encryption_password_set(password: str) -> None:
 
         return data["result"]
 
-    except requests.exceptions.RequestException:
+    except httpx.HTTPError:
         return None
 
 
@@ -93,7 +93,7 @@ def encryption_password_verify(password: str) -> bool:
     """
 
     try:
-        response = requests.put(
+        response = httpx.put(
             f"{settings.API_URL}/api/v1/me",
             headers=get_auth_header(),
             json={"encryption_password": password, "verify_password": True},
@@ -102,7 +102,7 @@ def encryption_password_verify(password: str) -> bool:
 
         return True
 
-    except requests.exceptions.RequestException:
+    except httpx.HTTPError:
         return False
 
 
@@ -115,7 +115,7 @@ def reset_password() -> None:
 
     def do_reset():
         try:
-            response = requests.put(
+            response = httpx.put(
                 f"{settings.API_URL}/api/v1/me",
                 headers=get_auth_header(),
                 json={"reset_password": True},
@@ -129,7 +129,7 @@ def reset_password() -> None:
             app.storage.user["encryption_password"] = None
             ui.navigate.to("/")
 
-        except requests.exceptions.RequestException:
+        except httpx.HTTPError:
             ui.notify("Failed to reset encryption passphrase.", color="negative")
 
     with ui.dialog() as dialog:
@@ -160,7 +160,7 @@ def export_customers_csv() -> None:
     Export customers data as CSV.
     """
     try:
-        res = requests.get(
+        res = httpx.get(
             settings.API_URL + "/api/v1/admin/customers/export/csv",
             headers=get_auth_header(),
         )
@@ -169,7 +169,7 @@ def export_customers_csv() -> None:
 
         ui.download.content(str(csv_data), filename="customers_export.csv")
 
-    except requests.RequestException:
+    except httpx.HTTPError:
         ui.notify("Error when exporting customers", color="red")
 
 
@@ -193,7 +193,7 @@ def save_customer(
     realms_str = ",".join(all_realms)
 
     try:
-        res = requests.put(
+        res = httpx.put(
             settings.API_URL + f"/api/v1/admin/customers/{customer_id}",
             headers=get_auth_header(),
             json={
@@ -211,7 +211,7 @@ def save_customer(
         )
         res.raise_for_status()
         ui.navigate.to("/admin/customers")
-    except requests.RequestException as e:
+    except httpx.HTTPError as e:
         ui.notify(f"Error saving customer: {e}", type="negative")
 
 
@@ -220,12 +220,12 @@ def customers_get() -> list:
     Fetch all customers from backend.
     """
     try:
-        res = requests.get(
+        res = httpx.get(
             settings.API_URL + "/api/v1/admin/customers", headers=get_auth_header()
         )
         res.raise_for_status()
         return res.json()
-    except requests.RequestException as e:
+    except httpx.HTTPError as e:
         print(f"Error fetching customers: {e}")
         return []
 
@@ -235,12 +235,12 @@ def realms_get() -> list:
     Fetch all realms from backend.
     """
     try:
-        res = requests.get(
+        res = httpx.get(
             settings.API_URL + "/api/v1/admin/realms", headers=get_auth_header()
         )
         res.raise_for_status()
         return res.json()["result"]
-    except requests.RequestException as e:
+    except httpx.HTTPError as e:
         print(f"Error fetching realms: {e}")
         return []
 
@@ -251,13 +251,13 @@ def groups_get() -> list:
     """
 
     try:
-        res = requests.get(
+        res = httpx.get(
             settings.API_URL + "/api/v1/admin/groups", headers=get_auth_header()
         )
         res.raise_for_status()
 
         return res.json()
-    except requests.RequestException as e:
+    except httpx.HTTPError as e:
         print(f"Error fetching groups: {e}")
         return []
 
@@ -268,14 +268,14 @@ def user_statistics_get(group_id: str) -> dict:
     """
 
     try:
-        res = requests.get(
+        res = httpx.get(
             settings.API_URL + f"/api/v1/admin/groups/{group_id}/stats",
             headers=get_auth_header(),
         )
         res.raise_for_status()
 
         return res.json()
-    except requests.RequestException as e:
+    except httpx.HTTPError as e:
         print(f"Error fetching user statistics: {e}")
         return {}
 
@@ -289,7 +289,7 @@ def email_save(email: str) -> None:
     """
 
     try:
-        response = requests.put(
+        response = httpx.put(
             f"{settings.API_URL}/api/v1/me",
             headers=get_auth_header(),
             json={"email": email},
@@ -304,7 +304,7 @@ def email_save(email: str) -> None:
         ui.notify("E-mail address saved successfully", color="green")
         return data["result"]
 
-    except requests.exceptions.RequestException:
+    except httpx.HTTPError:
         ui.notify("Failed to save e-mail address", color="red")
         return None
 
@@ -318,8 +318,8 @@ def email_get() -> str:
     """
 
     try:
-        response = requests.get(
-            f"{settings.API_URL}/api/v1/me", headers=get_auth_header(), json={}
+        response = httpx.get(
+            f"{settings.API_URL}/api/v1/me", headers=get_auth_header()
         )
         response.raise_for_status()
         data = response.json()
@@ -330,7 +330,7 @@ def email_get() -> str:
 
         return data["result"].get("email", "")
 
-    except requests.exceptions.RequestException:
+    except httpx.HTTPError:
         ui.notify("Failed to retrieve e-mail address", color="red")
         return ""
 
@@ -364,7 +364,7 @@ def email_save_notifications(
     }
 
     try:
-        response = requests.put(
+        response = httpx.put(
             f"{settings.API_URL}/api/v1/me",
             headers=get_auth_header(),
             json=payload,
@@ -378,7 +378,7 @@ def email_save_notifications(
 
         ui.notify("Notification preferences updated", color="green")
 
-    except requests.exceptions.RequestException:
+    except httpx.HTTPError:
         ui.notify("Failed to update notification preferences", color="red")
 
 
@@ -391,8 +391,8 @@ def email_save_notifications_get() -> dict:
     """
 
     try:
-        response = requests.get(
-            f"{settings.API_URL}/api/v1/me", headers=get_auth_header(), json={}
+        response = httpx.get(
+            f"{settings.API_URL}/api/v1/me", headers=get_auth_header()
         )
         response.raise_for_status()
         data = response.json()
@@ -408,7 +408,7 @@ def email_save_notifications_get() -> dict:
 
         return notifications
 
-    except requests.exceptions.RequestException:
+    except httpx.HTTPError:
         ui.notify("Failed to retrieve notification preferences", color="red")
         return {}
 
@@ -420,7 +420,7 @@ def test_all_notifications() -> None:
     """
 
     try:
-        response = requests.post(
+        response = httpx.post(
             f"{settings.API_URL}/api/v1/me/test-notifications",
             headers=get_auth_header(),
         )
@@ -439,7 +439,7 @@ def test_all_notifications() -> None:
             color="green",
         )
 
-    except requests.exceptions.RequestException:
+    except httpx.HTTPError:
         ui.notify("Failed to send test notifications", color="red")
 
 
@@ -453,7 +453,7 @@ def save_group(
     usernames = [row["username"] for row in selected_rows]
 
     try:
-        res = requests.put(
+        res = httpx.put(
             settings.API_URL + f"/api/v1/admin/groups/{group_id}",
             headers=get_auth_header(),
             json={
@@ -467,7 +467,7 @@ def save_group(
         res.raise_for_status()
 
         ui.navigate.to("/admin")
-    except requests.RequestException:
+    except httpx.HTTPError:
         error = res.json()
 
         with ui.dialog() as dialog:
@@ -488,12 +488,12 @@ def remove_user(selected_rows: list) -> None:
 
     for user in selected_rows:
         try:
-            res = requests.delete(
+            res = httpx.delete(
                 settings.API_URL + f"/api/v1/admin/{user['username']}",
                 headers=get_auth_header(),
             )
             res.raise_for_status()
-        except requests.RequestException as e:
+        except httpx.HTTPError as e:
             ui.notify(
                 f"Error removing user {user['username']}: {e}",
                 type="negative",
@@ -510,14 +510,14 @@ def set_active_status(selected_rows: list, make_active: bool) -> None:
 
     for user in selected_rows:
         try:
-            res = requests.put(
+            res = httpx.put(
                 settings.API_URL + f"/api/v1/admin/{user['username']}",
                 headers=get_auth_header(),
                 json={"active": make_active},
             )
             res.raise_for_status()
             ui.navigate.to("/admin/users")
-        except requests.RequestException as e:
+        except httpx.HTTPError as e:
             ui.notify(
                 f"Error updating active status for {user['username']}: {e}",
                 type="negative",
@@ -533,7 +533,7 @@ def set_admin_status(
 
     for user in selected_rows:
         try:
-            res = requests.put(
+            res = httpx.put(
                 settings.API_URL + f"/api/v1/admin/{user['username']}",
                 headers=get_auth_header(),
                 json={"admin": make_admin},
@@ -545,7 +545,7 @@ def set_admin_status(
                 ui.navigate.to(f"/admin/edit/{group_id}")
             else:
                 ui.navigate.to("/admin/users")
-        except requests.RequestException as e:
+        except httpx.HTTPError as e:
             ui.notify(
                 f"Error updating admin status for {user['username']}: {e}",
                 type="negative",
@@ -559,13 +559,13 @@ def reset_manual_override(selected_rows: list) -> None:
 
     for user in selected_rows:
         try:
-            res = requests.put(
+            res = httpx.put(
                 settings.API_URL + f"/api/v1/admin/{user['username']}",
                 headers=get_auth_header(),
                 json={"reset_manual": True},
             )
             res.raise_for_status()
-        except requests.RequestException as e:
+        except httpx.HTTPError as e:
             ui.notify(
                 f"Error resetting manual override for {user['username']}: {e}",
                 type="negative",
@@ -586,14 +586,14 @@ def save_domains(
 
     for user in selected_rows:
         try:
-            res = requests.put(
+            res = httpx.put(
                 settings.API_URL + f"/api/v1/admin/{user['username']}",
                 headers=get_auth_header(),
                 json={"admin_domains": domains_str},
             )
             res.raise_for_status()
             ui.navigate.to("/admin/users")
-        except requests.RequestException as e:
+        except httpx.HTTPError as e:
             ui.notify(
                 f"Error updating domains for {user['username']}: {e}", type="negative"
             )
@@ -689,12 +689,12 @@ def rules_get() -> list:
     """
 
     try:
-        res = requests.get(
+        res = httpx.get(
             settings.API_URL + "/api/v1/admin/rules", headers=get_auth_header()
         )
         res.raise_for_status()
         return res.json()
-    except requests.RequestException as e:
+    except httpx.HTTPError as e:
         print(f"Error fetching rules: {e}")
         return []
 
@@ -705,14 +705,14 @@ def rule_create(data: dict) -> dict | None:
     """
 
     try:
-        res = requests.post(
+        res = httpx.post(
             settings.API_URL + "/api/v1/admin/rules",
             headers=get_auth_header(),
             json=data,
         )
         res.raise_for_status()
         return res.json()
-    except requests.RequestException as e:
+    except httpx.HTTPError as e:
         print(f"Error creating rule: {e}")
         return None
 
@@ -723,14 +723,14 @@ def rule_update(rule_id: int, data: dict) -> dict | None:
     """
 
     try:
-        res = requests.put(
+        res = httpx.put(
             settings.API_URL + f"/api/v1/admin/rules/{rule_id}",
             headers=get_auth_header(),
             json=data,
         )
         res.raise_for_status()
         return res.json()
-    except requests.RequestException as e:
+    except httpx.HTTPError as e:
         print(f"Error updating rule: {e}")
         if hasattr(e, "response") and e.response is not None:
             print(f"Response body: {e.response.text}")
@@ -743,13 +743,13 @@ def rule_delete(rule_id: int) -> bool:
     """
 
     try:
-        res = requests.delete(
+        res = httpx.delete(
             settings.API_URL + f"/api/v1/admin/rules/{rule_id}",
             headers=get_auth_header(),
         )
         res.raise_for_status()
         return True
-    except requests.RequestException as e:
+    except httpx.HTTPError as e:
         print(f"Error deleting rule: {e}")
         return False
 
@@ -760,13 +760,13 @@ def attributes_get() -> list:
     """
 
     try:
-        res = requests.get(
+        res = httpx.get(
             settings.API_URL + "/api/v1/admin/attributes",
             headers=get_auth_header(),
         )
         res.raise_for_status()
         return res.json().get("result", [])
-    except requests.RequestException as e:
+    except httpx.HTTPError as e:
         print(f"Error fetching attributes: {e}")
         return []
 
@@ -777,14 +777,14 @@ def attribute_create(data: dict) -> dict | None:
     """
 
     try:
-        res = requests.post(
+        res = httpx.post(
             settings.API_URL + "/api/v1/admin/attributes",
             headers=get_auth_header(),
             json=data,
         )
         res.raise_for_status()
         return res.json()
-    except requests.RequestException as e:
+    except httpx.HTTPError as e:
         print(f"Error creating attribute: {e}")
         return None
 
@@ -795,13 +795,13 @@ def attribute_delete(attribute_id: int) -> bool:
     """
 
     try:
-        res = requests.delete(
+        res = httpx.delete(
             settings.API_URL + f"/api/v1/admin/attributes/{attribute_id}",
             headers=get_auth_header(),
         )
         res.raise_for_status()
         return True
-    except requests.RequestException as e:
+    except httpx.HTTPError as e:
         print(f"Error deleting attribute: {e}")
         return False
 
@@ -812,14 +812,14 @@ def rules_test(rule_ids: list[int]) -> list:
     """
 
     try:
-        res = requests.post(
+        res = httpx.post(
             settings.API_URL + "/api/v1/admin/rules/test",
             headers=get_auth_header(),
             json={"rule_ids": rule_ids},
         )
         res.raise_for_status()
         return res.json().get("result", [])
-    except requests.RequestException as e:
+    except httpx.HTTPError as e:
         print(f"Error testing rules: {e}")
         return []
 
@@ -828,13 +828,13 @@ def announcements_get() -> list:
     """Fetch all announcements from backend."""
 
     try:
-        res = requests.get(
+        res = httpx.get(
             settings.API_URL + "/api/v1/admin/announcements",
             headers=get_auth_header(),
         )
         res.raise_for_status()
         return res.json().get("result", [])
-    except requests.RequestException as e:
+    except httpx.HTTPError as e:
         print(f"Error fetching announcements: {e}")
         return []
 
@@ -843,14 +843,14 @@ def announcement_create(data: dict) -> dict | None:
     """Create a new announcement."""
 
     try:
-        res = requests.post(
+        res = httpx.post(
             settings.API_URL + "/api/v1/admin/announcements",
             headers=get_auth_header(),
             json=data,
         )
         res.raise_for_status()
         return res.json()
-    except requests.RequestException as e:
+    except httpx.HTTPError as e:
         print(f"Error creating announcement: {e}")
         return None
 
@@ -859,14 +859,14 @@ def announcement_update(announcement_id: int, data: dict) -> dict | None:
     """Update an existing announcement."""
 
     try:
-        res = requests.put(
+        res = httpx.put(
             settings.API_URL + f"/api/v1/admin/announcements/{announcement_id}",
             headers=get_auth_header(),
             json=data,
         )
         res.raise_for_status()
         return res.json()
-    except requests.RequestException as e:
+    except httpx.HTTPError as e:
         print(f"Error updating announcement: {e}")
         return None
 
@@ -875,12 +875,12 @@ def announcement_delete(announcement_id: int) -> bool:
     """Delete an announcement."""
 
     try:
-        res = requests.delete(
+        res = httpx.delete(
             settings.API_URL + f"/api/v1/admin/announcements/{announcement_id}",
             headers=get_auth_header(),
         )
         res.raise_for_status()
         return True
-    except requests.RequestException as e:
+    except httpx.HTTPError as e:
         print(f"Error deleting announcement: {e}")
         return False

@@ -18,7 +18,6 @@
 import asyncio
 import re
 import httpx
-import requests
 import pytz
 
 from datetime import datetime, timedelta
@@ -742,8 +741,9 @@ async def jobs_get() -> list:
     jobs = []
 
     try:
-        response = await asyncio.to_thread(
-            lambda: requests.get(
+        async with httpx.AsyncClient() as client:
+            response = await client.request(
+                "GET",
                 f"{settings.API_URL}/api/v1/transcriber",
                 headers=get_auth_header(),
                 json={
@@ -752,9 +752,8 @@ async def jobs_get() -> list:
                     )
                 },
             )
-        )
-        response.raise_for_status()
-    except requests.exceptions.RequestException:
+            response.raise_for_status()
+    except httpx.HTTPError:
         return []
 
     # Get current time in user's timezone
@@ -1370,8 +1369,9 @@ def table_bulk_export(table: ui.table) -> None:
             progress.set_value((i + 1) / len(completed))
             try:
                 fmt = "srt" if data_format == "srt" else "txt"
-                response = await asyncio.to_thread(
-                    lambda: requests.get(
+                async with httpx.AsyncClient() as client:
+                    response = await client.request(
+                        "GET",
                         f"{settings.API_URL}/api/v1/transcriber/{uuid}/result/{fmt}",
                         headers=get_auth_header(),
                         json={
@@ -1380,8 +1380,7 @@ def table_bulk_export(table: ui.table) -> None:
                             )
                         },
                     )
-                )
-                response.raise_for_status()
+                    response.raise_for_status()
                 data = response.json()
 
                 editor = SRTEditor(uuid, data_format, filename)
@@ -1390,7 +1389,7 @@ def table_bulk_export(table: ui.table) -> None:
                 else:
                     editor.parse_txt(data["result"])
                 editors.append((filename, editor))
-            except requests.exceptions.RequestException as e:
+            except httpx.HTTPError as e:
                 progress_dialog.close()
                 ui.notify(
                     f"Error fetching {filename}: {str(e)}",
@@ -1429,7 +1428,7 @@ def start_transcription(
         uuid = row["uuid"]
 
         try:
-            response = requests.put(
+            response = httpx.put(
                 f"{settings.API_URL}/api/v1/transcriber/{uuid}",
                 json={
                     "language": f"{selected_language}",
@@ -1442,7 +1441,7 @@ def start_transcription(
                 headers=get_auth_header(),
             )
             response.raise_for_status()
-        except requests.exceptions.RequestException:
+        except httpx.HTTPError:
             if response.status_code == 403:
                 error = response.json()["result"]["error"]
             else:

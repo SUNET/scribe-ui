@@ -16,7 +16,7 @@
 # limitations under the License.
 
 import plotly.graph_objects as go
-import requests
+import httpx
 
 import re
 
@@ -102,7 +102,7 @@ def create_group_dialog(page: callable) -> None:
                 ).on(
                     "click",
                     lambda: (
-                        requests.post(
+                        httpx.post(
                             settings.API_URL + "/api/v1/admin/groups",
                             headers=get_auth_header(),
                             json={
@@ -206,7 +206,7 @@ def edit_group(group_id: str) -> None:
     )
 
     try:
-        res = requests.get(
+        res = httpx.get(
             settings.API_URL + f"/api/v1/admin/groups/{group_id}",
             headers=get_auth_header(),
         )
@@ -219,7 +219,7 @@ def edit_group(group_id: str) -> None:
             user["admin"] = "Yes" if user.get("admin", True) else "No"
             user["active"] = "Yes" if user.get("active", True) else "No"
 
-    except requests.RequestException as e:
+    except httpx.HTTPError as e:
         ui.label(f"Error fetching group: {e}").classes("text-lg text-red-500")
         return
 
@@ -696,7 +696,7 @@ def users() -> None:
     )
 
     try:
-        res = requests.get(
+        res = httpx.get(
             settings.API_URL + "/api/v1/admin/users", headers=get_auth_header()
         )
         res.raise_for_status()
@@ -709,7 +709,7 @@ def users() -> None:
             user["active"] = "Yes" if user.get("active", True) else "No"
             user["provisioning"] = "Manual" if user.get("manually_activated") or user.get("manually_deactivated") else "Auto"
 
-    except requests.RequestException as e:
+    except httpx.HTTPError as e:
         ui.label(f"Error fetching users: {e}").classes("text-lg text-red-500")
         return
 
@@ -908,7 +908,7 @@ def health() -> None:
     @ui.refreshable
     def render_health():
         try:
-            res = requests.get(
+            res = httpx.get(
                 settings.API_URL + "/api/v1/healthcheck",
                 headers=get_auth_header(),
                 timeout=5,
@@ -1196,7 +1196,7 @@ def create_customer_dialog(page: callable) -> None:
                     realms_str = ",".join(all_realms)
 
                     try:
-                        res = requests.post(
+                        res = httpx.post(
                             settings.API_URL + "/api/v1/admin/customers",
                             headers=get_auth_header(),
                             json={
@@ -1218,7 +1218,7 @@ def create_customer_dialog(page: callable) -> None:
                         )
 
                         res.raise_for_status()
-                    except requests.RequestException as e:
+                    except httpx.HTTPError as e:
                         if res.status_code == 400:
                             error_msg = res.json().get("error", "Unknown error")
                             ui.notify(
@@ -1263,7 +1263,7 @@ def edit_customer(customer_id: str) -> None:
     )
 
     try:
-        res = requests.get(
+        res = httpx.get(
             settings.API_URL + f"/api/v1/admin/customers/{customer_id}",
             headers=get_auth_header(),
         )
@@ -1275,7 +1275,7 @@ def edit_customer(customer_id: str) -> None:
             r.strip() for r in customer["realms"].split(",") if r.strip()
         ]
 
-    except requests.RequestException as e:
+    except httpx.HTTPError as e:
         ui.label(f"Error fetching customer: {e}").classes("text-lg text-red-500")
         return
 

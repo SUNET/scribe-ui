@@ -16,7 +16,7 @@
 # limitations under the License.
 
 import json
-import requests
+import httpx
 
 from nicegui import app, ui
 from utils.common import default_styles
@@ -37,13 +37,13 @@ def save_srt(job_id: str, data: str, editor: SRTEditor, data_format: str) -> Non
         jsondata = {"format": data_format, "data": data}
 
         headers = get_auth_header()
-        res = requests.put(
+        res = httpx.put(
             f"{settings.API_URL}/api/v1/transcriber/{job_id}/result",
             headers=headers,
             json=jsondata,
         )
         res.raise_for_status()
-    except requests.exceptions.RequestException as e:
+    except httpx.HTTPError as e:
         ui.notify(f"Error: Failed to save file: {e}", type="negative")
         return
 
@@ -132,7 +132,8 @@ def create() -> None:
 
         try:
             if data_format == "srt":
-                response = requests.get(
+                response = httpx.request(
+                    "GET",
                     f"{settings.API_URL}/api/v1/transcriber/{uuid}/result/srt",
                     headers=get_auth_header(),
                     json={
@@ -142,7 +143,8 @@ def create() -> None:
                     },
                 )
             else:
-                response = requests.get(
+                response = httpx.request(
+                    "GET",
                     f"{settings.API_URL}/api/v1/transcriber/{uuid}/result/txt",
                     headers=get_auth_header(),
                     json={
@@ -155,7 +157,7 @@ def create() -> None:
             response.raise_for_status()
             data = response.json()
 
-        except requests.exceptions.RequestException as e:
+        except httpx.HTTPError as e:
             ui.notify(f"Error: Failed to get result: {e}")
             return
 

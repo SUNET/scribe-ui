@@ -17,7 +17,7 @@
 
 import json
 import re
-import requests
+import httpx
 
 from nicegui import events, ui
 from typing import Callable, List, Optional
@@ -272,13 +272,13 @@ class SRTEditor:
             jsondata = {"format": self.srt_format, "data": data}
             headers = get_auth_header()
             headers["Content-Type"] = "application/json"
-            res = requests.put(
+            res = httpx.put(
                 f"{settings.API_URL}/api/v1/transcriber/{self.uuid}/result",
                 headers=headers,
                 json=jsondata,
             )
             res.raise_for_status()
-        except requests.exceptions.RequestException as e:
+        except httpx.HTTPError as e:
             ui.notify(f"Error:  Failed to save file:  {e}", type="negative")
             return
 

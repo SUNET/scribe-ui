@@ -15,7 +15,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import requests
+import httpx
 
 from nicegui import ui
 from utils.settings import get_settings
@@ -193,7 +193,7 @@ class Customer:
                     ui.button(
                         "Delete",
                         on_click=lambda: (
-                            requests.delete(
+                            httpx.delete(
                                 settings.API_URL
                                 + f"/api/v1/admin/customers/{self.customer_id}",
                                 headers=get_auth_header(),

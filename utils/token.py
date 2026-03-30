@@ -16,7 +16,7 @@
 # limitations under the License.
 
 import jwt
-import requests
+import httpx
 import time
 
 from nicegui import app
@@ -29,12 +29,12 @@ settings = get_settings()
 def token_refresh_call() -> str:
     try:
         token_refresh = app.storage.user.get("refresh_token")
-        response = requests.post(
+        response = httpx.post(
             settings.OIDC_APP_REFRESH_ROUTE,
             json={"token": token_refresh},
         )
         response.raise_for_status()
-    except requests.exceptions.RequestException:
+    except httpx.HTTPError:
         return None
 
     return response.json().get("access_token")
@@ -63,7 +63,7 @@ def token_refresh() -> bool:
 
         token = token_refresh_call()
         app.storage.user["token"] = token
-    except requests.exceptions.RequestException:
+    except httpx.HTTPError:
         return None
 
     return True
@@ -120,15 +120,15 @@ def get_user_data() -> dict:
     """
 
     try:
-        response = requests.get(
-            f"{settings.API_URL}/api/v1/me", headers=get_auth_header(), json={}
+        response = httpx.get(
+            f"{settings.API_URL}/api/v1/me", headers=get_auth_header()
         )
         response.raise_for_status()
         data = response.json()
 
         return data["result"]
 
-    except requests.exceptions.RequestException:
+    except httpx.HTTPError:
         return None
 
 
