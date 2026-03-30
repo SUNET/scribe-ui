@@ -15,7 +15,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import requests
+import json
+import httpx
 
 from fastapi import Request
 from fastapi.responses import Response
@@ -41,15 +42,16 @@ def create_vtt_proxy() -> Response:
             )
 
         headers["Authorization"] = headers_auth.get("Authorization", "")
-        response = requests.get(
-            f"{settings.API_URL}/api/v1/transcriber/{job_id}/vtt",
-            headers=headers,
-        )
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{settings.API_URL}/api/v1/transcriber/{job_id}/vtt",
+                headers=headers,
+            )
 
         return Response(
             content=response.content,
             media_type=response.headers.get("content-type"),
-            headers=response.headers,
+            headers=dict(response.headers),
             status_code=206,
         )
 
@@ -81,12 +83,14 @@ def create_video_proxy() -> Response:
         headers["Authorization"] = headers_auth.get("Authorization", "")
 
         try:
-            response = requests.get(
-                f"{settings.API_URL}/api/v1/transcriber/{job_id}/videostream",
-                headers=headers,
-                json={"encryption_password": encryption_password or ""},
-            )
-        except requests.exceptions.ChunkedEncodingError:
+            async with httpx.AsyncClient() as client:
+                response = await client.request(
+                    "GET",
+                    f"{settings.API_URL}/api/v1/transcriber/{job_id}/videostream",
+                    headers={**headers, "Content-Type": "application/json"},
+                    content=json.dumps({"encryption_password": encryption_password or ""}),
+                )
+        except httpx.StreamError:
             return Response(
                 content="Error streaming video",
                 status_code=500,
@@ -95,6 +99,6 @@ def create_video_proxy() -> Response:
         return Response(
             content=response.content,
             media_type=response.headers.get("content-type"),
-            headers=response.headers,
+            headers=dict(response.headers),
             status_code=206,
         )

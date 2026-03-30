@@ -87,7 +87,7 @@ def create() -> None:
         table = ui.table(
             on_select=lambda e: toggle_buttons(e.selection),
             columns=jobs_columns,
-            rows=jobs_get(),
+            rows=[],
             selection="multiple",
             pagination=10,
         )
@@ -193,11 +193,11 @@ def create() -> None:
                     upload.classes("default-style")
                     upload.on("click", lambda: table_upload(table))
 
-        def update_rows():
+        async def update_rows():
             """
             Update the rows in the table.
             """
-            rows = jobs_get()
+            rows = await jobs_get()
 
             if not rows:
                 delete.set_enabled(False)
@@ -207,4 +207,5 @@ def create() -> None:
             table.selection = "multiple" if rows else "none"
             table.update_rows(rows, clear_selection=False)
 
-        ui.timer(5.0, lambda: update_rows())
+        ui.timer(0.1, update_rows, once=True)
+        ui.timer(5.0, update_rows)

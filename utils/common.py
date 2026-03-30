@@ -735,21 +735,23 @@ def add_timezone_to_timestamp(timestamp: str) -> str:
     return local_time.strftime("%Y-%m-%d %H:%M")
 
 
-def jobs_get() -> list:
+async def jobs_get() -> list:
     """
     Get the list of transcription jobs from the API.
     """
     jobs = []
 
     try:
-        response = requests.get(
-            f"{settings.API_URL}/api/v1/transcriber",
-            headers=get_auth_header(),
-            json={
-                "encryption_password": storage_decrypt(
-                    app.storage.user.get("encryption_password"),
-                )
-            },
+        response = await asyncio.to_thread(
+            lambda: requests.get(
+                f"{settings.API_URL}/api/v1/transcriber",
+                headers=get_auth_header(),
+                json={
+                    "encryption_password": storage_decrypt(
+                        app.storage.user.get("encryption_password"),
+                    )
+                },
+            )
         )
         response.raise_for_status()
     except requests.exceptions.RequestException:
@@ -1052,7 +1054,7 @@ async def handle_upload_with_feedback(files, dialog, table):
                         )
 
         if not client._deleted:
-            table.update_rows(jobs_get(), clear_selection=False)
+            table.update_rows(await jobs_get(), clear_selection=False)
 
     asyncio.create_task(_upload())
 
@@ -1298,7 +1300,7 @@ async def __delete_files(table: ui.table, dialog: ui.dialog) -> None:
             failed += 1
 
     table.selected = []
-    table.update_rows(jobs_get(), clear_selection=True)
+    table.update_rows(await jobs_get(), clear_selection=True)
 
     if failed == 0:
         ui.notify(
@@ -1367,9 +1369,10 @@ def table_bulk_export(table: ui.table) -> None:
             )
             progress.set_value((i + 1) / len(completed))
             try:
-                if data_format == "srt":
-                    response = requests.get(
-                        f"{settings.API_URL}/api/v1/transcriber/{uuid}/result/srt",
+                fmt = "srt" if data_format == "srt" else "txt"
+                response = await asyncio.to_thread(
+                    lambda: requests.get(
+                        f"{settings.API_URL}/api/v1/transcriber/{uuid}/result/{fmt}",
                         headers=get_auth_header(),
                         json={
                             "encryption_password": storage_decrypt(
@@ -1377,16 +1380,7 @@ def table_bulk_export(table: ui.table) -> None:
                             )
                         },
                     )
-                else:
-                    response = requests.get(
-                        f"{settings.API_URL}/api/v1/transcriber/{uuid}/result/txt",
-                        headers=get_auth_header(),
-                        json={
-                            "encryption_password": storage_decrypt(
-                                app.storage.user.get("encryption_password"),
-                            )
-                        },
-                    )
+                )
                 response.raise_for_status()
                 data = response.json()
 
@@ -1404,8 +1398,6 @@ def table_bulk_export(table: ui.table) -> None:
                     position="top",
                 )
                 return
-
-            await asyncio.sleep(0)  # yield to UI to update progress
 
         progress_dialog.close()
         # Use the first editor to show the export dialog with all editors

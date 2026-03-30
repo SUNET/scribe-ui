@@ -15,6 +15,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
 import requests
 
 from nicegui import ui
@@ -100,8 +101,10 @@ def create() -> None:
 
                 async def check_status() -> None:
                     try:
-                        response = requests.get(
-                            f"{settings.API_URL}/api/v1/status", timeout=5
+                        response = await asyncio.to_thread(
+                            requests.get,
+                            f"{settings.API_URL}/api/v1/status",
+                            timeout=5,
                         )
                         data = response.json()
 
