@@ -1072,7 +1072,7 @@ async def handle_upload_with_feedback(files, dialog, table):
     asyncio.create_task(_upload())
 
 
-def table_transcribe(selected_row) -> None:
+def table_transcribe(selected_row, on_complete=None) -> None:
     """
     Handle the click event on the Transcribe button.
     """
@@ -1150,6 +1150,7 @@ def table_transcribe(selected_row) -> None:
                         speakers.value,
                         output_format.value,
                         dialog,
+                        on_complete=on_complete,
                     ),
                 ) as start:
                     start.props("color=black flat")
@@ -1158,7 +1159,7 @@ def table_transcribe(selected_row) -> None:
             dialog.open()
 
 
-def table_bulk_transcribe(table: ui.table) -> None:
+def table_bulk_transcribe(table: ui.table, on_complete=None) -> None:
     """
     Handle bulk transcription of selected uploaded jobs.
     Shows the same transcription settings dialog but applies to all selected rows.
@@ -1256,6 +1257,7 @@ def table_bulk_transcribe(table: ui.table) -> None:
                             output_format.value,
                             dialog,
                             table,
+                            on_complete=on_complete,
                         ),
                     ),
                 ) as start:
@@ -1427,6 +1429,7 @@ def start_transcription(
     output_format: str,
     dialog: ui.dialog,
     table: ui.table = None,
+    on_complete=None,
 ) -> None:
     selected_language = language
     error = ""
@@ -1480,3 +1483,5 @@ def start_transcription(
         if table is not None:
             table.selected = []
         dialog.close()
+        if on_complete is not None:
+            on_complete()

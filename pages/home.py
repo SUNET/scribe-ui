@@ -114,7 +114,7 @@ def create() -> None:
             if e.args.get("status") == "Completed":
                 table_click(e)
             else:
-                table_transcribe(e.args)
+                table_transcribe(e.args, on_complete=lambda: ui.timer(0.1, update_rows, once=True))
 
         ui.add_head_html(default_styles)
 
@@ -182,7 +182,7 @@ def create() -> None:
                 with ui.button("Transcribe", icon="rtt") as bulk_transcribe:
                     bulk_transcribe.props("color=black flat")
                     bulk_transcribe.classes("default-style")
-                    bulk_transcribe.on("click", lambda: table_bulk_transcribe(table))
+                    bulk_transcribe.on("click", lambda: table_bulk_transcribe(table, on_complete=lambda: ui.timer(0.1, update_rows, once=True)))
                     bulk_transcribe.set_enabled(False)
                     transcribe_tooltip = ui.tooltip(
                         "Select one or more files to transcribe"
