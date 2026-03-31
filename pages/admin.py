@@ -713,11 +713,74 @@ def users() -> None:
         ui.label(f"Error fetching users: {e}").classes("text-lg text-red-500")
         return
 
-    with ui.row().style(
-        "justify-content: space-between; align-items: center; width: 100%;"
-    ):
+    users_table = ui.table(
+        columns=[
+            {
+                "name": "username",
+                "label": "Username",
+                "field": "username",
+                "align": "left",
+                "sortable": True,
+            },
+            {
+                "name": "realm",
+                "label": "Realm",
+                "field": "realm",
+                "align": "left",
+                "sortable": True,
+            },
+            {
+                "name": "role",
+                "label": "Admin",
+                "field": "admin",
+                "align": "left",
+                "sortable": True,
+            },
+            {
+                "name": "groups",
+                "label": "Groups",
+                "field": "groups",
+                "align": "left",
+                "sortable": True,
+            },
+            {
+                "name": "domains",
+                "label": "Domains",
+                "field": "admin_domains",
+                "align": "left",
+                "sortable": False,
+                "style": "max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;",
+            },
+            {
+                "name": "active",
+                "label": "Active",
+                "field": "active",
+                "align": "left",
+                "sortable": True,
+            },
+            {
+                "name": "provisioning",
+                "label": "Provisioning",
+                "field": "provisioning",
+                "align": "left",
+                "sortable": True,
+            },
+        ],
+        rows=users,
+        selection="multiple",
+        pagination=20,
+        on_select=lambda e: None,
+    )
+    users_table.style(
+        "width: 100%; height: calc(100vh - 100px - var(--banner-offset, 0px)); box-shadow: none; font-size: 18px;"
+    )
+    users_table.classes("table-style")
+
+    with users_table.add_slot("top-left"):
         ui.label("Users").classes("text-3xl font-bold")
-        with ui.element("div").style("display: flex; gap: 8px;"):
+
+    with users_table.add_slot("top-right"):
+        with ui.row().classes("items-center"):
             ui.button("Enable").classes("button-close").props("color=black flat").style(
                 "width: 150px"
             ).on("click", lambda: set_active_status(users_table.selected, True))
@@ -782,69 +845,6 @@ def users() -> None:
                         on_click=confirm_remove_user,
                     )
 
-    with ui.card().style("width: 100%; box-shadow: none; align-self: center;"):
-        users_table = ui.table(
-            columns=[
-                {
-                    "name": "username",
-                    "label": "Username",
-                    "field": "username",
-                    "align": "left",
-                    "sortable": True,
-                },
-                {
-                    "name": "realm",
-                    "label": "Realm",
-                    "field": "realm",
-                    "align": "left",
-                    "sortable": True,
-                },
-                {
-                    "name": "role",
-                    "label": "Admin",
-                    "field": "admin",
-                    "align": "left",
-                    "sortable": True,
-                },
-                {
-                    "name": "groups",
-                    "label": "Groups",
-                    "field": "groups",
-                    "align": "left",
-                    "sortable": True,
-                },
-                {
-                    "name": "domains",
-                    "label": "Domains",
-                    "field": "admin_domains",
-                    "align": "left",
-                    "sortable": False,
-                    "style": "max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;",
-                },
-                {
-                    "name": "active",
-                    "label": "Active",
-                    "field": "active",
-                    "align": "left",
-                    "sortable": True,
-                },
-                {
-                    "name": "provisioning",
-                    "label": "Provisioning",
-                    "field": "provisioning",
-                    "align": "left",
-                    "sortable": True,
-                },
-            ],
-            rows=users,
-            selection="multiple",
-            pagination=20,
-            on_select=lambda e: None,
-        ).style(
-            "width: 100%; box-shadow: none; font-size: 18px; height: calc(100vh - 160px - var(--banner-offset, 0px));"
-        )
-
-        with users_table.add_slot("top-right"):
             with ui.input(placeholder="Search").props("type=search").bind_value(
                 users_table, "filter"
             ).add_slot("append"):
@@ -1634,7 +1634,7 @@ def _do_create_rule(**kwargs) -> bool:
     data = {
         "name": kwargs["name"],
         "attribute_name": kwargs["attribute_name"],
-        "attribute_condition": kwargs["attribute_condition"],
+        "attribute_condition": kwargs["attribute_condition"].upper(),
         "attribute_value": kwargs["attribute_value"],
         "realm": ",".join(realm_val) if isinstance(realm_val, list) else realm_val,
         "activate": kwargs["activate"],
@@ -1703,7 +1703,7 @@ def edit_rule_dialog(rule: dict, page: callable) -> None:
                 ui.select(
                     CONDITION_OPTIONS,
                     label="Condition",
-                    value=rule["attribute_condition"],
+                    value=rule["attribute_condition"].lower(),
                 )
                 .classes("w-full")
                 .props("outlined")
@@ -1826,7 +1826,7 @@ def _do_update_rule(**kwargs) -> bool:
     data = {
         "name": kwargs["name"],
         "attribute_name": kwargs["attribute_name"],
-        "attribute_condition": kwargs["attribute_condition"],
+        "attribute_condition": kwargs["attribute_condition"].upper(),
         "attribute_value": kwargs["attribute_value"],
         "realm": ",".join(realm_val) if isinstance(realm_val, list) else realm_val,
         "activate": kwargs["activate"],
