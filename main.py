@@ -57,6 +57,9 @@ async def index(request: Request) -> None:
     if "_scribe_bk" not in app.storage.browser:
         app.storage.browser["_scribe_bk"] = secrets.token_hex(32)
 
+    # Wait for client connection before accessing user storage.
+    await ui.context.client.connected()
+
     if refresh_token:
         app.storage.user["refresh_token"] = refresh_token
 
