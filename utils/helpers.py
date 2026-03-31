@@ -256,7 +256,10 @@ def groups_get() -> list:
         )
         res.raise_for_status()
 
-        return res.json()
+        data = res.json()
+        if isinstance(data, dict) and "result" in data:
+            return data["result"]
+        return data
     except httpx.HTTPError as e:
         print(f"Error fetching groups: {e}")
         return []
