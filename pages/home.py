@@ -207,5 +207,11 @@ def create() -> None:
             table.selection = "multiple" if rows else "none"
             table.update_rows(rows, clear_selection=False)
 
+            has_active = any(
+                r["status"].lower() in ("transcribing", "queued", "uploading")
+                for r in rows
+            )
+            poll_timer.interval = 5.0 if has_active else 30.0
+
         ui.timer(0.1, update_rows, once=True)
-        ui.timer(5.0, update_rows)
+        poll_timer = ui.timer(30.0, update_rows)
