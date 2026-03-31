@@ -608,7 +608,7 @@ def create() -> None:
 
             with ui.scroll_area().style("height: calc(100vh - 160px - var(--banner-offset, 0px)); width: 100%;"):
                 groups = sorted(
-                    groups_get()["result"],
+                    groups,
                     key=lambda x: (
                         x["name"].lower() != "all users",
                         x["name"].lower(),
@@ -630,7 +630,7 @@ def create() -> None:
 
                 expansions = {}
                 groups = sorted(
-                    groups_get()["result"],
+                    groups,
                     key=lambda x: (
                         x["customer_name"].lower() != "all users",
                         x["customer_name"].lower(),
@@ -841,7 +841,7 @@ def users() -> None:
             pagination=20,
             on_select=lambda e: None,
         ).style(
-            "width: 100%; box-shadow: none; font-size: 18px; height: calc(100vh - 350px - var(--banner-offset, 0px));"
+            "width: 100%; box-shadow: none; font-size: 18px; height: calc(100vh - 160px - var(--banner-offset, 0px));"
         )
 
         with users_table.add_slot("top-right"):
