@@ -119,7 +119,7 @@ def create() -> None:
         ui.add_head_html(default_styles)
 
         table.style(
-            "width: 100%; height: calc(100vh - 240px - var(--banner-offset, 0px)); box-shadow: none; font-size: 18px;"
+            "width: 100%; height: calc(100vh - 100px - var(--banner-offset, 0px)); box-shadow: none; font-size: 18px;"
         )
         table.classes("table-style")
         table.add_slot(

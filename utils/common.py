@@ -95,9 +95,6 @@ jobs_columns = [
 
 default_styles = """
     <style>
-        :root {
-            --banner-offset: 0px;
-        }
         .q-chip {
             background-color: #d3ecbe !important;
             color: #000000 !important;
