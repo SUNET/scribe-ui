@@ -213,5 +213,10 @@ def create() -> None:
             )
             poll_timer.interval = 5.0 if has_active else 30.0
 
-        ui.timer(0.1, update_rows, once=True)
-        poll_timer = ui.timer(30.0, update_rows)
+        poll_timer = ui.timer(30.0, update_rows, active=False)
+
+        async def initial_load():
+            poll_timer.activate()
+            await update_rows()
+
+        ui.timer(0.0, initial_load, once=True)
