@@ -501,17 +501,33 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
 
         menu_tooltips = []
 
+        menu_btn = None
+
         def toggle_drawer():
             is_open = app.storage.user.get("drawer_open", False)
             if is_open:
                 drawer.props(add="mini")
                 for t in menu_tooltips:
                     t.set_visibility(True)
+                if menu_btn:
+                    menu_btn._props["icon"] = "menu"
+                    menu_btn.update()
+                if menu_btn_tooltip_ref:
+                    menu_btn_tooltip_ref.text = "Expand menu"
+                    menu_btn_tooltip_ref.update()
             else:
                 drawer.props(remove="mini")
                 for t in menu_tooltips:
                     t.set_visibility(False)
+                if menu_btn:
+                    menu_btn._props["icon"] = "close"
+                    menu_btn.update()
+                if menu_btn_tooltip_ref:
+                    menu_btn_tooltip_ref.text = "Close menu"
+                    menu_btn_tooltip_ref.update()
             app.storage.user["drawer_open"] = not is_open
+
+        menu_btn_tooltip_ref = None
 
         menu_item_style = (
             "display: flex; align-items: center; gap: 12px; padding: 10px 16px;"
@@ -637,12 +653,13 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                 "display: flex; gap: 0px; align-items: center; margin-left: -12px;"
             ):
                 with ui.button(
-                    icon="menu",
+                    icon="close" if drawer_open else "menu",
                     on_click=lambda: toggle_drawer(),
-                ).props("flat color=black"):
-                    menu_btn_tooltip = ui.tooltip("Expand menu")
-                    menu_btn_tooltip.set_visibility(not drawer_open)
-                    menu_tooltips.append(menu_btn_tooltip)
+                ).props("flat color=black") as menu_btn:
+                    menu_btn_tooltip = ui.tooltip(
+                        "Close menu" if drawer_open else "Expand menu"
+                    )
+                    menu_btn_tooltip_ref = menu_btn_tooltip
                 ui.image(f"static/{settings.LOGO_TOPBAR}").classes("q-mr-sm").style(
                     "height: 30px; width: 30px;"
                 )
