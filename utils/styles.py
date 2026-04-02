@@ -179,13 +179,29 @@ theme_styles = """
         background-color: var(--color-bg-surface-alt);
     }
     .body--dark .table-style,
-    .body--dark .table-style *:not(.q-btn):not(.q-btn *):not(.q-checkbox):not(.q-checkbox *):not(.q-chip):not(.q-chip *):not(.q-icon) {
+    .body--dark .table-style .q-table__top,
+    .body--dark .table-style .q-table__middle,
+    .body--dark .table-style .q-table__bottom,
+    .body--dark .table-style .q-table__card,
+    .body--dark .table-style .q-table__container,
+    .body--dark .table-style thead,
+    .body--dark .table-style thead tr,
+    .body--dark .table-style thead th,
+    .body--dark .table-style tbody,
+    .body--dark .table-style tbody tr,
+    .body--dark .table-style tbody td,
+    .body--dark .table-style .q-td,
+    .body--dark .table-style .q-tr,
+    .body--dark .table-style .q-table__bottom .q-table__control,
+    .body--dark .table-style .q-table__bottom .q-table__separator {
         background-color: var(--color-bg-page) !important;
         color: var(--color-text-primary) !important;
     }
-    .body--dark .table-style .q-btn,
-    .body--dark .table-style .q-btn .q-btn__content,
-    .body--dark .table-style .q-btn .q-icon {
+    .body--dark .table-style p,
+    .body--dark .table-style span,
+    .body--dark .table-style label,
+    .body--dark .table-style .q-field__native,
+    .body--dark .table-style .text-3xl {
         color: var(--color-text-primary) !important;
     }
     .body--dark .table-style .q-btn.button-close,
