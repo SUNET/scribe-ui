@@ -60,10 +60,6 @@ async def index(request: Request) -> None:
     # Wait for client connection before accessing user storage.
     await ui.context.client.connected()
 
-    # Apply dark mode preference
-    dark_pref = app.storage.user.get("dark_mode", None)
-    ui.dark_mode(dark_pref)
-
     if refresh_token:
         app.storage.user["refresh_token"] = refresh_token
 
@@ -79,6 +75,10 @@ async def index(request: Request) -> None:
         timezone = "UTC"
 
     app.storage.user["timezone"] = timezone
+
+    # Apply dark mode preference
+    dark_pref = app.storage.user.get("dark_mode", None)
+    ui.dark_mode(dark_pref)
 
     if (
         app.storage.user.get("token")
