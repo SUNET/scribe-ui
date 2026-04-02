@@ -103,7 +103,7 @@ theme_styles = """
     .body--dark {
         --color-bg-page: #000000;
         --color-bg-surface: #000000;
-        --color-bg-surface-alt: #0a0a0a;
+        --color-bg-surface-alt: #1a1a1a;
         --color-bg-surface-hover: #3a3a3a;
 
         --color-brand-primary: #5b9bd5;
@@ -214,11 +214,14 @@ theme_styles = """
         border-color: var(--color-border-subtle);
     }
     .body--dark .q-dialog .q-card {
-        background-color: var(--color-bg-surface) !important;
+        background-color: var(--color-bg-surface-alt) !important;
         color: var(--color-text-primary) !important;
     }
     .body--dark .q-dialog .q-card *:not(.q-checkbox):not(.q-checkbox *) {
         color: var(--color-text-primary) !important;
+    }
+    .body--dark .q-field--outlined .q-field__control:before {
+        border-color: var(--color-border-subtle) !important;
     }
     .body--dark .q-separator {
         background-color: var(--color-border-subtle);

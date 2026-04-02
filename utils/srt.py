@@ -1983,7 +1983,7 @@ class SRTEditor:
                 f"min-width: {'1000' if (not is_bulk or bulk_needs_preview) else '500'}px; "
                 f"max-width: {'1400' if (not is_bulk or bulk_needs_preview) else '700'}px; "
                 "max-height: 90vh; overflow-y: auto; "
-                "background-color: var(--color-bg-surface);"
+                "background-color: var(--color-bg-surface-alt);"
             )
             with card:
                 # Header
@@ -2534,7 +2534,7 @@ class SRTEditor:
 
                 # Footer
                 with ui.row().classes("w-full justify-between items-center").style(
-                    "position: sticky; bottom: -24px; background-color: var(--color-bg-surface); padding-bottom: 8px; z-index: 1;"
+                    "position: sticky; bottom: -24px; background-color: inherit; padding-bottom: 8px; z-index: 1;"
                 ):
                     if is_bulk:
                         ui.label("").bind_text_from(
