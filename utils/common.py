@@ -35,11 +35,9 @@ from utils.token import (
 from utils.helpers import storage_decrypt, customers_get
 from utils.styles import (
     default_styles,
-    jobs_columns,
     menu_active_style,
     menu_item_style,
     severity_styles,
-    theme_styles,
 )
 
 MultiPartParser.spool_max_size = 1024 * 1024 * 4096
@@ -57,8 +55,6 @@ def sanitize_filename(filename: str) -> str:
     # Strip leading/trailing dots and spaces
     filename = filename.strip(". ")
     return filename or "unnamed"
-
-
 
 
 def _get_support_contact_email() -> str:
@@ -150,7 +146,9 @@ def show_help_dialog() -> None:
                                 ui.label(f"{step_num}. {step_title}").classes(
                                     "text-subtitle1 font-semibold"
                                 )
-                            ui.label(step_desc).classes("text-body2 text-theme-secondary")
+                            ui.label(step_desc).classes(
+                                "text-body2 text-theme-secondary"
+                            )
 
                 with ui.row().classes("w-full gap-4 items-stretch"):
                     with ui.card().classes("flex-1 help-privacy-card p-4"):
@@ -173,13 +171,15 @@ def show_help_dialog() -> None:
                         support_contact = _get_support_contact_email()
                         if support_contact:
                             is_url = support_contact.startswith(("http://", "https://"))
-                            href = support_contact if is_url else f"mailto:{support_contact}"
+                            href = (
+                                support_contact
+                                if is_url
+                                else f"mailto:{support_contact}"
+                            )
                             label = "Support:" if is_url else "Support email:"
                             with ui.row().classes("items-center gap-1"):
                                 ui.label(label).classes("text-body2")
-                                ui.link(
-                                    support_contact, href
-                                ).classes("text-body2")
+                                ui.link(support_contact, href).classes("text-body2")
 
         dialog.open()
 
@@ -475,7 +475,9 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
 
         with (
             ui.header()
-            .style("justify-content: space-between; background-color: var(--color-header-bg);")
+            .style(
+                "justify-content: space-between; background-color: var(--color-header-bg);"
+            )
             .classes("drop-shadow-md")
         ):
             with ui.element("div").style(
@@ -493,28 +495,39 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                     "height: 30px; width: 30px;"
                 )
                 ui.label(settings.TOPBAR_TEXT + header_text).classes(
-                    "text-h6"
+                    "text-h6 text-theme-primary"
                 )
 
             with ui.element("div").style("display: flex; gap: 0px;"):
                 dark_val = app.storage.user.get("dark_mode", None)
-                dark_icon = "dark_mode" if dark_val else ("brightness_auto" if dark_val is None else "light_mode")
+                dark_icon = (
+                    "dark_mode"
+                    if dark_val
+                    else ("brightness_auto" if dark_val is None else "light_mode")
+                )
                 with ui.button(
                     icon=dark_icon,
-                    on_click=lambda: (_cycle_dark_mode(), ui.navigate.to(ui.context.client.page.path)),
+                    on_click=lambda: (
+                        _cycle_dark_mode(),
+                        ui.navigate.to(ui.context.client.page.path),
+                    ),
                 ).props("flat").classes("header-btn"):
                     ui.tooltip("Toggle dark mode")
                 with ui.button(
                     icon="help",
                     on_click=lambda: show_help_dialog(),
-                ).props("flat").classes("header-btn"):
+                ).props(
+                    "flat"
+                ).classes("header-btn"):
                     ui.tooltip("Help")
 
             # body background and .nicegui-content padding are in theme_styles
     else:
         with (
             ui.header()
-            .style("justify-content: space-between; background-color: var(--color-header-bg);")
+            .style(
+                "justify-content: space-between; background-color: var(--color-header-bg);"
+            )
             .classes("drop-shadow-md")
         ):
             with ui.element("div").style("display: flex; gap: 0px;"):
@@ -522,7 +535,7 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                     "height: 30px; width: 30px;"
                 )
                 ui.label(settings.TOPBAR_TEXT + header_text).classes(
-                    "text-h6"
+                    "text-h6 text-theme-primary"
                 )
 
             with ui.element("div").style("display: flex; gap: 0px;"):
@@ -555,16 +568,25 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                 ).props("flat").classes("header-btn"):
                     ui.tooltip("User settings")
                 dark_val2 = app.storage.user.get("dark_mode", None)
-                dark_icon2 = "dark_mode" if dark_val2 else ("brightness_auto" if dark_val2 is None else "light_mode")
+                dark_icon2 = (
+                    "dark_mode"
+                    if dark_val2
+                    else ("brightness_auto" if dark_val2 is None else "light_mode")
+                )
                 with ui.button(
                     icon=dark_icon2,
-                    on_click=lambda: (_cycle_dark_mode(), ui.navigate.to(ui.context.client.page.path)),
+                    on_click=lambda: (
+                        _cycle_dark_mode(),
+                        ui.navigate.to(ui.context.client.page.path),
+                    ),
                 ).props("flat").classes("header-btn"):
                     ui.tooltip("Toggle dark mode")
                 with ui.button(
                     icon="help",
                     on_click=lambda: show_help_dialog(),
-                ).props("flat").classes("header-btn"):
+                ).props(
+                    "flat"
+                ).classes("header-btn"):
                     ui.tooltip("Help")
                 with ui.button(
                     icon="logout",

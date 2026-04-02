@@ -21,7 +21,7 @@ import httpx
 import re
 
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime
 from nicegui import app, ui
 from utils.common import add_timezone_to_timestamp, page_init
 from utils.styles import default_styles, severity_styles
