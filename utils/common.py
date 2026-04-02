@@ -33,6 +33,14 @@ from utils.token import (
     token_refresh,
 )
 from utils.helpers import storage_decrypt, customers_get
+from utils.styles import (
+    default_styles,
+    jobs_columns,
+    menu_active_style,
+    menu_item_style,
+    severity_styles,
+    theme_styles,
+)
 
 MultiPartParser.spool_max_size = 1024 * 1024 * 4096
 settings = get_settings()
@@ -51,142 +59,6 @@ def sanitize_filename(filename: str) -> str:
     return filename or "unnamed"
 
 
-jobs_columns = [
-    {
-        "name": "filename",
-        "label": "Filename",
-        "field": "filename",
-        "align": "left",
-        "classes": "text-weight-medium",
-    },
-    {
-        "name": "job_type",
-        "label": "Type",
-        "field": "job_type",
-        "align": "left",
-        "classes": "text-weight-medium",
-    },
-    {
-        "name": "created_at",
-        "label": "Created",
-        "field": "created_at",
-        "align": "left",
-    },
-    {
-        "name": "update_at",
-        "label": "Modified",
-        "field": "updated_at",
-        "align": "left",
-    },
-    {
-        "name": "deletion_date",
-        "label": "Scheduled deletion",
-        "field": "deletion_date",
-        "align": "left",
-    },
-    {
-        "name": "status",
-        "label": "Status",
-        "field": "status",
-        "align": "left",
-    },
-    {"name": "action", "label": "Action", "field": "action", "align": "center"},
-]
-
-default_styles = """
-    <style>
-        .q-chip {
-            background-color: #d3ecbe !important;
-            color: #000000 !important;
-        }
-        .default-style {
-            background-color: #d3ecbe;
-            border: 1px solid #000000;
-        }
-        .default-style.disabled {
-            background-color: #e0e0e0 !important;
-            border: 1px solid #bdbdbd !important;
-            opacity: 0.7;
-        }
-        .delete-style {
-            background-color: #ffffff;
-            color: #721c24;
-            border: 1px solid #000000;
-            width: 150px;
-        }
-        .delete-style.disabled {
-            background-color: #e0e0e0 !important;
-            border: 1px solid #bdbdbd !important;
-            opacity: 0.7;
-        }
-        .table-style th {
-            font-size: 14px;
-        }
-        .table-style tr {
-            font-size: 14px;
-        }
-        .cancel-style {
-            background-color: #ffffff;
-            color: #721c24;
-            border: 1px solid #000000;
-            width: 150px;
-        }
-        .upload-style {
-            width: 100%;
-            height: 200px;
-        }
-        .button-default-style {
-            background-color: #082954 !important;
-            color: #ffffff !important;
-            width: 150px;
-        }
-        .button-replace {
-            background-color: #ffffff;
-            color: #082954 !important;
-            border : 1px solid #082954;
-            width: 150px;
-        }
-        .button-replace-current {
-            background-color: #d3ecbe;
-            color: #000000 !important;
-            width: 150px;
-        }
-        .button-replace-prev-next {
-            background-color: #ffffff;
-            color: #082954 !important;
-        }
-        .button-close {
-            background-color: #ffffff;
-            color: #000000 !important;
-            width: 150px;
-            border: 1px solid #000000;
-        }
-        .button-user-status {
-            background-color: #ffffff;
-            width: 150px;
-            border: 1px solid #000000;
-        }
-        .button-edit {
-            background-color: #082954;
-            color: #ffffff !important;
-            width: 150px;
-        }
-        .deletion-warning {
-            color: #d32f2f;
-            font-weight: 500;
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
-        .deletion-warning-icon {
-            font-size: 18px;
-        }
-        .q-tooltip {
-            font-size: 14px;
-            white-space: nowrap;
-        }
-    </style>
-"""
 
 
 def _get_support_contact_email() -> str:
@@ -225,20 +97,18 @@ def show_help_dialog() -> None:
     with ui.dialog() as dialog:
         with (
             ui.card()
-            .style(
-                "max-width: 900px; padding: 32px; background: linear-gradient(to bottom, #ffffff 0%, #f8f9fa 100%);"
-            )
-            .classes("no-shadow")
+            .style("max-width: 900px; padding: 32px;")
+            .classes("no-shadow help-dialog-card")
         ):
             with ui.row().classes("w-full items-center justify-between mb-6"):
-                ui.label("Help & Documentation").classes("text-h4 font-bold text-black")
+                ui.label("Help & Documentation").classes("text-h4 font-bold")
                 ui.button(icon="close", on_click=dialog.close).props(
                     "flat round dense color=grey-7"
                 )
 
             with ui.column().classes("w-full gap-6"):
-                with ui.card().classes("bg-blue-50 border-l-4").style(
-                    "border-left-color: #082954; padding: 20px;"
+                with ui.card().classes("help-about-card border-l-4").style(
+                    "padding: 20px;"
                 ):
                     ui.label("About Sunet Scribe").classes("text-h6 font-semibold mb-2")
                     ui.label(
@@ -276,24 +146,24 @@ def show_help_dialog() -> None:
                     ]:
                         with ui.card().classes("p-4"):
                             with ui.row().classes("items-center gap-3 mb-2"):
-                                ui.icon(step_icon, size="md").classes("text-blue-700")
+                                ui.icon(step_icon, size="md").classes("help-about-icon")
                                 ui.label(f"{step_num}. {step_title}").classes(
                                     "text-subtitle1 font-semibold"
                                 )
-                            ui.label(step_desc).classes("text-body2 text-grey-8")
+                            ui.label(step_desc).classes("text-body2 text-theme-secondary")
 
                 with ui.row().classes("w-full gap-4 items-stretch"):
-                    with ui.card().classes("flex-1 bg-amber-50 p-4"):
+                    with ui.card().classes("flex-1 help-privacy-card p-4"):
                         with ui.row().classes("items-center gap-2 mb-2"):
-                            ui.icon("security", size="sm").classes("text-amber-800")
+                            ui.icon("security", size="sm").classes("help-privacy-icon")
                             ui.label("Privacy").classes("text-subtitle1 font-semibold")
                         ui.label(
                             "Files are encrypted, only accessible to you, and auto-deleted after the scheduled deletion date."
                         ).classes("text-body2")
 
-                    with ui.card().classes("flex-1 bg-green-50 p-4"):
+                    with ui.card().classes("flex-1 help-support-card p-4"):
                         with ui.row().classes("items-center gap-2 mb-2"):
-                            ui.icon("help", size="sm").classes("text-green-800")
+                            ui.icon("help", size="sm").classes("help-support-icon")
                             ui.label("Support").classes("text-subtitle1 font-semibold")
 
                         ui.label(
@@ -339,30 +209,6 @@ def _show_announcement_banners() -> None:
 
     dismissed = app.storage.user.get("dismissed_announcements", [])
 
-    severity_styles = {
-        "info": {
-            "bg": "#e3f2fd",
-            "border": "#90caf9",
-            "icon": "campaign",
-            "icon_color": "#1565c0",
-            "dismissible": True,
-        },
-        "maintenance": {
-            "bg": "#fff3e0",
-            "border": "#ffb74d",
-            "icon": "construction",
-            "icon_color": "#e65100",
-            "dismissible": True,
-        },
-        "major_incident": {
-            "bg": "#fce4ec",
-            "border": "#ef9a9a",
-            "icon": "crisis_alert",
-            "icon_color": "#c62828",
-            "dismissible": False,
-        },
-    }
-
     visible_count = 0
     for a in announcements:
         sev = a.get("severity", "info")
@@ -375,18 +221,6 @@ def _show_announcement_banners() -> None:
         ui.add_head_html(
             f"<style>:root {{ --banner-offset: {visible_count * 40}px; }}</style>"
         )
-
-    # CSS for links inside banners
-    ui.add_head_html(
-        "<style>"
-        ".announcement-banner a { color: #1565c0; text-decoration: underline;"
-        " font-weight: 500; }"
-        ".announcement-banner a:hover { text-decoration: underline;"
-        " opacity: 0.8; }"
-        ".announcement-banner.severity-maintenance a { color: #bf360c; }"
-        ".announcement-banner.severity-major_incident a { color: #b71c1c; }"
-        "</style>"
-    )
 
     # JS to fix link attributes (target, rel) for all banner links
     ui.add_head_html(
@@ -415,10 +249,9 @@ def _show_announcement_banners() -> None:
 
         banner_container = (
             ui.element("div")
-            .classes(f"announcement-banner severity-{sev}")
+            .classes(f"announcement-banner {style['css_class']}")
             .style(
-                f"background-color: {style['bg']}; border-bottom: 1px solid {style['border']};"
-                " padding: 8px 20px; display: flex; align-items: center;"
+                "padding: 8px 20px; display: flex; align-items: center;"
                 " justify-content: space-between;"
                 " margin-left: -2rem; margin-right: -2rem; margin-top: -1rem;"
                 " width: calc(100% + 4rem);"
@@ -433,7 +266,7 @@ def _show_announcement_banners() -> None:
                     f"color: {style['icon_color']};"
                 )
                 ui.html(announcement.get("message", ""), sanitize=False).style(
-                    "color: #000000; font-size: 0.95rem;"
+                    "color: var(--color-text-primary); font-size: 0.95rem;"
                 )
 
             if style["dismissible"]:
@@ -469,6 +302,11 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
 
     refresh()
 
+    # Apply dark mode preference
+    ui.add_head_html(default_styles)
+    dark_pref = app.storage.user.get("dark_mode", None)
+    ui.dark_mode(dark_pref)
+
     is_admin = get_admin_status()
     is_bofh = get_bofh_status()
     ui.timer(30, refresh)
@@ -488,7 +326,7 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
     if use_drawer:
         drawer_open = app.storage.user.get("drawer_open", False)
         drawer = ui.left_drawer(value=True, elevated=True).style(
-            "background-color: #f5f5f5; padding: 0;"
+            "background-color: var(--color-bg-surface-alt); padding: 0;"
         )
 
         drawer.props(':mini-width="56" :width="250" :breakpoint="0"')
@@ -526,23 +364,7 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
 
         menu_btn_tooltip_ref = None
 
-        menu_item_style = (
-            "display: flex; align-items: center; gap: 12px; padding: 10px 16px;"
-            " cursor: pointer; font-size: 1.05rem;"
-            " transition: background-color 0.15s; width: 100%;"
-            " white-space: nowrap; overflow: hidden;"
-        )
-        menu_active_style = " background-color: #e0e0e0; font-weight: 600;"
-        menu_hover_css = """
-            <style>
-                .menu-item:hover { background-color: #e0e0e0; }
-                .q-drawer--mini .menu-header { display: none; }
-                .q-drawer--mini .menu-separator { margin: 4px 0; }
-                .q-drawer--mini .menu-item { justify-content: center; padding: 10px 0; gap: 0; }
-                .q-drawer--mini .menu-item .q-icon { margin: 0; }
-                .q-drawer--mini .menu-label { display: none; }
-            </style>
-        """
+        # menu_item_style, menu_active_style imported from utils.styles
 
         def menu_style(path: str) -> str:
             active = current_path == path
@@ -568,7 +390,6 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
         ]
 
         with drawer:
-            ui.add_head_html(menu_hover_css)
             with ui.column().classes("w-full").style("gap: 0;"):
                 ui.separator()
 
@@ -578,7 +399,7 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                     with ui.element("div").style(menu_style(path)).classes(
                         "menu-item"
                     ).on("click", lambda p=path: ui.navigate.to(p)):
-                        ui.icon(icon, color="black").style("font-size: 20px;")
+                        ui.icon(icon).style("font-size: 20px;")
                         ui.label(label).classes("menu-label")
                         t = ui.tooltip(label)
                         t.set_visibility(show_tips)
@@ -587,14 +408,14 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                 if is_admin:
                     ui.separator().classes("menu-separator")
                     ui.label("Administration").classes("menu-header").style(
-                        "padding: 10px 16px 4px; font-weight: bold; font-size: 0.85rem; color: #666;"
+                        "padding: 10px 16px 4px; font-weight: bold; font-size: 0.85rem; color: var(--color-text-tertiary);"
                     )
 
                     for path, icon, label in admin_items:
                         with ui.element("div").style(menu_style(path)).classes(
                             "menu-item"
                         ).on("click", lambda p=path: ui.navigate.to(p)):
-                            ui.icon(icon, color="black").style("font-size: 20px;")
+                            ui.icon(icon).style("font-size: 20px;")
                             ui.label(label).classes("menu-label")
                             t = ui.tooltip(label)
                             t.set_visibility(show_tips)
@@ -608,7 +429,7 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                             f"window.open('{settings.API_URL}/api/docs', '_blank')"
                         ),
                     ):
-                        ui.icon("description", color="black").style("font-size: 20px;")
+                        ui.icon("description").style("font-size: 20px;")
                         ui.label("API documentation").classes("menu-label")
                         t = ui.tooltip("API documentation")
                         t.set_visibility(show_tips)
@@ -617,14 +438,14 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                 if is_bofh:
                     ui.separator().classes("menu-separator")
                     ui.label("System").classes("menu-header").style(
-                        "padding: 10px 16px 4px; font-weight: bold; font-size: 0.85rem; color: #666;"
+                        "padding: 10px 16px 4px; font-weight: bold; font-size: 0.85rem; color: var(--color-text-tertiary);"
                     )
 
                     for path, icon, label in system_items:
                         with ui.element("div").style(menu_style(path)).classes(
                             "menu-item"
                         ).on("click", lambda p=path: ui.navigate.to(p)):
-                            ui.icon(icon, color="black").style("font-size: 20px;")
+                            ui.icon(icon).style("font-size: 20px;")
                             ui.label(label).classes("menu-label")
                             t = ui.tooltip(label)
                             t.set_visibility(show_tips)
@@ -635,7 +456,7 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                 with ui.element("div").style(menu_item_style).classes("menu-item").on(
                     "click", lambda: ui.navigate.to("/logout")
                 ):
-                    ui.icon("logout", color="black").style("font-size: 20px;")
+                    ui.icon("logout").style("font-size: 20px;")
                     ui.label("Logout").classes("menu-label")
                     t = ui.tooltip("Logout")
                     t.set_visibility(show_tips)
@@ -643,7 +464,7 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
 
         with (
             ui.header()
-            .style("justify-content: space-between; background-color: #ffffff;")
+            .style("justify-content: space-between; background-color: var(--color-header-bg);")
             .classes("drop-shadow-md")
         ):
             with ui.element("div").style(
@@ -652,7 +473,7 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                 with ui.button(
                     icon="close" if drawer_open else "menu",
                     on_click=lambda: toggle_drawer(),
-                ).props("flat color=black") as menu_btn:
+                ).props("flat").classes("header-btn") as menu_btn:
                     menu_btn_tooltip = ui.tooltip(
                         "Close menu" if drawer_open else "Expand menu"
                     )
@@ -661,26 +482,21 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                     "height: 30px; width: 30px;"
                 )
                 ui.label(settings.TOPBAR_TEXT + header_text).classes(
-                    "text-h6 text-black"
+                    "text-h6"
                 )
 
             with ui.element("div").style("display: flex; gap: 0px;"):
                 with ui.button(
                     icon="help",
                     on_click=lambda: show_help_dialog(),
-                ).props("flat color=black"):
+                ).props("flat").classes("header-btn"):
                     ui.tooltip("Help")
 
-            ui.add_head_html(
-                "<style>"
-                "body { background-color: #ffffff; }"
-                ".nicegui-content { padding-left: 2rem; padding-right: 2rem; max-width: 100%; }"
-                "</style>"
-            )
+            # body background and .nicegui-content padding are in theme_styles
     else:
         with (
             ui.header()
-            .style("justify-content: space-between; background-color: #ffffff;")
+            .style("justify-content: space-between; background-color: var(--color-header-bg);")
             .classes("drop-shadow-md")
         ):
             with ui.element("div").style("display: flex; gap: 0px;"):
@@ -688,7 +504,7 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                     "height: 30px; width: 30px;"
                 )
                 ui.label(settings.TOPBAR_TEXT + header_text).classes(
-                    "text-h6 text-black"
+                    "text-h6"
                 )
 
             with ui.element("div").style("display: flex; gap: 0px;"):
@@ -713,24 +529,24 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                 with ui.button(
                     icon="home",
                     on_click=lambda: ui.navigate.to("/home"),
-                ).props("flat color=black"):
+                ).props("flat").classes("header-btn"):
                     ui.tooltip("Home")
                 with ui.button(
                     icon="person",
                     on_click=lambda: ui.navigate.to("/user"),
-                ).props("flat color=black"):
+                ).props("flat").classes("header-btn"):
                     ui.tooltip("User settings")
                 with ui.button(
                     icon="help",
                     on_click=lambda: show_help_dialog(),
-                ).props("flat color=black"):
+                ).props("flat").classes("header-btn"):
                     ui.tooltip("Help")
                 with ui.button(
                     icon="logout",
                     on_click=lambda: ui.navigate.to("/logout"),
-                ).props("flat color=black"):
+                ).props("flat").classes("header-btn"):
                     ui.tooltip("Logout")
-                ui.add_head_html("<style>body {background-color: #ffffff;}</style>")
+                # body background is in theme_styles
 
     _show_announcement_banners()
 
@@ -917,11 +733,11 @@ def table_upload(table) -> None:
     with ui.dialog() as dialog:
         with ui.card().style("min-width: 400px; padding: 32px;"):
             with ui.column().classes("w-full items-center") as status_column:
-                ui.label("Uploading files").classes("text-h6 q-mb-sm text-black")
+                ui.label("Uploading files").classes("text-h6 q-mb-sm")
                 status_label = ui.label("Please wait...").classes(
-                    "text-body1 q-mb-lg text-grey-7"
+                    "text-body1 q-mb-lg text-theme-muted"
                 )
-                ui.spinner(size="50px", color="black")
+                ui.spinner(size="50px")
                 status_column.visible = False
 
             with ui.column().classes("w-full items-center mt-10") as upload_column:
@@ -964,9 +780,8 @@ def table_upload(table) -> None:
                 dropzone = ui.html(
                     """
                     <div class="w-96 h-40 flex items-center justify-center
-                                border-2 border-dashed border-gray-400
-                                rounded-2xl bg-gray-50
-                                hover:bg-gray-100 cursor-pointer text-gray-600">
+                                border-2 border-dashed rounded-2xl cursor-pointer
+                                dropzone-area">
                         Drag & drop files here or click to upload.
                         <br/><br/>
                         5 files at a maximum of 4GB can be uploaded at once.
@@ -986,14 +801,14 @@ def table_upload(table) -> None:
                         "dz.addEventListener('click', () => upl.$refs.qRef.pickFiles());"
                         "dz.addEventListener('dragover', e => {"
                         "  e.preventDefault();"
-                        "  dz.querySelector('div').classList.add('bg-gray-200');"
+                        "  dz.querySelector('div').classList.add('dropzone-drag');"
                         "});"
                         "dz.addEventListener('dragleave', () => {"
-                        "  dz.querySelector('div').classList.remove('bg-gray-200');"
+                        "  dz.querySelector('div').classList.remove('dropzone-drag');"
                         "});"
                         "dz.addEventListener('drop', e => {"
                         "  e.preventDefault();"
-                        "  dz.querySelector('div').classList.remove('bg-gray-200');"
+                        "  dz.querySelector('div').classList.remove('dropzone-drag');"
                         "  upl.$refs.qRef.addFiles(Array.from(e.dataTransfer.files));"
                         "});"
                         "setInterval(() => {"
@@ -1080,13 +895,13 @@ def table_transcribe(selected_row, on_complete=None) -> None:
         with (
             ui.card()
             .style(
-                "background-color: white; align-self: center; border: 0; width: 80%;"
+                "background-color: var(--color-bg-surface); align-self: center; border: 0; width: 80%;"
             )
             .classes("w-full no-shadow no-border")
         ):
             with ui.row().classes("w-full"):
                 ui.label("Transcription settings").style("width: 100%;").classes(
-                    "text-h6 q-mb-xl text-black"
+                    "text-h6 q-mb-xl"
                 )
 
                 with ui.column().classes("col-12 col-sm-24"):
@@ -1175,29 +990,29 @@ def table_bulk_transcribe(table: ui.table, on_complete=None) -> None:
         with (
             ui.card()
             .style(
-                "background-color: white; align-self: center; border: 0; width: 80%;"
+                "background-color: var(--color-bg-surface); align-self: center; border: 0; width: 80%;"
             )
             .classes("w-full no-shadow no-border")
         ):
             with ui.row().classes("w-full"):
                 ui.label("Transcription settings").style("width: 100%;").classes(
-                    "text-h6 q-mb-xl text-black"
+                    "text-h6 q-mb-xl"
                 )
 
                 with ui.column().classes("w-full q-mb-sm").style(
-                    "background-color: #fff3e0; padding: 8px 12px; border-radius: 4px;"
+                    "background-color: var(--color-severity-maint-bg); padding: 8px 12px; border-radius: 4px;"
                 ):
                     with ui.row().classes("items-center"):
-                        ui.icon("rtt", color="black").classes("text-body1")
+                        ui.icon("rtt").classes("text-body1")
                         ui.label(
                             f"{len(uploadable)} file(s) will be transcribed."
-                        ).classes("text-body2 text-black")
+                        ).classes("text-body2")
                     if already_done:
                         with ui.row().classes("items-center"):
-                            ui.icon("block", color="black").classes("text-body1")
+                            ui.icon("block").classes("text-body1")
                             ui.label(
                                 f"{len(already_done)} completed file(s) will be skipped."
-                            ).classes("text-body2 text-black")
+                            ).classes("text-body2")
 
                 with ui.column().classes("col-12 col-sm-24"):
                     ui.label("Language").classes("text-subtitle2 q-mb-sm")
@@ -1362,9 +1177,9 @@ def table_bulk_export(table: ui.table) -> None:
     # Show progress dialog while fetching
     with ui.dialog() as progress_dialog:
         with ui.card().classes("p-6 items-center").style(
-            "min-width: 400px; background-color: #ffffff;"
+            "min-width: 400px; background-color: var(--color-bg-surface);"
         ):
-            ui.label("Preparing export...").classes("text-h6 text-black mb-2")
+            ui.label("Preparing export...").classes("text-h6 mb-2")
             progress_label = ui.label(f"Fetching file 0 of {len(completed)}").classes(
                 "text-body2 mb-2"
             )
@@ -1470,9 +1285,9 @@ def start_transcription(
             dialog.clear()
 
             with ui.card().style(
-                "background-color: white; align-self: center; border: 0; width: 50%;"
+                "background-color: var(--color-bg-surface); align-self: center; border: 0; width: 50%;"
             ):
-                ui.label(error).classes("text-h6 q-mb-md text-black")
+                ui.label(error).classes("text-h6 q-mb-md")
                 ui.button(
                     "Close",
                 ).on("click", lambda: dialog.close()).classes(

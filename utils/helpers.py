@@ -416,6 +416,39 @@ def email_save_notifications_get() -> dict:
         return {}
 
 
+def dark_mode_save(enabled: Optional[bool]) -> None:
+    """
+    Save the user's dark mode preference to the backend.
+    True=on, False=off, None=auto.
+    """
+
+    try:
+        response = httpx.put(
+            f"{settings.API_URL}/api/v1/me",
+            headers=get_auth_header(),
+            json={"dark_mode": enabled},
+        )
+        response.raise_for_status()
+    except httpx.HTTPError:
+        ui.notify("Failed to save dark mode preference", color="red")
+
+
+def dark_mode_get() -> bool:
+    """
+    Get the user's dark mode preference from the backend.
+    """
+
+    try:
+        response = httpx.get(
+            f"{settings.API_URL}/api/v1/me", headers=get_auth_header()
+        )
+        response.raise_for_status()
+        data = response.json()
+        return data["result"].get("dark_mode", False)
+    except httpx.HTTPError:
+        return False
+
+
 def test_all_notifications() -> None:
     """
     Trigger all notification types to be sent to the current user's email.

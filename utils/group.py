@@ -63,7 +63,7 @@ class Group:
             delete_group_dialog.open()
 
     def create_card(self):
-        with ui.card().classes("my-2").style("width: 100%; box-shadow: none; border: 1px solid #e0e0e0; padding: 16px;"):
+        with ui.card().classes("my-2").style("width: 100%; box-shadow: none; border: 1px solid var(--color-border-subtle); padding: 16px;"):
             with ui.row().style(
                 "justify-content: space-between; align-items: center; width: 100%;"
             ):
@@ -72,10 +72,10 @@ class Group:
                     ui.label(self.description).classes("text-md")
 
                     if self.name != "All users":
-                        ui.label(f"Created {self.created_at}").classes("text-sm text-gray-500")
+                        ui.label(f"Created {self.created_at}").classes("text-sm text-theme-muted")
 
-                    ui.label(f"{self.nr_users} members").classes("text-sm text-gray-500")
-                    ui.label(f"Monthly transcription limit: {'Unlimited' if self.quota_seconds == 0 else str(self.quota_seconds // 60) + ' minutes'}").classes("text-sm text-gray-500")
+                    ui.label(f"{self.nr_users} members").classes("text-sm text-theme-muted")
+                    ui.label(f"Monthly transcription limit: {'Unlimited' if self.quota_seconds == 0 else str(self.quota_seconds // 60) + ' minutes'}").classes("text-sm text-theme-muted")
                 with ui.column().style("flex: 1;"):
                     ui.label("Statistics").classes("text-h6 font-bold")
 

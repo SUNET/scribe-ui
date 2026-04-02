@@ -19,8 +19,8 @@ import json
 import httpx
 
 from nicegui import app, ui
-from utils.common import default_styles
 from utils.common import get_auth_header
+from utils.styles import default_styles
 from utils.common import page_init
 from utils.helpers import storage_decrypt
 from utils.settings import get_settings
@@ -238,7 +238,7 @@ def create() -> None:
                         autoscroll.on(
                             "click", lambda: editor.set_autoscroll(autoscroll.value)
                         )
-                        with ui.column().classes("bg-gray-100 p-4 w-full"):
+                        with ui.column().classes("srt-info-panel p-4 w-full"):
                             ui.label(filename).classes("text-h6").style(
                                 "align-self: center;"
                             )

@@ -19,6 +19,7 @@ import httpx
 
 from nicegui import ui
 from utils.settings import get_settings
+from utils.styles import default_styles
 
 settings = get_settings()
 
@@ -30,29 +31,7 @@ def create() -> None:
         Status page showing health of backend, database, and frontend.
         """
 
-        ui.add_head_html(
-            """
-            <style>
-                .status-card {
-                    padding: 24px;
-                    border-radius: 8px;
-                    margin-bottom: 16px;
-                }
-                .status-ok {
-                    background-color: #e8f5e9;
-                    border-left: 4px solid #4caf50;
-                }
-                .status-error {
-                    background-color: #ffebee;
-                    border-left: 4px solid #f44336;
-                }
-                .status-icon {
-                    font-size: 24px;
-                    margin-right: 12px;
-                }
-            </style>
-            """
-        )
+        ui.add_head_html(default_styles)
 
         with ui.column().classes("w-full items-center").style("padding: 40px;"):
             ui.label("System status").classes("text-h4").style("margin-bottom: 32px;")
@@ -62,7 +41,7 @@ def create() -> None:
                     ui.icon("check_circle", color="green").classes("status-icon")
                     with ui.column():
                         ui.label("Frontend").classes("text-h6")
-                        ui.label("Working").classes("text-body2 text-grey-7")
+                        ui.label("Working").classes("text-body2 text-theme-muted")
 
                 backend_card = ui.row().classes("status-card items-center w-full")
                 database_card = ui.row().classes("status-card items-center w-full")
@@ -75,7 +54,7 @@ def create() -> None:
                     with ui.column():
                         ui.label("Backend").classes("text-h6")
                         backend_status = ui.label("Checking...").classes(
-                            "text-body2 text-grey-7"
+                            "text-body2 text-theme-muted"
                         )
 
                 with database_card:
@@ -85,7 +64,7 @@ def create() -> None:
                     with ui.column():
                         ui.label("Database").classes("text-h6")
                         database_status = ui.label("Checking...").classes(
-                            "text-body2 text-grey-7"
+                            "text-body2 text-theme-muted"
                         )
 
                 with workers_card:
@@ -95,7 +74,7 @@ def create() -> None:
                     with ui.column():
                         ui.label("Workers").classes("text-h6")
                         workers_status = ui.label("Checking...").classes(
-                            "text-body2 text-grey-7"
+                            "text-body2 text-theme-muted"
                         )
 
                 async def check_status() -> None:

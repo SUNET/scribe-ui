@@ -17,10 +17,8 @@
 
 from nicegui import ui, events
 from utils.common import (
-    default_styles,
     page_init,
     jobs_get,
-    jobs_columns,
     table_click,
     table_upload,
     table_delete,
@@ -28,6 +26,7 @@ from utils.common import (
     table_bulk_export,
     table_bulk_transcribe,
 )
+from utils.styles import default_styles, jobs_columns
 
 
 def create() -> None:
@@ -132,9 +131,7 @@ def create() -> None:
                 <q-btn
                     v-if="props.row.status === 'Uploaded' || props.row.status === 'Completed'"
                     :label="props.row.status === 'Completed' ? 'Edit' : 'Transcribe'"
-                    :color="props.row.status === 'Completed' ? 'white' : 'black'"
-                    :text-color="props.row.status === 'Completed' ? 'black' : 'white'"
-                    :outline="props.row.status === 'Completed'"
+                    :class="props.row.status === 'Completed' ? 'table-btn-edit' : 'table-btn-transcribe'"
                     style="width: 120px; height: 40px;"
                     @click="$parent.$emit('table_handle_row_click', props.row)"
                 />

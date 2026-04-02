@@ -22,7 +22,8 @@ import httpx
 from nicegui import events, ui
 from typing import Callable, List, Optional
 from utils.caption import SRTCaption
-from utils.common import default_styles, get_auth_header, sanitize_filename
+from utils.common import get_auth_header, sanitize_filename
+from utils.styles import default_styles
 from utils.settings import get_settings
 from utils.undo_redo import UndoRedoManager
 
@@ -1108,7 +1109,7 @@ class SRTEditor:
 
                 # FIND SECTION
                 with ui.column().classes("w-full gap-2"):
-                    ui.label("Find").classes("text-caption text-gray-600")
+                    ui.label("Find").classes("text-caption text-theme-secondary")
 
                     with ui.row().classes("w-full items-center gap-2"):
                         search_input = (
@@ -1158,14 +1159,14 @@ class SRTEditor:
                             )
 
                             self.search_info_label = ui.label("").classes(
-                                "text-caption text-gray-600"
+                                "text-caption text-theme-secondary"
                             )
 
                 ui.separator().classes("my-3")
 
                 # REPLACE SECTION
                 with ui.column().classes("w-full gap-2"):
-                    ui.label("Replace").classes("text-caption text-gray-600")
+                    ui.label("Replace").classes("text-caption text-theme-secondary")
 
                     replace_input = (
                         ui.input(
@@ -1321,7 +1322,7 @@ class SRTEditor:
                     with ui.row().classes("w-full justify-between") as action_row:
                         action_row.props("id=action_row")
                         ui.label(f"#{caption.index}").classes(
-                            "font-bold text-sm text-gray-500"
+                            "font-bold text-sm text-theme-muted"
                         )
 
                         if self.data_format == "txt":
@@ -1422,7 +1423,7 @@ class SRTEditor:
                                     "font-bold text-sm"
                                 )
                         ui.label(f"{caption.start_time} - {caption.end_time}").classes(
-                            "text-sm text-gray-500"
+                            "text-sm text-theme-muted"
                         )
 
                         ui.html(highlighted_text, sanitize=False).classes(
@@ -1441,12 +1442,12 @@ class SRTEditor:
                                     )
                             ui.label(
                                 f"{caption.start_time} - {caption.end_time}"
-                            ).classes("text-sm text-gray-500")
+                            ).classes("text-sm text-theme-muted")
                         with ui.row().classes("w-full justify-between items-end"):
                             ui.label(caption.text).classes(
                                 "text-sm leading-relaxed whitespace-pre-wrap"
                             )
-                            text_color = "text-gray-500"
+                            text_color = "text-theme-muted"
 
                             tooltip_text = (
                                 "Character count."
@@ -1501,7 +1502,7 @@ class SRTEditor:
                 with self.main_container:
                     if not self.captions:
                         ui.label("No captions loaded").classes(
-                            "text-gray-500 text-center p-8"
+                            "text-theme-muted text-center p-8"
                         )
                     else:
                         for caption in self.captions:
@@ -1562,7 +1563,7 @@ class SRTEditor:
                 with ui.row().classes("w-full justify-between") as action_row:
                     action_row.props("id=action_row")
                     ui.label(f"#{caption.index}").classes(
-                        "font-bold text-sm text-gray-500"
+                        "font-bold text-sm text-theme-muted"
                     )
 
                     if self.data_format == "txt":
@@ -1654,7 +1655,7 @@ class SRTEditor:
                         if self.data_format == "txt":
                             ui.label(f"{caption.speaker}:").classes("font-bold text-sm")
                     ui.label(f"{caption.start_time} - {caption.end_time}").classes(
-                        "text-sm text-gray-500"
+                        "text-sm text-theme-muted"
                     )
 
                     ui.html(highlighted_text, sanitize=False).classes(
@@ -1670,13 +1671,13 @@ class SRTEditor:
                                     "font-bold text-sm"
                                 )
                         ui.label(f"{caption.start_time} - {caption.end_time}").classes(
-                            "text-sm text-gray-500"
+                            "text-sm text-theme-muted"
                         )
                     with ui.row().classes("w-full justify-between items-end"):
                         ui.label(caption.text).classes(
                             "text-sm leading-relaxed whitespace-pre-wrap"
                         )
-                        text_color = "text-gray-500"
+                        text_color = "text-theme-muted"
 
                         tooltip_text = (
                             "Character count."
@@ -1867,7 +1868,7 @@ class SRTEditor:
 
                 # Footer
                 with ui.row().classes("w-full justify-end mt-4").style(
-                    "position: sticky; bottom: -24px; background: white; padding-bottom: 8px; z-index: 1;"
+                    "position: sticky; bottom: -24px; background-color: var(--color-bg-surface); padding-bottom: 8px; z-index: 1;"
                 ):
                     ui.button("Close", on_click=dialog.close).props("color=primary")
 
@@ -1937,11 +1938,11 @@ class SRTEditor:
                                 ):
                                     ui.label(action).classes("text-body1")
                                     ui.label(keys).classes(
-                                        "text-body2 font-mono bg-gray-100 px-2 py-1 rounded"
-                                    )
+                                        "text-body2 font-mono px-2 py-1 rounded"
+                                    ).style("background-color: var(--color-bg-surface-alt);")
 
                 with ui.row().classes("w-full justify-end mt-4").style(
-                    "position: sticky; bottom: -24px; background: white; padding-bottom: 8px; z-index: 1;"
+                    "position: sticky; bottom: -24px; background-color: var(--color-bg-surface); padding-bottom: 8px; z-index: 1;"
                 ):
                     ui.button("Close").props("flat color=primary").on(
                         "click", dialog.close
@@ -1982,13 +1983,13 @@ class SRTEditor:
                 f"min-width: {'1000' if (not is_bulk or bulk_needs_preview) else '500'}px; "
                 f"max-width: {'1400' if (not is_bulk or bulk_needs_preview) else '700'}px; "
                 "max-height: 90vh; overflow-y: auto; "
-                "background-color: #ffffff;"
+                "background-color: var(--color-bg-surface);"
             )
             with card:
                 # Header
                 with ui.row().classes("w-full items-center justify-between mb-4"):
                     ui.label("Export transcript").classes(
-                        "text-h5 font-bold text-black"
+                        "text-h5 font-bold"
                     )
                     ui.button(icon="close", on_click=dialog.close).props(
                         "flat round dense color=grey-7"
@@ -2257,7 +2258,7 @@ class SRTEditor:
                                 card.style(
                                     f"min-width: {'1000' if show_prev else '500'}px; "
                                     f"max-width: {'1400' if show_prev else '700'}px; "
-                                    "background-color: #ffffff;"
+                                    "background-color: var(--color-bg-surface);"
                                 )
 
                         fmt.on(
@@ -2533,7 +2534,7 @@ class SRTEditor:
 
                 # Footer
                 with ui.row().classes("w-full justify-between items-center").style(
-                    "position: sticky; bottom: -24px; background: white; padding-bottom: 8px; z-index: 1;"
+                    "position: sticky; bottom: -24px; background-color: var(--color-bg-surface); padding-bottom: 8px; z-index: 1;"
                 ):
                     if is_bulk:
                         ui.label("").bind_text_from(

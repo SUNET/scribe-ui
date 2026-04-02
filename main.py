@@ -24,7 +24,7 @@ from pages.home import create as create_files_table
 from pages.srt import create as create_srt
 from pages.status import create as create_status
 from pages.user import create as create_user_page
-from utils.common import default_styles
+from utils.styles import default_styles
 from utils.settings import get_settings
 from utils.token import get_user_data, get_user_status, get_token_is_valid
 from utils.helpers import (
@@ -60,6 +60,10 @@ async def index(request: Request) -> None:
     # Wait for client connection before accessing user storage.
     await ui.context.client.connected()
 
+    # Apply dark mode preference
+    dark_pref = app.storage.user.get("dark_mode", None)
+    ui.dark_mode(dark_pref)
+
     if refresh_token:
         app.storage.user["refresh_token"] = refresh_token
 
@@ -82,6 +86,10 @@ async def index(request: Request) -> None:
         and get_user_status()
     ):
         user_data = get_user_data()
+
+        # Sync dark mode preference from backend
+        app.storage.user["dark_mode"] = user_data.get("dark_mode", None)
+        ui.dark_mode(app.storage.user["dark_mode"])
 
         if not user_data["encryption_settings"]:
             with ui.dialog() as dialog:
@@ -226,10 +234,10 @@ async def index(request: Request) -> None:
 
                     if is_not_activated:
                         with ui.card().classes("w-full no-shadow").style(
-                            "background-color: #fff3cd; border: 1px solid #ffc107; padding: 20px; margin-top: 20px; min-height: 160px;"
+                            "background-color: var(--color-warning-bg); border: 1px solid var(--color-warning-border); padding: 20px; margin-top: 20px; min-height: 160px;"
                         ):
                             with ui.column().classes("items-center gap-3"):
-                                ui.icon("warning", size="lg").style("color: #ff9800;")
+                                ui.icon("warning", size="lg").style("color: var(--color-warning-icon);")
                                 ui.label("Account pending activation").classes(
                                     "text-h6"
                                 )

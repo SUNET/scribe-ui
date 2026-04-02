@@ -17,8 +17,10 @@
 
 from nicegui import app, ui
 from utils.common import page_init
-from utils.common import default_styles
+from utils.styles import default_styles
 from utils.helpers import (
+    dark_mode_get,
+    dark_mode_save,
     email_get,
     email_save,
     email_save_notifications,
@@ -72,172 +74,213 @@ def create() -> None:
         hours = int(total_seconds) // 3600
         minutes = int(total_seconds) % 3600 // 60
 
-        # -- Profile section --
-        ui.label("Profile").classes("text-lg font-semibold mb-2")
-        ui.separator()
+        with ui.row().classes("w-full gap-8 items-start"):
+            # ── Left column: Profile, Email, Dark mode ──
+            with ui.column().classes("flex-1"):
+                # -- Profile section --
+                ui.label("Profile").classes("text-lg font-semibold mb-2")
+                ui.separator()
 
-        with ui.column().classes("gap-2 mt-2 mb-6"):
-            with ui.row().classes("items-center gap-3"):
-                ui.icon("person", color="black").style("font-size: 20px;")
-                ui.label("Username").classes("font-medium text-gray-600").style(
-                    "min-width: 140px;"
-                )
-                ui.label(userdata["username"]).classes("text-gray-900").style(
-                    "cursor: pointer; text-decoration: underline;"
-                ).on("click", lambda: show_user_token())
-                ui.tooltip("Click to view your API token")
+                with ui.column().classes("gap-2 mt-2 mb-6"):
+                    with ui.row().classes("items-center gap-3"):
+                        ui.icon("person").style("font-size: 20px;")
+                        ui.label("Username").classes("font-medium text-theme-secondary").style(
+                            "min-width: 140px;"
+                        )
+                        ui.label(userdata["username"]).classes("text-theme-primary").style(
+                            "cursor: pointer; text-decoration: underline;"
+                        ).on("click", lambda: show_user_token())
+                        ui.tooltip("Click to view your API token")
 
-            with ui.row().classes("items-center gap-3"):
-                ui.icon("fingerprint", color="black").style("font-size: 20px;")
-                ui.label("User id").classes("font-medium text-gray-600").style(
-                    "min-width: 140px;"
-                )
-                ui.label(userdata["user_id"]).classes("text-gray-500 text-sm")
+                    with ui.row().classes("items-center gap-3"):
+                        ui.icon("fingerprint").style("font-size: 20px;")
+                        ui.label("User id").classes("font-medium text-theme-secondary").style(
+                            "min-width: 140px;"
+                        )
+                        ui.label(userdata["user_id"]).classes("text-theme-muted text-sm")
 
-            with ui.row().classes("items-center gap-3"):
-                ui.icon("schedule", color="black").style("font-size: 20px;")
-                ui.label("Transcribed time").classes(
-                    "font-medium text-gray-600"
-                ).style("min-width: 140px;")
-                ui.label(f"{hours}h {minutes}min").classes("text-gray-900")
+                    with ui.row().classes("items-center gap-3"):
+                        ui.icon("schedule").style("font-size: 20px;")
+                        ui.label("Transcribed time").classes(
+                            "font-medium text-theme-secondary"
+                        ).style("min-width: 140px;")
+                        ui.label(f"{hours}h {minutes}min").classes("text-theme-primary")
 
-            with ui.row().classes("items-center gap-3"):
-                ui.icon("public", color="black").style("font-size: 20px;")
-                ui.label("Timezone").classes("font-medium text-gray-600").style(
-                    "min-width: 140px;"
-                )
-                ui.label(app.storage.user.get("timezone", "UTC")).classes(
-                    "text-gray-900"
-                )
+                    with ui.row().classes("items-center gap-3"):
+                        ui.icon("public").style("font-size: 20px;")
+                        ui.label("Timezone").classes("font-medium text-theme-secondary").style(
+                            "min-width: 140px;"
+                        )
+                        ui.label(app.storage.user.get("timezone", "UTC")).classes(
+                            "text-theme-primary"
+                        )
 
-        # -- Email section --
-        ui.label("Email").classes("text-lg font-semibold mb-2")
-        ui.separator()
+                # -- Email section --
+                ui.label("Email").classes("text-lg font-semibold mb-2")
+                ui.separator()
 
-        with ui.row().classes("items-center gap-3 mt-2 mb-6"):
-            ui.icon("email", color="black").style("font-size: 20px;")
-            email = ui.input(
-                placeholder=current_email,
-                value=current_email,
-            ).style("min-width: 300px;")
+                with ui.row().classes("items-center gap-3 mt-2 mb-6"):
+                    ui.icon("email").style("font-size: 20px;")
+                    email = ui.input(
+                        placeholder=current_email,
+                        value=current_email,
+                    ).style("min-width: 300px;")
 
-            save = ui.button("Test and save")
-            save.props("color=black flat")
-            save.classes("default-style")
-            save.on("click", lambda: email_save(email.value))
+                    save = ui.button("Test and save")
+                    save.props("color=black flat")
+                    save.classes("default-style")
+                    save.on("click", lambda: email_save(email.value))
 
-        # -- Notifications section --
-        ui.label("Notifications").classes("text-lg font-semibold mb-2")
-        ui.separator()
+                # -- Dark mode section --
+                ui.label("Dark mode").classes("text-lg font-semibold mb-2")
+                ui.separator()
 
-        users = None
-        quota = None
-        weekly_report = None
+                with ui.column().classes("gap-2 mt-2 mb-6"):
+                    dark_options = {"off": "Off", "on": "On", "auto": "Auto"}
 
-        with ui.column().classes("gap-1 mt-2"):
-            ui.label("Personal").classes("font-medium text-gray-600 mb-1")
-            ui.label(
-                "Notifications related to your own files and activity."
-            ).classes("text-sm text-gray-500 mb-2")
+                    # Current value: True -> "on", False -> "off", None -> "auto"
+                    raw = app.storage.user.get("dark_mode", None)
+                    if raw is None:
+                        current_dark = "auto"
+                    elif raw:
+                        current_dark = "on"
+                    else:
+                        current_dark = "off"
 
-            jobs = ui.checkbox(
-                "Transcription completed",
-                value="job" in current_notifications,
-            )
-            jobs.on(
-                "click",
-                lambda e: email_save_notifications(
-                    job=jobs.value,
-                    user=users.value if users is not None else None,
-                    deletion=deletions.value,
-                    quota=quota.value if quota is not None else None,
-                    weekly_report=weekly_report.value
-                    if weekly_report is not None
-                    else None,
-                ),
-            )
-            jobs.tooltip(
-                "Get an email when one of your transcription jobs finishes processing."
-            )
+                    def set_dark_mode(value: str) -> None:
+                        if value == "on":
+                            app.storage.user["dark_mode"] = True
+                            ui.dark_mode(True)
+                            dark_mode_save(True)
+                        elif value == "off":
+                            app.storage.user["dark_mode"] = False
+                            ui.dark_mode(False)
+                            dark_mode_save(False)
+                        else:
+                            app.storage.user["dark_mode"] = None
+                            ui.dark_mode(None)
+                            dark_mode_save(None)
 
-            deletions = ui.checkbox(
-                "Upcoming file deletions",
-                value="deletion" in current_notifications,
-            )
-            deletions.on(
-                "click",
-                lambda e: email_save_notifications(
-                    job=jobs.value,
-                    user=users.value if users is not None else None,
-                    deletion=deletions.value,
-                    quota=quota.value if quota is not None else None,
-                    weekly_report=weekly_report.value
-                    if weekly_report is not None
-                    else None,
-                ),
-            )
-            deletions.tooltip(
-                "Get an email one day before your uploaded files are permanently deleted."
-            )
+                    ui.toggle(
+                        dark_options,
+                        value=current_dark,
+                        on_change=lambda e: set_dark_mode(e.value),
+                    ).props("flat").tooltip("Off: light theme, On: dark theme, Auto: follow system settings.")
 
-        if get_admin_status():
-            with ui.column().classes("gap-1 mt-4"):
-                ui.label("Administration").classes("font-medium text-gray-600 mb-1")
-                ui.label(
-                    "Notifications related to administrative tasks."
-                ).classes("text-sm text-gray-500 mb-2")
+            # ── Right column: Notifications ──
+            with ui.column().classes("flex-1"):
+                ui.label("Notifications").classes("text-lg font-semibold mb-2")
+                ui.separator()
 
-                users = ui.checkbox(
-                    "New user registrations",
-                    value="user" in current_notifications,
-                )
-                users.on(
-                    "click",
-                    lambda e: email_save_notifications(
-                        job=jobs.value,
-                        user=users.value,
-                        deletion=deletions.value,
-                        quota=quota.value,
-                        weekly_report=weekly_report.value,
-                    ),
-                )
-                users.tooltip(
-                    "Get an email when a new user creates an account."
-                )
+                users = None
+                quota = None
+                weekly_report = None
 
-                quota = ui.checkbox(
-                    "Quota alerts",
-                    value="quota" in current_notifications,
-                )
-                quota.on(
-                    "click",
-                    lambda e: email_save_notifications(
-                        job=jobs.value,
-                        user=users.value,
-                        deletion=deletions.value,
-                        quota=quota.value,
-                        weekly_report=weekly_report.value,
-                    ),
-                )
-                quota.tooltip(
-                    "Get an email when a group or account quota is approaching its limit."
-                )
+                with ui.column().classes("gap-1 mt-2"):
+                    ui.label("Personal").classes("font-medium text-theme-secondary mb-1")
+                    ui.label(
+                        "Notifications related to your own files and activity."
+                    ).classes("text-sm text-theme-muted mb-2")
 
-                weekly_report = ui.checkbox(
-                    "Usage summary (current month, sent weekly)",
-                    value="weekly_report" in current_notifications,
-                )
-                weekly_report.on(
-                    "click",
-                    lambda e: email_save_notifications(
-                        job=jobs.value,
-                        user=users.value,
-                        deletion=deletions.value,
-                        quota=quota.value,
-                        weekly_report=weekly_report.value,
-                    ),
-                )
-                weekly_report.tooltip(
-                    "Get a weekly email with a summary of transcription usage."
-                )
+                    jobs = ui.checkbox(
+                        "Transcription completed",
+                        value="job" in current_notifications,
+                    )
+                    jobs.on(
+                        "click",
+                        lambda e: email_save_notifications(
+                            job=jobs.value,
+                            user=users.value if users is not None else None,
+                            deletion=deletions.value,
+                            quota=quota.value if quota is not None else None,
+                            weekly_report=weekly_report.value
+                            if weekly_report is not None
+                            else None,
+                        ),
+                    )
+                    jobs.tooltip(
+                        "Get an email when one of your transcription jobs finishes processing."
+                    )
+
+                    deletions = ui.checkbox(
+                        "Upcoming file deletions",
+                        value="deletion" in current_notifications,
+                    )
+                    deletions.on(
+                        "click",
+                        lambda e: email_save_notifications(
+                            job=jobs.value,
+                            user=users.value if users is not None else None,
+                            deletion=deletions.value,
+                            quota=quota.value if quota is not None else None,
+                            weekly_report=weekly_report.value
+                            if weekly_report is not None
+                            else None,
+                        ),
+                    )
+                    deletions.tooltip(
+                        "Get an email one day before your uploaded files are permanently deleted."
+                    )
+
+                if get_admin_status():
+                    with ui.column().classes("gap-1 mt-4"):
+                        ui.label("Administration").classes("font-medium text-theme-secondary mb-1")
+                        ui.label(
+                            "Notifications related to administrative tasks."
+                        ).classes("text-sm text-theme-muted mb-2")
+
+                        users = ui.checkbox(
+                            "New user registrations",
+                            value="user" in current_notifications,
+                        )
+                        users.on(
+                            "click",
+                            lambda e: email_save_notifications(
+                                job=jobs.value,
+                                user=users.value,
+                                deletion=deletions.value,
+                                quota=quota.value,
+                                weekly_report=weekly_report.value,
+                            ),
+                        )
+                        users.tooltip(
+                            "Get an email when a new user creates an account."
+                        )
+
+                        quota = ui.checkbox(
+                            "Quota alerts",
+                            value="quota" in current_notifications,
+                        )
+                        quota.on(
+                            "click",
+                            lambda e: email_save_notifications(
+                                job=jobs.value,
+                                user=users.value,
+                                deletion=deletions.value,
+                                quota=quota.value,
+                                weekly_report=weekly_report.value,
+                            ),
+                        )
+                        quota.tooltip(
+                            "Get an email when a group or account quota is approaching its limit."
+                        )
+
+                        weekly_report = ui.checkbox(
+                            "Usage summary (current month, sent weekly)",
+                            value="weekly_report" in current_notifications,
+                        )
+                        weekly_report.on(
+                            "click",
+                            lambda e: email_save_notifications(
+                                job=jobs.value,
+                                user=users.value,
+                                deletion=deletions.value,
+                                quota=quota.value,
+                                weekly_report=weekly_report.value,
+                            ),
+                        )
+                        weekly_report.tooltip(
+                            "Get a weekly email with a summary of transcription usage."
+                        )
+
 

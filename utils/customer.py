@@ -63,7 +63,7 @@ class Customer:
 
     def create_card(self):
         with ui.card().classes("my-2").style(
-            "width: 100%; box-shadow: none; border: 1px solid #e0e0e0; padding: 16px;"
+            "width: 100%; box-shadow: none; border: 1px solid var(--color-border-subtle); padding: 16px;"
         ):
             with ui.row().style(
                 "justify-content: space-between; align-items: center; width: 100%;"
@@ -81,30 +81,30 @@ class Customer:
                             "text-md"
                         )
                     ui.label(f"Plan: {self.priceplan.capitalize()}").classes(
-                        "text-sm text-gray-500"
+                        "text-sm text-theme-muted"
                     )
                     if self.priceplan == "fixed":
                         ui.label(
                             f"Blocks: {self.blocks_purchased} ({self.blocks_purchased * 4000} minutes)"
-                        ).classes("text-sm text-gray-500")
+                        ).classes("text-sm text-theme-muted")
                     ui.label(f"Base fee: {self.base_fee}").classes(
-                        "text-sm text-gray-500"
+                        "text-sm text-theme-muted"
                     )
                     if self.contact_email:
                         ui.label(f"Contact: {self.contact_email}").classes(
-                            "text-sm text-gray-500"
+                            "text-sm text-theme-muted"
                         )
-                    ui.label(f"Realms: {self.realms}").classes("text-sm text-gray-500")
+                    ui.label(f"Realms: {self.realms}").classes("text-sm text-theme-muted")
                     ui.label(
                         f"Total users: {self.stats.get('total_users', 0)}"
-                    ).classes("text-sm text-gray-500")
+                    ).classes("text-sm text-theme-muted")
 
                     ui.label(f"Created {self.created_at}").classes(
-                        "text-sm text-gray-500"
+                        "text-sm text-theme-muted"
                     )
                     if self.notes:
                         ui.label(f"Notes: {self.notes}").classes(
-                            "text-sm text-gray-500"
+                            "text-sm text-theme-muted"
                         )
 
                 with ui.column().style("flex: 1;"):
