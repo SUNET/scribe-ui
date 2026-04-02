@@ -165,7 +165,7 @@ def create() -> None:
                         dark_options,
                         value=current_dark,
                         on_change=lambda e: set_dark_mode(e.value),
-                    ).props("flat").tooltip("Off: light theme, On: dark theme, Auto: follow system settings.")
+                    ).props("toggle-color=primary no-caps").tooltip("Off: light theme, On: dark theme, Auto: follow system settings.")
 
             # ── Right column: Notifications ──
             with ui.column().classes("flex-1"):

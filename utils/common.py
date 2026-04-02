@@ -323,6 +323,17 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
     if is_admin:
         header_text += " (Administrator)"
 
+    def _cycle_dark_mode():
+        current = app.storage.user.get("dark_mode", None)
+        if current is None:
+            new_val = True
+        elif current:
+            new_val = False
+        else:
+            new_val = None
+        app.storage.user["dark_mode"] = new_val
+        ui.dark_mode(new_val)
+
     if use_drawer:
         drawer_open = app.storage.user.get("drawer_open", False)
         drawer = ui.left_drawer(value=True, elevated=True).style(
@@ -486,6 +497,13 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                 )
 
             with ui.element("div").style("display: flex; gap: 0px;"):
+                dark_val = app.storage.user.get("dark_mode", None)
+                dark_icon = "dark_mode" if dark_val else ("brightness_auto" if dark_val is None else "light_mode")
+                with ui.button(
+                    icon=dark_icon,
+                    on_click=lambda: (_cycle_dark_mode(), ui.navigate.to(ui.context.client.page.path)),
+                ).props("flat").classes("header-btn"):
+                    ui.tooltip("Toggle dark mode")
                 with ui.button(
                     icon="help",
                     on_click=lambda: show_help_dialog(),
@@ -536,6 +554,13 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                     on_click=lambda: ui.navigate.to("/user"),
                 ).props("flat").classes("header-btn"):
                     ui.tooltip("User settings")
+                dark_val2 = app.storage.user.get("dark_mode", None)
+                dark_icon2 = "dark_mode" if dark_val2 else ("brightness_auto" if dark_val2 is None else "light_mode")
+                with ui.button(
+                    icon=dark_icon2,
+                    on_click=lambda: (_cycle_dark_mode(), ui.navigate.to(ui.context.client.page.path)),
+                ).props("flat").classes("header-btn"):
+                    ui.tooltip("Toggle dark mode")
                 with ui.button(
                     icon="help",
                     on_click=lambda: show_help_dialog(),

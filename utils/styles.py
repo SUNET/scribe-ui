@@ -101,9 +101,9 @@ theme_styles = """
 
     /* ── Theme variables (dark mode) ── */
     .body--dark {
-        --color-bg-page: #121212;
-        --color-bg-surface: #1e1e1e;
-        --color-bg-surface-alt: #2a2a2a;
+        --color-bg-page: #000000;
+        --color-bg-surface: #000000;
+        --color-bg-surface-alt: #0a0a0a;
         --color-bg-surface-hover: #3a3a3a;
 
         --color-brand-primary: #5b9bd5;
@@ -232,6 +232,9 @@ theme_styles = """
     .header-btn .q-icon,
     .header-btn .q-btn__content {
         color: var(--color-text-primary) !important;
+    }
+    .q-btn.header-btn.q-btn--flat {
+        border: none !important;
     }
 
     /* ── Page background ── */
