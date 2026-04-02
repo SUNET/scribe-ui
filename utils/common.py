@@ -476,7 +476,7 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
         with (
             ui.header()
             .style(
-                "justify-content: space-between; background-color: var(--color-header-bg);"
+                "justify-content: space-between; background-color: var(--color-header-bg); min-height: 50px; padding: 4px 16px;"
             )
             .classes("drop-shadow-md")
         ):
@@ -491,9 +491,21 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                         "Close menu" if drawer_open else "Expand menu"
                     )
                     menu_btn_tooltip_ref = menu_btn_tooltip
-                ui.image(f"static/{settings.LOGO_TOPBAR}").classes("q-mr-sm").style(
-                    "height: 30px; width: 30px;"
-                )
+                if dark_pref is True:
+                    ui.image(f"static/{settings.LOGO_TOPBAR_DARK}").classes("q-mr-sm").style(
+                        "height: 30px; width: 30px;"
+                    )
+                elif dark_pref is False:
+                    ui.image(f"static/{settings.LOGO_TOPBAR_LIGHT}").classes("q-mr-sm").style(
+                        "height: 30px; width: 30px;"
+                    )
+                else:
+                    ui.image(f"static/{settings.LOGO_TOPBAR_LIGHT}").classes("q-mr-sm logo-light").style(
+                        "height: 30px; width: 30px;"
+                    )
+                    ui.image(f"static/{settings.LOGO_TOPBAR_DARK}").classes("q-mr-sm logo-dark").style(
+                        "height: 30px; width: 30px;"
+                    )
                 ui.label(settings.TOPBAR_TEXT + header_text).classes(
                     "text-h6 text-theme-primary"
                 )
@@ -526,14 +538,26 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
         with (
             ui.header()
             .style(
-                "justify-content: space-between; background-color: var(--color-header-bg);"
+                "justify-content: space-between; background-color: var(--color-header-bg); min-height: 50px; padding: 4px 16px;"
             )
             .classes("drop-shadow-md")
         ):
             with ui.element("div").style("display: flex; gap: 0px;"):
-                ui.image(f"static/{settings.LOGO_TOPBAR}").classes("q-mr-sm").style(
-                    "height: 30px; width: 30px;"
-                )
+                if dark_pref is True:
+                    ui.image(f"static/{settings.LOGO_TOPBAR_DARK}").classes("q-mr-sm").style(
+                        "height: 30px; width: 30px;"
+                    )
+                elif dark_pref is False:
+                    ui.image(f"static/{settings.LOGO_TOPBAR_LIGHT}").classes("q-mr-sm").style(
+                        "height: 30px; width: 30px;"
+                    )
+                else:
+                    ui.image(f"static/{settings.LOGO_TOPBAR_LIGHT}").classes("q-mr-sm logo-light").style(
+                        "height: 30px; width: 30px;"
+                    )
+                    ui.image(f"static/{settings.LOGO_TOPBAR_DARK}").classes("q-mr-sm logo-dark").style(
+                        "height: 30px; width: 30px;"
+                    )
                 ui.label(settings.TOPBAR_TEXT + header_text).classes(
                     "text-h6 text-theme-primary"
                 )

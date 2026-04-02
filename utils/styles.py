@@ -227,6 +227,14 @@ theme_styles = """
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
     }
 
+    /* ── Header logo auto-mode toggle ── */
+    .body--dark .logo-light {
+        display: none !important;
+    }
+    .body--light .logo-dark {
+        display: none !important;
+    }
+
     /* ── Header buttons ── */
     .header-btn,
     .header-btn .q-icon,

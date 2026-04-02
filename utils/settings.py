@@ -40,7 +40,8 @@ class Settings(BaseSettings):
 
     LOGO_LANDING: str = "sunet_logo.png"
     LOGO_LANDING_WIDTH: str = "250"
-    LOGO_TOPBAR: str = "sunet_small.png"
+    LOGO_TOPBAR_LIGHT: str = "sunet_small.png"
+    LOGO_TOPBAR_DARK: str = "sunet_small_dark.png"
     FAVICON: str = "favicon.ico"
     TAB_TITLE: str = "Sunet Scribe"
     TOPBAR_TEXT: str = "Sunet Scribe"
