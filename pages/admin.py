@@ -1008,16 +1008,13 @@ async def health() -> None:
                             xaxis=dict(
                                 title="Time",
                                 showgrid=True,
-                                gridcolor="rgba(0,0,0,0.05)",
                             ),
                             yaxis=dict(
                                 title="%",
                                 showgrid=True,
-                                gridcolor="rgba(0,0,0,0.05)",
                                 rangemode="tozero",
                             ),
                             font=dict(size=11),
-                            plot_bgcolor="rgba(248, 250, 252, 0.5)",
                             hovermode="x unified",
                         )
                         ui.plotly(fig_gpu).classes("w-full")
