@@ -26,21 +26,23 @@ from utils.settings import get_settings
 settings = get_settings()
 
 
-def token_refresh_call() -> str:
+async def token_refresh_call() -> str:
     try:
-        token_refresh = app.storage.user.get("refresh_token")
-        response = httpx.post(
-            settings.OIDC_APP_REFRESH_ROUTE,
-            json={"token": token_refresh},
-        )
+        refresh_token = app.storage.user.get("refresh_token")
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                settings.OIDC_APP_REFRESH_ROUTE,
+                json={"token": refresh_token},
+                timeout=10,
+            )
         response.raise_for_status()
-    except httpx.HTTPError:
+    except (httpx.HTTPError, Exception):
         return None
 
     return response.json().get("access_token")
 
 
-def token_refresh() -> bool:
+async def token_refresh() -> bool:
     """
     Refresh the token using the refresh token.
     """
@@ -51,7 +53,7 @@ def token_refresh() -> bool:
         jwt_instance = jwt.JWT()
         jwt_decoded = jwt_instance.decode(token_auth, do_verify=False)
     except Exception:
-        token = token_refresh_call()
+        token = await token_refresh_call()
         if not token:
             return None
         jwt_decoded = jwt_instance.decode(token, do_verify=False)
@@ -61,9 +63,9 @@ def token_refresh() -> bool:
         if jwt_decoded["exp"] - int(time.time()) > 60:
             return True
 
-        token = token_refresh_call()
+        token = await token_refresh_call()
         app.storage.user["token"] = token
-    except httpx.HTTPError:
+    except (httpx.HTTPError, Exception):
         return None
 
     return True

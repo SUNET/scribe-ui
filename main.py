@@ -76,9 +76,21 @@ async def index(request: Request) -> None:
 
     app.storage.user["timezone"] = timezone
 
-    # Apply dark mode preference
+    # Apply dark mode preference and detect system preference for auto mode
     dark_pref = app.storage.user.get("dark_mode", None)
     ui.dark_mode(dark_pref)
+
+    if dark_pref is None:
+        try:
+            prefers_dark = await ui.run_javascript(
+                "window.matchMedia('(prefers-color-scheme: dark)').matches",
+                timeout=5.0,
+            )
+            app.storage.user["_resolved_dark"] = bool(prefers_dark)
+        except (TimeoutError, Exception):
+            app.storage.user["_resolved_dark"] = False
+    else:
+        app.storage.user["_resolved_dark"] = bool(dark_pref)
 
     if (
         app.storage.user.get("token")

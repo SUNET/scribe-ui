@@ -171,6 +171,8 @@ theme_styles = """
     /* ── Dark mode overrides for Quasar components ── */
     .body--dark .q-card {
         background-color: var(--color-bg-surface);
+        box-shadow: none !important;
+        border: none !important;
     }
     .body--dark .q-header {
         background-color: var(--color-header-bg);
@@ -322,6 +324,11 @@ theme_styles = """
         color: var(--color-text-on-brand) !important;
         width: 150px;
     }
+    .body--dark .q-btn.button-edit {
+        background-color: #0d3b6e !important;
+        border: 1px solid #5b9bd5 !important;
+        color: #ffffff !important;
+    }
 
     /* ── Upload dropzone ── */
     .dropzone-area {
@@ -344,6 +351,12 @@ theme_styles = """
     .body--dark .q-btn--flat .q-icon,
     .body--dark .q-btn--flat .q-btn__content {
         color: var(--color-text-primary) !important;
+    }
+
+    /* ── Dark mode primary button contrast ── */
+    .body--dark .q-btn.bg-primary {
+        background-color: #0d3b6e !important;
+        border: 1px solid #5b9bd5 !important;
     }
 
     /* ── Table action buttons ── */

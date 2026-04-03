@@ -292,20 +292,25 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
         ui.navigate.to("/")
         return
 
-    def refresh():
-        if not token_refresh():
+    async def refresh():
+        if not await token_refresh():
             app.storage.user["token"] = None
             app.storage.user["refresh_token"] = None
             app.storage.user["encryption_password"] = None
 
             ui.navigate.to(settings.OIDC_APP_LOGOUT_ROUTE)
 
-    refresh()
+    ui.timer(0.1, refresh, once=True)
 
     # Apply dark mode preference
     ui.add_head_html(default_styles)
     dark_pref = app.storage.user.get("dark_mode", None)
     ui.dark_mode(dark_pref)
+
+    # Store resolved dark mode state for components like Plotly
+    if dark_pref is not None:
+        app.storage.user["_resolved_dark"] = bool(dark_pref)
+    # For auto mode, _resolved_dark was set at login; it may be stale if OS prefs changed
 
     is_admin = get_admin_status()
     is_bofh = get_bofh_status()
@@ -743,12 +748,45 @@ def table_click(event) -> None:
         )
 
 
-async def post_file(filedata: bytes, filename: str) -> bool:
+async def post_file(
+    filedata: bytes,
+    filename: str,
+    on_progress: callable = None,
+) -> bool:
     """
-    Post a file to the API.
+    Post a file to the API with optional progress callback.
+
+    Parameters:
+        filedata: The file content as bytes.
+        filename: The filename.
+        on_progress: Optional callback(percent: int) called during upload.
     """
 
-    files_json = {"file": (filename, filedata)}
+    total_size = len(filedata)
+    bytes_sent = 0
+
+    class ProgressReader:
+        """Wraps file bytes to track upload progress."""
+
+        def __init__(self, data: bytes):
+            self._data = data
+            self._offset = 0
+
+        def read(self, size: int = -1) -> bytes:
+            nonlocal bytes_sent
+            if size == -1:
+                chunk = self._data[self._offset :]
+                self._offset = len(self._data)
+            else:
+                chunk = self._data[self._offset : self._offset + size]
+                self._offset += len(chunk)
+            bytes_sent += len(chunk)
+            if on_progress and total_size > 0:
+                on_progress(min(int(bytes_sent * 100 / total_size), 100))
+            return chunk
+
+    reader = ProgressReader(filedata)
+    files_json = {"file": (filename, reader)}
 
     try:
         async with httpx.AsyncClient(timeout=900) as client:
@@ -930,13 +968,49 @@ async def handle_upload_with_feedback(files, dialog, table):
         file_data = await file.read()
         file_items.append((file_name, file_data))
 
+    # Add temporary "Uploading" rows to the table
+    existing_rows = list(table.rows or [])
+    upload_row_ids = []
+    for i, (file_name, _) in enumerate(file_items):
+        row_id = f"_uploading_{i}"
+        upload_row_ids.append(row_id)
+        existing_rows.insert(
+            0,
+            {
+                "id": row_id,
+                "filename": file_name,
+                "job_type": "",
+                "created_at": "",
+                "updated_at": "",
+                "deletion_date": "",
+                "deletion_approaching": False,
+                "status": "Processing (0%)",
+            },
+        )
+    table.update_rows(existing_rows, clear_selection=True)
+
     # Upload to backend in a background task so the UI stays responsive
     async def _upload():
-        for file_name, file_data in file_items:
+        for idx, (file_name, file_data) in enumerate(file_items):
+            row_id = upload_row_ids[idx]
+
+            def update_progress(percent, _row_id=row_id):
+                if not client._deleted:
+                    for row in table.rows:
+                        if row["id"] == _row_id:
+                            row["status"] = f"Processing ({percent}%)"
+                            break
+                    table.update()
+
             try:
-                await post_file(file_data, file_name)
+                await post_file(file_data, file_name, on_progress=update_progress)
 
                 if not client._deleted:
+                    for row in table.rows:
+                        if row["id"] == row_id:
+                            row["status"] = "Uploaded"
+                            break
+                    table.update()
                     with table:
                         ui.notify(
                             f"Successfully uploaded {file_name}",
@@ -945,6 +1019,11 @@ async def handle_upload_with_feedback(files, dialog, table):
                         )
             except Exception as e:
                 if not client._deleted:
+                    for row in table.rows:
+                        if row["id"] == row_id:
+                            row["status"] = "Processing failed"
+                            break
+                    table.update()
                     with table:
                         ui.notify(
                             f"Error uploading {file_name}: {str(e)}",
@@ -952,6 +1031,7 @@ async def handle_upload_with_feedback(files, dialog, table):
                             timeout=5000,
                         )
 
+        # Refresh with real data from backend
         if not client._deleted:
             table.update_rows(await jobs_get(), clear_selection=False)
 
