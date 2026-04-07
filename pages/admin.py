@@ -1507,9 +1507,9 @@ def create_rule_dialog(page: callable) -> None:
     all_groups = groups_get()
     group_options = {}
 
-    if all_groups and "result" in all_groups:
+    if all_groups:
         group_options = {
-            g["id"]: g["name"] for g in all_groups["result"] if g["name"] != "All users"
+            g["id"]: g["name"] for g in all_groups if g["name"] != "All users"
         }
 
     is_bofh = get_bofh_status()
@@ -1665,9 +1665,9 @@ def edit_rule_dialog(rule: dict, page: callable) -> None:
     all_groups = groups_get()
     group_options = {}
 
-    if all_groups and "result" in all_groups:
+    if all_groups:
         group_options = {
-            g["id"]: g["name"] for g in all_groups["result"] if g["name"] != "All users"
+            g["id"]: g["name"] for g in all_groups if g["name"] != "All users"
         }
 
     is_bofh = get_bofh_status()
@@ -2029,8 +2029,8 @@ def test_all_rules_dialog() -> None:
 
     all_groups = groups_get()
     group_names: dict[int, str] = {}
-    if all_groups and "result" in all_groups:
-        group_names = {g["id"]: g["name"] for g in all_groups["result"]}
+    if all_groups:
+        group_names = {g["id"]: g["name"] for g in all_groups}
 
     with ui.dialog() as dialog, ui.card().style("min-width: 600px; max-width: 800px;"):
         ui.label("Simulate provisioning").classes("text-xl font-bold")
