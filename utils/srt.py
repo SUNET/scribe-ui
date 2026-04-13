@@ -473,6 +473,8 @@ class SRTEditor:
 
         original_data = json.loads(data)
 
+        self.speakers.add("UNKNOWN")
+
         if not original_data.get("segments"):
             return
 
@@ -1566,6 +1568,8 @@ class SRTEditor:
                     )
 
                     if self.data_format == "txt":
+                        if "UNKNOWN" not in self.speakers:
+                            self.speakers.add("UNKNOWN")
                         speaker_select = ui.select(
                             options=list(self.speakers),
                             value=caption.speaker,
