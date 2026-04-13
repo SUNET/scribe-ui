@@ -1568,8 +1568,6 @@ class SRTEditor:
                     )
 
                     if self.data_format == "txt":
-                        if "UNKNOWN" not in self.speakers:
-                            self.speakers.add("UNKNOWN")
                         speaker_select = ui.select(
                             options=list(self.speakers),
                             value=caption.speaker,
