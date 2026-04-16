@@ -63,7 +63,7 @@ class Group:
             delete_group_dialog.open()
 
     def create_card(self):
-        with ui.card().classes("my-2").style("width: 100%; box-shadow: none; border: 1px solid var(--color-border-subtle); padding: 16px;"):
+        with ui.card().classes("my-2 admin-card").style("width: 100%; box-shadow: none; border: 1px solid var(--color-border-subtle); padding: 16px;"):
             with ui.row().style(
                 "justify-content: space-between; align-items: center; width: 100%;"
             ):

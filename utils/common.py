@@ -32,7 +32,7 @@ from utils.token import (
     get_user_data,
     token_refresh,
 )
-from utils.helpers import storage_decrypt, customers_get
+from utils.helpers import storage_decrypt, customers_get, dark_mode_save
 from utils.styles import (
     default_styles,
     menu_active_style,
@@ -310,7 +310,18 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
     # Store resolved dark mode state for components like Plotly
     if dark_pref is not None:
         app.storage.user["_resolved_dark"] = bool(dark_pref)
-    # For auto mode, _resolved_dark was set at login; it may be stale if OS prefs changed
+    else:
+        # Auto mode: reload when OS theme changes so Plotly charts update
+        ui.add_head_html("""
+        <script>
+        if (!window._scribeThemeListener) {
+            window._scribeThemeListener = true;
+            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function() {
+                location.reload();
+            });
+        }
+        </script>
+        """)
 
     is_admin = get_admin_status()
     is_bofh = get_bofh_status()
@@ -328,7 +339,7 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
     if is_admin:
         header_text += " (Administrator)"
 
-    def _cycle_dark_mode():
+    async def _cycle_dark_mode(btn=None):
         current = app.storage.user.get("dark_mode", None)
         if current is None:
             new_val = True
@@ -338,6 +349,32 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
             new_val = None
         app.storage.user["dark_mode"] = new_val
         ui.dark_mode(new_val)
+        dark_mode_save(new_val)
+        # Resolve the actual dark state (needed for Plotly chart templates)
+        if new_val is not None:
+            app.storage.user["_resolved_dark"] = bool(new_val)
+        else:
+            # Auto mode: detect OS preference
+            try:
+                prefers_dark = await ui.run_javascript(
+                    "window.matchMedia('(prefers-color-scheme: dark)').matches",
+                    timeout=5.0,
+                )
+                app.storage.user["_resolved_dark"] = bool(prefers_dark)
+            except (TimeoutError, Exception):
+                pass
+        if btn:
+            new_icon = (
+                "dark_mode"
+                if new_val
+                else ("brightness_auto" if new_val is None else "light_mode")
+            )
+            btn._props["icon"] = new_icon
+            btn.update()
+        # Reload to update Plotly charts etc., except on /srt where it
+        # would lose editor state.  location.reload() preserves query params.
+        if current_path != "/srt":
+            ui.run_javascript("location.reload()")
 
     if use_drawer:
         drawer_open = app.storage.user.get("drawer_open", False)
@@ -496,21 +533,12 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                         "Close menu" if drawer_open else "Expand menu"
                     )
                     menu_btn_tooltip_ref = menu_btn_tooltip
-                if dark_pref is True:
-                    ui.image(f"static/{settings.LOGO_TOPBAR_DARK}").classes("q-mr-sm").style(
-                        "height: 30px; width: 30px;"
-                    )
-                elif dark_pref is False:
-                    ui.image(f"static/{settings.LOGO_TOPBAR_LIGHT}").classes("q-mr-sm").style(
-                        "height: 30px; width: 30px;"
-                    )
-                else:
-                    ui.image(f"static/{settings.LOGO_TOPBAR_LIGHT}").classes("q-mr-sm logo-light").style(
-                        "height: 30px; width: 30px;"
-                    )
-                    ui.image(f"static/{settings.LOGO_TOPBAR_DARK}").classes("q-mr-sm logo-dark").style(
-                        "height: 30px; width: 30px;"
-                    )
+                ui.image(f"static/{settings.LOGO_TOPBAR_LIGHT}").classes("q-mr-sm logo-light").style(
+                    "height: 30px; width: 30px;"
+                )
+                ui.image(f"static/{settings.LOGO_TOPBAR_DARK}").classes("q-mr-sm logo-dark").style(
+                    "height: 30px; width: 30px;"
+                )
                 ui.label(settings.TOPBAR_TEXT + header_text).classes(
                     "text-h6 text-theme-primary"
                 )
@@ -522,14 +550,12 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                     if dark_val
                     else ("brightness_auto" if dark_val is None else "light_mode")
                 )
-                with ui.button(
+                dark_btn = ui.button(
                     icon=dark_icon,
-                    on_click=lambda: (
-                        _cycle_dark_mode(),
-                        ui.navigate.to(ui.context.client.page.path),
-                    ),
-                ).props("flat").classes("header-btn"):
-                    ui.tooltip("Toggle dark mode")
+                    on_click=lambda: _cycle_dark_mode(dark_btn),
+                ).props("flat").classes("header-btn")
+                with dark_btn:
+                    ui.tooltip("Toggle theme")
                 with ui.button(
                     icon="help",
                     on_click=lambda: show_help_dialog(),
@@ -548,21 +574,12 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
             .classes("drop-shadow-md")
         ):
             with ui.element("div").style("display: flex; gap: 0px;"):
-                if dark_pref is True:
-                    ui.image(f"static/{settings.LOGO_TOPBAR_DARK}").classes("q-mr-sm").style(
-                        "height: 30px; width: 30px;"
-                    )
-                elif dark_pref is False:
-                    ui.image(f"static/{settings.LOGO_TOPBAR_LIGHT}").classes("q-mr-sm").style(
-                        "height: 30px; width: 30px;"
-                    )
-                else:
-                    ui.image(f"static/{settings.LOGO_TOPBAR_LIGHT}").classes("q-mr-sm logo-light").style(
-                        "height: 30px; width: 30px;"
-                    )
-                    ui.image(f"static/{settings.LOGO_TOPBAR_DARK}").classes("q-mr-sm logo-dark").style(
-                        "height: 30px; width: 30px;"
-                    )
+                ui.image(f"static/{settings.LOGO_TOPBAR_LIGHT}").classes("q-mr-sm logo-light").style(
+                    "height: 30px; width: 30px;"
+                )
+                ui.image(f"static/{settings.LOGO_TOPBAR_DARK}").classes("q-mr-sm logo-dark").style(
+                    "height: 30px; width: 30px;"
+                )
                 ui.label(settings.TOPBAR_TEXT + header_text).classes(
                     "text-h6 text-theme-primary"
                 )
@@ -602,14 +619,12 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                     if dark_val2
                     else ("brightness_auto" if dark_val2 is None else "light_mode")
                 )
-                with ui.button(
+                dark_btn2 = ui.button(
                     icon=dark_icon2,
-                    on_click=lambda: (
-                        _cycle_dark_mode(),
-                        ui.navigate.to(ui.context.client.page.path),
-                    ),
-                ).props("flat").classes("header-btn"):
-                    ui.tooltip("Toggle dark mode")
+                    on_click=lambda: _cycle_dark_mode(dark_btn2),
+                ).props("flat").classes("header-btn")
+                with dark_btn2:
+                    ui.tooltip("Toggle theme")
                 with ui.button(
                     icon="help",
                     on_click=lambda: show_help_dialog(),
@@ -622,7 +637,6 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                     on_click=lambda: ui.navigate.to("/logout"),
                 ).props("flat").classes("header-btn"):
                     ui.tooltip("Logout")
-                # body background is in theme_styles
 
     _show_announcement_banners()
 

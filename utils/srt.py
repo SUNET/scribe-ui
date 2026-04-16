@@ -251,14 +251,16 @@ class SRTEditor:
         with ui.row().classes("gap-2"):
             self.undo_button = (
                 ui.button("Undo", icon="undo")
-                .props("flat dense color=grey")
+                .props("flat")
+                .classes("editor-btn editor-toolbar-btn")
                 .on("click", self.undo)
             )
             self.undo_button.disable()
 
             self.redo_button = (
                 ui.button("Redo", icon="redo")
-                .props("flat dense color=grey")
+                .props("flat")
+                .classes("editor-btn editor-toolbar-btn")
                 .on("click", self.redo)
             )
             self.redo_button.disable()
@@ -1122,8 +1124,8 @@ class SRTEditor:
                         )
 
                         ui.button(icon="search").props(
-                            "flat dense round color=black"
-                        ).on(
+                            "flat dense round"
+                        ).classes("editor-btn").on(
                             "click", lambda: self.search_captions(search_input.value)
                         ).tooltip(
                             "Find"
@@ -1144,15 +1146,15 @@ class SRTEditor:
                         # Navigation + info
                         with ui.row().classes("items-center gap-1"):
                             ui.button(icon="keyboard_arrow_up").props(
-                                "flat dense round color=black"
-                            ).on(
+                                "flat dense round"
+                            ).classes("editor-btn").on(
                                 "click", lambda: self.navigate_search_results(-1)
                             ).tooltip(
                                 "Previous match"
                             )
                             ui.button(icon="keyboard_arrow_down").props(
-                                "flat dense round color=black"
-                            ).on(
+                                "flat dense round"
+                            ).classes("editor-btn").on(
                                 "click", lambda: self.navigate_search_results(1)
                             ).tooltip(
                                 "Next match"
@@ -1177,21 +1179,27 @@ class SRTEditor:
                     )
 
                     with ui.row().classes("w-full justify-end gap-2"):
-                        ui.button("Replace").props("flat dense color=black").on(
+                        ui.button("Replace").props("flat dense").classes(
+                            "editor-btn"
+                        ).on(
                             "click",
                             lambda: self.replace_in_current_caption(
                                 replace_input.value
                             ),
                         )
 
-                        ui.button("Replace all").props("flat dense color=black").on(
+                        ui.button("Replace all").props("flat dense").classes(
+                            "editor-btn"
+                        ).on(
                             "click", lambda: self.replace_all(replace_input.value)
                         )
 
                 ui.separator().classes("my-3")
 
                 with ui.row().classes("w-full justify-end"):
-                    ui.button("Close").props("flat dense color=black").on(
+                    ui.button("Close").props("flat dense").classes(
+                        "editor-btn"
+                    ).on(
                         "click", self.search_container.close
                     )
 
@@ -1204,9 +1212,11 @@ class SRTEditor:
         if open_window:
             self.search_container.open()
         else:
-            ui.button("Search").props("icon=search flat dense color=black").on(
+            ui.button("Search", icon="search").props("flat").classes(
+                "editor-btn editor-toolbar-btn"
+            ).on(
                 "click", lambda: self.search_container.open()
-            ).classes("button-open-search")
+            )
 
     def get_caption_from_time(self, caption_time: float) -> Optional[SRTCaption]:
         """
@@ -1299,16 +1309,14 @@ class SRTEditor:
         card_class = "cursor-pointer border-0 transition-all duration-200 w-full"
 
         if not caption.is_valid:
-            card_class += " border-red-400 bg-red-50 hover:border-red-500"
+            card_class += " caption-card-invalid"
         elif caption.is_selected and caption.is_highlighted:
             # Slightly darker yellow background
-            card_class += (
-                " shadow-lg border-yellow-400 bg-yellow-100 hover:border-yellow-500"
-            )
+            card_class += " shadow-lg caption-card-selected-highlighted"
         elif caption.is_selected:
             card_class += " shadow-lg"
         elif caption.is_highlighted:
-            card_class += " border-yellow-400 bg-yellow-50 hover:border-yellow-500"
+            card_class += " caption-card-highlighted"
         else:
             card_class += " hover:shadow-md shadow-none"
 
@@ -1367,14 +1375,15 @@ class SRTEditor:
                     )
 
                     # Action buttons
-                    # Row with buttons to the left
                     with ui.row().classes("w-full justify-between"):
                         ui.button("Split", icon="call_split").props(
                             "flat dense"
-                        ).on("click", lambda: self.split_caption(caption))
-                        ui.button("Merge with previous", icon="merge_type").props(
+                        ).classes("editor-btn editor-caption-btn").on(
+                            "click", lambda: self.split_caption(caption)
+                        )
+                        ui.button("Merge prev", icon="merge_type").props(
                             "flat dense"
-                        ).on(
+                        ).classes("editor-btn editor-caption-btn").on(
                             "click",
                             lambda: (
                                 self.merge_with_previous(caption)
@@ -1382,9 +1391,9 @@ class SRTEditor:
                                 else None
                             ),
                         )
-                        ui.button("Merge with next", icon="merge_type").props(
+                        ui.button("Merge next", icon="merge_type").props(
                             "flat dense"
-                        ).on(
+                        ).classes("editor-btn editor-caption-btn").on(
                             "click",
                             lambda: (
                                 self.merge_with_next(caption)
@@ -1393,7 +1402,9 @@ class SRTEditor:
                             ),
                         )
 
-                        ui.button("Close").props("flat dense").on(
+                        ui.button("Close").props("flat dense").classes(
+                            "editor-btn editor-caption-btn caption-close"
+                        ).on(
                             "click",
                             lambda: self.select_caption(
                                 caption,
@@ -1401,13 +1412,19 @@ class SRTEditor:
                                 True,
                                 new_text=text_area.value,
                             ),
-                        ).classes("caption-close")
+                        )
 
-                        ui.button("Add").props("flat dense").on(
+                        ui.button("Add").props("flat dense").classes(
+                            "editor-btn editor-caption-btn"
+                        ).on(
                             "click", lambda: self.add_caption_after(caption)
                         )
 
-                        ui.button("Delete", color="red").props("flat dense").on(
+                        ui.button("Delete").props("flat dense").classes(
+                            "editor-btn editor-caption-btn"
+                        ).style(
+                            "color: var(--color-text-danger) !important;"
+                        ).on(
                             "click", lambda: self.remove_caption(caption)
                         )
                 else:
@@ -1459,18 +1476,24 @@ class SRTEditor:
                             line_lengths = [str(len(x)) for x in lines]
 
                             # Check for exceeded limit
-                            if self.data_format != "txt" and any(
+                            exceeded = self.data_format != "txt" and any(
                                 len(x) > CHARACTER_LIMIT for x in lines
-                            ):
+                            )
+                            if exceeded:
                                 text_color = CHARACTER_LIMIT_EXCEEDED_COLOR
                                 tooltip_text = f"Character limit of {CHARACTER_LIMIT} exceeded in one or more lines."
 
                             character_label = "/".join(line_lengths)
 
-                            with ui.label(f"({character_label})").classes(
-                                f"text-sm text-right {text_color}"
-                            ):
-                                ui.tooltip(tooltip_text)
+                            with ui.row().classes("items-center gap-1"):
+                                if exceeded:
+                                    ui.icon("warning", size="xs").style(
+                                        "color: var(--color-text-danger);"
+                                    )
+                                with ui.label(f"({character_label})").classes(
+                                    f"text-sm text-right {text_color}"
+                                ):
+                                    ui.tooltip(tooltip_text)
 
                 card.on(
                     "click",
@@ -1546,15 +1569,13 @@ class SRTEditor:
         card_class = "cursor-pointer border-0 transition-all duration-200 w-full"
 
         if not caption.is_valid:
-            card_class += " border-red-400 bg-red-50 hover:border-red-500"
+            card_class += " caption-card-invalid"
         elif caption.is_selected and caption.is_highlighted:
-            card_class += (
-                " shadow-lg border-yellow-400 bg-yellow-100 hover:border-yellow-500"
-            )
+            card_class += " shadow-lg caption-card-selected-highlighted"
         elif caption.is_selected:
             card_class += " shadow-lg"
         elif caption.is_highlighted:
-            card_class += " border-yellow-400 bg-yellow-50 hover:border-yellow-500"
+            card_class += " caption-card-highlighted"
         else:
             card_class += " hover:shadow-md shadow-none"
 
@@ -1609,10 +1630,12 @@ class SRTEditor:
                 with ui.row().classes("w-full justify-between"):
                     ui.button("Split", icon="call_split").props(
                         "flat dense"
-                    ).on("click", lambda: self.split_caption(caption))
-                    ui.button("Merge with previous", icon="merge_type").props(
+                    ).classes("editor-btn editor-caption-btn").on(
+                        "click", lambda: self.split_caption(caption)
+                    )
+                    ui.button("Merge prev", icon="merge_type").props(
                         "flat dense"
-                    ).on(
+                    ).classes("editor-btn editor-caption-btn").on(
                         "click",
                         lambda: (
                             self.merge_with_previous(caption)
@@ -1620,9 +1643,9 @@ class SRTEditor:
                             else None
                         ),
                     )
-                    ui.button("Merge with next", icon="merge_type").props(
+                    ui.button("Merge next", icon="merge_type").props(
                         "flat dense"
-                    ).on(
+                    ).classes("editor-btn editor-caption-btn").on(
                         "click",
                         lambda: (
                             self.merge_with_next(caption)
@@ -1631,18 +1654,26 @@ class SRTEditor:
                         ),
                     )
 
-                    ui.button("Close").props("flat dense").on(
+                    ui.button("Close").props("flat dense").classes(
+                        "editor-btn editor-caption-btn caption-close"
+                    ).on(
                         "click",
                         lambda: self.select_caption(
                             caption, speaker_select, True, new_text=text_area.value
                         ),
-                    ).classes("caption-close")
+                    )
 
-                    ui.button("Add").props("flat dense").on(
+                    ui.button("Add").props("flat dense").classes(
+                        "editor-btn editor-caption-btn"
+                    ).on(
                         "click", lambda: self.add_caption_after(caption)
                     )
 
-                    ui.button("Delete", color="red").props("flat dense").on(
+                    ui.button("Delete").props("flat dense").classes(
+                        "editor-btn editor-caption-btn"
+                    ).style(
+                        "color: var(--color-text-danger) !important;"
+                    ).on(
                         "click", lambda: self.remove_caption(caption)
                     )
             else:
@@ -1689,18 +1720,24 @@ class SRTEditor:
                         line_lengths = [str(len(x)) for x in lines]
 
                         # Check for exceeded limit
-                        if self.data_format != "txt" and any(
+                        exceeded = self.data_format != "txt" and any(
                             len(x) > CHARACTER_LIMIT for x in lines
-                        ):
+                        )
+                        if exceeded:
                             text_color = CHARACTER_LIMIT_EXCEEDED_COLOR
                             tooltip_text = f"Character limit of {CHARACTER_LIMIT} exceeded in one or more lines."
 
                         character_label = "/".join(line_lengths)
 
-                        with ui.label(f"({character_label})").classes(
-                            f"text-sm text-right {text_color}"
-                        ):
-                            ui.tooltip(tooltip_text)
+                        with ui.row().classes("items-center gap-1"):
+                            if exceeded:
+                                ui.icon("warning", size="xs").style(
+                                    "color: var(--color-text-danger);"
+                                )
+                            with ui.label(f"({character_label})").classes(
+                                f"text-sm text-right {text_color}"
+                            ):
+                                ui.tooltip(tooltip_text)
 
             card.on(
                 "click",
@@ -1834,37 +1871,37 @@ class SRTEditor:
 
                 if errors:
                     # Error summary
-                    with ui.card().classes("bg-red-50 border-l-4 p-4 mb-4").style(
-                        "border-left-color: #dc2626;"
+                    with ui.card().classes("border-l-4 p-4 mb-4").style(
+                        "background-color: var(--color-status-error-bg); border-left-color: var(--color-status-error-border);"
                     ):
                         with ui.row().classes("items-center gap-2 mb-2"):
-                            ui.icon("error", size="md").classes("text-red-600")
+                            ui.icon("error", size="md").style("color: var(--color-text-danger);")
                             ui.label(
                                 f"{len(set(errorenous_captions))} caption(s) with issues found"
-                            ).classes("text-h6 font-semibold text-red-900")
+                            ).classes("text-h6 font-semibold")
 
                     # Error list
                     with ui.column().classes("w-full gap-2 max-h-96 overflow-y-auto"):
                         for error in errors:
                             with ui.row().classes("items-start gap-2"):
-                                ui.icon("warning", size="sm").classes(
-                                    "text-red-600 mt-1"
+                                ui.icon("warning", size="sm").style(
+                                    "color: var(--color-text-danger); margin-top: 4px;"
                                 )
                                 ui.label(error).classes("text-body2")
                 else:
                     # Success message
-                    with ui.card().classes("bg-green-50 border-l-4 p-4").style(
-                        "border-left-color: #16a34a;"
+                    with ui.card().classes("border-l-4 p-4").style(
+                        "background-color: var(--color-status-ok-bg); border-left-color: var(--color-status-ok-border);"
                     ):
                         with ui.row().classes("items-center gap-3"):
-                            ui.icon("check_circle", size="lg").classes("text-green-600")
+                            ui.icon("check_circle", size="lg").style("color: var(--color-status-ok-border);")
                             with ui.column().classes("gap-1"):
                                 ui.label("All captions are valid!").classes(
-                                    "text-h6 font-semibold text-green-900"
+                                    "text-h6 font-semibold"
                                 )
                                 ui.label(
                                     f"{len(self.captions)} caption(s) checked"
-                                ).classes("text-body2 text-green-700")
+                                ).classes("text-body2 text-theme-secondary")
 
                 # Footer
                 with ui.row().classes("w-full justify-end mt-4").style(
@@ -1939,10 +1976,10 @@ class SRTEditor:
                                     ui.label(action).classes("text-body1")
                                     ui.label(keys).classes(
                                         "text-body2 font-mono px-2 py-1 rounded"
-                                    ).style("background-color: var(--color-bg-surface-alt);")
+                                    ).style("background-color: var(--color-bg-surface-hover);")
 
                 with ui.row().classes("w-full justify-end mt-4").style(
-                    "position: sticky; bottom: -24px; background-color: var(--color-bg-surface); padding-bottom: 8px; z-index: 1;"
+                    "position: sticky; bottom: -24px; background-color: var(--color-bg-surface-alt); padding-bottom: 8px; z-index: 1;"
                 ):
                     ui.button("Close").props("flat color=primary").on(
                         "click", dialog.close
@@ -1951,7 +1988,9 @@ class SRTEditor:
         if open_window:
             dialog.open()
         else:
-            ui.button("Shortcuts").props("icon=keyboard flat dense color=black").on(
+            ui.button("Shortcuts", icon="keyboard").props("flat").classes(
+                "editor-btn editor-toolbar-btn"
+            ).on(
                 "click", lambda: dialog.open()
             ).classes("button-open-search")
 

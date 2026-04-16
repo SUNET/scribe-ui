@@ -186,17 +186,17 @@ def create() -> None:
                             ),
                         )
 
-                    save_button.props("color=black flat")
+                    save_button.props("flat").classes("editor-btn editor-toolbar-btn")
 
                 # Export button - opens dialog
-                ui.button("Export", icon="download").props("flat color=black").on(
-                    "click", lambda: editor.show_export_dialog(filename)
-                )
+                ui.button("Export", icon="download").props("flat").classes(
+                    "editor-btn editor-toolbar-btn"
+                ).on("click", lambda: editor.show_export_dialog(filename))
 
                 if data_format == "srt":
                     with ui.button("Validate", icon="check").props(
-                        "flat color=black"
-                    ) as validate_button:
+                        "flat"
+                    ).classes("editor-btn editor-toolbar-btn") as validate_button:
                         validate_button.on(
                             "click",
                             lambda: editor.validate_captions(),
@@ -204,8 +204,8 @@ def create() -> None:
                 editor.create_search_panel()
                 editor.show_keyboard_shortcuts()
             with ui.button("Close editor", icon="close").props(
-                "flat color=black"
-            ) as close_button:
+                "flat"
+            ).classes("editor-btn editor-toolbar-btn") as close_button:
                 close_button.on("click", lambda: editor.close_editor("/home"))
 
         with ui.splitter(value=60).classes("w-full h-full") as splitter:

@@ -131,12 +131,12 @@ def create() -> None:
                     save.classes("default-style")
                     save.on("click", lambda: email_save(email.value))
 
-                # -- Dark mode section --
-                ui.label("Dark mode").classes("text-lg font-semibold mb-2")
+                # -- Theme section --
+                ui.label("Theme").classes("text-lg font-semibold mb-2")
                 ui.separator()
 
                 with ui.column().classes("gap-2 mt-2 mb-6"):
-                    dark_options = {"off": "Off", "on": "On", "auto": "Auto"}
+                    dark_options = {"off": "Light", "on": "Dark", "auto": "Auto (System)"}
 
                     # Current value: True -> "on", False -> "off", None -> "auto"
                     raw = app.storage.user.get("dark_mode", None)
@@ -150,22 +150,35 @@ def create() -> None:
                     def set_dark_mode(value: str) -> None:
                         if value == "on":
                             app.storage.user["dark_mode"] = True
+                            app.storage.user["_resolved_dark"] = True
                             ui.dark_mode(True)
                             dark_mode_save(True)
+                            icon_name = "dark_mode"
                         elif value == "off":
                             app.storage.user["dark_mode"] = False
+                            app.storage.user["_resolved_dark"] = False
                             ui.dark_mode(False)
                             dark_mode_save(False)
+                            icon_name = "light_mode"
                         else:
                             app.storage.user["dark_mode"] = None
                             ui.dark_mode(None)
                             dark_mode_save(None)
+                            icon_name = "brightness_auto"
+                        # Update header dark mode icon without reload
+                        ui.run_javascript(f'''
+                            document.querySelectorAll(".header-btn .q-icon").forEach(el => {{
+                                if (["dark_mode", "light_mode", "brightness_auto"].includes(el.textContent.trim())) {{
+                                    el.textContent = "{icon_name}";
+                                }}
+                            }});
+                        ''')
 
                     ui.toggle(
                         dark_options,
                         value=current_dark,
                         on_change=lambda e: set_dark_mode(e.value),
-                    ).props("toggle-color=primary no-caps").tooltip("Off: light theme, On: dark theme, Auto: follow system settings.")
+                    ).props("toggle-color=primary no-caps").tooltip("Light: always light, Dark: always dark, Auto: follow system settings.")
 
             # ── Right column: Notifications ──
             with ui.column().classes("flex-1"):

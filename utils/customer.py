@@ -62,7 +62,7 @@ class Customer:
         ui.navigate.to(f"/admin/customers/edit/{self.customer_id}")
 
     def create_card(self):
-        with ui.card().classes("my-2").style(
+        with ui.card().classes("my-2 admin-card").style(
             "width: 100%; box-shadow: none; border: 1px solid var(--color-border-subtle); padding: 16px;"
         ):
             with ui.row().style(
@@ -138,11 +138,11 @@ class Customer:
                                 if overage > 0:
                                     ui.label(
                                         f"⚠️ Overage minutes: {overage:.0f} min"
-                                    ).classes("text-sm font-semibold text-red-600")
+                                    ).classes("text-sm font-semibold").style("color: var(--color-text-danger);")
                                 else:
                                     ui.label(
                                         f"Remaining minutes: {self.stats.get('remaining_minutes', 0):.0f}"
-                                    ).classes("text-sm font-semibold text-green-600")
+                                    ).classes("text-sm font-semibold").style("color: var(--color-status-ok-border);")
 
                         with ui.column():
                             ui.label("Last month").classes("font-semibold")

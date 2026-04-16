@@ -97,6 +97,28 @@ theme_styles = """
         --color-help-privacy-icon: #92400e;
         --color-help-support-bg: #f0fdf4;
         --color-help-support-icon: #166534;
+
+        --color-btn-primary-bg: #082954;
+        --color-btn-primary-text: #ffffff;
+        --color-btn-primary-border: #082954;
+        --color-btn-edit-bg: #082954;
+        --color-btn-edit-text: #ffffff;
+        --color-btn-edit-border: #082954;
+        --color-btn-delete-bg: transparent;
+        --color-btn-delete-text: #721c24;
+        --color-btn-delete-border: #000000;
+
+        --color-chart-bar-current: #4F46E5;
+        --color-chart-bar-previous: #10B981;
+        --color-chart-bar-primary: #082954;
+        --color-chart-bar-secondary: #4caf50;
+        --color-chart-line-cpu: #3b82f6;
+        --color-chart-line-memory: #10b981;
+        --color-chart-line-gpu: #8b5cf6;
+        --color-chart-line-gpu-mem: #f59e0b;
+        --color-chart-wow-positive: #2e7d32;
+        --color-chart-wow-negative: #c62828;
+        --color-chart-wow-neutral: #757575;
     }
 
     /* ── Theme variables (dark mode) ── */
@@ -107,7 +129,7 @@ theme_styles = """
         --color-bg-surface-hover: #3a3a3a;
 
         --color-brand-primary: #5b9bd5;
-        --color-brand-accent: #2e5a1e;
+        --color-brand-accent: #3d7a2e;
 
         --color-text-primary: #ffffff;
         --color-text-secondary: #ffffff;
@@ -166,9 +188,50 @@ theme_styles = """
         --color-help-privacy-icon: #ffcc80;
         --color-help-support-bg: #1b3a1b;
         --color-help-support-icon: #66bb6a;
+
+        --color-btn-primary-bg: #1a4a7a;
+        --color-btn-primary-text: #ffffff;
+        --color-btn-primary-border: #5b9bd5;
+        --color-btn-edit-bg: #1a4a7a;
+        --color-btn-edit-text: #ffffff;
+        --color-btn-edit-border: #5b9bd5;
+        --color-btn-delete-bg: transparent;
+        --color-btn-delete-text: #ef9a9a;
+        --color-btn-delete-border: #555555;
+
+        --color-chart-bar-current: #818cf8;
+        --color-chart-bar-previous: #34d399;
+        --color-chart-bar-primary: #5b9bd5;
+        --color-chart-bar-secondary: #66bb6a;
+        --color-chart-line-cpu: #60a5fa;
+        --color-chart-line-memory: #34d399;
+        --color-chart-line-gpu: #a78bfa;
+        --color-chart-line-gpu-mem: #fbbf24;
+        --color-chart-wow-positive: #66bb6a;
+        --color-chart-wow-negative: #ef5350;
+        --color-chart-wow-neutral: #b0b0b0;
     }
 
     /* ── Dark mode overrides for Quasar components ── */
+    .body--dark .q-table,
+    .body--dark .q-table__top,
+    .body--dark .q-table__middle,
+    .body--dark .q-table__bottom,
+    .body--dark .q-table__card,
+    .body--dark .q-table__container,
+    .body--dark .q-table thead,
+    .body--dark .q-table thead tr,
+    .body--dark .q-table thead th,
+    .body--dark .q-table tbody,
+    .body--dark .q-table tbody tr,
+    .body--dark .q-table tbody td,
+    .body--dark .q-table .q-td,
+    .body--dark .q-table .q-tr,
+    .body--dark .q-table .q-table__bottom .q-table__control,
+    .body--dark .q-table .q-table__bottom .q-table__separator {
+        background-color: var(--color-bg-page) !important;
+        color: var(--color-text-primary) !important;
+    }
     .body--dark .q-card {
         background-color: var(--color-bg-surface);
         box-shadow: none !important;
@@ -272,9 +335,9 @@ theme_styles = """
         opacity: 0.7;
     }
     .delete-style {
-        background-color: var(--color-bg-surface);
-        color: var(--color-text-delete);
-        border: 1px solid var(--color-border);
+        background-color: var(--color-btn-delete-bg);
+        color: var(--color-btn-delete-text) !important;
+        border: 1px solid var(--color-btn-delete-border);
         width: 150px;
     }
     .delete-style.disabled {
@@ -284,13 +347,14 @@ theme_styles = """
     }
     .cancel-style {
         background-color: var(--color-bg-surface);
-        color: var(--color-text-delete);
+        color: var(--color-text-primary) !important;
         border: 1px solid var(--color-border);
         width: 150px;
     }
     .button-default-style {
-        background-color: var(--color-brand-primary) !important;
-        color: var(--color-text-on-brand) !important;
+        background-color: var(--color-btn-primary-bg) !important;
+        color: var(--color-btn-primary-text) !important;
+        border: 1px solid var(--color-btn-primary-border) !important;
         width: 150px;
     }
     .button-replace {
@@ -320,14 +384,10 @@ theme_styles = """
         border: 1px solid var(--color-border);
     }
     .button-edit {
-        background-color: var(--color-brand-primary);
-        color: var(--color-text-on-brand) !important;
+        background-color: var(--color-btn-edit-bg) !important;
+        color: var(--color-btn-edit-text) !important;
+        border: 1px solid var(--color-btn-edit-border) !important;
         width: 150px;
-    }
-    .body--dark .q-btn.button-edit {
-        background-color: #0d3b6e !important;
-        border: 1px solid #5b9bd5 !important;
-        color: #ffffff !important;
     }
 
     /* ── Upload dropzone ── */
@@ -353,10 +413,39 @@ theme_styles = """
         color: var(--color-text-primary) !important;
     }
 
+    /* ── Editor toolbar buttons (flat, no border, subtle bg in dark mode) ── */
+    .editor-btn {
+        border: none !important;
+    }
+    .editor-toolbar-btn {
+        min-width: 130px !important;
+    }
+    .editor-caption-btn {
+        min-width: 100px !important;
+        flex: 1 1 0;
+    }
+    .body--dark .q-btn.editor-btn {
+        background-color: var(--color-bg-page) !important;
+        border: 1px solid var(--color-border-subtle) !important;
+        color: var(--color-text-primary) !important;
+    }
+    .body--dark .q-btn.editor-btn:hover {
+        background-color: var(--color-bg-surface-alt) !important;
+    }
+    .body--dark .q-btn.editor-btn .q-icon,
+    .body--dark .q-btn.editor-btn .q-btn__content {
+        color: var(--color-text-primary) !important;
+    }
+    .body--dark .q-btn.editor-btn[disabled] {
+        background-color: var(--color-bg-page) !important;
+        border: 1px solid var(--color-border-subtle) !important;
+        opacity: 0.4;
+    }
+
     /* ── Dark mode primary button contrast ── */
     .body--dark .q-btn.bg-primary {
-        background-color: #0d3b6e !important;
-        border: 1px solid #5b9bd5 !important;
+        background-color: var(--color-btn-primary-bg) !important;
+        border: 1px solid var(--color-btn-primary-border) !important;
     }
 
     /* ── Table action buttons ── */
@@ -366,13 +455,9 @@ theme_styles = """
         border: 1px solid var(--color-border) !important;
     }
     .table-btn-transcribe {
-        background-color: var(--color-text-primary) !important;
-        color: var(--color-bg-page) !important;
-        border: 1px solid var(--color-border) !important;
-    }
-    .body--dark .table-btn-transcribe {
-        background-color: var(--color-bg-surface) !important;
-        color: var(--color-text-primary) !important;
+        background-color: var(--color-btn-primary-bg) !important;
+        color: var(--color-btn-primary-text) !important;
+        border: 1px solid var(--color-btn-primary-border) !important;
     }
 
     /* ── Table ── */
@@ -478,6 +563,11 @@ theme_styles = """
         border-bottom: 1px solid var(--color-severity-incident-border);
     }
 
+    /* ── Admin: group/customer cards ── */
+    .body--dark .admin-card {
+        background-color: var(--color-bg-surface-alt) !important;
+    }
+
     /* ── Admin: stats page ── */
     .stats-container {
         max-width: 1500px;
@@ -541,6 +631,12 @@ theme_styles = """
         display: inline-block;
         margin-right: 6px;
     }
+    .status-dot-online {
+        background-color: var(--color-status-ok-border);
+    }
+    .status-dot-offline {
+        background-color: var(--color-status-error-border);
+    }
     .health-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
@@ -560,9 +656,50 @@ theme_styles = """
         max-width: 100%;
     }
 
+    /* ── Editor: splitter cards use page background ── */
+    .body--dark .q-splitter .q-card {
+        background-color: var(--color-bg-page) !important;
+    }
+
+    /* ── Editor: selected caption styling ── */
+    .body--dark .q-card.shadow-lg {
+        box-shadow: 0 4px 16px rgba(255, 255, 255, 0.08) !important;
+    }
+
+    /* ── Editor: textarea/input visibility ── */
+    .body--dark .q-field--outlined .q-field__control {
+        background-color: var(--color-bg-surface);
+    }
+
+    /* ── SRT editor caption card states ── */
+    .caption-card-invalid {
+        border-color: var(--color-status-error-border) !important;
+        background-color: var(--color-status-error-bg) !important;
+    }
+    .caption-card-invalid:hover {
+        border-color: var(--color-text-danger) !important;
+    }
+    .caption-card-highlighted {
+        border-color: var(--color-warning-border) !important;
+        background-color: var(--color-warning-bg) !important;
+    }
+    .caption-card-highlighted:hover {
+        border-color: var(--color-warning-icon) !important;
+    }
+    .caption-card-selected-highlighted {
+        border-color: var(--color-warning-border) !important;
+        background-color: var(--color-warning-bg) !important;
+    }
+    .caption-card-selected-highlighted:hover {
+        border-color: var(--color-warning-icon) !important;
+    }
+
     /* ── SRT editor info panel ── */
     .srt-info-panel {
         background-color: var(--color-bg-surface-alt);
+    }
+    .body--dark .srt-info-panel {
+        background-color: var(--color-bg-page);
     }
 
     /* ── Theme-aware text utilities ── */
@@ -605,6 +742,53 @@ theme_styles = """
 # Keep backward-compatible alias so existing `from utils.common import default_styles`
 # and `from utils.styles import default_styles` both work during migration.
 default_styles = theme_styles
+
+# ---------------------------------------------------------------------------
+# Chart color tokens for Plotly (keyed by light / dark)
+# ---------------------------------------------------------------------------
+
+chart_colors = {
+    "light": {
+        "bar_current": "#4F46E5",
+        "bar_previous": "#10B981",
+        "bar_primary": "#082954",
+        "bar_secondary": "#4caf50",
+        "line_cpu": "#3b82f6",
+        "line_memory": "#10b981",
+        "line_gpu": "#8b5cf6",
+        "line_gpu_mem": "#f59e0b",
+        "fill_cpu": "rgba(59, 130, 246, 0.1)",
+        "fill_memory": "rgba(16, 185, 129, 0.1)",
+        "fill_gpu": "rgba(139, 92, 246, 0.1)",
+        "fill_gpu_mem": "rgba(245, 158, 11, 0.1)",
+        "wow_positive": "#2e7d32",
+        "wow_negative": "#c62828",
+        "wow_neutral": "#757575",
+        "hourly_bar": "#1565c0",
+        "heatmap_zero": "#f5f5f5",
+        "heatmap_low": "#bbdefb",
+    },
+    "dark": {
+        "bar_current": "#818cf8",
+        "bar_previous": "#34d399",
+        "bar_primary": "#5b9bd5",
+        "bar_secondary": "#66bb6a",
+        "line_cpu": "#60a5fa",
+        "line_memory": "#34d399",
+        "line_gpu": "#a78bfa",
+        "line_gpu_mem": "#fbbf24",
+        "fill_cpu": "rgba(96, 165, 250, 0.15)",
+        "fill_memory": "rgba(52, 211, 153, 0.15)",
+        "fill_gpu": "rgba(167, 139, 250, 0.15)",
+        "fill_gpu_mem": "rgba(251, 191, 36, 0.15)",
+        "wow_positive": "#66bb6a",
+        "wow_negative": "#ef5350",
+        "wow_neutral": "#b0b0b0",
+        "hourly_bar": "#42a5f5",
+        "heatmap_zero": "#1e1e1e",
+        "heatmap_low": "#1a3a5c",
+    },
+}
 
 # ---------------------------------------------------------------------------
 # Severity styles (used by announcement banners)
