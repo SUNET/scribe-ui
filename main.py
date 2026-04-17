@@ -76,21 +76,17 @@ async def index(request: Request) -> None:
 
     app.storage.user["timezone"] = timezone
 
-    # Apply dark mode preference and detect system preference for auto mode
-    dark_pref = app.storage.user.get("dark_mode", None)
-    ui.dark_mode(dark_pref)
+    # Always use auto mode on the landing page (user hasn't logged in yet)
+    ui.dark_mode(None)
 
-    if dark_pref is None:
-        try:
-            prefers_dark = await ui.run_javascript(
-                "window.matchMedia('(prefers-color-scheme: dark)').matches",
-                timeout=5.0,
-            )
-            app.storage.user["_resolved_dark"] = bool(prefers_dark)
-        except (TimeoutError, Exception):
-            app.storage.user["_resolved_dark"] = False
-    else:
-        app.storage.user["_resolved_dark"] = bool(dark_pref)
+    try:
+        prefers_dark = await ui.run_javascript(
+            "window.matchMedia('(prefers-color-scheme: dark)').matches",
+            timeout=5.0,
+        )
+        app.storage.user["_resolved_dark"] = bool(prefers_dark)
+    except (TimeoutError, Exception):
+        app.storage.user["_resolved_dark"] = False
 
     if (
         app.storage.user.get("token")
@@ -100,7 +96,12 @@ async def index(request: Request) -> None:
         user_data = get_user_data()
 
         # Sync dark mode preference from backend
-        app.storage.user["dark_mode"] = user_data.get("dark_mode", None)
+        # "auto" is stored as a string to avoid null being ignored by the backend
+        raw_dark = user_data.get("dark_mode", None)
+        if raw_dark == "auto" or raw_dark is None:
+            app.storage.user["dark_mode"] = None
+        else:
+            app.storage.user["dark_mode"] = bool(raw_dark)
         ui.dark_mode(app.storage.user["dark_mode"])
 
         if not user_data["encryption_settings"]:

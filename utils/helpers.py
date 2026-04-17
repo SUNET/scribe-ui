@@ -420,13 +420,18 @@ def dark_mode_save(enabled: Optional[bool]) -> None:
     """
     Save the user's dark mode preference to the backend.
     True=on, False=off, None=auto.
+    The backend may ignore JSON null in partial updates, so we send
+    the string "auto" for None and convert back on read.
     """
+
+    # Convert None to "auto" so the backend stores it instead of ignoring null
+    value = "auto" if enabled is None else enabled
 
     try:
         response = httpx.put(
             f"{settings.API_URL}/api/v1/me",
             headers=get_auth_header(),
-            json={"dark_mode": enabled},
+            json={"dark_mode": value},
         )
         response.raise_for_status()
     except httpx.HTTPError:
