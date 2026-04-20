@@ -419,13 +419,15 @@ def email_save_notifications_get() -> dict:
 def dark_mode_save(enabled: Optional[bool]) -> None:
     """
     Save the user's dark mode preference to the backend.
-    True=on, False=off, None=auto.
-    The backend may ignore JSON null in partial updates, so we send
-    the string "auto" for None and convert back on read.
+    True → "dark", False → "light", None → "auto".
     """
 
-    # Convert None to "auto" so the backend stores it instead of ignoring null
-    value = "auto" if enabled is None else enabled
+    if enabled is None:
+        value = "auto"
+    elif enabled:
+        value = "dark"
+    else:
+        value = "light"
 
     try:
         response = httpx.put(

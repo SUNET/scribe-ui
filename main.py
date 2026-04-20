@@ -96,12 +96,14 @@ async def index(request: Request) -> None:
         user_data = get_user_data()
 
         # Sync dark mode preference from backend
-        # "auto" is stored as a string to avoid null being ignored by the backend
-        raw_dark = user_data.get("dark_mode", None)
-        if raw_dark == "auto" or raw_dark is None:
-            app.storage.user["dark_mode"] = None
+        # Backend stores "dark", "light", or "auto"
+        raw_dark = user_data.get("dark_mode", "auto")
+        if raw_dark == "dark":
+            app.storage.user["dark_mode"] = True
+        elif raw_dark == "light":
+            app.storage.user["dark_mode"] = False
         else:
-            app.storage.user["dark_mode"] = bool(raw_dark)
+            app.storage.user["dark_mode"] = None
         ui.dark_mode(app.storage.user["dark_mode"])
 
         if not user_data["encryption_settings"]:
