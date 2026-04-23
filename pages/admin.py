@@ -1874,6 +1874,7 @@ def _evaluate_condition(condition: str, actual_value: str, expected_value: str) 
     For list-type attributes (comma-separated), check if any item matches.
     """
 
+    condition = (condition or "").lower()
     values = [v.strip() for v in actual_value.split(",")]
 
     for val in values:
@@ -1912,7 +1913,7 @@ def test_rules_dialog(selected_rules: list[dict]) -> None:
     attr_name = rule.get("attribute_name", "")
     condition = rule.get("attribute_condition", "")
     expected = rule.get("attribute_value", "")
-    cond_label = CONDITION_OPTIONS.get(condition, condition)
+    cond_label = CONDITION_OPTIONS.get(condition.lower(), condition)
 
     with ui.dialog() as dialog, ui.card().style("min-width: 600px; max-width: 800px;"):
         ui.label("Test rule").classes("text-xl font-bold")
@@ -2065,7 +2066,7 @@ def test_all_rules_dialog() -> None:
             with result_container:
                 for rule in matched_rules:
                     cond_label = CONDITION_OPTIONS.get(
-                        rule.get("attribute_condition", ""),
+                        rule.get("attribute_condition", "").lower(),
                         rule.get("attribute_condition", ""),
                     )
                     actions = []
@@ -2091,7 +2092,7 @@ def test_all_rules_dialog() -> None:
 
                 for rule in unmatched_rules:
                     cond_label = CONDITION_OPTIONS.get(
-                        rule.get("attribute_condition", ""),
+                        rule.get("attribute_condition", "").lower(),
                         rule.get("attribute_condition", ""),
                     )
                     with ui.row().classes("items-center gap-2"):
@@ -2301,7 +2302,7 @@ def rules_page() -> None:
             rule["actions_summary"] = ", ".join(actions) if actions else "None"
             rule["enabled_label"] = "Yes" if rule.get("enabled") else "No"
             cond = rule.get("attribute_condition", "")
-            rule["condition_label"] = CONDITION_OPTIONS.get(cond, cond)
+            rule["condition_label"] = CONDITION_OPTIONS.get(cond.lower(), cond)
 
         rules_table = (
             ui.table(
