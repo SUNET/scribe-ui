@@ -32,6 +32,7 @@ theme_styles = """
     /* ── Theme variables (light mode) ── */
     :root,
     .body--light {
+        color-scheme: light;
         --color-bg-page: #ffffff;
         --color-bg-surface: #ffffff;
         --color-bg-surface-alt: #f5f5f5;
@@ -123,6 +124,7 @@ theme_styles = """
 
     /* ── Theme variables (dark mode) ── */
     .body--dark {
+        color-scheme: dark;
         --color-bg-page: #000000;
         --color-bg-surface: #000000;
         --color-bg-surface-alt: #1a1a1a;
