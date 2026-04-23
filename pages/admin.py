@@ -2564,9 +2564,10 @@ def _announcement_preview_dialog(message: str, severity: str = "info") -> None:
     with ui.dialog() as preview_dialog:
         with ui.card().style("width: 700px; max-width: 90vw; padding: 24px;"):
             ui.label("Banner preview").classes("text-h6 font-bold mb-4")
-            with ui.element("div").classes("announcement-banner").style(
-                f"background-color: {style['bg']}; border: 1px solid {style['border']};"
-                " border-radius: 4px; padding: 10px 20px; display: flex;"
+            with ui.element("div").classes(
+                f"announcement-banner {style['css_class']}"
+            ).style(
+                "border-radius: 4px; padding: 10px 20px; display: flex;"
                 " align-items: center; gap: 10px; width: 100%;"
             ):
                 ui.icon(style["icon"], size="sm").style(
@@ -2616,7 +2617,7 @@ def _announcement_create_dialog() -> None:
                 starts_input = (
                     ui.input("Start date/time (optional)")
                     .classes("flex-1")
-                    .props("outlined")
+                    .props("outlined clearable")
                 )
                 with starts_input:
                     with ui.menu().props("no-parent-event") as starts_menu:
@@ -2632,7 +2633,7 @@ def _announcement_create_dialog() -> None:
                 ends_input = (
                     ui.input("End date/time (optional)")
                     .classes("flex-1")
-                    .props("outlined")
+                    .props("outlined clearable")
                 )
                 with ends_input:
                     with ui.menu().props("no-parent-event") as ends_menu:
@@ -2672,8 +2673,8 @@ def _announcement_create_dialog() -> None:
                                 {
                                     "message": message_input.value.strip(),
                                     "severity": severity_select.value,
-                                    "starts_at": starts_input.value or None,
-                                    "ends_at": ends_input.value or None,
+                                    "starts_at": starts_input.value or "",
+                                    "ends_at": ends_input.value or "",
                                     "enabled": enabled_switch.value,
                                 }
                             )
@@ -2730,7 +2731,7 @@ def _announcement_edit_dialog(ann: dict) -> None:
                 starts_input = (
                     ui.input("Start date/time (optional)", value=starts_val)
                     .classes("flex-1")
-                    .props("outlined")
+                    .props("outlined clearable")
                 )
                 with starts_input:
                     with ui.menu().props("no-parent-event") as starts_menu:
@@ -2744,7 +2745,7 @@ def _announcement_edit_dialog(ann: dict) -> None:
                 ends_input = (
                     ui.input("End date/time (optional)", value=ends_val)
                     .classes("flex-1")
-                    .props("outlined")
+                    .props("outlined clearable")
                 )
                 with ends_input:
                     with ui.menu().props("no-parent-event") as ends_menu:
@@ -2783,8 +2784,8 @@ def _announcement_edit_dialog(ann: dict) -> None:
                                 {
                                     "message": message_input.value.strip(),
                                     "severity": severity_select.value,
-                                    "starts_at": starts_input.value or None,
-                                    "ends_at": ends_input.value or None,
+                                    "starts_at": starts_input.value or "",
+                                    "ends_at": ends_input.value or "",
                                     "enabled": enabled_switch.value,
                                 },
                             )
