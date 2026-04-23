@@ -25,16 +25,7 @@ from datetime import datetime
 from nicegui import app, ui
 from utils.common import add_timezone_to_timestamp, page_init
 from utils.styles import default_styles, severity_styles, chart_colors
-from db.analytics import (
-    get_page_views,
-    get_page_views_summary,
-    get_views_per_day,
-    get_recent_views,
-    get_hourly_heatmap,
-    get_hourly_distribution,
-    get_week_over_week,
-    get_total_stats,
-)
+from db.analytics import fetch_all as fetch_analytics
 from utils.helpers import (
     groups_get,
     realms_get,
@@ -3039,8 +3030,15 @@ async def analytics() -> None:
             return (dow - 2) % 7  # previous day
         return dow
 
-    stats = get_total_stats()
-    wow = get_week_over_week()
+    data = await fetch_analytics(days=30, recent_limit=50)
+    stats = data["stats"]
+    wow = data["wow"]
+    summary = data["summary"]
+    heatmap_data = data["heatmap"]
+    hourly = data["hourly"]
+    page_views = data["page_views"]
+    daily = data["daily"]
+    recent = data["recent"]
 
     if wow["change_pct"] is not None:
         sign = "+" if wow["change_pct"] >= 0 else ""
@@ -3049,8 +3047,6 @@ async def analytics() -> None:
     else:
         wow_color = cc["wow_neutral"]
         wow_display = "N/A"
-
-    summary = get_page_views_summary()
 
     action_summary = [r for r in summary if r["path"].startswith("/action/")]
     action_labels = {
@@ -3081,7 +3077,6 @@ async def analytics() -> None:
             ui.label(f"Peak hours (last 30 days, {user_tz_name})").classes(
                 "text-h6 font-semibold q-mb-md"
             )
-            heatmap_data = get_hourly_heatmap(days=30)
 
             if heatmap_data:
                 day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
@@ -3130,7 +3125,6 @@ async def analytics() -> None:
             ui.label(f"Hourly distribution (last 30 days, {user_tz_name})").classes(
                 "text-h6 font-semibold q-mb-md"
             )
-            hourly = get_hourly_distribution(days=30)
 
             if hourly:
                 # Shift UTC hours to user timezone and fill missing with 0
@@ -3167,7 +3161,6 @@ async def analytics() -> None:
             ui.label("Page views per day (last 30 days)").classes(
                 "text-h6 font-semibold q-mb-md"
             )
-            page_views = get_page_views(days=30)
 
             if page_views:
                 by_path = defaultdict(lambda: {"dates": [], "views": []})
@@ -3235,7 +3228,6 @@ async def analytics() -> None:
             ui.label("Total traffic per day (last 30 days)").classes(
                 "text-h6 font-semibold q-mb-md"
             )
-            daily = get_views_per_day(days=30)
 
             if daily:
                 fig = go.Figure()
@@ -3259,7 +3251,6 @@ async def analytics() -> None:
 
         with ui.card().classes("flex-1 p-4").style("min-width: 400px;"):
             ui.label("Last visited pages").classes("text-h6 font-semibold q-mb-md")
-            recent = get_recent_views(limit=50)
 
             if recent:
                 columns = [
@@ -3288,7 +3279,7 @@ async def analytics() -> None:
                 "text-h6 font-semibold q-mb-md"
             )
             action_views = [
-                r for r in get_page_views(days=30) if r["path"].startswith("/action/")
+                r for r in page_views if r["path"].startswith("/action/")
             ]
 
             if action_views:
