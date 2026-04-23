@@ -810,7 +810,7 @@ severity_styles = {
         "dismissible": True,
     },
     "major_incident": {
-        "css_class": "severity-incident",
+        "css_class": "severity-major_incident",
         "icon": "crisis_alert",
         "icon_color": "var(--color-severity-incident-icon)",
         "dismissible": False,
