@@ -1503,10 +1503,10 @@ def create_rule_dialog(page: callable) -> None:
                 .props("outlined")
             )
 
-            ui.label("Notifications").classes("text-lg font-semibold mt-2")
+            ui.label("Default personal notifications").classes("text-lg font-semibold mt-2")
             with ui.row().classes("w-full gap-4"):
-                notify_job_cb = ui.checkbox("Notify when transcription completed")
-                notify_deletion_cb = ui.checkbox("Notify for upcoming file deletions")
+                notify_job_cb = ui.checkbox("Transcription completed")
+                notify_deletion_cb = ui.checkbox("Upcoming file deletions")
 
             with ui.row().style("justify-content: flex-end; width: 100%;"):
                 ui.button("Cancel").classes("button-close").props(
@@ -1710,14 +1710,14 @@ def edit_rule_dialog(rule: dict, page: callable) -> None:
                 .props("outlined")
             )
 
-            ui.label("Notifications").classes("text-lg font-semibold mt-2")
+            ui.label("Default personal notifications").classes("text-lg font-semibold mt-2")
             with ui.row().classes("w-full gap-4"):
                 notify_job_cb = ui.checkbox(
-                    "Notify when transcription completed",
+                    "Transcription completed",
                     value=rule.get("notify_job", False),
                 )
                 notify_deletion_cb = ui.checkbox(
-                    "Notify for upcoming file deletions",
+                    "Upcoming file deletions",
                     value=rule.get("notify_deletion", False),
                 )
 
