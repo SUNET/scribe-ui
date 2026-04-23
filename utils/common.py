@@ -349,7 +349,7 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
             new_val = None
         app.storage.user["dark_mode"] = new_val
         ui.dark_mode(new_val)
-        dark_mode_save(new_val)
+        await dark_mode_save(new_val)
         # Resolve the actual dark state (needed for Plotly chart templates)
         if new_val is not None:
             app.storage.user["_resolved_dark"] = bool(new_val)

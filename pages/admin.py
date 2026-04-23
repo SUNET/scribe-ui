@@ -325,7 +325,7 @@ async def statistics(group_id: str) -> None:
     is_dark = app.storage.user.get("_resolved_dark", False)
     cc = chart_colors["dark" if is_dark else "light"]
 
-    stats = user_statistics_get(group_id=group_id)
+    stats = await user_statistics_get(group_id=group_id)
 
     if not stats or "result" not in stats:
         ui.label("Error fetching statistics.").classes(
@@ -514,7 +514,7 @@ async def statistics(group_id: str) -> None:
 def create() -> None:
     @ui.refreshable
     @ui.page("/admin")
-    def admin() -> None:
+    async def admin() -> None:
         """
         Main page of the application.
         """
@@ -540,7 +540,7 @@ def create() -> None:
                 )
                 create.on("click", lambda: create_group_dialog(page=admin))
 
-                groups = groups_get()
+                groups = await groups_get()
 
             if not groups:
                 ui.label("No groups found. Create a new group to get started.").classes(
@@ -1397,7 +1397,7 @@ def _get_valid_realms() -> list[str]:
     return [r for r in realms_get() if r and "." in r]
 
 
-def create_rule_dialog(page: callable) -> None:
+async def create_rule_dialog(page: callable) -> None:
     """
     Show a dialog to create a new attribute rule.
     """
@@ -1405,9 +1405,9 @@ def create_rule_dialog(page: callable) -> None:
     # Re-apply dark mode to prevent state loss during dialog creation
     ui.dark_mode(app.storage.user.get("dark_mode", None))
 
-    onboarding_attrs = attributes_get()
+    onboarding_attrs = await attributes_get()
     attr_names = [a["name"] for a in onboarding_attrs]
-    all_groups = groups_get()
+    all_groups = await groups_get()
     group_options = {}
 
     if all_groups and "result" in all_groups:
@@ -1499,35 +1499,35 @@ def create_rule_dialog(page: callable) -> None:
                 notify_job_cb = ui.checkbox("Transcription completed")
                 notify_deletion_cb = ui.checkbox("Upcoming file deletions")
 
+            async def on_create_click() -> None:
+                created = await _do_create_rule(
+                    name=name_input.value,
+                    attribute_name=attr_select.value,
+                    attribute_condition=condition_select.value,
+                    attribute_value=value_input.value,
+                    realm=realm_input.value,
+                    activate=activate_cb.value,
+                    deny=deny_cb.value,
+                    assign_to_group=group_select.value,
+                    notify_job=notify_job_cb.value,
+                    notify_deletion=notify_deletion_cb.value,
+                )
+                if created:
+                    dialog.close()
+                    ui.navigate.to("/admin/rules")
+
             with ui.row().style("justify-content: flex-end; width: 100%;"):
                 ui.button("Cancel").classes("button-close").props(
                     "color=black flat"
                 ).on("click", lambda: dialog.close())
                 ui.button("Create").classes("default-style").props(
                     "color=black flat"
-                ).on(
-                    "click",
-                    lambda: (
-                        _do_create_rule(
-                            name=name_input.value,
-                            attribute_name=attr_select.value,
-                            attribute_condition=condition_select.value,
-                            attribute_value=value_input.value,
-                            realm=realm_input.value,
-                            activate=activate_cb.value,
-                            deny=deny_cb.value,
-                            assign_to_group=group_select.value,
-                            notify_job=notify_job_cb.value,
-                            notify_deletion=notify_deletion_cb.value,
-                        )
-                        and (dialog.close(), ui.navigate.to("/admin/rules"))
-                    ),
-                )
+                ).on("click", on_create_click)
 
         dialog.open()
 
 
-def _do_create_rule(**kwargs) -> bool:
+async def _do_create_rule(**kwargs) -> bool:
     """
     Helper to create a rule from dialog values. Returns True on success.
     """
@@ -1558,7 +1558,7 @@ def _do_create_rule(**kwargs) -> bool:
         "notify_deletion": kwargs.get("notify_deletion", False),
     }
 
-    result = rule_create(data)
+    result = await rule_create(data)
 
     if result:
         ui.notify("Rule created successfully.", color="positive")
@@ -1569,7 +1569,7 @@ def _do_create_rule(**kwargs) -> bool:
     return False
 
 
-def edit_rule_dialog(rule: dict, page: callable) -> None:
+async def edit_rule_dialog(rule: dict, page: callable) -> None:
     """
     Show a dialog to edit an existing attribute rule.
     """
@@ -1577,9 +1577,9 @@ def edit_rule_dialog(rule: dict, page: callable) -> None:
     # Re-apply dark mode to prevent state loss during dialog creation
     ui.dark_mode(app.storage.user.get("dark_mode", None))
 
-    onboarding_attrs = attributes_get()
+    onboarding_attrs = await attributes_get()
     attr_names = [a["name"] for a in onboarding_attrs]
-    all_groups = groups_get()
+    all_groups = await groups_get()
     group_options = {}
 
     if all_groups and "result" in all_groups:
@@ -1712,34 +1712,36 @@ def edit_rule_dialog(rule: dict, page: callable) -> None:
                     value=rule.get("notify_deletion", False),
                 )
 
+            async def on_save_click() -> None:
+                updated = await _do_update_rule(
+                    rule_id=rule["id"],
+                    name=name_input.value,
+                    attribute_name=attr_select.value,
+                    attribute_condition=condition_select.value,
+                    attribute_value=value_input.value,
+                    realm=realm_input.value,
+                    activate=activate_cb.value,
+                    deny=deny_cb.value,
+                    assign_to_group=group_select.value,
+                    notify_job=notify_job_cb.value,
+                    notify_deletion=notify_deletion_cb.value,
+                )
+                if updated:
+                    dialog.close()
+                    ui.navigate.to("/admin/rules")
+
             with ui.row().style("justify-content: flex-end; width: 100%;"):
                 ui.button("Cancel").classes("button-close").props(
                     "color=black flat"
                 ).on("click", lambda: dialog.close())
                 ui.button("Save").classes("default-style").props("color=black flat").on(
-                    "click",
-                    lambda: (
-                        _do_update_rule(
-                            rule_id=rule["id"],
-                            name=name_input.value,
-                            attribute_name=attr_select.value,
-                            attribute_condition=condition_select.value,
-                            attribute_value=value_input.value,
-                            realm=realm_input.value,
-                            activate=activate_cb.value,
-                            deny=deny_cb.value,
-                            assign_to_group=group_select.value,
-                            notify_job=notify_job_cb.value,
-                            notify_deletion=notify_deletion_cb.value,
-                        )
-                        and (dialog.close(), ui.navigate.to("/admin/rules"))
-                    ),
+                    "click", on_save_click
                 )
 
         dialog.open()
 
 
-def _do_update_rule(**kwargs) -> bool:
+async def _do_update_rule(**kwargs) -> bool:
     """
     Helper to update a rule from dialog values. Returns True on success.
     """
@@ -1770,7 +1772,7 @@ def _do_update_rule(**kwargs) -> bool:
         "notify_deletion": kwargs.get("notify_deletion", False),
     }
 
-    if rule_update(kwargs["rule_id"], data):
+    if await rule_update(kwargs["rule_id"], data):
         ui.notify("Rule updated successfully.", color="positive")
         return True
 
@@ -1793,27 +1795,27 @@ def delete_rule_dialog(rule: dict) -> None:
                 "text-body1"
             )
 
+            async def on_delete_click() -> None:
+                await _do_delete_rule(rule["id"])
+                dialog.close()
+                ui.navigate.to("/admin/rules")
+
             with ui.row().style("justify-content: flex-end; width: 100%;"):
                 ui.button("Cancel").classes("button-close").props(
                     "color=black flat"
                 ).on("click", lambda: dialog.close())
                 ui.button("Delete").classes("delete-style").props("color=red flat").on(
-                    "click",
-                    lambda: (
-                        _do_delete_rule(rule["id"]),
-                        dialog.close(),
-                        ui.navigate.to("/admin/rules"),
-                    ),
+                    "click", on_delete_click
                 )
         dialog.open()
 
 
-def _do_delete_rule(rule_id: int) -> None:
+async def _do_delete_rule(rule_id: int) -> None:
     """
     Helper to delete a rule.
     """
 
-    if rule_delete(rule_id):
+    if await rule_delete(rule_id):
         ui.notify("Rule deleted.", color="positive")
     else:
         ui.notify("Failed to delete rule.", color="negative")
@@ -1834,31 +1836,31 @@ def add_attribute_dialog() -> None:
                 ui.input("Example value").classes("w-full").props("outlined")
             )
 
+            async def on_add_click() -> None:
+                await _do_add_attribute(
+                    name_input.value,
+                    desc_input.value,
+                    example_input.value,
+                )
+                dialog.close()
+                ui.navigate.to("/admin/rules")
+
             with ui.row().style("justify-content: flex-end; width: 100%;"):
                 ui.button("Cancel").classes("button-close").props(
                     "color=black flat"
                 ).on("click", lambda: dialog.close())
                 ui.button("Add").classes("default-style").props("color=black flat").on(
-                    "click",
-                    lambda: (
-                        _do_add_attribute(
-                            name_input.value,
-                            desc_input.value,
-                            example_input.value,
-                        ),
-                        dialog.close(),
-                        ui.navigate.to("/admin/rules"),
-                    ),
+                    "click", on_add_click
                 )
         dialog.open()
 
 
-def _do_add_attribute(name: str, description: str, example: str) -> None:
+async def _do_add_attribute(name: str, description: str, example: str) -> None:
     """
     Helper to add an onboarding attribute.
     """
 
-    result = attribute_create(
+    result = await attribute_create(
         {"name": name, "description": description, "example": example}
     )
 
@@ -1957,7 +1959,7 @@ def test_rules_dialog(selected_rules: list[dict]) -> None:
     dialog.open()
 
 
-def test_all_rules_dialog() -> None:
+async def test_all_rules_dialog() -> None:
     """
     Show a dialog where the user enters attribute name/value pairs and
     simulates provisioning against all enabled rules.
@@ -1965,14 +1967,14 @@ def test_all_rules_dialog() -> None:
 
     ui.dark_mode(app.storage.user.get("dark_mode", None))
 
-    rules_data = rules_get()
+    rules_data = await rules_get()
     all_rules = rules_data.get("result", []) if rules_data else []
     enabled_rules = [r for r in all_rules if r.get("enabled")]
 
-    onboarding_attrs = attributes_get()
+    onboarding_attrs = await attributes_get()
     attr_names = [a["name"] for a in onboarding_attrs] if onboarding_attrs else []
 
-    all_groups = groups_get()
+    all_groups = await groups_get()
     group_names: dict[int, str] = {}
     if all_groups and "result" in all_groups:
         group_names = {g["id"]: g["name"] for g in all_groups["result"]}
@@ -2244,7 +2246,7 @@ def _show_rules_help() -> None:
 
 
 @ui.page("/admin/rules")
-def rules_page() -> None:
+async def rules_page() -> None:
     """
     Onboarding management page.
     """
@@ -2281,7 +2283,7 @@ def rules_page() -> None:
         "The last matching rule determines the user's group."
     ).classes("text-body2")
 
-    rules_data = rules_get()
+    rules_data = await rules_get()
     rules_list = rules_data.get("result", []) if rules_data else []
 
     if not rules_list:
@@ -2391,10 +2393,10 @@ def rules_page() -> None:
             """,
         )
 
-        def handle_toggle(msg) -> None:
+        async def handle_toggle(msg) -> None:
             rule_id = msg.args["id"]
             new_enabled = msg.args["enabled"]
-            result = rule_update(rule_id, {"enabled": new_enabled})
+            result = await rule_update(rule_id, {"enabled": new_enabled})
             if result:
                 ui.notify(
                     f"Rule {'enabled' if new_enabled else 'disabled'}.",
@@ -2421,9 +2423,9 @@ def rules_page() -> None:
             """,
         )
 
-        def handle_edit(msg) -> None:
+        async def handle_edit(msg) -> None:
             rule = msg.args
-            edit_rule_dialog(rule, page=rules_page)
+            await edit_rule_dialog(rule, page=rules_page)
 
         rules_table.on("edit_rule", handle_edit)
         rules_table.add_slot(
@@ -2469,7 +2471,7 @@ def rules_page() -> None:
             "These are the known attribute names available when creating rules."
         ).classes("text-body2 text-theme-muted mb-2")
 
-        attrs = attributes_get()
+        attrs = await attributes_get()
         if not attrs:
             ui.label("No attributes defined.").classes("text-lg")
         else:
@@ -2520,18 +2522,18 @@ def rules_page() -> None:
                 """,
             )
 
-            def handle_delete_attr(msg) -> None:
-                _do_delete_attribute(msg.args)
+            async def handle_delete_attr(msg) -> None:
+                await _do_delete_attribute(msg.args)
 
             attrs_table.on("delete_attr", handle_delete_attr)
 
 
-def _do_delete_attribute(attr: dict) -> None:
+async def _do_delete_attribute(attr: dict) -> None:
     """
     Delete a single onboarding attribute.
     """
 
-    attribute_delete(attr["id"])
+    await attribute_delete(attr["id"])
 
     ui.notify(f"Deleted attribute '{attr['name']}'.", color="positive")
     ui.navigate.to("/admin/rules")
@@ -2643,6 +2645,23 @@ def _announcement_create_dialog() -> None:
 
             enabled_switch = ui.switch("Enabled", value=True)
 
+            async def on_create_click() -> None:
+                message = message_input.value.strip()
+                if not message:
+                    return
+                created = await announcement_create(
+                    {
+                        "message": message,
+                        "severity": severity_select.value,
+                        "starts_at": starts_input.value or "",
+                        "ends_at": ends_input.value or "",
+                        "enabled": enabled_switch.value,
+                    }
+                )
+                if created:
+                    dialog.close()
+                    ui.navigate.to("/admin/announcements")
+
             with ui.row().classes("w-full justify-between mt-4"):
                 ui.button(
                     "Preview",
@@ -2658,22 +2677,7 @@ def _announcement_create_dialog() -> None:
                     ).props("color=black flat")
                     ui.button(
                         "Create",
-                        on_click=lambda: (
-                            message_input.value.strip()
-                            and announcement_create(
-                                {
-                                    "message": message_input.value.strip(),
-                                    "severity": severity_select.value,
-                                    "starts_at": starts_input.value or "",
-                                    "ends_at": ends_input.value or "",
-                                    "enabled": enabled_switch.value,
-                                }
-                            )
-                            and (
-                                dialog.close(),
-                                ui.navigate.to("/admin/announcements"),
-                            )
-                        ),
+                        on_click=on_create_click,
                     ).classes("default-style").props("color=black flat")
 
         dialog.open()
@@ -2753,6 +2757,24 @@ def _announcement_edit_dialog(ann: dict) -> None:
 
             enabled_switch = ui.switch("Enabled", value=ann.get("enabled", True))
 
+            async def on_save_click() -> None:
+                message = message_input.value.strip()
+                if not message:
+                    return
+                updated = await announcement_update(
+                    ann["id"],
+                    {
+                        "message": message,
+                        "severity": severity_select.value,
+                        "starts_at": starts_input.value or "",
+                        "ends_at": ends_input.value or "",
+                        "enabled": enabled_switch.value,
+                    },
+                )
+                if updated:
+                    dialog.close()
+                    ui.navigate.to("/admin/announcements")
+
             with ui.row().classes("w-full justify-between mt-4"):
                 ui.button(
                     "Preview",
@@ -2768,23 +2790,7 @@ def _announcement_edit_dialog(ann: dict) -> None:
                     ).props("color=black flat")
                     ui.button(
                         "Save",
-                        on_click=lambda: (
-                            message_input.value.strip()
-                            and announcement_update(
-                                ann["id"],
-                                {
-                                    "message": message_input.value.strip(),
-                                    "severity": severity_select.value,
-                                    "starts_at": starts_input.value or "",
-                                    "ends_at": ends_input.value or "",
-                                    "enabled": enabled_switch.value,
-                                },
-                            )
-                            and (
-                                dialog.close(),
-                                ui.navigate.to("/admin/announcements"),
-                            )
-                        ),
+                        on_click=on_save_click,
                     ).classes("default-style").props("color=black flat")
 
         dialog.open()
@@ -2803,24 +2809,25 @@ def _announcement_delete_confirm(ann: dict) -> None:
             )
             ui.html(f'<em>"{ann.get("message", "")[:100]}..."</em>').classes("mb-4")
 
+            async def on_delete_click() -> None:
+                await announcement_delete(ann["id"])
+                dialog.close()
+                ui.navigate.to("/admin/announcements")
+
             with ui.row().classes("w-full justify-end gap-2"):
                 ui.button("Cancel", on_click=dialog.close).classes(
                     "button-close"
                 ).props("color=black flat")
                 ui.button(
                     "Delete",
-                    on_click=lambda: (
-                        announcement_delete(ann["id"]),
-                        dialog.close(),
-                        ui.navigate.to("/admin/announcements"),
-                    ),
+                    on_click=on_delete_click,
                 ).classes("delete-style").props("color=red flat")
 
         dialog.open()
 
 
 @ui.page("/admin/announcements")
-def announcements_page() -> None:
+async def announcements_page() -> None:
     """Announcement banner management page. BOFH only."""
 
     page_init(use_drawer=True)
@@ -2844,7 +2851,7 @@ def announcements_page() -> None:
         "All times are in server time."
     ).classes("text-body2 mb-4")
 
-    ann_list = announcements_get()
+    ann_list = await announcements_get()
 
     if not ann_list:
         ui.label("No announcements yet.").classes("text-lg mt-4 text-grey-6")
@@ -2858,9 +2865,9 @@ def announcements_page() -> None:
             msg = re.sub(r"<[^>]+>", "", ann.get("message", ""))
             ann["message_short"] = (msg[:80] + "…") if len(msg) > 80 else msg
 
-        def _toggle_enabled(ann_row: dict) -> None:
+        async def _toggle_enabled(ann_row: dict) -> None:
             new_val = not ann_row.get("enabled", True)
-            announcement_update(ann_row["id"], {"enabled": new_val})
+            await announcement_update(ann_row["id"], {"enabled": new_val})
             ui.navigate.to("/admin/announcements")
 
         ann_table = (

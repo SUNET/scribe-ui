@@ -131,12 +131,12 @@ async def index(request: Request) -> None:
                     )
                     error_label.visible = False
 
-                    def set_encryption_password() -> None:
+                    async def set_encryption_password() -> None:
                         if (
                             password_input.value == confirm_password_input.value
                         ) and len(password_input.value) >= 8:
                             try:
-                                encryption_password_set(password_input.value)
+                                await encryption_password_set(password_input.value)
                             except Exception:
                                 ui.notify(
                                     "Failed to set encryption passphrase.",
@@ -171,13 +171,13 @@ async def index(request: Request) -> None:
                     )
                     password_input.props("autofocus")
 
-                    def verify_encryption_password() -> None:
+                    async def verify_encryption_password() -> None:
                         if password_input.value:
                             app.storage.user["encryption_password"] = storage_encrypt(
                                 password_input.value,
                             )
 
-                            if encryption_password_verify(password_input.value):
+                            if await encryption_password_verify(password_input.value):
                                 ui.navigate.to("/home")
                             else:
                                 ui.notify(

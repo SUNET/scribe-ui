@@ -52,7 +52,7 @@ def show_user_token() -> None:
 def create() -> None:
     @ui.refreshable
     @ui.page("/user")
-    def home() -> None:
+    async def home() -> None:
         """
         User page for managing user settings and information.
         """
@@ -60,8 +60,8 @@ def create() -> None:
         userdata = get_user_data()
 
         ui.add_head_html(default_styles)
-        current_email = email_get()
-        current_notifications = email_save_notifications_get()
+        current_email = await email_get()
+        current_notifications = await email_save_notifications_get()
 
         # If userdata is not available, do not render the page
         if userdata is None or not userdata:
@@ -147,23 +147,23 @@ def create() -> None:
                     else:
                         current_dark = "off"
 
-                    def set_dark_mode(value: str) -> None:
+                    async def set_dark_mode(value: str) -> None:
                         if value == "on":
                             app.storage.user["dark_mode"] = True
                             app.storage.user["_resolved_dark"] = True
                             ui.dark_mode(True)
-                            dark_mode_save(True)
+                            await dark_mode_save(True)
                             icon_name = "dark_mode"
                         elif value == "off":
                             app.storage.user["dark_mode"] = False
                             app.storage.user["_resolved_dark"] = False
                             ui.dark_mode(False)
-                            dark_mode_save(False)
+                            await dark_mode_save(False)
                             icon_name = "light_mode"
                         else:
                             app.storage.user["dark_mode"] = None
                             ui.dark_mode(None)
-                            dark_mode_save(None)
+                            await dark_mode_save(None)
                             icon_name = "brightness_auto"
                         # Update header dark mode icon without reload
                         ui.run_javascript(f'''

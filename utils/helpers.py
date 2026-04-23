@@ -63,7 +63,7 @@ def storage_decrypt(encrypted: Optional[str]) -> Optional[str]:
         return None
 
 
-def encryption_password_set(password: str) -> None:
+async def encryption_password_set(password: str) -> None:
     """
     Set the encryption password for the user.
     This is a placeholder function. Implement the logic to store
@@ -71,12 +71,13 @@ def encryption_password_set(password: str) -> None:
     """
 
     try:
-        response = httpx.put(
-            f"{settings.API_URL}/api/v1/me",
-            headers=get_auth_header(),
-            json={"encryption": True, "encryption_password": password},
-        )
-        response.raise_for_status()
+        async with httpx.AsyncClient() as client:
+            response = await client.put(
+                f"{settings.API_URL}/api/v1/me",
+                headers=get_auth_header(),
+                json={"encryption": True, "encryption_password": password},
+            )
+            response.raise_for_status()
         data = response.json()
 
         return data["result"]
@@ -85,7 +86,7 @@ def encryption_password_set(password: str) -> None:
         return None
 
 
-def encryption_password_verify(password: str) -> bool:
+async def encryption_password_verify(password: str) -> bool:
     """
     Verify the encryption password for the user.
     This is a placeholder function. Implement the logic to verify
@@ -93,12 +94,13 @@ def encryption_password_verify(password: str) -> bool:
     """
 
     try:
-        response = httpx.put(
-            f"{settings.API_URL}/api/v1/me",
-            headers=get_auth_header(),
-            json={"encryption_password": password, "verify_password": True},
-        )
-        response.raise_for_status()
+        async with httpx.AsyncClient() as client:
+            response = await client.put(
+                f"{settings.API_URL}/api/v1/me",
+                headers=get_auth_header(),
+                json={"encryption_password": password, "verify_password": True},
+            )
+            response.raise_for_status()
 
         return True
 
@@ -155,16 +157,17 @@ def reset_password() -> None:
         dialog.open()
 
 
-def export_customers_csv() -> None:
+async def export_customers_csv() -> None:
     """
     Export customers data as CSV.
     """
     try:
-        res = httpx.get(
-            settings.API_URL + "/api/v1/admin/customers/export/csv",
-            headers=get_auth_header(),
-        )
-        res.raise_for_status()
+        async with httpx.AsyncClient() as client:
+            res = await client.get(
+                settings.API_URL + "/api/v1/admin/customers/export/csv",
+                headers=get_auth_header(),
+            )
+            res.raise_for_status()
         csv_data = res.content.decode("utf-8")
 
         ui.download.content(str(csv_data), filename="customers_export.csv")
@@ -173,7 +176,7 @@ def export_customers_csv() -> None:
         ui.notify("Error when exporting customers", color="red")
 
 
-def save_customer(
+async def save_customer(
     customber_abbr: str,
     customer_id: str,
     partner_id: str,
@@ -193,23 +196,24 @@ def save_customer(
     realms_str = ",".join(all_realms)
 
     try:
-        res = httpx.put(
-            settings.API_URL + f"/api/v1/admin/customers/{customer_id}",
-            headers=get_auth_header(),
-            json={
-                "customer_abbr": customber_abbr,
-                "partner_id": partner_id,
-                "name": name,
-                "contact_email": contact_email,
-                "support_contact_email": support_contact_email,
-                "priceplan": priceplan,
-                "base_fee": int(base_fee) if base_fee else 0,
-                "realms": realms_str,
-                "notes": notes,
-                "blocks_purchased": int(blocks_purchased) if blocks_purchased else 0,
-            },
-        )
-        res.raise_for_status()
+        async with httpx.AsyncClient() as client:
+            res = await client.put(
+                settings.API_URL + f"/api/v1/admin/customers/{customer_id}",
+                headers=get_auth_header(),
+                json={
+                    "customer_abbr": customber_abbr,
+                    "partner_id": partner_id,
+                    "name": name,
+                    "contact_email": contact_email,
+                    "support_contact_email": support_contact_email,
+                    "priceplan": priceplan,
+                    "base_fee": int(base_fee) if base_fee else 0,
+                    "realms": realms_str,
+                    "notes": notes,
+                    "blocks_purchased": int(blocks_purchased) if blocks_purchased else 0,
+                },
+            )
+            res.raise_for_status()
         ui.navigate.to("/admin/customers")
     except httpx.HTTPError as e:
         ui.notify(f"Error saving customer: {e}", type="negative")
@@ -245,16 +249,18 @@ def realms_get() -> list:
         return []
 
 
-def groups_get() -> list:
+async def groups_get() -> list:
     """
     Fetch all groups from backend.
     """
 
     try:
-        res = httpx.get(
-            settings.API_URL + "/api/v1/admin/groups", headers=get_auth_header()
-        )
-        res.raise_for_status()
+        async with httpx.AsyncClient() as client:
+            res = await client.get(
+                settings.API_URL + "/api/v1/admin/groups",
+                headers=get_auth_header(),
+            )
+            res.raise_for_status()
 
         data = res.json()
         if isinstance(data, dict) and "result" in data:
@@ -265,17 +271,18 @@ def groups_get() -> list:
         return []
 
 
-def user_statistics_get(group_id: str) -> dict:
+async def user_statistics_get(group_id: str) -> dict:
     """
     Fetch user statistics for a group from backend.
     """
 
     try:
-        res = httpx.get(
-            settings.API_URL + f"/api/v1/admin/groups/{group_id}/stats",
-            headers=get_auth_header(),
-        )
-        res.raise_for_status()
+        async with httpx.AsyncClient() as client:
+            res = await client.get(
+                settings.API_URL + f"/api/v1/admin/groups/{group_id}/stats",
+                headers=get_auth_header(),
+            )
+            res.raise_for_status()
 
         return res.json()
     except httpx.HTTPError as e:
@@ -283,7 +290,7 @@ def user_statistics_get(group_id: str) -> dict:
         return {}
 
 
-def email_save(email: str) -> None:
+async def email_save(email: str) -> None:
     """
     Save and test the notification email address.
 
@@ -292,12 +299,13 @@ def email_save(email: str) -> None:
     """
 
     try:
-        response = httpx.put(
-            f"{settings.API_URL}/api/v1/me",
-            headers=get_auth_header(),
-            json={"email": email},
-        )
-        response.raise_for_status()
+        async with httpx.AsyncClient() as client:
+            response = await client.put(
+                f"{settings.API_URL}/api/v1/me",
+                headers=get_auth_header(),
+                json={"email": email},
+            )
+            response.raise_for_status()
         data = response.json()
 
         if "error" in data.get("result", {}):
@@ -312,7 +320,7 @@ def email_save(email: str) -> None:
         return None
 
 
-def email_get() -> str:
+async def email_get() -> str:
     """
     Get the current notification email address.
 
@@ -321,10 +329,11 @@ def email_get() -> str:
     """
 
     try:
-        response = httpx.get(
-            f"{settings.API_URL}/api/v1/me", headers=get_auth_header()
-        )
-        response.raise_for_status()
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{settings.API_URL}/api/v1/me", headers=get_auth_header()
+            )
+            response.raise_for_status()
         data = response.json()
 
         if "error" in data.get("result", {}):
@@ -338,7 +347,7 @@ def email_get() -> str:
         return ""
 
 
-def email_save_notifications(
+async def email_save_notifications(
     job: Optional[bool] = None,
     deletion: Optional[bool] = None,
     user: Optional[bool] = None,
@@ -367,12 +376,13 @@ def email_save_notifications(
     }
 
     try:
-        response = httpx.put(
-            f"{settings.API_URL}/api/v1/me",
-            headers=get_auth_header(),
-            json=payload,
-        )
-        response.raise_for_status()
+        async with httpx.AsyncClient() as client:
+            response = await client.put(
+                f"{settings.API_URL}/api/v1/me",
+                headers=get_auth_header(),
+                json=payload,
+            )
+            response.raise_for_status()
         data = response.json()
 
         if "error" in data.get("result", {}):
@@ -385,7 +395,7 @@ def email_save_notifications(
         ui.notify("Failed to update notification preferences", color="red")
 
 
-def email_save_notifications_get() -> dict:
+async def email_save_notifications_get() -> dict:
     """
     Get the current notification preferences for the user.
 
@@ -394,10 +404,11 @@ def email_save_notifications_get() -> dict:
     """
 
     try:
-        response = httpx.get(
-            f"{settings.API_URL}/api/v1/me", headers=get_auth_header()
-        )
-        response.raise_for_status()
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{settings.API_URL}/api/v1/me", headers=get_auth_header()
+            )
+            response.raise_for_status()
         data = response.json()
 
         if "error" in data.get("result", {}):
@@ -416,7 +427,7 @@ def email_save_notifications_get() -> dict:
         return {}
 
 
-def dark_mode_save(enabled: Optional[bool]) -> None:
+async def dark_mode_save(enabled: Optional[bool]) -> None:
     """
     Save the user's dark mode preference to the backend.
     True → "dark", False → "light", None → "auto".
@@ -430,26 +441,28 @@ def dark_mode_save(enabled: Optional[bool]) -> None:
         value = "light"
 
     try:
-        response = httpx.put(
-            f"{settings.API_URL}/api/v1/me",
-            headers=get_auth_header(),
-            json={"dark_mode": value},
-        )
-        response.raise_for_status()
+        async with httpx.AsyncClient() as client:
+            response = await client.put(
+                f"{settings.API_URL}/api/v1/me",
+                headers=get_auth_header(),
+                json={"dark_mode": value},
+            )
+            response.raise_for_status()
     except httpx.HTTPError:
         ui.notify("Failed to save dark mode preference", color="red")
 
 
-def dark_mode_get() -> bool:
+async def dark_mode_get() -> bool:
     """
     Get the user's dark mode preference from the backend.
     """
 
     try:
-        response = httpx.get(
-            f"{settings.API_URL}/api/v1/me", headers=get_auth_header()
-        )
-        response.raise_for_status()
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{settings.API_URL}/api/v1/me", headers=get_auth_header()
+            )
+            response.raise_for_status()
         data = response.json()
         return data["result"].get("dark_mode", False)
     except httpx.HTTPError:
@@ -486,7 +499,7 @@ def test_all_notifications() -> None:
         ui.notify("Failed to send test notifications", color="red")
 
 
-def save_group(
+async def save_group(
     selected_rows: list, name: str, description: str, group_id: str, quota_seconds: int
 ) -> None:
     """
@@ -496,18 +509,18 @@ def save_group(
     usernames = [row["username"] for row in selected_rows]
 
     try:
-        res = httpx.put(
-            settings.API_URL + f"/api/v1/admin/groups/{group_id}",
-            headers=get_auth_header(),
-            json={
-                "name": name,
-                "description": description,
-                "usernames": usernames,
-                "quota": int(quota_seconds) * 60,
-            },
-        )
-
-        res.raise_for_status()
+        async with httpx.AsyncClient() as client:
+            res = await client.put(
+                settings.API_URL + f"/api/v1/admin/groups/{group_id}",
+                headers=get_auth_header(),
+                json={
+                    "name": name,
+                    "description": description,
+                    "usernames": usernames,
+                    "quota": int(quota_seconds) * 60,
+                },
+            )
+            res.raise_for_status()
 
         ui.navigate.to("/admin")
     except httpx.HTTPError:
@@ -726,52 +739,56 @@ def set_domains(selected_rows: list, all_users: list) -> None:
         domain_dialog.open()
 
 
-def rules_get() -> list:
+async def rules_get() -> list:
     """
     Fetch all attribute rules from backend.
     """
 
     try:
-        res = httpx.get(
-            settings.API_URL + "/api/v1/admin/rules", headers=get_auth_header()
-        )
-        res.raise_for_status()
+        async with httpx.AsyncClient() as client:
+            res = await client.get(
+                settings.API_URL + "/api/v1/admin/rules",
+                headers=get_auth_header(),
+            )
+            res.raise_for_status()
         return res.json()
     except httpx.HTTPError as e:
         print(f"Error fetching rules: {e}")
         return []
 
 
-def rule_create(data: dict) -> dict | None:
+async def rule_create(data: dict) -> dict | None:
     """
     Create a new attribute rule.
     """
 
     try:
-        res = httpx.post(
-            settings.API_URL + "/api/v1/admin/rules",
-            headers=get_auth_header(),
-            json=data,
-        )
-        res.raise_for_status()
+        async with httpx.AsyncClient() as client:
+            res = await client.post(
+                settings.API_URL + "/api/v1/admin/rules",
+                headers=get_auth_header(),
+                json=data,
+            )
+            res.raise_for_status()
         return res.json()
     except httpx.HTTPError as e:
         print(f"Error creating rule: {e}")
         return None
 
 
-def rule_update(rule_id: int, data: dict) -> dict | None:
+async def rule_update(rule_id: int, data: dict) -> dict | None:
     """
     Update an existing attribute rule.
     """
 
     try:
-        res = httpx.put(
-            settings.API_URL + f"/api/v1/admin/rules/{rule_id}",
-            headers=get_auth_header(),
-            json=data,
-        )
-        res.raise_for_status()
+        async with httpx.AsyncClient() as client:
+            res = await client.put(
+                settings.API_URL + f"/api/v1/admin/rules/{rule_id}",
+                headers=get_auth_header(),
+                json=data,
+            )
+            res.raise_for_status()
         return res.json()
     except httpx.HTTPError as e:
         print(f"Error updating rule: {e}")
@@ -780,69 +797,73 @@ def rule_update(rule_id: int, data: dict) -> dict | None:
         return None
 
 
-def rule_delete(rule_id: int) -> bool:
+async def rule_delete(rule_id: int) -> bool:
     """
     Delete an attribute rule.
     """
 
     try:
-        res = httpx.delete(
-            settings.API_URL + f"/api/v1/admin/rules/{rule_id}",
-            headers=get_auth_header(),
-        )
-        res.raise_for_status()
+        async with httpx.AsyncClient() as client:
+            res = await client.delete(
+                settings.API_URL + f"/api/v1/admin/rules/{rule_id}",
+                headers=get_auth_header(),
+            )
+            res.raise_for_status()
         return True
     except httpx.HTTPError as e:
         print(f"Error deleting rule: {e}")
         return False
 
 
-def attributes_get() -> list:
+async def attributes_get() -> list:
     """
     Fetch all onboarding attributes from backend.
     """
 
     try:
-        res = httpx.get(
-            settings.API_URL + "/api/v1/admin/attributes",
-            headers=get_auth_header(),
-        )
-        res.raise_for_status()
+        async with httpx.AsyncClient() as client:
+            res = await client.get(
+                settings.API_URL + "/api/v1/admin/attributes",
+                headers=get_auth_header(),
+            )
+            res.raise_for_status()
         return res.json().get("result", [])
     except httpx.HTTPError as e:
         print(f"Error fetching attributes: {e}")
         return []
 
 
-def attribute_create(data: dict) -> dict | None:
+async def attribute_create(data: dict) -> dict | None:
     """
     Add a new onboarding attribute.
     """
 
     try:
-        res = httpx.post(
-            settings.API_URL + "/api/v1/admin/attributes",
-            headers=get_auth_header(),
-            json=data,
-        )
-        res.raise_for_status()
+        async with httpx.AsyncClient() as client:
+            res = await client.post(
+                settings.API_URL + "/api/v1/admin/attributes",
+                headers=get_auth_header(),
+                json=data,
+            )
+            res.raise_for_status()
         return res.json()
     except httpx.HTTPError as e:
         print(f"Error creating attribute: {e}")
         return None
 
 
-def attribute_delete(attribute_id: int) -> bool:
+async def attribute_delete(attribute_id: int) -> bool:
     """
     Delete an onboarding attribute.
     """
 
     try:
-        res = httpx.delete(
-            settings.API_URL + f"/api/v1/admin/attributes/{attribute_id}",
-            headers=get_auth_header(),
-        )
-        res.raise_for_status()
+        async with httpx.AsyncClient() as client:
+            res = await client.delete(
+                settings.API_URL + f"/api/v1/admin/attributes/{attribute_id}",
+                headers=get_auth_header(),
+            )
+            res.raise_for_status()
         return True
     except httpx.HTTPError as e:
         print(f"Error deleting attribute: {e}")
@@ -867,62 +888,66 @@ def rules_test(rule_ids: list[int]) -> list:
         return []
 
 
-def announcements_get() -> list:
+async def announcements_get() -> list:
     """Fetch all announcements from backend."""
 
     try:
-        res = httpx.get(
-            settings.API_URL + "/api/v1/admin/announcements",
-            headers=get_auth_header(),
-        )
-        res.raise_for_status()
+        async with httpx.AsyncClient() as client:
+            res = await client.get(
+                settings.API_URL + "/api/v1/admin/announcements",
+                headers=get_auth_header(),
+            )
+            res.raise_for_status()
         return res.json().get("result", [])
     except httpx.HTTPError as e:
         print(f"Error fetching announcements: {e}")
         return []
 
 
-def announcement_create(data: dict) -> dict | None:
+async def announcement_create(data: dict) -> dict | None:
     """Create a new announcement."""
 
     try:
-        res = httpx.post(
-            settings.API_URL + "/api/v1/admin/announcements",
-            headers=get_auth_header(),
-            json=data,
-        )
-        res.raise_for_status()
+        async with httpx.AsyncClient() as client:
+            res = await client.post(
+                settings.API_URL + "/api/v1/admin/announcements",
+                headers=get_auth_header(),
+                json=data,
+            )
+            res.raise_for_status()
         return res.json()
     except httpx.HTTPError as e:
         print(f"Error creating announcement: {e}")
         return None
 
 
-def announcement_update(announcement_id: int, data: dict) -> dict | None:
+async def announcement_update(announcement_id: int, data: dict) -> dict | None:
     """Update an existing announcement."""
 
     try:
-        res = httpx.put(
-            settings.API_URL + f"/api/v1/admin/announcements/{announcement_id}",
-            headers=get_auth_header(),
-            json=data,
-        )
-        res.raise_for_status()
+        async with httpx.AsyncClient() as client:
+            res = await client.put(
+                settings.API_URL + f"/api/v1/admin/announcements/{announcement_id}",
+                headers=get_auth_header(),
+                json=data,
+            )
+            res.raise_for_status()
         return res.json()
     except httpx.HTTPError as e:
         print(f"Error updating announcement: {e}")
         return None
 
 
-def announcement_delete(announcement_id: int) -> bool:
+async def announcement_delete(announcement_id: int) -> bool:
     """Delete an announcement."""
 
     try:
-        res = httpx.delete(
-            settings.API_URL + f"/api/v1/admin/announcements/{announcement_id}",
-            headers=get_auth_header(),
-        )
-        res.raise_for_status()
+        async with httpx.AsyncClient() as client:
+            res = await client.delete(
+                settings.API_URL + f"/api/v1/admin/announcements/{announcement_id}",
+                headers=get_auth_header(),
+            )
+            res.raise_for_status()
         return True
     except httpx.HTTPError as e:
         print(f"Error deleting announcement: {e}")
