@@ -15,7 +15,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import json
 import httpx
 
 from nicegui import app, ui
@@ -30,29 +29,6 @@ from utils.video import create_video_proxy
 create_video_proxy()
 
 settings = get_settings()
-
-
-def save_srt(job_id: str, data: str, editor: SRTEditor, data_format: str) -> None:
-    try:
-        jsondata = {"format": data_format, "data": data}
-
-        headers = get_auth_header()
-        res = httpx.put(
-            f"{settings.API_URL}/api/v1/transcriber/{job_id}/result",
-            headers=headers,
-            json=jsondata,
-        )
-        res.raise_for_status()
-    except httpx.HTTPError as e:
-        ui.notify(f"Error: Failed to save file: {e}", type="negative")
-        return
-
-    ui.notify(
-        "File saved successfully",
-        type="positive",
-        position="bottom",
-        icon="check_circle",
-    )
 
 
 def create() -> None:
@@ -165,27 +141,7 @@ def create() -> None:
             with ui.column().classes("flex-row items-center"):
                 editor.create_undo_redo_panel()
                 with ui.button("Save", icon="save") as save_button:
-                    if data_format == "srt":
-                        save_button.on(
-                            "click",
-                            lambda: save_srt(
-                                uuid,
-                                editor.export_srt(),
-                                editor,
-                                data_format,
-                            ),
-                        )
-                    else:
-                        save_button.on(
-                            "click",
-                            lambda: save_srt(
-                                uuid,
-                                json.dumps(editor.export_json()),
-                                editor,
-                                "json",
-                            ),
-                        )
-
+                    save_button.on("click", lambda: editor.save_srt_changes())
                     save_button.props("flat").classes("editor-btn editor-toolbar-btn")
 
                 # Export button - opens dialog

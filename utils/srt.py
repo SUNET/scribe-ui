@@ -269,10 +269,12 @@ class SRTEditor:
         try:
             if self.srt_format == "srt":
                 data = self.export_srt()
+                fmt = "srt"
             else:
                 data = json.dumps(self.export_json())
+                fmt = "json"
 
-            jsondata = {"format": self.srt_format, "data": data}
+            jsondata = {"format": fmt, "data": data}
             headers = get_auth_header()
             headers["Content-Type"] = "application/json"
             res = httpx.put(
@@ -527,6 +529,8 @@ class SRTEditor:
                     )
                 )
                 self.speakers.add(seg["speaker"])
+
+        self.renumber_captions()
 
     def parse_srt(self, srt_content: str) -> None:
         """
