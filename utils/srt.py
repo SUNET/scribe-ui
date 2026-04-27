@@ -69,6 +69,9 @@ class SRTEditor:
         self._pending_action_after_save: Optional[Callable] = None
         self._play_pause = False
 
+        # Caret position inside the currently edited caption textarea
+        self._caret_pos: Optional[int] = None
+
     def has_unsaved_changes(self) -> bool:
         """
         Check if there are unsaved changes.
@@ -909,9 +912,54 @@ class SRTEditor:
 
         return highlighted
 
-    def split_caption(self, caption: SRTCaption) -> None:
+    def _track_caret(self, e) -> None:
+        """
+        Update the tracked caret position from a textarea event.
+        """
+
+        value = e.args
+        if isinstance(value, list):
+            value = value[0] if value else None
+        if isinstance(value, dict):
+            value = next(iter(value.values()), None)
+        if isinstance(value, int):
+            self._caret_pos = value
+
+    def _bind_caret_tracking(self, text_area: ui.textarea) -> None:
+        """
+        Wire textarea events so any caret movement or selection updates
+        ``self._caret_pos``. Used by Split to know where to cut.
+        """
+
+        for event in ("keyup", "click", "select", "focus"):
+            text_area.on(
+                event,
+                self._track_caret,
+                js_handler="(e) => emit(e.target.selectionStart)",
+                throttle=0.05,
+            )
+
+    def _split_at_caret(self, caption: SRTCaption, text_area: ui.textarea) -> None:
+        """
+        Split using the most recently tracked caret position.
+        """
+
+        self.split_caption(
+            caption, caret=self._caret_pos, text=text_area.value
+        )
+
+    def split_caption(
+        self,
+        caption: SRTCaption,
+        caret: Optional[int] = None,
+        text: Optional[str] = None,
+    ) -> None:
         """
         Split a caption into two parts.
+
+        If ``caret`` is provided and falls inside ``text`` (or caption.text when
+        text is None), split exactly at that character offset. Otherwise fall
+        back to a midpoint heuristic.
         """
 
         if not caption:
@@ -920,25 +968,28 @@ class SRTEditor:
         # Save state before making changes
         self.save_state_for_undo()
 
-        text_lines = caption.text.split("\n")
+        source_text = text if text is not None else caption.text
+        caption.text = source_text
 
-        if len(text_lines) == 1:
-            # Split single line in half
-            text = caption.text
-            mid_point = len(text) // 2
-            # Find nearest space to split at
-            while mid_point > 0 and text[mid_point] != " ":
-                mid_point -= 1
-            if mid_point == 0:
-                mid_point = len(text) // 2
-
-            first_part = text[:mid_point].strip()
-            second_part = text[mid_point:].strip()
+        if caret is not None and 0 < caret < len(source_text):
+            first_part = source_text[:caret].strip()
+            second_part = source_text[caret:].strip()
         else:
-            # Split at middle line
-            mid_line = len(text_lines) // 2
-            first_part = "\n".join(text_lines[:mid_line])
-            second_part = "\n".join(text_lines[mid_line:])
+            text_lines = source_text.split("\n")
+
+            if len(text_lines) == 1:
+                mid_point = len(source_text) // 2
+                while mid_point > 0 and source_text[mid_point] != " ":
+                    mid_point -= 1
+                if mid_point == 0:
+                    mid_point = len(source_text) // 2
+
+                first_part = source_text[:mid_point].strip()
+                second_part = source_text[mid_point:].strip()
+            else:
+                mid_line = len(text_lines) // 2
+                first_part = "\n".join(text_lines[:mid_line])
+                second_part = "\n".join(text_lines[mid_line:])
 
         # Calculate time split
         start_seconds = caption.get_start_seconds()
@@ -961,6 +1012,7 @@ class SRTEditor:
         caption_index = self.captions.index(caption)
         self.captions.insert(caption_index + 1, new_caption)
 
+        self._caret_pos = None
         self.renumber_captions()
         self.update_words_per_minute()
         self.refresh_display(force_full_refresh=True)
@@ -1042,9 +1094,11 @@ class SRTEditor:
 
         if self.selected_caption == caption:
             self.selected_caption = None
+            self._caret_pos = None
         else:
             caption.is_selected = True
             self.selected_caption = caption
+            self._caret_pos = None
 
             # Get caption start time
             if self.__video_player and seek:
@@ -1377,13 +1431,15 @@ class SRTEditor:
                         "blur",
                         lambda e: self.update_caption_text(caption, e.sender.value),
                     )
+                    self._bind_caret_tracking(text_area)
 
                     # Action buttons
                     with ui.row().classes("w-full justify-between"):
                         ui.button("Split", icon="call_split").props(
                             "flat dense"
                         ).classes("editor-btn editor-caption-btn").on(
-                            "click", lambda: self.split_caption(caption)
+                            "click",
+                            lambda c=caption, ta=text_area: self._split_at_caret(c, ta),
                         )
                         ui.button("Merge prev", icon="merge_type").props(
                             "flat dense"
@@ -1630,12 +1686,14 @@ class SRTEditor:
                 text_area.on(
                     "blur", lambda e: self.update_caption_text(caption, e.sender.value)
                 )
+                self._bind_caret_tracking(text_area)
 
                 with ui.row().classes("w-full justify-between"):
                     ui.button("Split", icon="call_split").props(
                         "flat dense"
                     ).classes("editor-btn editor-caption-btn").on(
-                        "click", lambda: self.split_caption(caption)
+                        "click",
+                        lambda c=caption, ta=text_area: self._split_at_caret(c, ta),
                     )
                     ui.button("Merge prev", icon="merge_type").props(
                         "flat dense"
