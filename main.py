@@ -66,27 +66,33 @@ async def index(request: Request) -> None:
     if token:
         app.storage.user["token"] = token
 
+    client = ui.context.client
+
     # Set the users timezone
-    try:
-        timezone = await ui.run_javascript(
-            "Intl.DateTimeFormat().resolvedOptions().timeZone", timeout=5.0
-        )
-    except (TimeoutError, Exception):
-        timezone = "UTC"
+    timezone = "UTC"
+    if client.has_socket_connection:
+        try:
+            timezone = await ui.run_javascript(
+                "Intl.DateTimeFormat().resolvedOptions().timeZone", timeout=5.0
+            )
+        except (TimeoutError, Exception):
+            pass
 
     app.storage.user["timezone"] = timezone
 
     # Always use auto mode on the landing page (user hasn't logged in yet)
     ui.dark_mode(None)
 
-    try:
-        prefers_dark = await ui.run_javascript(
-            "window.matchMedia('(prefers-color-scheme: dark)').matches",
-            timeout=5.0,
-        )
-        app.storage.user["_resolved_dark"] = bool(prefers_dark)
-    except (TimeoutError, Exception):
-        app.storage.user["_resolved_dark"] = False
+    prefers_dark = False
+    if client.has_socket_connection:
+        try:
+            prefers_dark = await ui.run_javascript(
+                "window.matchMedia('(prefers-color-scheme: dark)').matches",
+                timeout=5.0,
+            )
+        except (TimeoutError, Exception):
+            pass
+    app.storage.user["_resolved_dark"] = bool(prefers_dark)
 
     if (
         app.storage.user.get("token")
