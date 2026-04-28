@@ -16,7 +16,9 @@
 # limitations under the License.
 
 import asyncio
+import os
 import re
+import tempfile
 import httpx
 import pytz
 
@@ -855,20 +857,26 @@ def table_click(event) -> None:
         )
 
 
-async def post_file(filedata: bytes, filename: str) -> bool:
+async def post_file(file_path: str, filename: str) -> bool:
     """
-    Post a file to the API.
+    Stream a file from disk to the API without loading it into memory.
     """
-
-    files_json = {"file": (filename, filedata)}
 
     try:
         async with httpx.AsyncClient(timeout=900) as client:
-            response = await client.post(
-                f"{settings.API_URL}/api/v1/transcriber",
-                files=files_json,
-                headers=get_auth_header(),
-            )
+            with open(file_path, "rb") as upload_file:
+                response = await client.post(
+                    f"{settings.API_URL}/api/v1/transcriber",
+                    files={
+                        "file": (
+                            filename,
+                            upload_file,
+                            "application/octet-stream",
+                        )
+                    },
+                    headers=get_auth_header(),
+                )
+
             response.raise_for_status()
 
             if response.status_code != 200:
@@ -1038,37 +1046,61 @@ async def handle_upload_with_feedback(files, dialog, table):
 
     # Read file data while the client context is still active
     file_items = []
+
     for file in files.files:
         file_name = sanitize_filename(file.name)
-        file_data = await file.read()
-        file_items.append((file_name, file_data))
 
-    # Upload to backend in a background task so the UI stays responsive
-    async def _upload():
-        for file_name, file_data in file_items:
-            try:
-                await post_file(file_data, file_name)
+        temp_file = tempfile.NamedTemporaryFile(
+            delete=False,
+            prefix="scribe-ui-upload-",
+            suffix=".upload",
+        )
+        temp_path = temp_file.name
+        temp_file.close()
 
-                if not client._deleted:
-                    with table:
-                        ui.notify(
-                            f"Successfully uploaded {file_name}",
-                            type="positive",
-                            timeout=3000,
-                        )
-            except Exception as e:
-                if not client._deleted:
-                    with table:
-                        ui.notify(
-                            f"Error uploading {file_name}: {str(e)}",
-                            type="negative",
-                            timeout=5000,
-                        )
+        try:
+            await file.save(temp_path)
+            file_items.append((file_name, temp_path))
+        except Exception:
+            if os.path.exists(temp_path):
+            os.remove(temp_path)
+        raise
 
-        if not client._deleted:
-            table.update_rows(await jobs_get(), clear_selection=False)
+# Upload to backend in a background task so the UI stays responsive
+async def _upload():
+    for file_name, temp_path in file_items:
+        try:
+            success = await post_file(temp_path, file_name)
 
-    asyncio.create_task(_upload())
+            if not client._deleted:
+                if success:
+                    ui.notify(
+                        f"Successfully uploaded {file_name}",
+                        type="positive",
+                        timeout=3000,
+                    )
+                else:
+                    ui.notify(
+                        f"Error uploading {file_name}",
+                        type="negative",
+                        timeout=5000,
+                    )
+        except Exception as e:
+            if not client._deleted:
+                ui.notify(
+                    f"Error uploading {file_name}: {str(e)}",
+                    type="negative",
+                    timeout=5000,
+                )
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
+    if not client._deleted:
+        await client.connected()
+        table.update_rows(await jobs_get(), clear_selection=False)
+
+asyncio.create_task(_upload())
 
 
 def table_transcribe(selected_row, on_complete=None) -> None:
