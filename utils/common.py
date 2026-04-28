@@ -34,9 +34,8 @@ from utils.token import (
 )
 from utils.helpers import storage_decrypt, customers_get
 
-MultiPartParser.spool_max_size = 1024 * 1024 * 4096
 settings = get_settings()
-
+MultiPartParser.spool_max_size = 1024 * 1024 * settings.MULTIPART_SPOOL_MAX_SIZE_MB
 
 def sanitize_filename(filename: str) -> str:
     """
