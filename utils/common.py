@@ -1071,32 +1071,34 @@ async def handle_upload_with_feedback(files, dialog, table):
                 success = await post_file(temp_path, file_name)
 
                 if not client._deleted:
-                    if success:
+                    with client:
+                        if success:
+                            ui.notify(
+                                f"Successfully uploaded {file_name}",
+                                type="positive",
+                                timeout=3000,
+                            )
+                        else:
+                            ui.notify(
+                                f"Error uploading {file_name}",
+                                type="negative",
+                                timeout=5000,
+                            )
+            except Exception as e:
+                if not client._deleted:
+                    with client:
                         ui.notify(
-                            f"Successfully uploaded {file_name}",
-                            type="positive",
-                            timeout=3000,
-                        )
-                    else:
-                        ui.notify(
-                            f"Error uploading {file_name}",
+                            f"Error uploading {file_name}: {str(e)}",
                             type="negative",
                             timeout=5000,
                         )
-            except Exception as e:
-                if not client._deleted:
-                    ui.notify(
-                        f"Error uploading {file_name}: {str(e)}",
-                        type="negative",
-                        timeout=5000,
-                    )
             finally:
                 if os.path.exists(temp_path):
                     os.remove(temp_path)
 
         if not client._deleted:
-            await client.connected()
-            table.update_rows(await jobs_get(), clear_selection=False)
+            with client:
+                table.update_rows(await jobs_get(), clear_selection=False)
 
     asyncio.create_task(_upload())
 
