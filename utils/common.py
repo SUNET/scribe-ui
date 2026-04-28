@@ -763,7 +763,7 @@ def table_click(event) -> None:
 
 
 async def post_file(
-    filedata: bytes,
+    file_upload,
     filename: str,
     on_progress: callable = None,
 ) -> bool:
@@ -771,35 +771,29 @@ async def post_file(
     Post a file to the API with optional progress callback.
 
     Parameters:
-        filedata: The file content as bytes.
+        file_upload: A NiceGUI FileUpload (kept in memory; spool_max_size is 4GB).
         filename: The filename.
         on_progress: Optional callback(percent: int) called during upload.
     """
+    import io
 
-    total_size = len(filedata)
+    total_size = file_upload.size()
     bytes_sent = 0
 
-    class ProgressReader:
-        """Wraps file bytes to track upload progress."""
+    source = io.BytesIO(await file_upload.read())
 
-        def __init__(self, data: bytes):
-            self._data = data
-            self._offset = 0
+    class ProgressReader:
+        """Wraps a file-like source to track upload progress."""
 
         def read(self, size: int = -1) -> bytes:
             nonlocal bytes_sent
-            if size == -1:
-                chunk = self._data[self._offset :]
-                self._offset = len(self._data)
-            else:
-                chunk = self._data[self._offset : self._offset + size]
-                self._offset += len(chunk)
+            chunk = source.read(size)
             bytes_sent += len(chunk)
             if on_progress and total_size > 0:
                 on_progress(min(int(bytes_sent * 100 / total_size), 100))
             return chunk
 
-    reader = ProgressReader(filedata)
+    reader = ProgressReader()
     files_json = {"file": (filename, reader)}
 
     try:
@@ -822,6 +816,8 @@ async def post_file(
             f"Error when uploading file: {str(e)}", type="negative", position="top"
         )
         return False
+    finally:
+        source.close()
 
     return True
 
@@ -975,12 +971,12 @@ async def handle_upload_with_feedback(files, dialog, table):
 
     dialog.close()
 
-    # Read file data while the client context is still active
+    # Keep references to FileUpload objects (file content stays on disk for
+    # large uploads instead of being loaded into memory here).
     file_items = []
     for file in files.files:
         file_name = sanitize_filename(file.name)
-        file_data = await file.read()
-        file_items.append((file_name, file_data))
+        file_items.append((file_name, file))
 
     # Add temporary "Uploading" rows to the table
     existing_rows = list(table.rows or [])
@@ -1005,7 +1001,8 @@ async def handle_upload_with_feedback(files, dialog, table):
 
     # Upload to backend in a background task so the UI stays responsive
     async def _upload():
-        for idx, (file_name, file_data) in enumerate(file_items):
+        for idx in range(len(file_items)):
+            file_name, file_upload = file_items[idx]
             row_id = upload_row_ids[idx]
 
             def update_progress(percent, _row_id=row_id):
@@ -1017,7 +1014,7 @@ async def handle_upload_with_feedback(files, dialog, table):
                     table.update()
 
             try:
-                await post_file(file_data, file_name, on_progress=update_progress)
+                await post_file(file_upload, file_name, on_progress=update_progress)
 
                 if not client._deleted:
                     for row in table.rows:
@@ -1044,6 +1041,8 @@ async def handle_upload_with_feedback(files, dialog, table):
                             type="negative",
                             timeout=5000,
                         )
+            finally:
+                file_items[idx] = (file_name, None)
 
         # Refresh with real data from backend
         if not client._deleted:
