@@ -1044,7 +1044,6 @@ async def handle_upload_with_feedback(files, dialog, table):
 
     dialog.close()
 
-    # Read file data while the client context is still active
     file_items = []
 
     for file in files.files:
@@ -1063,44 +1062,43 @@ async def handle_upload_with_feedback(files, dialog, table):
             file_items.append((file_name, temp_path))
         except Exception:
             if os.path.exists(temp_path):
-            os.remove(temp_path)
-        raise
+                os.remove(temp_path)
+            raise
 
-# Upload to backend in a background task so the UI stays responsive
-async def _upload():
-    for file_name, temp_path in file_items:
-        try:
-            success = await post_file(temp_path, file_name)
+    async def _upload():
+        for file_name, temp_path in file_items:
+            try:
+                success = await post_file(temp_path, file_name)
 
-            if not client._deleted:
-                if success:
+                if not client._deleted:
+                    if success:
+                        ui.notify(
+                            f"Successfully uploaded {file_name}",
+                            type="positive",
+                            timeout=3000,
+                        )
+                    else:
+                        ui.notify(
+                            f"Error uploading {file_name}",
+                            type="negative",
+                            timeout=5000,
+                        )
+            except Exception as e:
+                if not client._deleted:
                     ui.notify(
-                        f"Successfully uploaded {file_name}",
-                        type="positive",
-                        timeout=3000,
-                    )
-                else:
-                    ui.notify(
-                        f"Error uploading {file_name}",
+                        f"Error uploading {file_name}: {str(e)}",
                         type="negative",
                         timeout=5000,
                     )
-        except Exception as e:
-            if not client._deleted:
-                ui.notify(
-                    f"Error uploading {file_name}: {str(e)}",
-                    type="negative",
-                    timeout=5000,
-                )
-        finally:
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
+            finally:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
 
-    if not client._deleted:
-        await client.connected()
-        table.update_rows(await jobs_get(), clear_selection=False)
+        if not client._deleted:
+            await client.connected()
+            table.update_rows(await jobs_get(), clear_selection=False)
 
-asyncio.create_task(_upload())
+    asyncio.create_task(_upload())
 
 
 def table_transcribe(selected_row, on_complete=None) -> None:
