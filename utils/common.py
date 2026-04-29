@@ -20,6 +20,7 @@ import re
 import httpx
 import pytz
 
+
 from datetime import datetime, timedelta
 from nicegui import ui, app
 from starlette.formparsers import MultiPartParser
@@ -32,7 +33,13 @@ from utils.token import (
     get_user_data,
     token_refresh,
 )
-from utils.helpers import storage_decrypt, customers_get, dark_mode_save
+from utils.helpers import (
+    storage_decrypt,
+    customers_get,
+    dark_mode_save,
+    sanitize_filename,
+)
+from utils.srt import SRTEditor
 from utils.styles import (
     default_styles,
     menu_active_style,
@@ -42,19 +49,6 @@ from utils.styles import (
 
 MultiPartParser.spool_max_size = 1024 * 1024 * 4096
 settings = get_settings()
-
-
-def sanitize_filename(filename: str) -> str:
-    """
-    Remove or replace characters that are unsafe in filenames.
-    """
-    # Replace path separators and null bytes
-    filename = filename.replace("/", "_").replace("\\", "_").replace("\x00", "")
-    # Remove other problematic characters
-    filename = re.sub(r'[<>:"|?*\x01-\x1f]', "_", filename)
-    # Strip leading/trailing dots and spaces
-    filename = filename.strip(". ")
-    return filename or "unnamed"
 
 
 def _get_support_contact_email() -> str:
@@ -312,7 +306,8 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
         app.storage.user["_resolved_dark"] = bool(dark_pref)
     else:
         # Auto mode: reload when OS theme changes so Plotly charts update
-        ui.add_head_html("""
+        ui.add_head_html(
+            """
         <script>
         if (!window._scribeThemeListener) {
             window._scribeThemeListener = true;
@@ -321,7 +316,8 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
             });
         }
         </script>
-        """)
+        """
+        )
 
     is_admin = get_admin_status()
     is_bofh = get_bofh_status()
@@ -533,12 +529,12 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                         "Close menu" if drawer_open else "Expand menu"
                     )
                     menu_btn_tooltip_ref = menu_btn_tooltip
-                ui.image(f"static/{settings.LOGO_TOPBAR_LIGHT}").classes("q-mr-sm logo-light").style(
-                    "height: 30px; width: 30px;"
-                )
-                ui.image(f"static/{settings.LOGO_TOPBAR_DARK}").classes("q-mr-sm logo-dark").style(
-                    "height: 30px; width: 30px;"
-                )
+                ui.image(f"static/{settings.LOGO_TOPBAR_LIGHT}").classes(
+                    "q-mr-sm logo-light"
+                ).style("height: 30px; width: 30px;")
+                ui.image(f"static/{settings.LOGO_TOPBAR_DARK}").classes(
+                    "q-mr-sm logo-dark"
+                ).style("height: 30px; width: 30px;")
                 ui.label(settings.TOPBAR_TEXT + header_text).classes(
                     "text-h6 text-theme-primary"
                 )
@@ -550,10 +546,14 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                     if dark_val
                     else ("brightness_auto" if dark_val is None else "light_mode")
                 )
-                dark_btn = ui.button(
-                    icon=dark_icon,
-                    on_click=lambda: _cycle_dark_mode(dark_btn),
-                ).props("flat").classes("header-btn")
+                dark_btn = (
+                    ui.button(
+                        icon=dark_icon,
+                        on_click=lambda: _cycle_dark_mode(dark_btn),
+                    )
+                    .props("flat")
+                    .classes("header-btn")
+                )
                 with dark_btn:
                     ui.tooltip("Toggle theme")
                 with ui.button(
@@ -574,12 +574,12 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
             .classes("drop-shadow-md")
         ):
             with ui.element("div").style("display: flex; gap: 0px;"):
-                ui.image(f"static/{settings.LOGO_TOPBAR_LIGHT}").classes("q-mr-sm logo-light").style(
-                    "height: 30px; width: 30px;"
-                )
-                ui.image(f"static/{settings.LOGO_TOPBAR_DARK}").classes("q-mr-sm logo-dark").style(
-                    "height: 30px; width: 30px;"
-                )
+                ui.image(f"static/{settings.LOGO_TOPBAR_LIGHT}").classes(
+                    "q-mr-sm logo-light"
+                ).style("height: 30px; width: 30px;")
+                ui.image(f"static/{settings.LOGO_TOPBAR_DARK}").classes(
+                    "q-mr-sm logo-dark"
+                ).style("height: 30px; width: 30px;")
                 ui.label(settings.TOPBAR_TEXT + header_text).classes(
                     "text-h6 text-theme-primary"
                 )
@@ -619,10 +619,14 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                     if dark_val2
                     else ("brightness_auto" if dark_val2 is None else "light_mode")
                 )
-                dark_btn2 = ui.button(
-                    icon=dark_icon2,
-                    on_click=lambda: _cycle_dark_mode(dark_btn2),
-                ).props("flat").classes("header-btn")
+                dark_btn2 = (
+                    ui.button(
+                        icon=dark_icon2,
+                        on_click=lambda: _cycle_dark_mode(dark_btn2),
+                    )
+                    .props("flat")
+                    .classes("header-btn")
+                )
                 with dark_btn2:
                     ui.tooltip("Toggle theme")
                 with ui.button(
@@ -775,22 +779,30 @@ async def post_file(
         filename: The filename.
         on_progress: Optional callback(percent: int) called during upload.
     """
-    import io
-
     total_size = file_upload.size()
+    data = await file_upload.read()
+    pos = 0
     bytes_sent = 0
 
-    source = io.BytesIO(await file_upload.read())
-
     class ProgressReader:
-        """Wraps a file-like source to track upload progress."""
+        """Read bytes with progress tracking, no BytesIO copy."""
 
         def read(self, size: int = -1) -> bytes:
-            nonlocal bytes_sent
-            chunk = source.read(size)
+            nonlocal pos, bytes_sent
+
+            if size is None or size < 0:
+                chunk = data[pos:]
+                pos = len(data)
+            else:
+                end = min(pos + size, len(data))
+                chunk = data[pos:end]
+                pos = end
+
             bytes_sent += len(chunk)
+
             if on_progress and total_size > 0:
                 on_progress(min(int(bytes_sent * 100 / total_size), 100))
+
             return chunk
 
     reader = ProgressReader()
@@ -803,6 +815,7 @@ async def post_file(
                 files=files_json,
                 headers=get_auth_header(),
             )
+
             response.raise_for_status()
 
             if response.status_code != 200:
@@ -817,7 +830,7 @@ async def post_file(
         )
         return False
     finally:
-        source.close()
+        del data
 
     return True
 
@@ -971,12 +984,11 @@ async def handle_upload_with_feedback(files, dialog, table):
 
     dialog.close()
 
-    # Keep references to FileUpload objects (file content stays on disk for
-    # large uploads instead of being loaded into memory here).
     file_items = []
     for file in files.files:
         file_name = sanitize_filename(file.name)
         file_items.append((file_name, file))
+    files.files.clear()
 
     # Add temporary "Uploading" rows to the table
     existing_rows = list(table.rows or [])
@@ -1043,6 +1055,7 @@ async def handle_upload_with_feedback(files, dialog, table):
                         )
             finally:
                 file_items[idx] = (file_name, None)
+                file_upload = None
 
         # Refresh with real data from backend
         if not client._deleted:
@@ -1352,8 +1365,6 @@ def table_bulk_export(table: ui.table) -> None:
     progress_dialog.open()
 
     async def fetch_and_show():
-        from utils.srt import SRTEditor
-
         editors = []
         for i, row in enumerate(completed):
             uuid = row["uuid"]
