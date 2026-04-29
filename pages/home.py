@@ -219,4 +219,10 @@ def create() -> None:
             )
             poll_timer.interval = 5.0 if has_active else 30.0
 
-                ui.timer(0.0, initial_load, once=True)
+        async def initial_load():
+            rows = await jobs_get()
+            table.rows = rows
+            table.selection = "multiple" if rows else "none"
+
+        poll_timer = ui.timer(30.0, update_rows)
+        ui.timer(0.0, initial_load, once=True)
