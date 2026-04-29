@@ -125,13 +125,13 @@ def show_help_dialog() -> None:
                             "2",
                             "Start transcription",
                             'Click Transcribe and choose your settings.',
-                            "settings",
+                            "rtt",
                         ),
                         (
                             "3",
                             "Processing",
                             "Your files are processed in the background. You can safely close the browser in the meantime.",
-                            "pending_actions",
+                            "clock_loader_60",
                         ),
                         (
                             "4",
