@@ -305,7 +305,7 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
     # Apply dark mode preference
     ui.add_head_html(default_styles)
     dark_pref = app.storage.user.get("dark_mode", None)
-    ui.dark_mode(dark_pref)
+    dark_mode_el = ui.dark_mode(dark_pref)
 
     # Store resolved dark mode state for components like Plotly
     if dark_pref is not None:
@@ -348,7 +348,7 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
         else:
             new_val = None
         app.storage.user["dark_mode"] = new_val
-        ui.dark_mode(new_val)
+        dark_mode_el.value = new_val
         dark_mode_save(new_val)
         # Resolve the actual dark state (needed for Plotly chart templates)
         if new_val is not None:
