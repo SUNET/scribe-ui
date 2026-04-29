@@ -108,7 +108,7 @@ def show_help_dialog() -> None:
                 ):
                     ui.label("About Sunet Scribe").classes("text-h6 font-semibold mb-2")
                     ui.label(
-                        "A powerful transcription service using Whisper AI models to convert audio and video files into searchable text or time-coded subtitles with high accuracy."
+                        "Turn audio and video into searchable text or subtitles. Built for research and education, with privacy and accuracy at its core."
                     ).classes("text-body1")
 
                 ui.label("Getting started").classes("text-h6 font-bold mt-2")
@@ -118,25 +118,25 @@ def show_help_dialog() -> None:
                         (
                             "1",
                             "Upload Files",
-                            "Click Upload or drag & drop up to 5 files (max 4GB each). Supports MP3, WAV, MP4, MKV, AVI, and more.",
+                            "Click Upload to add files. Supports most common audio and video formats.",
                             "upload_file",
                         ),
                         (
                             "2",
-                            "Configure",
-                            'Click the "Transcribe" button, select language, number of speakers, and output format (transcript or subtitles).',
+                            "Start transcription",
+                            'Click Transcribe and choose your settings.',
                             "settings",
                         ),
                         (
                             "3",
-                            "Monitor",
-                            "Track job status on the dashboard. Jobs process in the background.",
+                            "Processing",
+                            "Your files are processed in the background. You can safely close the browser in the meantime.",
                             "pending_actions",
                         ),
                         (
                             "4",
-                            "Edit & Export",
-                            "Click completed jobs to refine in the editor. Press ? for keyboard shortcuts.",
+                            "Get your result",
+                            "Download your result, or open the Editor to review and edit.",
                             "edit_note",
                         ),
                     ]:
@@ -156,7 +156,7 @@ def show_help_dialog() -> None:
                             ui.icon("security", size="sm").classes("help-privacy-icon")
                             ui.label("Privacy").classes("text-subtitle1 font-semibold")
                         ui.label(
-                            "Files are encrypted, only accessible to you, and auto-deleted after the scheduled deletion date."
+                            "Files are encrypted, accessible only to you, and automatically deleted after 7 days."
                         ).classes("text-body2")
 
                     with ui.card().classes("flex-1 help-support-card p-4"):
@@ -165,7 +165,7 @@ def show_help_dialog() -> None:
                             ui.label("Support").classes("text-subtitle1 font-semibold")
 
                         ui.label(
-                            "Contact your institution's IT department for technical support or questions."
+                            "Contact your organisation’s local support for questions or technical support."
                         ).classes("text-body2")
 
                         support_contact = _get_support_contact_email()
