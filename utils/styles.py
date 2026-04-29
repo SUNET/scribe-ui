@@ -426,6 +426,23 @@ theme_styles = """
         min-width: 100px !important;
         flex: 1 1 0;
     }
+    .body--light .q-btn.editor-btn {
+        background-color: #ffffff !important;
+        border: 1px solid var(--color-border-subtle) !important;
+        color: #000000 !important;
+    }
+    .body--light .q-btn.editor-btn:hover {
+        background-color: var(--color-bg-surface-alt) !important;
+    }
+    .body--light .q-btn.editor-btn .q-icon,
+    .body--light .q-btn.editor-btn .q-btn__content {
+        color: #000000 !important;
+    }
+    .body--light .q-btn.editor-btn[disabled] {
+        background-color: #ffffff !important;
+        border: 1px solid var(--color-border-subtle) !important;
+        opacity: 0.4;
+    }
     .body--dark .q-btn.editor-btn {
         background-color: var(--color-bg-page) !important;
         border: 1px solid var(--color-border-subtle) !important;
