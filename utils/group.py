@@ -1,4 +1,21 @@
-import requests
+# Copyright (c) 2025-2026 Sunet.
+# Contributor: Kristofer Hallin
+#
+# This file is part of Sunet Scribe.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import httpx
 
 from nicegui import ui
 from utils.settings import get_settings
@@ -21,31 +38,32 @@ class Group:
 
     def delete_group_dialog(self) -> None:
         with ui.dialog() as delete_group_dialog:
-            with ui.card().style("width: 400px; max-width: 90vw;"):
-                ui.label("Delete group").classes("text-2xl font-bold")
-                ui.label("Are you sure you want to delete this group? This action cannot be undone.").classes("my-4")
-                with ui.row().style("justify-content: flex-end; width: 100%;"):
-                    ui.button("Cancel").classes("button-close").props(
-                        "color=black flat"
-                    ).on("click", lambda: delete_group_dialog.close())
-                    ui.button("Delete").classes("button-close").props(
-                        "color=red flat"
-                    ).on(
-                        "click",
-                        lambda: (
-                            requests.delete(
+            with ui.card():
+                ui.label("Delete group").classes("text-h6")
+                ui.label(
+                    "Are you sure you want to delete this group? This action cannot be undone."
+                ).classes("text-subtitle2").style("margin-bottom: 10px;")
+
+                with ui.row().classes("justify-between w-full"):
+                    ui.button("Cancel", on_click=lambda: delete_group_dialog.close()).props(
+                        "color=black"
+                    )
+                    ui.button(
+                        "Delete",
+                        on_click=lambda: (
+                            httpx.delete(
                                 settings.API_URL + f"/api/v1/admin/groups/{self.group_id}",
                                 headers=get_auth_header(),
                             ),
                             delete_group_dialog.close(),
-                            ui.navigate.to("/admin")
+                            ui.navigate.to("/admin"),
                         ),
-                    )
+                    ).props("color=red")
 
             delete_group_dialog.open()
 
     def create_card(self):
-        with ui.card().classes("my-2").style("width: 100%; box-shadow: none; border: 1px solid #e0e0e0; padding: 16px;"):
+        with ui.card().classes("my-2 admin-card").style("width: 100%; box-shadow: none; border: 1px solid var(--color-border-subtle); padding: 16px;"):
             with ui.row().style(
                 "justify-content: space-between; align-items: center; width: 100%;"
             ):
@@ -54,10 +72,10 @@ class Group:
                     ui.label(self.description).classes("text-md")
 
                     if self.name != "All users":
-                        ui.label(f"Created {self.created_at}").classes("text-sm text-gray-500")
+                        ui.label(f"Created {self.created_at}").classes("text-sm text-theme-muted")
 
-                    ui.label(f"{self.nr_users} members").classes("text-sm text-gray-500")
-                    ui.label(f"Monthly transcription limit: {'Unlimited' if self.quota_seconds == 0 else str(self.quota_seconds // 60) + ' minutes'}").classes("text-sm text-gray-500")
+                    ui.label(f"{self.nr_users} members").classes("text-sm text-theme-muted")
+                    ui.label(f"Monthly transcription limit: {'Unlimited' if self.quota_seconds == 0 else str(self.quota_seconds // 60) + ' minutes'}").classes("text-sm text-theme-muted")
                 with ui.column().style("flex: 1;"):
                     ui.label("Statistics").classes("text-h6 font-bold")
 

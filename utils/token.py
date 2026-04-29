@@ -1,5 +1,22 @@
+# Copyright (c) 2025-2026 Sunet.
+# Contributor: Kristofer Hallin
+#
+# This file is part of Sunet Scribe.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import jwt
-import requests
+import httpx
 import time
 
 from nicegui import app
@@ -9,21 +26,23 @@ from utils.settings import get_settings
 settings = get_settings()
 
 
-def token_refresh_call() -> str:
+async def token_refresh_call() -> str:
     try:
-        token_refresh = app.storage.user.get("refresh_token")
-        response = requests.post(
-            settings.OIDC_APP_REFRESH_ROUTE,
-            json={"token": token_refresh},
-        )
+        refresh_token = app.storage.user.get("refresh_token")
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                settings.OIDC_APP_REFRESH_ROUTE,
+                json={"token": refresh_token},
+                timeout=10,
+            )
         response.raise_for_status()
-    except requests.exceptions.RequestException:
+    except (httpx.HTTPError, Exception):
         return None
 
     return response.json().get("access_token")
 
 
-def token_refresh() -> bool:
+async def token_refresh() -> bool:
     """
     Refresh the token using the refresh token.
     """
@@ -34,7 +53,7 @@ def token_refresh() -> bool:
         jwt_instance = jwt.JWT()
         jwt_decoded = jwt_instance.decode(token_auth, do_verify=False)
     except Exception:
-        token = token_refresh_call()
+        token = await token_refresh_call()
         if not token:
             return None
         jwt_decoded = jwt_instance.decode(token, do_verify=False)
@@ -44,9 +63,9 @@ def token_refresh() -> bool:
         if jwt_decoded["exp"] - int(time.time()) > 60:
             return True
 
-        token = token_refresh_call()
+        token = await token_refresh_call()
         app.storage.user["token"] = token
-    except requests.exceptions.RequestException:
+    except (httpx.HTTPError, Exception):
         return None
 
     return True
@@ -103,15 +122,15 @@ def get_user_data() -> dict:
     """
 
     try:
-        response = requests.get(
-            f"{settings.API_URL}/api/v1/me", headers=get_auth_header(), json={}
+        response = httpx.get(
+            f"{settings.API_URL}/api/v1/me", headers=get_auth_header()
         )
         response.raise_for_status()
         data = response.json()
 
         return data["result"]
 
-    except requests.exceptions.RequestException:
+    except httpx.HTTPError:
         return None
 
 

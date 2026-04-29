@@ -1,8 +1,27 @@
-import asyncio
-import requests
-import pytz
-from datetime import datetime, timedelta
+# Copyright (c) 2025-2026 Sunet.
+# Contributor: Kristofer Hallin
+#
+# This file is part of Sunet Scribe.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
+import asyncio
+import re
+import httpx
+import pytz
+
+
+from datetime import datetime, timedelta
 from nicegui import ui, app
 from starlette.formparsers import MultiPartParser
 from typing import Optional
@@ -11,146 +30,53 @@ from utils.token import (
     get_admin_status,
     get_auth_header,
     get_bofh_status,
+    get_user_data,
     token_refresh,
 )
-
+from utils.helpers import (
+    storage_decrypt,
+    customers_get,
+    dark_mode_save,
+    sanitize_filename,
+)
+from utils.srt import SRTEditor
+from utils.styles import (
+    default_styles,
+    menu_active_style,
+    menu_item_style,
+    severity_styles,
+)
 
 MultiPartParser.spool_max_size = 1024 * 1024 * 4096
-
-
 settings = get_settings()
 
-jobs_columns = [
-    {
-        "name": "filename",
-        "label": "Filename",
-        "field": "filename",
-        "align": "left",
-        "classes": "text-weight-medium",
-    },
-    {
-        "name": "job_type",
-        "label": "Type",
-        "field": "job_type",
-        "align": "left",
-        "classes": "text-weight-medium",
-    },
-    {
-        "name": "created_at",
-        "label": "Created",
-        "field": "created_at",
-        "align": "left",
-    },
-    {
-        "name": "update_at",
-        "label": "Modified",
-        "field": "updated_at",
-        "align": "left",
-    },
-    {
-        "name": "deletetion_date",
-        "label": "Scheduled deletion",
-        "field": "deletion_date",
-        "align": "left",
-    },
-    {
-        "name": "status",
-        "label": "Status",
-        "field": "status",
-        "align": "left",
-    },
-    {"name": "action", "label": "Action", "field": "action", "align": "center"},
-]
 
-default_styles = """
-    <style>
-        .default-style {
-            background-color: #d3ecbe;
-            border: 1px solid #000000;
-        }
-        .default-style.disabled {
-            background-color: #e0e0e0 !important;
-            border: 1px solid #bdbdbd !important;
-            opacity: 0.7;
-        }
-        .delete-style {
-            background-color: #ffffff;
-            color: #721c24;
-            border: 1px solid #000000;
-            width: 150px;
-        }
-        .delete-style.disabled {
-            background-color: #e0e0e0 !important;
-            border: 1px solid #bdbdbd !important;
-            opacity: 0.7;
-        }
-        .table-style th {
-            font-size: 14px;
-        }
-        .table-style tr {
-            font-size: 14px;
-        }
-        .cancel-style {
-            background-color: #ffffff;
-            color: #721c24;
-            border: 1px solid #000000;
-            width: 150px;
-        }
-        .upload-style {
-            width: 100%;
-            height: 200px;
-        }
-        .button-default-style {
-            background-color: #082954 !important;
-            color: #ffffff !important;
-            width: 150px;
-        }
-        .button-replace {
-            background-color: #ffffff;
-            color: #082954 !important;
-            border : 1px solid #082954;
-            width: 150px;
-        }
-        .button-replace-current {
-            background-color: #d3ecbe;
-            color: #000000 !important;
-            width: 150px;
-        }
-        .button-replace-prev-next {
-            background-color: #ffffff;
-            color: #082954 !important;
-        }
-        .button-close {
-            background-color: #ffffff;
-            color: #000000 !important;
-            width: 150px;
-            border: 1px solid #000000;
-        }
-        .button-user-status {
-            background-color: #ffffff;
-            width: 150px;
-            border: 1px solid #000000;
-        }
-        .button-edit {
-            background-color: #082954;
-            color: #ffffff !important;
-            width: 150px;
-        }
-        .deletion-warning {
-            color: #d32f2f;
-            font-weight: 500;
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
-        .deletion-warning-icon {
-            font-size: 18px;
-        }
-        .q-tooltip {
-            font-size: 14px;
-        }
-    </style>
-"""
+def _get_support_contact_email() -> str:
+    """
+    Look up the support contact email for the current user's customer.
+    """
+
+    try:
+        user_data = get_user_data() or {}
+        user_realm = user_data.get("realm", "")
+        if not user_realm:
+            return ""
+
+        customers_data = customers_get()
+        customers = (
+            customers_data.get("result", []) if isinstance(customers_data, dict) else []
+        )
+
+        for c in customers:
+            c_realms = [
+                r.strip() for r in (c.get("realms") or "").split(",") if r.strip()
+            ]
+            if user_realm in c_realms:
+                return c.get("support_contact_email", "")
+    except Exception:
+        pass
+
+    return ""
 
 
 def show_help_dialog() -> None:
@@ -161,27 +87,25 @@ def show_help_dialog() -> None:
     with ui.dialog() as dialog:
         with (
             ui.card()
-            .style(
-                "max-width: 900px; padding: 32px; background: linear-gradient(to bottom, #ffffff 0%, #f8f9fa 100%);"
-            )
-            .classes("no-shadow")
+            .style("max-width: 900px; padding: 32px;")
+            .classes("no-shadow help-dialog-card")
         ):
             with ui.row().classes("w-full items-center justify-between mb-6"):
-                ui.label("Help & Documentation").classes("text-h4 font-bold text-black")
+                ui.label("Help & Documentation").classes("text-h4 font-bold")
                 ui.button(icon="close", on_click=dialog.close).props(
                     "flat round dense color=grey-7"
                 )
 
             with ui.column().classes("w-full gap-6"):
-                with ui.card().classes("bg-blue-50 border-l-4").style(
-                    "border-left-color: #082954; padding: 20px;"
+                with ui.card().classes("help-about-card border-l-4").style(
+                    "padding: 20px;"
                 ):
                     ui.label("About Sunet Scribe").classes("text-h6 font-semibold mb-2")
                     ui.label(
                         "A powerful transcription service using Whisper AI models to convert audio and video files into searchable text or time-coded subtitles with high accuracy."
                     ).classes("text-body1")
 
-                ui.label("Getting Started").classes("text-h6 font-bold mt-2")
+                ui.label("Getting started").classes("text-h6 font-bold mt-2")
 
                 with ui.grid(columns=2).classes("w-full gap-4"):
                     for step_num, step_title, step_desc, step_icon in [
@@ -212,28 +136,44 @@ def show_help_dialog() -> None:
                     ]:
                         with ui.card().classes("p-4"):
                             with ui.row().classes("items-center gap-3 mb-2"):
-                                ui.icon(step_icon, size="md").classes("text-blue-700")
+                                ui.icon(step_icon, size="md").classes("help-about-icon")
                                 ui.label(f"{step_num}. {step_title}").classes(
                                     "text-subtitle1 font-semibold"
                                 )
-                            ui.label(step_desc).classes("text-body2 text-grey-8")
+                            ui.label(step_desc).classes(
+                                "text-body2 text-theme-secondary"
+                            )
 
-                with ui.row().classes("w-full gap-4"):
-                    with ui.card().classes("flex-1 bg-amber-50 p-4"):
+                with ui.row().classes("w-full gap-4 items-stretch"):
+                    with ui.card().classes("flex-1 help-privacy-card p-4"):
                         with ui.row().classes("items-center gap-2 mb-2"):
-                            ui.icon("security", size="sm").classes("text-amber-800")
+                            ui.icon("security", size="sm").classes("help-privacy-icon")
                             ui.label("Privacy").classes("text-subtitle1 font-semibold")
                         ui.label(
                             "Files are encrypted, only accessible to you, and auto-deleted after the scheduled deletion date."
                         ).classes("text-body2")
 
-                    with ui.card().classes("flex-1 bg-green-50 p-4"):
+                    with ui.card().classes("flex-1 help-support-card p-4"):
                         with ui.row().classes("items-center gap-2 mb-2"):
-                            ui.icon("help", size="sm").classes("text-green-800")
+                            ui.icon("help", size="sm").classes("help-support-icon")
                             ui.label("Support").classes("text-subtitle1 font-semibold")
+
                         ui.label(
                             "Contact your institution's IT department for technical support or questions."
                         ).classes("text-body2")
+
+                        support_contact = _get_support_contact_email()
+                        if support_contact:
+                            is_url = support_contact.startswith(("http://", "https://"))
+                            href = (
+                                support_contact
+                                if is_url
+                                else f"mailto:{support_contact}"
+                            )
+                            label = "Support:" if is_url else "Support email:"
+                            with ui.row().classes("items-center gap-1"):
+                                ui.label(label).classes("text-body2")
+                                ui.link(support_contact, href).classes("text-body2")
 
         dialog.open()
 
@@ -250,24 +190,144 @@ def logout() -> None:
     ui.navigate.to(settings.OIDC_APP_LOGOUT_ROUTE)
 
 
-def page_init(header_text: Optional[str] = "") -> None:
+def _show_announcement_banners() -> None:
+    """Show active announcement banners below the header."""
+
+    user_data = get_user_data()
+    if not user_data:
+        return
+
+    announcements = user_data.get("announcements", [])
+    if not announcements:
+        return
+
+    dismissed = app.storage.user.get("dismissed_announcements", [])
+
+    visible_count = 0
+    for a in announcements:
+        sev = a.get("severity", "info")
+        style = severity_styles.get(sev, severity_styles["info"])
+        if style["dismissible"] and a.get("id") in dismissed:
+            continue
+        visible_count += 1
+
+    if visible_count > 0:
+        ui.add_head_html(
+            f"<style>:root {{ --banner-offset: {visible_count * 40}px; }}</style>"
+        )
+
+    # JS to fix link attributes (target, rel) for all banner links
+    ui.add_head_html(
+        "<script>"
+        "document.addEventListener('DOMContentLoaded', function() {"
+        "  new MutationObserver(function() {"
+        "    document.querySelectorAll('.announcement-banner a').forEach(function(a) {"
+        "      if (!a.getAttribute('target')) a.setAttribute('target', '_top');"
+        "      try { var u = new URL(a.href, location.origin);"
+        "        if (u.origin !== location.origin)"
+        "          a.setAttribute('rel', 'noopener noreferrer');"
+        "      } catch(e) {}"
+        "    });"
+        "  }).observe(document.body, {childList: true, subtree: true});"
+        "});"
+        "</script>"
+    )
+
+    for announcement in announcements:
+        ann_id = announcement.get("id")
+        sev = announcement.get("severity", "info")
+        style = severity_styles.get(sev, severity_styles["info"])
+
+        if style["dismissible"] and ann_id in dismissed:
+            continue
+
+        banner_container = (
+            ui.element("div")
+            .classes(f"announcement-banner {style['css_class']}")
+            .style(
+                "padding: 8px 20px; display: flex; align-items: center;"
+                " justify-content: space-between;"
+                " margin-left: -2rem; margin-right: -2rem; margin-top: -1rem;"
+                " width: calc(100% + 4rem);"
+            )
+        )
+
+        with banner_container:
+            with ui.element("div").style(
+                "display: flex; align-items: center; gap: 10px; flex: 1;"
+            ):
+                ui.icon(style["icon"], size="sm").style(
+                    f"color: {style['icon_color']};"
+                )
+                ui.html(announcement.get("message", ""), sanitize=False).style(
+                    "color: var(--color-text-primary); font-size: 0.95rem;"
+                )
+
+            if style["dismissible"]:
+
+                def dismiss(a_id=ann_id, container=banner_container):
+                    current = app.storage.user.get("dismissed_announcements", [])
+                    if a_id not in current:
+                        current.append(a_id)
+                        app.storage.user["dismissed_announcements"] = current
+                    container.set_visibility(False)
+
+                ui.button(icon="close", on_click=dismiss).props(
+                    "flat round dense size=sm color=grey-7"
+                )
+
+
+def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None:
     """
     Initialize the page with a header and background color.
     """
 
-    def refresh():
-        if not token_refresh():
+    if "_scribe_bk" not in app.storage.browser:
+        ui.navigate.to("/")
+        return
+
+    async def refresh():
+        if not await token_refresh():
             app.storage.user["token"] = None
             app.storage.user["refresh_token"] = None
             app.storage.user["encryption_password"] = None
 
             ui.navigate.to(settings.OIDC_APP_LOGOUT_ROUTE)
 
-    refresh()
+    ui.timer(0.1, refresh, once=True)
+
+    # Apply dark mode preference
+    ui.add_head_html(default_styles)
+    dark_pref = app.storage.user.get("dark_mode", None)
+    ui.dark_mode(dark_pref)
+
+    # Store resolved dark mode state for components like Plotly
+    if dark_pref is not None:
+        app.storage.user["_resolved_dark"] = bool(dark_pref)
+    else:
+        # Auto mode: reload when OS theme changes so Plotly charts update
+        ui.add_head_html(
+            """
+        <script>
+        if (!window._scribeThemeListener) {
+            window._scribeThemeListener = true;
+            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function() {
+                location.reload();
+            });
+        }
+        </script>
+        """
+        )
 
     is_admin = get_admin_status()
     is_bofh = get_bofh_status()
     ui.timer(30, refresh)
+
+    try:
+        client = ui.context.client
+        current_path = client.page.path if client and client.page else ""
+    except Exception:
+        current_path = ""
 
     if header_text:
         header_text = f" - {header_text}"
@@ -275,52 +335,314 @@ def page_init(header_text: Optional[str] = "") -> None:
     if is_admin:
         header_text += " (Administrator)"
 
-    with (
-        ui.header()
-        .style("justify-content: space-between; background-color: #ffffff;")
-        .classes("drop-shadow-md")
-    ):
-        with ui.element("div").style("display: flex; gap: 0px;"):
-            ui.image(f"static/{settings.LOGO_TOPBAR}").classes("q-mr-sm").style(
-                "height: 30px; width: 30px;"
+    async def _cycle_dark_mode(btn=None):
+        current = app.storage.user.get("dark_mode", None)
+        if current is None:
+            new_val = True
+        elif current:
+            new_val = False
+        else:
+            new_val = None
+        app.storage.user["dark_mode"] = new_val
+        ui.dark_mode(new_val)
+        dark_mode_save(new_val)
+        # Resolve the actual dark state (needed for Plotly chart templates)
+        if new_val is not None:
+            app.storage.user["_resolved_dark"] = bool(new_val)
+        else:
+            # Auto mode: detect OS preference
+            try:
+                prefers_dark = await ui.run_javascript(
+                    "window.matchMedia('(prefers-color-scheme: dark)').matches",
+                    timeout=5.0,
+                )
+                app.storage.user["_resolved_dark"] = bool(prefers_dark)
+            except (TimeoutError, Exception):
+                pass
+        if btn:
+            new_icon = (
+                "dark_mode"
+                if new_val
+                else ("brightness_auto" if new_val is None else "light_mode")
             )
-            ui.label(settings.TOPBAR_TEXT + header_text).classes("text-h6 text-black")
+            btn._props["icon"] = new_icon
+            btn.update()
+        # Reload to update Plotly charts etc., except on /srt where it
+        # would lose editor state.  location.reload() preserves query params.
+        if current_path != "/srt":
+            ui.run_javascript("location.reload()")
 
-        with ui.element("div").style("display: flex; gap: 0px;"):
-            if is_admin:
-                with ui.button(
-                    icon="settings",
-                    on_click=lambda: ui.navigate.to("/admin"),
-                ).props("flat color=red"):
-                    ui.tooltip("Admin settings")
+    if use_drawer:
+        drawer_open = app.storage.user.get("drawer_open", False)
+        drawer = ui.left_drawer(value=True, elevated=True).style(
+            "background-color: var(--color-bg-surface-alt); padding: 0;"
+        )
 
-            if is_bofh:
+        drawer.props(':mini-width="56" :width="250" :breakpoint="0"')
+
+        if not drawer_open:
+            drawer.props(add="mini")
+
+        menu_tooltips = []
+
+        menu_btn = None
+
+        def toggle_drawer():
+            is_open = app.storage.user.get("drawer_open", False)
+            if is_open:
+                drawer.props(add="mini")
+                for t in menu_tooltips:
+                    t.set_visibility(True)
+                if menu_btn:
+                    menu_btn._props["icon"] = "menu"
+                    menu_btn.update()
+                if menu_btn_tooltip_ref:
+                    menu_btn_tooltip_ref.text = "Expand menu"
+                    menu_btn_tooltip_ref.update()
+            else:
+                drawer.props(remove="mini")
+                for t in menu_tooltips:
+                    t.set_visibility(False)
+                if menu_btn:
+                    menu_btn._props["icon"] = "close"
+                    menu_btn.update()
+                if menu_btn_tooltip_ref:
+                    menu_btn_tooltip_ref.text = "Close menu"
+                    menu_btn_tooltip_ref.update()
+            app.storage.user["drawer_open"] = not is_open
+
+        menu_btn_tooltip_ref = None
+
+        # menu_item_style, menu_active_style imported from utils.styles
+
+        def menu_style(path: str) -> str:
+            active = current_path == path
+            return menu_item_style + (menu_active_style if active else "")
+
+        # Menu items: (path, icon, label)
+        menu_items = [
+            ("/home", "folder", "My files"),
+            ("/user", "person", "User settings"),
+        ]
+
+        admin_items = [
+            ("/admin/users", "people", "Users"),
+            ("/admin", "group_work", "Groups"),
+            ("/admin/rules", "rule", "User provisioning"),
+            ("/admin/customers", "business", "Customers" if is_bofh else "Account"),
+        ]
+
+        system_items = [
+            ("/health", "health_and_safety", "System status"),
+            ("/admin/analytics", "analytics", "Activity overview"),
+            ("/admin/announcements", "campaign", "Announcements"),
+        ]
+
+        with drawer:
+            with ui.column().classes("w-full").style("gap: 0;"):
+                ui.separator()
+
+                show_tips = not drawer_open
+
+                for path, icon, label in menu_items:
+                    with ui.element("div").style(menu_style(path)).classes(
+                        "menu-item"
+                    ).on("click", lambda p=path: ui.navigate.to(p)):
+                        ui.icon(icon).style("font-size: 20px;")
+                        ui.label(label).classes("menu-label")
+                        t = ui.tooltip(label)
+                        t.set_visibility(show_tips)
+                        menu_tooltips.append(t)
+
+                if is_admin:
+                    ui.separator().classes("menu-separator")
+                    ui.label("Administration").classes("menu-header").style(
+                        "padding: 10px 16px 4px; font-weight: bold; font-size: 0.85rem; color: var(--color-text-tertiary);"
+                    )
+
+                    for path, icon, label in admin_items:
+                        with ui.element("div").style(menu_style(path)).classes(
+                            "menu-item"
+                        ).on("click", lambda p=path: ui.navigate.to(p)):
+                            ui.icon(icon).style("font-size: 20px;")
+                            ui.label(label).classes("menu-label")
+                            t = ui.tooltip(label)
+                            t.set_visibility(show_tips)
+                            menu_tooltips.append(t)
+
+                    with ui.element("div").style(menu_item_style).classes(
+                        "menu-item"
+                    ).on(
+                        "click",
+                        lambda: ui.run_javascript(
+                            f"window.open('{settings.API_URL}/api/docs', '_blank')"
+                        ),
+                    ):
+                        ui.icon("description").style("font-size: 20px;")
+                        ui.label("API documentation").classes("menu-label")
+                        t = ui.tooltip("API documentation")
+                        t.set_visibility(show_tips)
+                        menu_tooltips.append(t)
+
+                if is_bofh:
+                    ui.separator().classes("menu-separator")
+                    ui.label("System").classes("menu-header").style(
+                        "padding: 10px 16px 4px; font-weight: bold; font-size: 0.85rem; color: var(--color-text-tertiary);"
+                    )
+
+                    for path, icon, label in system_items:
+                        with ui.element("div").style(menu_style(path)).classes(
+                            "menu-item"
+                        ).on("click", lambda p=path: ui.navigate.to(p)):
+                            ui.icon(icon).style("font-size: 20px;")
+                            ui.label(label).classes("menu-label")
+                            t = ui.tooltip(label)
+                            t.set_visibility(show_tips)
+                            menu_tooltips.append(t)
+
+                ui.separator()
+
+                with ui.element("div").style(menu_item_style).classes("menu-item").on(
+                    "click", lambda: ui.navigate.to("/logout")
+                ):
+                    ui.icon("logout").style("font-size: 20px;")
+                    ui.label("Logout").classes("menu-label")
+                    t = ui.tooltip("Logout")
+                    t.set_visibility(show_tips)
+                    menu_tooltips.append(t)
+
+        with (
+            ui.header()
+            .style(
+                "justify-content: space-between; background-color: var(--color-header-bg); min-height: 50px; padding: 4px 16px;"
+            )
+            .classes("drop-shadow-md")
+        ):
+            with ui.element("div").style(
+                "display: flex; gap: 0px; align-items: center; margin-left: -12px;"
+            ):
                 with ui.button(
-                    icon="health_and_safety",
-                    on_click=lambda: ui.navigate.to("/health"),
-                ).props("flat color=red"):
-                    ui.tooltip("System status")
-            with ui.button(
-                icon="home",
-                on_click=lambda: ui.navigate.to("/home"),
-            ).props("flat color=black"):
-                ui.tooltip("Home")
-            with ui.button(
-                icon="person",
-                on_click=lambda: ui.navigate.to("/user"),
-            ).props("flat color=black"):
-                ui.tooltip("User settings")
-            with ui.button(
-                icon="help",
-                on_click=lambda: show_help_dialog(),
-            ).props("flat color=black"):
-                ui.tooltip("Help")
-            with ui.button(
-                icon="logout",
-                on_click=lambda: ui.navigate.to("/logout"),
-            ).props("flat color=black"):
-                ui.tooltip("Logout")
-            ui.add_head_html("<style>body {background-color: #ffffff;}</style>")
+                    icon="close" if drawer_open else "menu",
+                    on_click=lambda: toggle_drawer(),
+                ).props("flat").classes("header-btn") as menu_btn:
+                    menu_btn_tooltip = ui.tooltip(
+                        "Close menu" if drawer_open else "Expand menu"
+                    )
+                    menu_btn_tooltip_ref = menu_btn_tooltip
+                ui.image(f"static/{settings.LOGO_TOPBAR_LIGHT}").classes(
+                    "q-mr-sm logo-light"
+                ).style("height: 30px; width: 30px;")
+                ui.image(f"static/{settings.LOGO_TOPBAR_DARK}").classes(
+                    "q-mr-sm logo-dark"
+                ).style("height: 30px; width: 30px;")
+                ui.label(settings.TOPBAR_TEXT + header_text).classes(
+                    "text-h6 text-theme-primary"
+                )
+
+            with ui.element("div").style("display: flex; gap: 0px;"):
+                dark_val = app.storage.user.get("dark_mode", None)
+                dark_icon = (
+                    "dark_mode"
+                    if dark_val
+                    else ("brightness_auto" if dark_val is None else "light_mode")
+                )
+                dark_btn = (
+                    ui.button(
+                        icon=dark_icon,
+                        on_click=lambda: _cycle_dark_mode(dark_btn),
+                    )
+                    .props("flat")
+                    .classes("header-btn")
+                )
+                with dark_btn:
+                    ui.tooltip("Toggle theme")
+                with ui.button(
+                    icon="help",
+                    on_click=lambda: show_help_dialog(),
+                ).props(
+                    "flat"
+                ).classes("header-btn"):
+                    ui.tooltip("Help")
+
+            # body background and .nicegui-content padding are in theme_styles
+    else:
+        with (
+            ui.header()
+            .style(
+                "justify-content: space-between; background-color: var(--color-header-bg); min-height: 50px; padding: 4px 16px;"
+            )
+            .classes("drop-shadow-md")
+        ):
+            with ui.element("div").style("display: flex; gap: 0px;"):
+                ui.image(f"static/{settings.LOGO_TOPBAR_LIGHT}").classes(
+                    "q-mr-sm logo-light"
+                ).style("height: 30px; width: 30px;")
+                ui.image(f"static/{settings.LOGO_TOPBAR_DARK}").classes(
+                    "q-mr-sm logo-dark"
+                ).style("height: 30px; width: 30px;")
+                ui.label(settings.TOPBAR_TEXT + header_text).classes(
+                    "text-h6 text-theme-primary"
+                )
+
+            with ui.element("div").style("display: flex; gap: 0px;"):
+                if is_admin:
+                    with ui.button(
+                        icon="settings",
+                        on_click=lambda: ui.navigate.to("/admin"),
+                    ).props("flat color=red"):
+                        ui.tooltip("Admin settings")
+
+                if is_bofh:
+                    with ui.button(
+                        icon="health_and_safety",
+                        on_click=lambda: ui.navigate.to("/health"),
+                    ).props("flat color=red"):
+                        ui.tooltip("System status")
+                    with ui.button(
+                        icon="analytics",
+                        on_click=lambda: ui.navigate.to("/admin/analytics"),
+                    ).props("flat color=red"):
+                        ui.tooltip("Page view statistics")
+                with ui.button(
+                    icon="home",
+                    on_click=lambda: ui.navigate.to("/home"),
+                ).props("flat").classes("header-btn"):
+                    ui.tooltip("Home")
+                with ui.button(
+                    icon="person",
+                    on_click=lambda: ui.navigate.to("/user"),
+                ).props("flat").classes("header-btn"):
+                    ui.tooltip("User settings")
+                dark_val2 = app.storage.user.get("dark_mode", None)
+                dark_icon2 = (
+                    "dark_mode"
+                    if dark_val2
+                    else ("brightness_auto" if dark_val2 is None else "light_mode")
+                )
+                dark_btn2 = (
+                    ui.button(
+                        icon=dark_icon2,
+                        on_click=lambda: _cycle_dark_mode(dark_btn2),
+                    )
+                    .props("flat")
+                    .classes("header-btn")
+                )
+                with dark_btn2:
+                    ui.tooltip("Toggle theme")
+                with ui.button(
+                    icon="help",
+                    on_click=lambda: show_help_dialog(),
+                ).props(
+                    "flat"
+                ).classes("header-btn"):
+                    ui.tooltip("Help")
+                with ui.button(
+                    icon="logout",
+                    on_click=lambda: ui.navigate.to("/logout"),
+                ).props("flat").classes("header-btn"):
+                    ui.tooltip("Logout")
+
+    _show_announcement_banners()
 
 
 def add_timezone_to_timestamp(timestamp: str) -> str:
@@ -336,19 +658,26 @@ def add_timezone_to_timestamp(timestamp: str) -> str:
     return local_time.strftime("%Y-%m-%d %H:%M")
 
 
-def jobs_get() -> list:
+async def jobs_get() -> list:
     """
     Get the list of transcription jobs from the API.
     """
     jobs = []
 
     try:
-        response = requests.get(
-            f"{settings.API_URL}/api/v1/transcriber",
-            headers=get_auth_header(),
-        )
-        response.raise_for_status()
-    except requests.exceptions.RequestException:
+        async with httpx.AsyncClient() as client:
+            response = await client.request(
+                "GET",
+                f"{settings.API_URL}/api/v1/transcriber",
+                headers=get_auth_header(),
+                json={
+                    "encryption_password": storage_decrypt(
+                        app.storage.user.get("encryption_password"),
+                    )
+                },
+            )
+            response.raise_for_status()
+    except httpx.HTTPError:
         return []
 
     # Get current time in user's timezone
@@ -437,38 +766,93 @@ def table_click(event) -> None:
         )
 
 
-def post_file(filedata: bytes, filename: str) -> None:
+async def post_file(
+    file_upload,
+    filename: str,
+    on_progress: callable = None,
+) -> bool:
     """
-    Post a file to the API.
-    """
+    Post a file to the API with optional progress callback.
 
-    files_json = {"file": (filename, filedata)}
+    Parameters:
+        file_upload: A NiceGUI FileUpload (kept in memory; spool_max_size is 4GB).
+        filename: The filename.
+        on_progress: Optional callback(percent: int) called during upload.
+    """
+    total_size = file_upload.size()
+    data = await file_upload.read()
+    pos = 0
+    bytes_sent = 0
+
+    class ProgressReader:
+        """Read bytes with progress tracking, no BytesIO copy."""
+
+        def read(self, size: int = -1) -> bytes:
+            nonlocal pos, bytes_sent
+
+            if size is None or size < 0:
+                chunk = data[pos:]
+                pos = len(data)
+            else:
+                end = min(pos + size, len(data))
+                chunk = data[pos:end]
+                pos = end
+
+            bytes_sent += len(chunk)
+
+            if on_progress and total_size > 0:
+                on_progress(min(int(bytes_sent * 100 / total_size), 100))
+
+            return chunk
+
+    reader = ProgressReader()
+    files_json = {"file": (filename, reader)}
 
     try:
-        response = requests.post(
-            f"{settings.API_URL}/api/v1/transcriber",
-            files=files_json,
-            headers=get_auth_header(),
-            json={"encryption_password": app.storage.user.get("encryption_password")},
-        )
-        response.raise_for_status()
-
-        if response.status_code != 200:
-            raise requests.exceptions.RequestException(
-                f"Upload failed, status code: {response.status_code}"
+        async with httpx.AsyncClient(timeout=900) as client:
+            response = await client.post(
+                f"{settings.API_URL}/api/v1/transcriber",
+                files=files_json,
+                headers=get_auth_header(),
             )
-    except requests.exceptions.RequestException as e:
+
+            response.raise_for_status()
+
+            if response.status_code != 200:
+                raise httpx.HTTPStatusError(
+                    f"Upload failed, status code: {response.status_code}",
+                    request=response.request,
+                    response=response,
+                )
+    except httpx.HTTPStatusError as e:
         ui.notify(
             f"Error when uploading file: {str(e)}", type="negative", position="top"
         )
-        return
+        return False
+    finally:
+        del data
 
     return True
 
 
-def toggle_upload_status(upload_column, status_column):
+def format_size(bytes_val) -> str:
+    """
+    Format bytes into a human-readable string.
+    """
+    if bytes_val < 1024:
+        return f"{bytes_val} B"
+    elif bytes_val < 1024 * 1024:
+        return f"{bytes_val / 1024:.1f} KB"
+    elif bytes_val < 1024 * 1024 * 1024:
+        return f"{bytes_val / (1024 * 1024):.1f} MB"
+    else:
+        return f"{bytes_val / (1024 * 1024 * 1024):.1f} GB"
+
+
+def toggle_upload_status(upload_column, status_column, dialog):
     upload_column.visible = False
     status_column.visible = True
+    dialog.props("persistent")
 
 
 def table_upload(table) -> None:
@@ -479,38 +863,57 @@ def table_upload(table) -> None:
     ui.add_head_html(default_styles)
 
     with ui.dialog() as dialog:
-        with ui.card():
-            with ui.column().classes("w-full items-center mt-10") as status_column:
-                ui.label("Uploading files, please wait...").style(
-                    "width: 100%;"
-                ).classes("text-h6 q-mb-xl text-black")
-                ui.spinner(size="50px", color="black")
+        with ui.card().style("min-width: 400px; padding: 32px;"):
+            with ui.column().classes("w-full items-center") as status_column:
+                ui.label("Uploading files").classes("text-h6 q-mb-sm")
+                status_label = ui.label("Please wait...").classes(
+                    "text-body1 q-mb-lg text-theme-muted"
+                )
+                ui.spinner(size="50px")
                 status_column.visible = False
 
             with ui.column().classes("w-full items-center mt-10") as upload_column:
-                upload = ui.upload(
-                    label="hidden",
-                    on_multi_upload=lambda e: handle_upload_with_feedback(e, dialog),
-                    auto_upload=True,
-                    multiple=True,
-                    max_files=5,
-                ).props(
-                    "hidden accept=.mp3,.wav,.flac,.mp4,.mkv,.avi,.m4a,.aiff,.aif,.mov,.ogg,.opus,.webm,.wma,.mpg,.mpeg"
+                upload = (
+                    ui.upload(
+                        label="hidden",
+                        on_multi_upload=lambda e: handle_upload_with_feedback(
+                            e, dialog, table
+                        ),
+                        auto_upload=True,
+                        multiple=True,
+                        max_files=5,
+                    )
+                    .props(
+                        "accept=.mp3,.wav,.flac,.mp4,.mkv,.avi,.m4a,.aiff,.aif,.mov,.ogg,.opus,.webm,.wma,.mpg,.mpeg"
+                    )
+                    .style(
+                        "position: absolute; width: 0; height: 0; overflow: hidden; opacity: 0"
+                    )
                 )
 
                 upload.on(
                     "start",
-                    lambda _: toggle_upload_status(upload_column, status_column),
+                    lambda _: toggle_upload_status(
+                        upload_column, status_column, dialog
+                    ),
                 )
                 upload.on("finish", lambda _: dialog.close())
 
-                ui.html(
+                def on_byte_progress(e):
+                    uploaded = e.args.get("uploaded", 0)
+                    total = e.args.get("total", 0)
+                    if total > 0:
+                        status_label.set_text(
+                            f"{format_size(uploaded)} / {format_size(total)}"
+                        )
+
+                upload.on("byte_progress", on_byte_progress)
+
+                dropzone = ui.html(
                     """
-                    <div id="dropzone"
-                         class="w-96 h-40 flex items-center justify-center
-                                border-2 border-dashed border-gray-400
-                                rounded-2xl bg-gray-50
-                                hover:bg-gray-100 cursor-pointer text-gray-600">
+                    <div class="w-96 h-40 flex items-center justify-center
+                                border-2 border-dashed rounded-2xl cursor-pointer
+                                dropzone-area">
                         Drag & drop files here or click to upload.
                         <br/><br/>
                         5 files at a maximum of 4GB can be uploaded at once.
@@ -519,35 +922,46 @@ def table_upload(table) -> None:
                     sanitize=False,
                 )
 
-                ui.run_javascript(
-                    """
-                        const dz = document.getElementById('dropzone');
-                        const hiddenInput = dz.closest('body').querySelector('input[type=file][multiple]');
-                        dz.addEventListener('click', () => hiddenInput.click());
-
-                        dz.addEventListener('dragover', e => {
-                            e.preventDefault();
-                            dz.classList.add('bg-gray-200');
-                        });
-
-                        dz.addEventListener('dragleave', () => {
-                            dz.classList.remove('bg-gray-200');
-                        });
-
-                        dz.addEventListener('drop', e => {
-                            e.preventDefault();
-                            dz.classList.remove('bg-gray-200');
-
-                            // Create a DataTransfer to set multiple files
-                            const dt = new DataTransfer();
-                            for (const file of e.dataTransfer.files) {
-                                dt.items.add(file);
-                            }
-                            hiddenInput.files = dt.files;
-
-                            hiddenInput.dispatchEvent(new Event('change', { bubbles: true }));
-                        });
-                    """
+                upload_id = upload.id
+                dropzone_id = dropzone.id
+                ui.timer(
+                    0.1,
+                    lambda: ui.run_javascript(
+                        "const dz = getHtmlElement(" + str(dropzone_id) + ");"
+                        "const upl = getElement(" + str(upload_id) + ");"
+                        "if (!dz || !upl) return;"
+                        "dz.addEventListener('click', () => upl.$refs.qRef.pickFiles());"
+                        "dz.addEventListener('dragover', e => {"
+                        "  e.preventDefault();"
+                        "  dz.querySelector('div').classList.add('dropzone-drag');"
+                        "});"
+                        "dz.addEventListener('dragleave', () => {"
+                        "  dz.querySelector('div').classList.remove('dropzone-drag');"
+                        "});"
+                        "dz.addEventListener('drop', e => {"
+                        "  e.preventDefault();"
+                        "  dz.querySelector('div').classList.remove('dropzone-drag');"
+                        "  upl.$refs.qRef.addFiles(Array.from(e.dataTransfer.files));"
+                        "});"
+                        "setInterval(() => {"
+                        "  const qRef = upl.$refs.qRef;"
+                        "  if (!qRef || !qRef.files || qRef.files.length === 0) return;"
+                        "  let totalSize = 0, uploaded = 0, currentFile = '';"
+                        "  qRef.files.forEach(f => {"
+                        "    totalSize += f.size || 0;"
+                        "    uploaded += f.__uploaded || 0;"
+                        "    if (f.__status === 'uploading') currentFile = f.name;"
+                        "  });"
+                        "  if (currentFile) {"
+                        "    getElement("
+                        + str(upload_id)
+                        + ").$emit('byte_progress', {"
+                        "      uploaded: uploaded, total: totalSize, current_file: currentFile"
+                        "    });"
+                        "  }"
+                        "}, 500);"
+                    ),
+                    once=True,
                 )
                 with ui.row().style("justify-content: flex-end; gap: 12px;"):
                     with ui.button(
@@ -561,30 +975,96 @@ def table_upload(table) -> None:
         dialog.open()
 
 
-async def handle_upload_with_feedback(files, dialog):
+async def handle_upload_with_feedback(files, dialog, table):
     """
     Handle file uploads with user feedback and validation.
     """
 
+    client = ui.context.client
+
     dialog.close()
 
+    file_items = []
     for file in files.files:
-        try:
-            file_name = file.name
-            file_data = await file.read()
+        file_name = sanitize_filename(file.name)
+        file_items.append((file_name, file))
+    files.files.clear()
 
-            await asyncio.to_thread(post_file, file_data, file_name)
+    # Add temporary "Uploading" rows to the table
+    existing_rows = list(table.rows or [])
+    upload_row_ids = []
+    for i, (file_name, _) in enumerate(file_items):
+        row_id = f"_uploading_{i}"
+        upload_row_ids.append(row_id)
+        existing_rows.insert(
+            0,
+            {
+                "id": row_id,
+                "filename": file_name,
+                "job_type": "",
+                "created_at": "",
+                "updated_at": "",
+                "deletion_date": "",
+                "deletion_approaching": False,
+                "status": "Processing (0%)",
+            },
+        )
+    table.update_rows(existing_rows, clear_selection=True)
 
-            ui.notify(
-                f"Successfully uploaded {file_name}", type="positive", timeout=3000
-            )
-        except Exception as e:
-            ui.notify(
-                f"Error uploading {file_name}: {str(e)}", type="negative", timeout=5000
-            )
+    # Upload to backend in a background task so the UI stays responsive
+    async def _upload():
+        for idx in range(len(file_items)):
+            file_name, file_upload = file_items[idx]
+            row_id = upload_row_ids[idx]
+
+            def update_progress(percent, _row_id=row_id):
+                if not client._deleted:
+                    for row in table.rows:
+                        if row["id"] == _row_id:
+                            row["status"] = f"Processing ({percent}%)"
+                            break
+                    table.update()
+
+            try:
+                await post_file(file_upload, file_name, on_progress=update_progress)
+
+                if not client._deleted:
+                    for row in table.rows:
+                        if row["id"] == row_id:
+                            row["status"] = "Uploaded"
+                            break
+                    table.update()
+                    with table:
+                        ui.notify(
+                            f"Successfully uploaded {file_name}",
+                            type="positive",
+                            timeout=3000,
+                        )
+            except Exception as e:
+                if not client._deleted:
+                    for row in table.rows:
+                        if row["id"] == row_id:
+                            row["status"] = "Processing failed"
+                            break
+                    table.update()
+                    with table:
+                        ui.notify(
+                            f"Error uploading {file_name}: {str(e)}",
+                            type="negative",
+                            timeout=5000,
+                        )
+            finally:
+                file_items[idx] = (file_name, None)
+                file_upload = None
+
+        # Refresh with real data from backend
+        if not client._deleted:
+            table.update_rows(await jobs_get(), clear_selection=False)
+
+    asyncio.create_task(_upload())
 
 
-def table_transcribe(selected_row) -> None:
+def table_transcribe(selected_row, on_complete=None) -> None:
     """
     Handle the click event on the Transcribe button.
     """
@@ -592,13 +1072,13 @@ def table_transcribe(selected_row) -> None:
         with (
             ui.card()
             .style(
-                "background-color: white; align-self: center; border: 0; width: 80%;"
+                "background-color: var(--color-bg-surface); align-self: center; border: 0; width: 80%;"
             )
             .classes("w-full no-shadow no-border")
         ):
             with ui.row().classes("w-full"):
-                ui.label("Transcription Settings").style("width: 100%;").classes(
-                    "text-h6 q-mb-xl text-black"
+                ui.label("Transcription settings").style("width: 100%;").classes(
+                    "text-h6 q-mb-xl"
                 )
 
                 with ui.column().classes("col-12 col-sm-24"):
@@ -612,18 +1092,25 @@ def table_transcribe(selected_row) -> None:
                         value=settings.WHISPER_LANGUAGES[0],
                     ).classes("w-full")
 
-                # Remove the option to pick model for now. People always use the large models anyway.
-                # with ui.column().classes("col-12 col-sm-24"):
-                #     ui.label("Accuracy").classes("text-subtitle2 q-mb-sm")
-                #     model = ui.radio(
-                #         settings.WHISPER_MODELS, value=settings.WHISPER_MODELS[0]
-                #     )
+                with ui.column().classes("col-12 col-sm-24") as verbatim_container:
+                    verbatim = ui.checkbox(
+                        "Verbatim (include filler words, repetitions and unfinished sentences)"
+                    ).classes("q-mt-sm")
+                    verbatim_container.set_visibility(
+                        language.value.lower() == "swedish"
+                    )
+                    language.on_value_change(
+                        lambda e: verbatim_container.set_visibility(
+                            e.value.lower() == "swedish"
+                            or e.value.lower() == "norwegian"
+                        )
+                    )
 
                 with ui.column().classes("col-12 col-sm-24"):
                     ui.label("Number of speakers, automatic if not chosen").classes(
                         "text-subtitle2 q-mb-sm"
                     )
-                    speakers = ui.number(value="0").classes("w-full")
+                    speakers = ui.number(value="0", min=0).classes("w-full")
 
             with ui.row().classes("justify-between w-full"):
                 ui.label("Output format").classes("text-subtitle2 q-mb-sm")
@@ -649,11 +1136,13 @@ def table_transcribe(selected_row) -> None:
                     "Start transcribing",
                     on_click=lambda: start_transcription(
                         [selected_row],
-                        language.value,
-                        # model.value,
+                        f"{language.value} (verbatim)"
+                        if verbatim.value
+                        else language.value,
                         speakers.value,
                         output_format.value,
                         dialog,
+                        on_complete=on_complete,
                     ),
                 ) as start:
                     start.props("color=black flat")
@@ -662,7 +1151,7 @@ def table_transcribe(selected_row) -> None:
             dialog.open()
 
 
-def table_bulk_transcribe(table: ui.table) -> None:
+def table_bulk_transcribe(table: ui.table, on_complete=None) -> None:
     """
     Handle bulk transcription of selected uploaded jobs.
     Shows the same transcription settings dialog but applies to all selected rows.
@@ -678,35 +1167,29 @@ def table_bulk_transcribe(table: ui.table) -> None:
         with (
             ui.card()
             .style(
-                "background-color: white; align-self: center; border: 0; width: 80%;"
+                "background-color: var(--color-bg-surface); align-self: center; border: 0; width: 80%;"
             )
             .classes("w-full no-shadow no-border")
         ):
             with ui.row().classes("w-full"):
-                ui.label("Transcription Settings").style("width: 100%;").classes(
-                    "text-h6 q-mb-xl text-black"
+                ui.label("Transcription settings").style("width: 100%;").classes(
+                    "text-h6 q-mb-xl"
                 )
 
-                if already_done:
-                    with ui.column().classes("w-full q-mb-sm").style(
-                        "background-color: #fff3e0; padding: 8px 12px; border-radius: 4px;"
-                    ):
+                with ui.column().classes("w-full q-mb-sm").style(
+                    "background-color: var(--color-severity-maint-bg); padding: 8px 12px; border-radius: 4px;"
+                ):
+                    with ui.row().classes("items-center"):
+                        ui.icon("rtt").classes("text-body1")
+                        ui.label(
+                            f"{len(uploadable)} file(s) will be transcribed."
+                        ).classes("text-body2")
+                    if already_done:
                         with ui.row().classes("items-center"):
-                            ui.icon("rtt", color="orange-8").classes("text-body1")
-                            ui.label(
-                                f"{len(uploadable)} file(s) will be transcribed."
-                            ).classes("text-body2 text-orange-9")
-                        with ui.row().classes("items-center"):
-                            ui.icon("skip_next", color="orange-8").classes("text-body1")
+                            ui.icon("block").classes("text-body1")
                             ui.label(
                                 f"{len(already_done)} completed file(s) will be skipped."
-                            ).classes("text-body2 text-orange-9")
-
-                with ui.column().classes("col-12 col-sm-24"):
-                    ui.label("Files:").classes("text-subtitle2 q-mb-sm")
-                    ui.label(
-                        ", ".join(r["filename"] for r in uploadable)
-                    )
+                            ).classes("text-body2")
 
                 with ui.column().classes("col-12 col-sm-24"):
                     ui.label("Language").classes("text-subtitle2 q-mb-sm")
@@ -715,11 +1198,24 @@ def table_bulk_transcribe(table: ui.table) -> None:
                         value=settings.WHISPER_LANGUAGES[0],
                     ).classes("w-full")
 
+                with ui.column().classes("col-12 col-sm-24") as verbatim_container:
+                    verbatim = ui.checkbox(
+                        "Verbatim (include filler words, repetitions and unfinished sentences)"
+                    ).classes("q-mt-sm")
+                    verbatim_container.set_visibility(
+                        language.value.lower() == "swedish"
+                    )
+                    language.on_value_change(
+                        lambda e: verbatim_container.set_visibility(
+                            e.value.lower() == "swedish"
+                        )
+                    )
+
                 with ui.column().classes("col-12 col-sm-24"):
                     ui.label("Number of speakers, automatic if not chosen").classes(
                         "text-subtitle2 q-mb-sm"
                     )
-                    speakers = ui.number(value="0").classes("w-full")
+                    speakers = ui.number(value="0", min=0).classes("w-full")
 
             with ui.row().classes("justify-between w-full"):
                 ui.label("Output format").classes("text-subtitle2 q-mb-sm")
@@ -743,13 +1239,18 @@ def table_bulk_transcribe(table: ui.table) -> None:
 
                 with ui.button(
                     "Start transcribing",
-                    on_click=lambda: start_transcription(
-                        uploadable,
-                        language.value,
-                        speakers.value,
-                        output_format.value,
-                        dialog,
-                        table,
+                    on_click=lambda: (
+                        start_transcription(
+                            uploadable,
+                            f"{language.value} (verbatim)"
+                            if verbatim.value
+                            else language.value,
+                            speakers.value,
+                            output_format.value,
+                            dialog,
+                            table,
+                            on_complete=on_complete,
+                        ),
                     ),
                 ) as start:
                     start.props("color=black flat")
@@ -763,47 +1264,63 @@ def table_delete(table: ui.table) -> None:
     Handle the click event on the Delete button.
     """
 
+    count = len(table.selected)
+
     with ui.dialog() as dialog:
-        with ui.card().style(
-            "background-color: white; align-self: center; border: 0; width: 100%;"
-        ):
-            ui.label("Are you sure you want to delete the selected files?").classes(
-                "text-h6 q-mb-md text-black"
-            )
-            ui.separator()
+        with ui.card():
+            ui.label("Delete files").classes("text-h6")
+            ui.label(
+                f"{str(count)} files will be permanently deleted. This action cannot be undone."
+            ).classes("text-subtitle2").style("margin-bottom: 10px;")
+
             with ui.row().classes("justify-between w-full"):
-                ui.button(
-                    "Cancel",
-                ).on("click", lambda: dialog.close()).classes(
-                    "cancel-style"
-                ).props("color=black flat")
+                ui.button("Cancel", on_click=lambda: dialog.close()).props(
+                    "color=black"
+                )
                 ui.button(
                     "Delete",
                     on_click=lambda: __delete_files(table, dialog),
-                ).props("color=red").classes("delete-style")
+                ).props("color=red")
 
         dialog.open()
 
 
-def __delete_files(table: ui.table, dialog: ui.dialog) -> bool:
-    try:
-        for row in table.selected:
-            uuid = row["uuid"]
-            response = requests.delete(
-                f"{settings.API_URL}/api/v1/transcriber/{uuid}",
-                headers=get_auth_header(),
-            )
-            response.raise_for_status()
-        ui.notify("Files deleted successfully", type="positive", position="top")
-    except requests.exceptions.RequestException as e:
-        ui.notify(
-            f"Error: Failed to delete files: {str(e)}", type="negative", position="top"
-        )
-        return False
+async def __delete_files(table: ui.table, dialog: ui.dialog) -> None:
+    selected = list(table.selected)
+    total = len(selected)
+    dialog.close()
+
+    deleted = 0
+    failed = 0
+
+    for row in selected:
+        uuid = row["uuid"]
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.delete(
+                    f"{settings.API_URL}/api/v1/transcriber/{uuid}",
+                    headers=get_auth_header(),
+                )
+                response.raise_for_status()
+            deleted += 1
+        except (httpx.HTTPStatusError, httpx.RequestError):
+            failed += 1
 
     table.selected = []
+    table.update_rows(await jobs_get(), clear_selection=True)
 
-    dialog.close()
+    if failed == 0:
+        ui.notify(
+            f"Successfully deleted {deleted} file{'s' if deleted != 1 else ''}",
+            type="positive",
+            position="top",
+        )
+    else:
+        ui.notify(
+            f"Deleted {deleted} of {total} files ({failed} failed)",
+            type="warning",
+            position="top",
+        )
 
 
 def table_bulk_export(table: ui.table) -> None:
@@ -819,7 +1336,7 @@ def table_bulk_export(table: ui.table) -> None:
 
     completed = [r for r in selected if r.get("status") == "Completed"]
     if not completed:
-        ui.notify("No completed files selected", type="warning", position="top")
+        ui.notify("No already completed files selected", type="warning", position="top")
         return
 
     formats = set(r.get("output_format", "") for r in completed)
@@ -837,9 +1354,9 @@ def table_bulk_export(table: ui.table) -> None:
     # Show progress dialog while fetching
     with ui.dialog() as progress_dialog:
         with ui.card().classes("p-6 items-center").style(
-            "min-width: 400px; background-color: #ffffff;"
+            "min-width: 400px; background-color: var(--color-bg-surface);"
         ):
-            ui.label("Preparing export...").classes("text-h6 text-black mb-2")
+            ui.label("Preparing export...").classes("text-h6 mb-2")
             progress_label = ui.label(f"Fetching file 0 of {len(completed)}").classes(
                 "text-body2 mb-2"
             )
@@ -848,8 +1365,6 @@ def table_bulk_export(table: ui.table) -> None:
     progress_dialog.open()
 
     async def fetch_and_show():
-        from utils.srt import SRTEditor
-
         editors = []
         for i, row in enumerate(completed):
             uuid = row["uuid"]
@@ -859,27 +1374,19 @@ def table_bulk_export(table: ui.table) -> None:
             )
             progress.set_value((i + 1) / len(completed))
             try:
-                if data_format == "srt":
-                    response = requests.get(
-                        f"{settings.API_URL}/api/v1/transcriber/{uuid}/result/srt",
+                fmt = "srt" if data_format == "srt" else "txt"
+                async with httpx.AsyncClient() as client:
+                    response = await client.request(
+                        "GET",
+                        f"{settings.API_URL}/api/v1/transcriber/{uuid}/result/{fmt}",
                         headers=get_auth_header(),
                         json={
-                            "encryption_password": app.storage.user.get(
-                                "encryption_password"
+                            "encryption_password": storage_decrypt(
+                                app.storage.user.get("encryption_password"),
                             )
                         },
                     )
-                else:
-                    response = requests.get(
-                        f"{settings.API_URL}/api/v1/transcriber/{uuid}/result/txt",
-                        headers=get_auth_header(),
-                        json={
-                            "encryption_password": app.storage.user.get(
-                                "encryption_password"
-                            )
-                        },
-                    )
-                response.raise_for_status()
+                    response.raise_for_status()
                 data = response.json()
 
                 editor = SRTEditor(uuid, data_format, filename)
@@ -888,7 +1395,7 @@ def table_bulk_export(table: ui.table) -> None:
                 else:
                     editor.parse_txt(data["result"])
                 editors.append((filename, editor))
-            except requests.exceptions.RequestException as e:
+            except httpx.HTTPError as e:
                 progress_dialog.close()
                 ui.notify(
                     f"Error fetching {filename}: {str(e)}",
@@ -896,8 +1403,6 @@ def table_bulk_export(table: ui.table) -> None:
                     position="top",
                 )
                 return
-
-            await asyncio.sleep(0)  # yield to UI to update progress
 
         progress_dialog.close()
         # Use the first editor to show the export dialog with all editors
@@ -910,11 +1415,11 @@ def table_bulk_export(table: ui.table) -> None:
 def start_transcription(
     rows: list,
     language: str,
-    # model: str,
     speakers: str,
     output_format: str,
     dialog: ui.dialog,
     table: ui.table = None,
+    on_complete=None,
 ) -> None:
     selected_language = language
     error = ""
@@ -930,17 +1435,20 @@ def start_transcription(
         uuid = row["uuid"]
 
         try:
-            response = requests.put(
+            response = httpx.put(
                 f"{settings.API_URL}/api/v1/transcriber/{uuid}",
                 json={
                     "language": f"{selected_language}",
                     "speakers": int(speakers),
                     "output_format": output_format,
+                    "encryption_password": storage_decrypt(
+                        app.storage.user.get("encryption_password"),
+                    ),
                 },
                 headers=get_auth_header(),
             )
             response.raise_for_status()
-        except requests.exceptions.RequestException:
+        except httpx.HTTPError:
             if response.status_code == 403:
                 error = response.json()["result"]["error"]
             else:
@@ -952,9 +1460,9 @@ def start_transcription(
             dialog.clear()
 
             with ui.card().style(
-                "background-color: white; align-self: center; border: 0; width: 50%;"
+                "background-color: var(--color-bg-surface); align-self: center; border: 0; width: 50%;"
             ):
-                ui.label(error).classes("text-h6 q-mb-md text-black")
+                ui.label(error).classes("text-h6 q-mb-md")
                 ui.button(
                     "Close",
                 ).on("click", lambda: dialog.close()).classes(
@@ -965,3 +1473,5 @@ def start_transcription(
         if table is not None:
             table.selected = []
         dialog.close()
+        if on_complete is not None:
+            on_complete()

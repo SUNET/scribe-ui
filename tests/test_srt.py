@@ -1,12 +1,32 @@
-import pytest
+# Copyright (c) 2025-2026 Sunet.
+# Contributor: Kristofer Hallin
+#
+# This file is part of Sunet Scribe.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from utils.srt import SRTCaption, UndoRedoManager
 
 
 class TestSRTCaption:
-    """Test cases for SRTCaption class."""
+    """
+    Test cases for SRTCaption class.
+    """
 
     def test_init(self):
-        """Test caption initialization."""
+        """
+        Test caption initialization.
+        """
         caption = SRTCaption(
             index=1,
             start_time="00:00:10,000",
@@ -25,7 +45,9 @@ class TestSRTCaption:
         assert caption.is_valid is True
 
     def test_init_default_speaker(self):
-        """Test caption initialization with default speaker."""
+        """
+        Test caption initialization with default speaker.
+        """
         caption = SRTCaption(
             index=1,
             start_time="00:00:10,000",
@@ -36,7 +58,9 @@ class TestSRTCaption:
         assert caption.speaker == "UNKNOWN"
 
     def test_init_empty_speaker(self):
-        """Test caption initialization with empty speaker string."""
+        """
+        Test caption initialization with empty speaker string.
+        """
         caption = SRTCaption(
             index=1,
             start_time="00:00:10,000",
@@ -48,7 +72,9 @@ class TestSRTCaption:
         assert caption.speaker == "UNKNOWN"
 
     def test_copy(self):
-        """Test caption copy method."""
+        """
+        Test caption copy method.
+        """
         original = SRTCaption(
             index=1,
             start_time="00:00:10,000",
@@ -75,7 +101,9 @@ class TestSRTCaption:
         assert copied is not original
 
     def test_to_dict(self):
-        """Test caption to_dict method."""
+        """
+        Test caption to_dict method.
+        """
         caption = SRTCaption(
             index=1,
             start_time="00:00:10,000",
@@ -93,7 +121,9 @@ class TestSRTCaption:
         assert result["duration"] == 5.5
 
     def test_to_srt_format(self):
-        """Test caption to_srt_format method."""
+        """
+        Test caption to_srt_format method.
+        """
         caption = SRTCaption(
             index=1,
             start_time="00:00:10,000",
@@ -108,7 +138,9 @@ class TestSRTCaption:
         assert result == expected
 
     def test_get_start_seconds(self):
-        """Test conversion of start time to seconds."""
+        """
+        Test conversion of start time to seconds.
+        """
         caption = SRTCaption(
             index=1,
             start_time="00:00:10,500",
@@ -119,7 +151,9 @@ class TestSRTCaption:
         assert caption.get_start_seconds() == 10.5
 
     def test_get_start_seconds_with_hours(self):
-        """Test conversion of start time with hours to seconds."""
+        """
+        Test conversion of start time with hours to seconds.
+        """
         caption = SRTCaption(
             index=1,
             start_time="01:30:45,250",
@@ -132,7 +166,9 @@ class TestSRTCaption:
         assert caption.get_start_seconds() == expected
 
     def test_get_end_seconds(self):
-        """Test conversion of end time to seconds."""
+        """
+        Test conversion of end time to seconds.
+        """
         caption = SRTCaption(
             index=1,
             start_time="00:00:10,000",
@@ -143,7 +179,9 @@ class TestSRTCaption:
         assert caption.get_end_seconds() == 15.75
 
     def test_get_end_seconds_with_hours(self):
-        """Test conversion of end time with hours to seconds."""
+        """
+        Test conversion of end time with hours to seconds.
+        """
         caption = SRTCaption(
             index=1,
             start_time="00:00:10,000",
@@ -156,7 +194,9 @@ class TestSRTCaption:
         assert caption.get_end_seconds() == expected
 
     def test_matches_search_case_insensitive(self):
-        """Test case-insensitive search matching."""
+        """
+        Test case-insensitive search matching.
+        """
         caption = SRTCaption(
             index=1,
             start_time="00:00:10,000",
@@ -170,7 +210,9 @@ class TestSRTCaption:
         assert caption.matches_search("goodbye", case_sensitive=False) is False
 
     def test_matches_search_case_sensitive(self):
-        """Test case-sensitive search matching."""
+        """
+        Test case-sensitive search matching.
+        """
         caption = SRTCaption(
             index=1,
             start_time="00:00:10,000",
@@ -184,7 +226,9 @@ class TestSRTCaption:
         assert caption.matches_search("WORLD", case_sensitive=True) is False
 
     def test_matches_search_empty_term(self):
-        """Test search matching with empty search term."""
+        """
+        Test search matching with empty search term.
+        """
         caption = SRTCaption(
             index=1,
             start_time="00:00:10,000",
@@ -196,7 +240,9 @@ class TestSRTCaption:
         assert caption.matches_search("", case_sensitive=True) is False
 
     def test_matches_search_partial_match(self):
-        """Test partial string matching in search."""
+        """
+        Test partial string matching in search.
+        """
         caption = SRTCaption(
             index=1,
             start_time="00:00:10,000",
@@ -210,10 +256,14 @@ class TestSRTCaption:
 
 
 class TestUndoRedoManager:
-    """Test cases for UndoRedoManager class."""
+    """
+    Test cases for UndoRedoManager class.
+    """
 
     def test_init(self):
-        """Test manager initialization."""
+        """
+        Test manager initialization.
+        """
         manager = UndoRedoManager()
         
         assert manager.max_history == 50
@@ -221,13 +271,17 @@ class TestUndoRedoManager:
         assert len(manager.redo_stack) == 0
 
     def test_init_custom_max_history(self):
-        """Test manager initialization with custom max history."""
+        """
+        Test manager initialization with custom max history.
+        """
         manager = UndoRedoManager(max_history=10)
         
         assert manager.max_history == 10
 
     def test_save_state(self):
-        """Test saving state to undo stack."""
+        """
+        Test saving state to undo stack.
+        """
         manager = UndoRedoManager()
         captions = [
             SRTCaption(1, "00:00:10,000", "00:00:15,000", "First caption"),
@@ -241,7 +295,9 @@ class TestUndoRedoManager:
         assert len(manager.undo_stack[0]) == 2
 
     def test_save_state_clears_redo(self):
-        """Test that saving state clears redo stack."""
+        """
+        Test that saving state clears redo stack.
+        """
         manager = UndoRedoManager()
         captions = [
             SRTCaption(1, "00:00:10,000", "00:00:15,000", "First caption")
@@ -257,7 +313,9 @@ class TestUndoRedoManager:
         assert len(manager.redo_stack) == 0
 
     def test_save_state_deep_copy(self):
-        """Test that save_state creates deep copy of captions."""
+        """
+        Test that save_state creates deep copy of captions.
+        """
         manager = UndoRedoManager()
         captions = [
             SRTCaption(1, "00:00:10,000", "00:00:15,000", "First caption")
@@ -272,7 +330,9 @@ class TestUndoRedoManager:
         assert manager.undo_stack[0][0].text == "First caption"
 
     def test_save_state_max_history_limit(self):
-        """Test that history is limited to max_history."""
+        """
+        Test that history is limited to max_history.
+        """
         manager = UndoRedoManager(max_history=3)
         captions = [
             SRTCaption(1, "00:00:10,000", "00:00:15,000", "Caption")
@@ -288,7 +348,9 @@ class TestUndoRedoManager:
         assert manager.undo_stack[0][0].text == "Caption 1"
 
     def test_undo(self):
-        """Test undo functionality."""
+        """
+        Test undo functionality.
+        """
         manager = UndoRedoManager()
         
         # Create initial state
@@ -310,7 +372,9 @@ class TestUndoRedoManager:
         assert len(manager.redo_stack) == 1
 
     def test_undo_empty_stack(self):
-        """Test undo with empty stack."""
+        """
+        Test undo with empty stack.
+        """
         manager = UndoRedoManager()
         captions = [
             SRTCaption(1, "00:00:10,000", "00:00:15,000", "Caption")
@@ -321,7 +385,9 @@ class TestUndoRedoManager:
         assert result is None
 
     def test_redo(self):
-        """Test redo functionality."""
+        """
+        Test redo functionality.
+        """
         manager = UndoRedoManager()
         
         # Create initial state and save
@@ -347,7 +413,9 @@ class TestUndoRedoManager:
         assert len(manager.undo_stack) == 1
 
     def test_redo_empty_stack(self):
-        """Test redo with empty stack."""
+        """
+        Test redo with empty stack.
+        """
         manager = UndoRedoManager()
         captions = [
             SRTCaption(1, "00:00:10,000", "00:00:15,000", "Caption")
@@ -358,7 +426,9 @@ class TestUndoRedoManager:
         assert result is None
 
     def test_can_undo(self):
-        """Test can_undo method."""
+        """
+        Test can_undo method.
+        """
         manager = UndoRedoManager()
         
         assert manager.can_undo() is False
@@ -371,7 +441,9 @@ class TestUndoRedoManager:
         assert manager.can_undo() is True
 
     def test_can_redo(self):
-        """Test can_redo method."""
+        """
+        Test can_redo method.
+        """
         manager = UndoRedoManager()
         
         assert manager.can_redo() is False
@@ -384,7 +456,9 @@ class TestUndoRedoManager:
         assert manager.can_redo() is True
 
     def test_clear(self):
-        """Test clear method."""
+        """
+        Test clear method.
+        """
         manager = UndoRedoManager()
         captions = [
             SRTCaption(1, "00:00:10,000", "00:00:15,000", "Caption")
@@ -402,7 +476,9 @@ class TestUndoRedoManager:
         assert len(manager.redo_stack) == 0
 
     def test_undo_redo_sequence(self):
-        """Test a complete undo/redo sequence."""
+        """
+        Test a complete undo/redo sequence.
+        """
         manager = UndoRedoManager()
         
         # Save state 1

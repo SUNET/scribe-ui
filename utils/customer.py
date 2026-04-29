@@ -1,4 +1,21 @@
-import requests
+# Copyright (c) 2025-2026 Sunet.
+# Contributor: Kristofer Hallin
+#
+# This file is part of Sunet Scribe.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import httpx
 
 from nicegui import ui
 from utils.settings import get_settings
@@ -15,6 +32,7 @@ class Customer:
         partner_id: str,
         name: str,
         contact_email: str,
+        support_contact_email: str,
         priceplan: str,
         base_fee: int,
         realms: str,
@@ -28,6 +46,7 @@ class Customer:
         self.partner_id = partner_id
         self.name = name
         self.contact_email = contact_email
+        self.support_contact_email = support_contact_email
         self.priceplan = priceplan
         self.base_fee = (base_fee,)
         self.realms = realms
@@ -43,8 +62,8 @@ class Customer:
         ui.navigate.to(f"/admin/customers/edit/{self.customer_id}")
 
     def create_card(self):
-        with ui.card().classes("my-2").style(
-            "width: 100%; box-shadow: none; border: 1px solid #e0e0e0; padding: 16px;"
+        with ui.card().classes("my-2 admin-card").style(
+            "width: 100%; box-shadow: none; border: 1px solid var(--color-border-subtle); padding: 16px;"
         ):
             with ui.row().style(
                 "justify-content: space-between; align-items: center; width: 100%;"
@@ -62,30 +81,30 @@ class Customer:
                             "text-md"
                         )
                     ui.label(f"Plan: {self.priceplan.capitalize()}").classes(
-                        "text-sm text-gray-500"
+                        "text-sm text-theme-muted"
                     )
                     if self.priceplan == "fixed":
                         ui.label(
                             f"Blocks: {self.blocks_purchased} ({self.blocks_purchased * 4000} minutes)"
-                        ).classes("text-sm text-gray-500")
+                        ).classes("text-sm text-theme-muted")
                     ui.label(f"Base fee: {self.base_fee}").classes(
-                        "text-sm text-gray-500"
+                        "text-sm text-theme-muted"
                     )
                     if self.contact_email:
                         ui.label(f"Contact: {self.contact_email}").classes(
-                            "text-sm text-gray-500"
+                            "text-sm text-theme-muted"
                         )
-                    ui.label(f"Realms: {self.realms}").classes("text-sm text-gray-500")
+                    ui.label(f"Realms: {self.realms}").classes("text-sm text-theme-muted")
                     ui.label(
                         f"Total users: {self.stats.get('total_users', 0)}"
-                    ).classes("text-sm text-gray-500")
+                    ).classes("text-sm text-theme-muted")
 
                     ui.label(f"Created {self.created_at}").classes(
-                        "text-sm text-gray-500"
+                        "text-sm text-theme-muted"
                     )
                     if self.notes:
                         ui.label(f"Notes: {self.notes}").classes(
-                            "text-sm text-gray-500"
+                            "text-sm text-theme-muted"
                         )
 
                 with ui.column().style("flex: 1;"):
@@ -119,11 +138,11 @@ class Customer:
                                 if overage > 0:
                                     ui.label(
                                         f"⚠️ Overage minutes: {overage:.0f} min"
-                                    ).classes("text-sm font-semibold text-red-600")
+                                    ).classes("text-sm font-semibold").style("color: var(--color-text-danger);")
                                 else:
                                     ui.label(
                                         f"Remaining minutes: {self.stats.get('remaining_minutes', 0):.0f}"
-                                    ).classes("text-sm font-semibold text-green-600")
+                                    ).classes("text-sm font-semibold").style("color: var(--color-status-ok-border);")
 
                         with ui.column():
                             ui.label("Last month").classes("font-semibold")
@@ -161,21 +180,20 @@ class Customer:
 
     def delete_customer_dialog(self) -> None:
         with ui.dialog() as delete_customer_dialog:
-            with ui.card().style("width: 400px; max-width: 90vw;"):
-                ui.label("Delete customer").classes("text-2xl font-bold")
+            with ui.card():
+                ui.label("Delete customer").classes("text-h6")
                 ui.label(
                     "Are you sure you want to delete this customer? This action cannot be undone."
-                ).classes("my-4")
-                with ui.row().style("justify-content: flex-end; width: 100%;"):
-                    ui.button("Cancel").classes("button-close").props(
-                        "color=black flat"
-                    ).on("click", lambda: delete_customer_dialog.close())
-                    ui.button("Delete").classes("button-close").props(
-                        "color=red flat"
-                    ).on(
-                        "click",
-                        lambda: (
-                            requests.delete(
+                ).classes("text-subtitle2").style("margin-bottom: 10px;")
+
+                with ui.row().classes("justify-between w-full"):
+                    ui.button("Cancel", on_click=lambda: delete_customer_dialog.close()).props(
+                        "color=black"
+                    )
+                    ui.button(
+                        "Delete",
+                        on_click=lambda: (
+                            httpx.delete(
                                 settings.API_URL
                                 + f"/api/v1/admin/customers/{self.customer_id}",
                                 headers=get_auth_header(),
@@ -183,6 +201,6 @@ class Customer:
                             delete_customer_dialog.close(),
                             ui.navigate.to("/admin/customers"),
                         ),
-                    )
+                    ).props("color=red")
 
             delete_customer_dialog.open()

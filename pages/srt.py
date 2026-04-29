@@ -1,41 +1,35 @@
-import json
-import requests
+# Copyright (c) 2025-2026 Sunet.
+# Contributor: Kristofer Hallin
+#
+# This file is part of Sunet Scribe.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import httpx
 
 from nicegui import app, ui
 from utils.chat import InferenceActions
-from utils.common import default_styles
 from utils.common import get_auth_header
 from utils.common import page_init
+from utils.helpers import storage_decrypt
 from utils.settings import get_settings
 from utils.srt import SRTEditor
+from utils.styles import default_styles
 from utils.video import create_video_proxy
 
 create_video_proxy()
 
 settings = get_settings()
-
-
-def save_srt(job_id: str, data: str, editor: SRTEditor, data_format: str) -> None:
-    try:
-        jsondata = {"format": data_format, "data": data}
-
-        headers = get_auth_header()
-        res = requests.put(
-            f"{settings.API_URL}/api/v1/transcriber/{job_id}/result",
-            headers=headers,
-            json=jsondata,
-        )
-        res.raise_for_status()
-    except requests.exceptions.RequestException as e:
-        ui.notify(f"Error: Failed to save file: {e}", type="negative")
-        return
-
-    ui.notify(
-        "File saved successfully",
-        type="positive",
-        position="bottom",
-        icon="check_circle",
-    )
 
 
 def create() -> None:
@@ -46,7 +40,7 @@ def create() -> None:
         """
         Display the result of the transcription job.
         """
-        page_init()
+        page_init(use_drawer=True)
         editor = SRTEditor(uuid, data_format, filename)
         editor.setup_beforeunload_warning()
 
@@ -115,22 +109,24 @@ def create() -> None:
 
         try:
             if data_format == "srt":
-                response = requests.get(
+                response = httpx.request(
+                    "GET",
                     f"{settings.API_URL}/api/v1/transcriber/{uuid}/result/srt",
                     headers=get_auth_header(),
                     json={
-                        "encryption_password": app.storage.user.get(
-                            "encryption_password"
+                        "encryption_password": storage_decrypt(
+                            app.storage.user.get("encryption_password"),
                         )
                     },
                 )
             else:
-                response = requests.get(
+                response = httpx.request(
+                    "GET",
                     f"{settings.API_URL}/api/v1/transcriber/{uuid}/result/txt",
                     headers=get_auth_header(),
                     json={
-                        "encryption_password": app.storage.user.get(
-                            "encryption_password"
+                        "encryption_password": storage_decrypt(
+                            app.storage.user.get("encryption_password"),
                         )
                     },
                 )
@@ -138,7 +134,7 @@ def create() -> None:
             response.raise_for_status()
             data = response.json()
 
-        except requests.exceptions.RequestException as e:
+        except httpx.HTTPError as e:
             ui.notify(f"Error: Failed to get result: {e}")
             return
 
@@ -146,37 +142,17 @@ def create() -> None:
             with ui.column().classes("flex-row items-center"):
                 editor.create_undo_redo_panel()
                 with ui.button("Save", icon="save") as save_button:
-                    if data_format == "srt":
-                        save_button.on(
-                            "click",
-                            lambda: save_srt(
-                                uuid,
-                                editor.export_srt(),
-                                editor,
-                                data_format,
-                            ),
-                        )
-                    else:
-                        save_button.on(
-                            "click",
-                            lambda: save_srt(
-                                uuid,
-                                json.dumps(editor.export_json()),
-                                editor,
-                                "json",
-                            ),
-                        )
-
-                    save_button.props("color=black flat")
+                    save_button.on("click", lambda: editor.save_srt_changes())
+                    save_button.props("flat").classes("editor-btn editor-toolbar-btn")
 
                 # Export button - opens dialog
-                ui.button("Export", icon="download").props("flat color=black").on(
-                    "click", lambda: editor.show_export_dialog(filename)
-                )
+                ui.button("Export", icon="download").props("flat").classes(
+                    "editor-btn editor-toolbar-btn"
+                ).on("click", lambda: editor.show_export_dialog(filename))
 
                 if data_format == "srt":
-                    with ui.button("Validate", icon="check").props(
-                        "flat color=black"
+                    with ui.button("Validate", icon="check").props("flat").classes(
+                        "editor-btn editor-toolbar-btn"
                     ) as validate_button:
                         validate_button.on(
                             "click",
@@ -187,8 +163,8 @@ def create() -> None:
                 autoscroll = ui.switch("Autoscroll")
                 autoscroll.on("click", lambda: editor.set_autoscroll(autoscroll.value))
 
-            with ui.button("Close editor", icon="close").props(
-                "flat color=black"
+            with ui.button("Close editor", icon="close").props("flat").classes(
+                "editor-btn editor-toolbar-btn"
             ) as close_button:
                 close_button.on("click", lambda: editor.close_editor("/home"))
 

@@ -1,6 +1,20 @@
 # scribe-ui
 
-User interface built on NiceGUI for the SUNET transcription service (Sunet Scribe).
+User interface built on NiceGUI for the Sunet transcription service (Sunet Scribe).
+
+## Author
+
+This project is developed by [Sunet](https://www.sunet.se). Contributor: Kristofer Hallin.
+
+## License
+
+This project is licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for details.
+
+Copyright (c) 2025-2026 Sunet. Contributor: Kristofer Hallin.
+
+## Contributing
+
+Contributions are welcome! Please feel free to open issues or submit pull requests.
 
 ## Features
 
@@ -41,7 +55,7 @@ OIDC_APP_LOGOUT_ROUTE="http://localhost:8000/api/logout"
 
 # Storage configuration
 STORAGE_SECRET="your-secret-key"
-NICEGUI_STORAGE="redis://localhost:6379"  # Optional: Redis storage URL
+NICEGUI_REDIS_URL="redis://localhost:6379"  # Optional: Redis storage URL
 ```
 
 ### 3. Run the Application
@@ -91,7 +105,3 @@ scribe-ui/
 ├── static/             # Static assets
 └── tests/              # Test files
 ```
-
-## License
-
-See [LICENSE](LICENSE) for details.

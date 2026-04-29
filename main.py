@@ -1,3 +1,22 @@
+# Copyright (c) 2025-2026 Sunet.
+# Contributor: Kristofer Hallin
+#
+# This file is part of Sunet Scribe.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import secrets
+
 from fastapi import Request
 from nicegui import app, ui
 from pages.admin import create as create_admin
@@ -5,13 +24,14 @@ from pages.home import create as create_files_table
 from pages.srt import create as create_srt
 from pages.status import create as create_status
 from pages.user import create as create_user_page
-from utils.common import default_styles
+from utils.styles import default_styles
 from utils.settings import get_settings
 from utils.token import get_user_data, get_user_status, get_token_is_valid
 from utils.helpers import (
     encryption_password_set,
     encryption_password_verify,
     reset_password,
+    storage_encrypt,
 )
 
 settings = get_settings()
@@ -34,17 +54,45 @@ async def index(request: Request) -> None:
     token = request.query_params.get("token")
     refresh_token = request.query_params.get("refresh_token")
 
+    if "_scribe_bk" not in app.storage.browser:
+        app.storage.browser["_scribe_bk"] = secrets.token_hex(32)
+
+    # Wait for client connection before accessing user storage.
+    await ui.context.client.connected()
+
     if refresh_token:
         app.storage.user["refresh_token"] = refresh_token
 
     if token:
         app.storage.user["token"] = token
 
+    client = ui.context.client
+
     # Set the users timezone
-    timezone = await ui.run_javascript(
-        "Intl.DateTimeFormat().resolvedOptions().timeZone"
-    )
+    timezone = "UTC"
+    if client.has_socket_connection:
+        try:
+            timezone = await ui.run_javascript(
+                "Intl.DateTimeFormat().resolvedOptions().timeZone", timeout=5.0
+            )
+        except (TimeoutError, Exception):
+            pass
+
     app.storage.user["timezone"] = timezone
+
+    # Always use auto mode on the landing page (user hasn't logged in yet)
+    ui.dark_mode(None)
+
+    prefers_dark = False
+    if client.has_socket_connection:
+        try:
+            prefers_dark = await ui.run_javascript(
+                "window.matchMedia('(prefers-color-scheme: dark)').matches",
+                timeout=5.0,
+            )
+        except (TimeoutError, Exception):
+            pass
+    app.storage.user["_resolved_dark"] = bool(prefers_dark)
 
     if (
         app.storage.user.get("token")
@@ -52,6 +100,17 @@ async def index(request: Request) -> None:
         and get_user_status()
     ):
         user_data = get_user_data()
+
+        # Sync dark mode preference from backend
+        # Backend stores "dark", "light", or "auto"
+        raw_dark = user_data.get("dark_mode", "auto")
+        if raw_dark == "dark":
+            app.storage.user["dark_mode"] = True
+        elif raw_dark == "light":
+            app.storage.user["dark_mode"] = False
+        else:
+            app.storage.user["dark_mode"] = None
+        ui.dark_mode(app.storage.user["dark_mode"])
 
         if not user_data["encryption_settings"]:
             with ui.dialog() as dialog:
@@ -120,9 +179,9 @@ async def index(request: Request) -> None:
 
                     def verify_encryption_password() -> None:
                         if password_input.value:
-                            app.storage.user[
-                                "encryption_password"
-                            ] = password_input.value
+                            app.storage.user["encryption_password"] = storage_encrypt(
+                                password_input.value,
+                            )
 
                             if encryption_password_verify(password_input.value):
                                 ui.navigate.to("/home")
@@ -182,51 +241,57 @@ async def index(request: Request) -> None:
         is_not_activated = has_token and not get_user_status()
 
         with ui.column().classes("w-full h-screen items-center justify-center"):
-          with ui.card().style(
-              "width: 500px; max-width: 90%; padding: 40px; border: 0; box-shadow: none;"
-          ):
-            with ui.column().classes("w-full items-center gap-4"):
-                ui.image(f"static/{settings.LOGO_LANDING}").style(
-                    f"max-width: {settings.LOGO_LANDING_WIDTH}px; height: auto;"
-                )
-
-                ui.label("Welcome to Sunet Scribe").classes(
-                    "text-h5 text-center"
-                ).style("margin-top: 20px;")
-
-                if is_not_activated:
-                    with ui.card().classes("w-full no-shadow").style(
-                        "background-color: #fff3cd; border: 1px solid #ffc107; padding: 20px; margin-top: 20px; min-height: 160px;"
-                    ):
-                        with ui.column().classes("items-center gap-3"):
-                            ui.icon("warning", size="lg").style("color: #ff9800;")
-                            ui.label("Account Pending Activation").classes("text-h6")
-                            ui.label(
-                                "Your account has been created but is not yet activated. Please contact your administrator to enable access."
-                            ).classes("text-body2 text-center")
-
-                    with ui.row().classes("w-full gap-3 justify-center").style(
-                        "margin-top: 30px;"
-                    ):
-                        ui.button(
-                            "Try Again",
-                            icon="refresh",
-                            on_click=lambda: ui.navigate.to("/"),
-                        ).props("flat color=white").classes("button-default-style")
-
-                        ui.button(
-                            "Logout",
-                            icon="logout",
-                            on_click=lambda: ui.navigate.to("/logout"),
-                        ).props("flat color=black").classes("button-close")
-                else:
-                    ui.button(
-                        "Login with SSO",
-                        icon="login",
-                        on_click=lambda: ui.navigate.to(settings.OIDC_APP_LOGIN_ROUTE),
-                    ).props("flat color=white").classes("button-default-style").style(
-                        "width: 220px; height: 44px; margin-top: 30px;"
+            with ui.card().style(
+                "width: 500px; max-width: 90%; padding: 40px; border: 0; box-shadow: none;"
+            ):
+                with ui.column().classes("w-full items-center gap-4"):
+                    ui.image(f"static/{settings.LOGO_LANDING}").style(
+                        f"max-width: {settings.LOGO_LANDING_WIDTH}px; height: auto;"
                     )
+
+                    ui.label(settings.LANDING_TEXT).classes(
+                        "text-h5 text-center"
+                    ).style("margin-top: 20px;")
+
+                    if is_not_activated:
+                        with ui.card().classes("w-full no-shadow").style(
+                            "background-color: var(--color-warning-bg); border: 1px solid var(--color-warning-border); padding: 20px; margin-top: 20px; min-height: 160px;"
+                        ):
+                            with ui.column().classes("items-center gap-3"):
+                                ui.icon("warning", size="lg").style("color: var(--color-warning-icon);")
+                                ui.label("Account pending activation").classes(
+                                    "text-h6"
+                                )
+                                ui.label(
+                                    "Your account has been created but is not yet activated. Please contact your administrator to enable access."
+                                ).classes("text-body2 text-center")
+
+                        with ui.row().classes("w-full gap-3 justify-center").style(
+                            "margin-top: 30px;"
+                        ):
+                            ui.button(
+                                "Try Again",
+                                icon="refresh",
+                                on_click=lambda: ui.navigate.to("/"),
+                            ).props("flat color=white").classes("button-default-style")
+
+                            ui.button(
+                                "Logout",
+                                icon="logout",
+                                on_click=lambda: ui.navigate.to("/logout"),
+                            ).props("flat color=black").classes("button-close")
+                    else:
+                        ui.button(
+                            "Login with SSO",
+                            icon="login",
+                            on_click=lambda: ui.navigate.to(
+                                settings.OIDC_APP_LOGIN_ROUTE
+                            ),
+                        ).props("flat color=white").classes(
+                            "button-default-style"
+                        ).style(
+                            "width: 220px; height: 44px; margin-top: 30px;"
+                        )
 
 
 @ui.page("/logout")
@@ -249,4 +314,5 @@ ui.run(
     host="0.0.0.0",
     port=8888,
     favicon=f"static/{settings.FAVICON}",
+    reconnect_timeout=15,
 )

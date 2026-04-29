@@ -1,9 +1,24 @@
+# Copyright (c) 2025-2026 Sunet.
+# Contributor: Kristofer Hallin
+#
+# This file is part of Sunet Scribe.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from nicegui import ui, events
 from utils.common import (
-    default_styles,
     page_init,
     jobs_get,
-    jobs_columns,
     table_click,
     table_upload,
     table_delete,
@@ -11,6 +26,7 @@ from utils.common import (
     table_bulk_export,
     table_bulk_transcribe,
 )
+from utils.styles import default_styles, jobs_columns
 
 
 def create() -> None:
@@ -20,7 +36,7 @@ def create() -> None:
         """
         Main page of the application.
         """
-        page_init()
+        page_init(use_drawer=True)
 
         def toggle_buttons(selected: list) -> None:
             """
@@ -48,7 +64,7 @@ def create() -> None:
             elif len(completed) >= 1 and len(formats) == 1:
                 export_tooltip.text = "Export selected files"
             else:
-                export_tooltip.text = "Select one or more completed files to export"
+                export_tooltip.text = "Select one or more already completed files to export"
 
             # Enable bulk transcribe when 1+ uploaded jobs are selected
             uploaded = [r for r in selected if r.get("status") == "Uploaded"]
@@ -62,7 +78,7 @@ def create() -> None:
                 transcribe_tooltip.text = "One or more files are already transcribed"
             elif len(uploaded) >= 1:
                 transcribe_tooltip.text = "Transcribe selected files"
-            elif len(already_transcribed) > 0 and len(uploaded) == 0:
+            elif len(already_transcribed) > 0:
                 transcribe_tooltip.text = "One or more files are already transcribed"
             else:
                 transcribe_tooltip.text = "Select one or more files to transcribe"
@@ -70,22 +86,39 @@ def create() -> None:
         table = ui.table(
             on_select=lambda e: toggle_buttons(e.selection),
             columns=jobs_columns,
-            rows=jobs_get(),
+            rows=[],
             selection="multiple",
             pagination=10,
         )
         table.props(":selected-rows-label=\"(n) => n + ' files selected'\"")
 
+        # Custom header checkbox that selects/deselects ALL rows across all pages
+        table.add_slot(
+            "header-selection",
+            """
+            <q-checkbox
+                :model-value="props.selected"
+                @update:model-value="val => { if (!val) { $parent.$emit('deselect_all'); } else { props.selected = true; } }"
+            />
+            """,
+        )
+
+        def deselect_all():
+            table.selected = []
+            toggle_buttons([])
+
+        table.on("deselect_all", deselect_all)
+
         def table_handle_row_click(e: events.GenericEventArguments) -> None:
             if e.args.get("status") == "Completed":
                 table_click(e)
             else:
-                table_transcribe(e.args)
+                table_transcribe(e.args, on_complete=lambda: ui.timer(0.1, update_rows, once=True))
 
         ui.add_head_html(default_styles)
 
         table.style(
-            "width: 100%; height: calc(100vh - 160px); box-shadow: none; font-size: 18px;"
+            "width: 100%; height: calc(100vh - 100px - var(--banner-offset, 0px)); box-shadow: none; font-size: 18px;"
         )
         table.classes("table-style")
         table.add_slot(
@@ -98,9 +131,7 @@ def create() -> None:
                 <q-btn
                     v-if="props.row.status === 'Uploaded' || props.row.status === 'Completed'"
                     :label="props.row.status === 'Completed' ? 'Edit' : 'Transcribe'"
-                    :color="props.row.status === 'Completed' ? 'white' : 'black'"
-                    :text-color="props.row.status === 'Completed' ? 'black' : 'white'"
-                    :outline="props.row.status === 'Completed'"
+                    :class="props.row.status === 'Completed' ? 'table-btn-edit' : 'table-btn-transcribe'"
                     style="width: 120px; height: 40px;"
                     @click="$parent.$emit('table_handle_row_click', props.row)"
                 />
@@ -108,9 +139,9 @@ def create() -> None:
             """,
         )
         table.add_slot(
-            "body-cell-deletetion_date",
+            "body-cell-deletion_date",
             """
-            <q-td key="deletetion_date" :props="props">
+            <q-td key="deletion_date" :props="props">
                 <div :class="props.row.deletion_approaching ? 'deletion-warning' : ''">
                     <span>{{ props.row.deletion_date }}</span>
                     <q-icon
@@ -127,44 +158,43 @@ def create() -> None:
         table.on("table_handle_row_click", table_handle_row_click)
 
         with table.add_slot("top-left"):
-            ui.label("My files").classes("text-h5")
+            ui.label("My files").classes("text-3xl font-bold")
 
         with table.add_slot("top-right"):
             with ui.row().classes("items-center"):
+                with ui.button("Delete", icon="delete") as delete:
+                    delete.props("color=black flat")
+                    delete.classes("delete-style")
+                    delete.on("click", lambda: table_delete(table))
+                    delete.set_enabled(False)
+                    delete_tooltip = ui.tooltip("Select one or more files to delete")
+
+                with ui.button("Export", icon="download") as bulk_export:
+                    bulk_export.props("color=black flat")
+                    bulk_export.classes("default-style")
+                    bulk_export.on("click", lambda: table_bulk_export(table))
+                    bulk_export.set_enabled(False)
+                    export_tooltip = ui.tooltip("Select one or more files to export")
+
+                with ui.button("Transcribe", icon="rtt") as bulk_transcribe:
+                    bulk_transcribe.props("color=black flat")
+                    bulk_transcribe.classes("default-style")
+                    bulk_transcribe.on("click", lambda: table_bulk_transcribe(table, on_complete=lambda: ui.timer(0.1, update_rows, once=True)))
+                    bulk_transcribe.set_enabled(False)
+                    transcribe_tooltip = ui.tooltip(
+                        "Select one or more files to transcribe"
+                    )
+
                 with ui.button("Upload", icon="upload") as upload:
                     upload.props("color=black flat")
                     upload.classes("default-style")
                     upload.on("click", lambda: table_upload(table))
 
-        with ui.row().classes("items-center"):
-            with ui.button("Delete", icon="delete") as delete:
-                delete.props("color=black flat")
-                delete.classes("delete-style")
-                delete.on("click", lambda: table_delete(table))
-                delete.set_enabled(False)
-                delete_tooltip = ui.tooltip("Select one or more files to delete")
-
-            with ui.button("Export", icon="download") as bulk_export:
-                bulk_export.props("color=black flat")
-                bulk_export.classes("default-style")
-                bulk_export.on("click", lambda: table_bulk_export(table))
-                bulk_export.set_enabled(False)
-                export_tooltip = ui.tooltip("Select one or more files to export")
-
-            with ui.button("Transcribe", icon="rtt") as bulk_transcribe:
-                bulk_transcribe.props("color=black flat")
-                bulk_transcribe.classes("default-style")
-                bulk_transcribe.on("click", lambda: table_bulk_transcribe(table))
-                bulk_transcribe.set_enabled(False)
-                transcribe_tooltip = ui.tooltip(
-                    "Select one or more files to transcribe"
-                )
-
-        def update_rows():
+        async def update_rows():
             """
             Update the rows in the table.
             """
-            rows = jobs_get()
+            rows = await jobs_get()
 
             if not rows:
                 delete.set_enabled(False)
@@ -174,4 +204,16 @@ def create() -> None:
             table.selection = "multiple" if rows else "none"
             table.update_rows(rows, clear_selection=False)
 
-        ui.timer(5.0, lambda: update_rows())
+            has_active = any(
+                r["status"].lower() in ("transcribing", "queued", "uploading")
+                for r in rows
+            )
+            poll_timer.interval = 5.0 if has_active else 30.0
+
+        poll_timer = ui.timer(30.0, update_rows, active=False)
+
+        async def initial_load():
+            poll_timer.activate()
+            await update_rows()
+
+        ui.timer(0.0, initial_load, once=True)
