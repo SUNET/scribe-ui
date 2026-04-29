@@ -196,8 +196,14 @@ def create() -> None:
         async def update_rows():
             """
             Update the rows in the table.
+
+            Avoid clearing the existing table during temporary backend/API failures.
+            This can happen while large uploads are being stored and encrypted.
             """
             rows = await jobs_get()
+
+            if not rows and table.rows:
+                return
 
             if not rows:
                 delete.set_enabled(False)
@@ -213,10 +219,4 @@ def create() -> None:
             )
             poll_timer.interval = 5.0 if has_active else 30.0
 
-        poll_timer = ui.timer(30.0, update_rows, active=False)
-
-        async def initial_load():
-            poll_timer.activate()
-            await update_rows()
-
-        ui.timer(0.0, initial_load, once=True)
+                ui.timer(0.0, initial_load, once=True)

@@ -1115,7 +1115,8 @@ async def handle_upload_with_feedback(files, dialog, table, status_label):
         if not client._deleted:
             rows = await jobs_get()
             with client:
-                table.update_rows(rows, clear_selection=False)
+                if rows or not table.rows:
+                    table.update_rows(rows, clear_selection=False)
                 dialog.close()
 
     asyncio.create_task(_upload())
