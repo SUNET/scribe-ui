@@ -936,7 +936,7 @@ def table_upload(table) -> None:
                     ui.upload(
                         label="hidden",
                         on_multi_upload=lambda e: handle_upload_with_feedback(
-                            e, dialog, table
+                            e, dialog, table, status_label
                         ),
                         auto_upload=True,
                         multiple=True,
@@ -956,7 +956,10 @@ def table_upload(table) -> None:
                         upload_column, status_column, dialog
                     ),
                 )
-                upload.on("finish", lambda _: dialog.close())
+                upload.on(
+                    "finish",
+                    lambda _: status_label.set_text("Finishing upload, please wait..."),
+                )
 
                 def on_byte_progress(e):
                     uploaded = e.args.get("uploaded", 0)
@@ -1035,19 +1038,26 @@ def table_upload(table) -> None:
         dialog.open()
 
 
-async def handle_upload_with_feedback(files, dialog, table):
+async def handle_upload_with_feedback(files, dialog, table, status_label):
     """
     Handle file uploads with user feedback and validation.
+
+    The NiceGUI upload progress only covers browser -> UI.
+    This function keeps the dialog open while the UI forwards the file to the backend.
     """
 
     client = ui.context.client
 
-    dialog.close()
-
     file_items = []
+    total = len(files.files)
 
-    for file in files.files:
+    for index, file in enumerate(files.files, 1):
         file_name = sanitize_filename(file.name)
+
+        if not client._deleted:
+            status_label.set_text(
+                f"Saving file {index} of {total} locally: {file_name}"
+            )
 
         temp_file = tempfile.NamedTemporaryFile(
             delete=False,
@@ -1066,8 +1076,14 @@ async def handle_upload_with_feedback(files, dialog, table):
             raise
 
     async def _upload():
-        for file_name, temp_path in file_items:
+        for index, (file_name, temp_path) in enumerate(file_items, 1):
             try:
+                if not client._deleted:
+                    with client:
+                        status_label.set_text(
+                            f"Storing and encrypting file {index} of {total}: {file_name}"
+                        )
+
                 success = await post_file(temp_path, file_name)
 
                 if not client._deleted:
@@ -1097,8 +1113,10 @@ async def handle_upload_with_feedback(files, dialog, table):
                     os.remove(temp_path)
 
         if not client._deleted:
+            rows = await jobs_get()
             with client:
-                table.update_rows(await jobs_get(), clear_selection=False)
+                table.update_rows(rows, clear_selection=False)
+                dialog.close()
 
     asyncio.create_task(_upload())
 
