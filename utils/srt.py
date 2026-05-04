@@ -473,6 +473,8 @@ class SRTEditor:
 
         original_data = json.loads(data)
 
+        self.speakers.add("UNKNOWN")
+
         if not original_data.get("segments"):
             return
 
