@@ -16,7 +16,9 @@
 # limitations under the License.
 
 import asyncio
+import os
 import re
+import tempfile
 import httpx
 import pytz
 
@@ -34,9 +36,8 @@ from utils.token import (
 )
 from utils.helpers import storage_decrypt, customers_get
 
-MultiPartParser.spool_max_size = 1024 * 1024 * 4096
 settings = get_settings()
-
+MultiPartParser.spool_max_size = 1024 * 1024 * settings.MULTIPART_SPOOL_MAX_SIZE_MB
 
 def sanitize_filename(filename: str) -> str:
     """
@@ -856,20 +857,26 @@ def table_click(event) -> None:
         )
 
 
-async def post_file(filedata: bytes, filename: str) -> bool:
+async def post_file(file_path: str, filename: str) -> bool:
     """
-    Post a file to the API.
+    Stream a file from disk to the API without loading it into memory.
     """
-
-    files_json = {"file": (filename, filedata)}
 
     try:
         async with httpx.AsyncClient(timeout=900) as client:
-            response = await client.post(
-                f"{settings.API_URL}/api/v1/transcriber",
-                files=files_json,
-                headers=get_auth_header(),
-            )
+            with open(file_path, "rb") as upload_file:
+                response = await client.post(
+                    f"{settings.API_URL}/api/v1/transcriber",
+                    files={
+                        "file": (
+                            filename,
+                            upload_file,
+                            "application/octet-stream",
+                        )
+                    },
+                    headers=get_auth_header(),
+                )
+
             response.raise_for_status()
 
             if response.status_code != 200:
@@ -929,7 +936,7 @@ def table_upload(table) -> None:
                     ui.upload(
                         label="hidden",
                         on_multi_upload=lambda e: handle_upload_with_feedback(
-                            e, dialog, table
+                            e, dialog, table, status_label
                         ),
                         auto_upload=True,
                         multiple=True,
@@ -949,7 +956,10 @@ def table_upload(table) -> None:
                         upload_column, status_column, dialog
                     ),
                 )
-                upload.on("finish", lambda _: dialog.close())
+                upload.on(
+                    "finish",
+                    lambda _: status_label.set_text("Finishing upload, please wait..."),
+                )
 
                 def on_byte_progress(e):
                     uploaded = e.args.get("uploaded", 0)
@@ -1028,46 +1038,86 @@ def table_upload(table) -> None:
         dialog.open()
 
 
-async def handle_upload_with_feedback(files, dialog, table):
+async def handle_upload_with_feedback(files, dialog, table, status_label):
     """
     Handle file uploads with user feedback and validation.
+
+    The NiceGUI upload progress only covers browser -> UI.
+    This function keeps the dialog open while the UI forwards the file to the backend.
     """
 
     client = ui.context.client
 
-    dialog.close()
-
-    # Read file data while the client context is still active
     file_items = []
-    for file in files.files:
-        file_name = sanitize_filename(file.name)
-        file_data = await file.read()
-        file_items.append((file_name, file_data))
+    total = len(files.files)
 
-    # Upload to backend in a background task so the UI stays responsive
+    for index, file in enumerate(files.files, 1):
+        file_name = sanitize_filename(file.name)
+
+        if not client._deleted:
+            status_label.set_text(
+                f"Saving file {index} of {total} locally: {file_name}"
+            )
+
+        temp_file = tempfile.NamedTemporaryFile(
+            delete=False,
+            prefix="scribe-ui-upload-",
+            suffix=".upload",
+        )
+        temp_path = temp_file.name
+        temp_file.close()
+
+        try:
+            await file.save(temp_path)
+            file_items.append((file_name, temp_path))
+        except Exception:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            raise
+
     async def _upload():
-        for file_name, file_data in file_items:
+        for index, (file_name, temp_path) in enumerate(file_items, 1):
             try:
-                await post_file(file_data, file_name)
+                if not client._deleted:
+                    with client:
+                        status_label.set_text(
+                            f"Storing and encrypting file {index} of {total}: {file_name}"
+                        )
+
+                success = await post_file(temp_path, file_name)
 
                 if not client._deleted:
-                    with table:
-                        ui.notify(
-                            f"Successfully uploaded {file_name}",
-                            type="positive",
-                            timeout=3000,
-                        )
+                    with client:
+                        if success:
+                            ui.notify(
+                                f"Successfully uploaded {file_name}",
+                                type="positive",
+                                timeout=3000,
+                            )
+                        else:
+                            ui.notify(
+                                f"Error uploading {file_name}",
+                                type="negative",
+                                timeout=5000,
+                            )
             except Exception as e:
                 if not client._deleted:
-                    with table:
+                    with client:
                         ui.notify(
                             f"Error uploading {file_name}: {str(e)}",
                             type="negative",
                             timeout=5000,
                         )
+            finally:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
 
         if not client._deleted:
-            table.update_rows(await jobs_get(), clear_selection=False)
+            rows = await jobs_get()
+            with client:
+                if rows or not table.rows:
+                    table.update_rows(rows, clear_selection=False)
+                dialog.close()
 
     asyncio.create_task(_upload())
 
