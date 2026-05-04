@@ -554,6 +554,96 @@ def set_admin_status(
                 type="negative",
             )
 
+def set_user_admin_and_domains(username: str, admin: bool, admin_domains: str) -> None:
+    """
+    Set admin status and admin domains in one request.
+    """
+    res = httpx.put(
+        settings.API_URL + f"/api/v1/admin/{username}",
+        headers=get_auth_header(),
+        json={
+            "admin": admin,
+            "admin_domains": admin_domains,
+        },
+    )
+    res.raise_for_status()
+
+def open_make_admin_dialog(selected_rows: list, all_users: list) -> None:
+    """
+    Open a dialog that requires at least one domain before granting admin access.
+    """
+    if not selected_rows:
+        ui.notify("Select at least one user first.", type="warning")
+        return
+
+    user_realms = {u["realm"] for u in selected_rows if u.get("realm")}
+    realms = get_customer_realms(user_realms)
+
+    if not realms:
+        realms = sorted(
+            {u["realm"] for u in all_users if u.get("realm") and "." in u["realm"]}
+        )
+
+    with ui.dialog() as admin_dialog:
+        with ui.card().style("width: 500px; max-width: 90vw;"):
+            if len(selected_rows) == 1:
+                ui.label(
+                    f"Make {selected_rows[0]['username']} admin"
+                ).classes("text-2xl font-bold")
+            else:
+                ui.label("Make users admin").classes("text-2xl font-bold")
+
+            ui.label("Admins must have at least one assigned domain.")
+
+            domains_select = (
+                ui.select(
+                    realms,
+                    label="Allowed domains",
+                    multiple=True,
+                    value=[],
+                )
+                .classes("w-full")
+                .props("outlined use-chips")
+            )
+
+            error_label = ui.label("").classes("text-red-600")
+
+            def on_save() -> None:
+                domains = domains_select.value or []
+                if not domains:
+                    error_label.set_text(
+                        "Select at least one domain before granting admin access."
+                    )
+                    return
+
+                domains_str = ",".join(domains)
+
+                try:
+                    for user in selected_rows:
+                        set_user_admin_and_domains(
+                            username=user["username"],
+                            admin=True,
+                            admin_domains=domains_str,
+                        )
+
+                    ui.notify("Admin access updated", type="positive")
+                    admin_dialog.close()
+                    ui.navigate.to("/admin/users")
+
+                except httpx.HTTPError as e:
+                    error_label.set_text("Failed to update admin access.")
+                    ui.notify(str(e), type="negative")
+
+            with ui.row().style("justify-content: flex-end; width: 100%;"):
+                ui.button("Cancel").classes("button-close").props(
+                    "color=black flat"
+                ).on("click", lambda: admin_dialog.close())
+
+                ui.button("Save").classes("default-style").props(
+                    "color=black flat"
+                ).on("click", on_save)
+
+        admin_dialog.open()
 
 def reset_manual_override(selected_rows: list) -> None:
     """

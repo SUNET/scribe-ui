@@ -43,6 +43,7 @@ from utils.helpers import (
     save_group,
     set_active_status,
     set_admin_status,
+    open_make_admin_dialog,
     set_domains,
     user_statistics_get,
     export_customers_csv,
@@ -164,13 +165,13 @@ def admin_dialog(users: list, group_id: str) -> None:
                     "click", lambda: dialog.close()
                 )
                 ui.button("Make admin").classes("default-style").props(
-                    "color=black flat"
-                ).on(
-                    "click",
-                    lambda: set_admin_status(
-                        admin_table.selected, True, dialog, group_id
-                    ),
-                )
+    		    "color=black flat"
+		).on(
+    		    "click",
+                    lambda: open_make_admin_dialog(
+        	       	admin_table.selected, users,
+    		    ),
+		)
                 ui.button("Remove admin").classes("button-close").props(
                     "color=black flat"
                 ).on(
@@ -826,10 +827,10 @@ def users() -> None:
                     )
                     ui.menu_item(
                         "Make admin",
-                        on_click=lambda: set_admin_status(
-                            users_table.selected, True, None, ""
+                        on_click=lambda: open_make_admin_dialog(
+                            users_table.selected, users,
                         ),
-                    )
+                    )       
                     ui.menu_item(
                         "Remove admin",
                         on_click=lambda: set_admin_status(
