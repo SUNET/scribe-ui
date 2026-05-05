@@ -500,8 +500,13 @@ class SRTEditor:
 
 
     def add_speaker(self, speaker):
-        if speaker == "":
+        if not speaker:
             return
+
+        if speaker in self.speakers:
+            ui.notify(f'"{speaker}" already exists', color="error")
+            return
+
         self.speakers.append(speaker)
         self.render_speakers.refresh()
 
