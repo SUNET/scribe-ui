@@ -240,7 +240,7 @@ def show_help_dialog() -> None:
                 with ui.card().classes("bg-blue-50 border-l-4").style(
                     "border-left-color: #082954; padding: 20px;"
                 ):
-                    ui.label("About Sunet Scribe").classes("text-h6 font-semibold mb-2")
+                    ui.label(settings.ABOUT_TEXT).classes("text-h6 font-semibold mb-2")
                     ui.label(
                         "A powerful transcription service using Whisper AI models to convert audio and video files into searchable text or time-coded subtitles with high accuracy."
                     ).classes("text-body1")
