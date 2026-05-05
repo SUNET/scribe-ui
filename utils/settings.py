@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     TAB_TITLE: str = "Sunet Scribe"
     TOPBAR_TEXT: str = "Sunet Scribe"
     LANDING_TEXT: str = "Welcome to Sunet Scribe"
+    ABOUT_TEXT: str = "About Sunet Scribe"
 
     WHISPER_MODELS: list[str] = [
         "Fast transcription (normal accuracy)",
