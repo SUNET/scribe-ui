@@ -1,0 +1,13 @@
+Sunet Scribe Frontend
+
+Copyright (c) 2025-2026 Vetenskapsrådet / Sunet
+
+This component is part of Sunet Scribe.
+
+Third-party software used by this component includes:
+
+NiceGUI
+Copyright (c) 2021 Zauberzeug GmbH
+Licensed under the MIT License
+
+https://github.com/zauberzeug/nicegui
