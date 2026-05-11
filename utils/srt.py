@@ -53,7 +53,7 @@ class SRTEditor:
         self.__video_player = None
         self.autoscroll = False
         self.words_per_minute_element = None
-        self.speakers = set()
+        self.speakers = []
         self.data_format = None
         self.filename = filename
 
@@ -464,6 +464,59 @@ class SRTEditor:
 
         self.__video_player = player
 
+    @ui.refreshable
+    def render_speakers(self) -> None:
+        for idx, speaker in enumerate(self.speakers):
+            if speaker == "UNKNOWN":
+                continue
+
+            speaker_inp = ui.input(value=speaker)
+            speaker_inp.on("keydown.enter", lambda e: e.sender.run_method('blur'))
+            speaker_inp.on("blur", lambda e, i=idx: self.rename_speaker_global(i, e.sender.value))
+
+        inp = ui.input(placeholder="Add Speaker")
+        inp.on("keydown.enter", lambda e: e.sender.run_method('blur'))
+        inp.on("blur", lambda e: self.add_speaker(e.sender.value))
+
+
+    def rename_speaker_global(self, index, new_name):
+        new_name = new_name.strip()
+        # prevent empty names
+        if not new_name:
+            return
+
+        # check for duplicates (excluding current index)
+        if new_name in (s for i, s in enumerate(self.speakers) if i != index):
+            ui.notify(f'"{new_name}" already exists', color="error")
+            return
+
+        old_name = self.speakers[index]
+
+        for caption in self.captions:
+            if caption.speaker == old_name:
+                caption.speaker = new_name
+        self.speakers[index] = new_name
+        self.refresh_display()
+
+
+    def add_speaker(self, speaker):
+        if not speaker:
+            return
+
+        if speaker in self.speakers:
+            ui.notify(f'"{speaker}" already exists', color="error")
+            return
+
+        self.speakers.append(speaker)
+        self.render_speakers.refresh()
+
+    def prune_speakers(self):
+        self.speakers = list(dict.fromkeys(c.speaker for c in self.captions))
+        if "UNKNOWN" not in self.speakers:
+            self.speakers.append("UNKNOWN")
+        self.refresh_display()
+        self.render_speakers.refresh()
+
     def parse_txt(self, data: dict) -> None:
         """
         Parse TXT content and populate captions list.
@@ -472,6 +525,8 @@ class SRTEditor:
         self.data_format = "txt"
 
         original_data = json.loads(data)
+
+        self.speakers.append("UNKNOWN")
 
         if not original_data.get("segments"):
             return
@@ -520,10 +575,11 @@ class SRTEditor:
                         start_time,
                         end_time,
                         seg["text"],
-                        speaker=seg["speaker"],
+                        speaker=seg["speaker"]
                     )
                 )
-                self.speakers.add(seg["speaker"])
+                if seg["speaker"] not in self.speakers:
+                    self.speakers.append(seg["speaker"])
 
     def parse_srt(self, srt_content: str) -> None:
         """
@@ -1025,7 +1081,8 @@ class SRTEditor:
         """
 
         if speaker:
-            self.speakers.add(speaker.value)
+            if speaker not in self.speakers: 
+                self.speakers.append(speaker.value)
             self.selected_caption.speaker = speaker.value
 
         old_selected = self.selected_caption
@@ -1436,7 +1493,7 @@ class SRTEditor:
                                 )
 
                                 if self.data_format == "txt":
-                                    ui.label(f"{caption. speaker}:").classes(
+                                    ui.label(f"{caption.speaker}:").classes(
                                         "font-bold text-sm"
                                     )
                             ui.label(

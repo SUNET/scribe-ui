@@ -26,6 +26,7 @@ class SRTCaption:
         end_time: str,
         text: str,
         speaker: Optional[str] = "",
+        generated_speaker: Optional[str] = ""
     ):
         """
         Initialize a caption with index, start time, end time, and text.
@@ -39,6 +40,7 @@ class SRTCaption:
         self.is_highlighted = False  # For search highlighting
         self.is_valid = True  # For validation
         self.speaker = speaker if speaker else "UNKNOWN"
+        self.generated_speaker = generated_speaker if generated_speaker else "UNKNOWN"
 
     def copy(self) -> "SRTCaption":
         """
@@ -51,6 +53,7 @@ class SRTCaption:
             self.end_time,
             self.text,
             self.speaker,
+            self.generated_speaker
         )
         new_caption.is_selected = self.is_selected
         new_caption.is_highlighted = self.is_highlighted
@@ -60,6 +63,7 @@ class SRTCaption:
     def to_dict(self) -> Dict[str, Any]:
         return {
             "speaker": self.speaker,
+            "generated_speaker": self.generated_speaker,
             "text": self.text,
             "start": self.get_start_seconds(),
             "end": self.get_end_seconds(),

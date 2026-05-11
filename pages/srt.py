@@ -251,3 +251,12 @@ def create() -> None:
                                 sanitize=False,
                             ).classes("text-sm")
                             editor.set_words_per_minute_element(html_wpm)
+                with splitter.after:
+                    with ui.card().classes("w-full h-full"):
+                        with ui.column().classes("p-4 w-full"):
+                            ui.label("Speakers").classes("text-h6").style(
+                                "align-self: center;"
+                            )
+                            editor.render_speakers()
+                            ui.button("Prune", on_click=editor.prune_speakers).props("outline color=black").classes("text-black")
+                    
