@@ -76,6 +76,14 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         self.search_container = None
         self._video_player = None
         self.autoscroll = False
+
+        # Follow the audio word by word. Off by default: it needs one element
+        # per word, which is only worth paying for when it is being used.
+        self.highlight_word = False
+
+        # Set by a view that draws the captions itself, so that refreshing
+        # goes to that view instead of the caption card list.
+        self.render_override: Optional[Callable] = None
         self.words_per_minute_element = None
         self.speakers = set()
         self.data_format = None
@@ -329,6 +337,15 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
             position="bottom",
             icon="check_circle",
         )
+
+    def set_highlight_word(self, highlight_word: bool) -> None:
+        """
+        Set whether the word being played is highlighted.
+
+        Coerced, because the value can come straight from stored preferences.
+        """
+
+        self.highlight_word = bool(highlight_word)
 
     def set_autoscroll(self, autoscroll: bool) -> None:
         """
@@ -796,12 +813,40 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         """
         Split a caption into two parts.
 
-        Splits at ``cursor_position`` when given and it falls inside the text,
-        otherwise halfway through as before.
+        Splits at ``cursor_position`` when given, and halfway through when it
+        is not.
+
+        A caret at the very edge of the block is refused rather than falling
+        back to halving: the caret says exactly where the user wanted the
+        break, and there is nothing on one side of it. Halving instead would
+        cut a word they never asked to touch.
         """
 
         if not caption:
             return
+
+        source = caption.text if text is None else text
+        first_part = None
+        second_part = None
+        at_cursor = False
+
+        if cursor_position is not None:
+            # Clamped, because the offset comes from the browser.
+            position = max(0, min(int(cursor_position), len(source)))
+            head = source[:position].strip()
+            tail = source[position:].strip()
+
+            if not (head and tail):
+                # Nothing to divide. Keep any uncommitted typing, but leave
+                # the block whole.
+                if text is not None and text != caption.text:
+                    self.update_caption_text(caption, text)
+
+                return
+
+            first_part = head
+            second_part = tail
+            at_cursor = True
 
         # Save state before making changes
         self.save_state_for_undo()
@@ -811,19 +856,6 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
             # splitting must not discard them.
             caption.text = text
             self.mark_as_changed()
-
-        first_part = None
-        second_part = None
-        at_cursor = False
-
-        if cursor_position is not None and 0 < cursor_position < len(caption.text):
-            head = caption.text[:cursor_position].strip()
-            tail = caption.text[cursor_position:].strip()
-
-            if head and tail:
-                first_part = head
-                second_part = tail
-                at_cursor = True
 
         if first_part is None:
             text_lines = caption.text.split("\n")

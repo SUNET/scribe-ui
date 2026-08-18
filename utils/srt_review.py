@@ -392,6 +392,80 @@ class ReviewMixin:
         return "".join(parts) if marked else None
 
 
+    def review_runs(
+        self,
+        caption: SRTCaption,
+        text: Optional[str] = None,
+        per_word: bool = False,
+    ) -> list:
+        """
+        A block's text split into runs, marking the words worth reviewing.
+
+        Structured rather than marked up, so a client can render the marking
+        itself. Nothing has to escape or unescape anything, and no HTML string
+        built here can end up interpreted somewhere it should not be.
+
+        Runs of unmarked text are merged by default, so a block with two
+        flagged words is five runs rather than one per word.
+
+        With per_word, every word becomes its own run carrying its start and
+        end. That is what lets a client follow the audio word by word, at the
+        cost of one element per word, so it is only asked for when something
+        needs it.
+        """
+
+        source = caption.text if text is None else text
+
+        if not source:
+            return []
+
+        if not self.show_uncertain_words and not per_word:
+            return [{"t": source, "flag": False}]
+
+        words = self.aligned_words(caption, source)
+        runs: list = []
+        plain: list = []
+        index = 0
+
+        def flush() -> None:
+            if plain:
+                runs.append({"t": "".join(plain), "flag": False})
+                plain.clear()
+
+        for token in re.split(r"(\s+)", source):
+            if not token:
+                continue
+
+            if not token.strip():
+                plain.append(token)
+                continue
+
+            word = words[index] if index < len(words) else None
+            index += 1
+            # per_word bypasses the early return above, so the toggle has to
+            # be honoured here too or words stay flagged with it switched off.
+            flagged = self.show_uncertain_words and self.word_needs_review(word)
+
+            if not per_word and not flagged:
+                plain.append(token)
+                continue
+
+            flush()
+            run = {"t": token, "flag": flagged}
+
+            # Only a word still matching what the model transcribed has a
+            # timing we can attribute to it; an edited word has none, and is
+            # simply never highlighted.
+            if per_word and word is not None:
+                run["s"] = word["s"]
+                run["e"] = word["e"]
+
+            runs.append(run)
+
+        flush()
+
+        return runs
+
     def review_backdrop_html(self, caption: SRTCaption, text: str) -> str:
         """
         Markup for the highlight layer behind an open text area.

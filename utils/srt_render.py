@@ -317,6 +317,15 @@ class RenderMixin:
             force_full_refresh: If True, recreate all captions
             specific_indices: If provided, only update these specific caption indices
         """
+        # A transcription is shown by the document editor, not as caption
+        # cards. Everything that changes the captions ends up here -- splits,
+        # merges, the review toggle, sensitivity -- so redirecting once covers
+        # all of them, and the caption renderer never runs for a format it was
+        # not built for.
+        if self.render_override is not None:
+            self.render_override()
+            return
+
         if self.main_container:
             if force_full_refresh or not self.caption_containers:
                 # Full refresh - clear and recreate everything

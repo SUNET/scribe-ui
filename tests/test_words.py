@@ -614,3 +614,331 @@ class TestReviewBackdrop:
         editor.show_uncertain_words = True
 
         assert editor.review_backdrop_html(caption(), "Hej\n").endswith("<br>")
+
+
+class TestReviewRuns:
+    """
+    The transcription editor renders the marking itself, from runs rather than
+    from markup, so the runs have to reconstruct the text exactly.
+    """
+
+    def joined(self, runs):
+        return "".join(run["t"] for run in runs)
+
+    def test_runs_reconstruct_the_text(self, editor):
+        editor.load_words(PAYLOAD)
+        editor.show_uncertain_words = True
+
+        assert self.joined(editor.review_runs(caption())) == TEXT
+
+    def test_flagged_word_is_its_own_run(self, editor):
+        editor.load_words(PAYLOAD)
+        editor.show_uncertain_words = True
+
+        runs = editor.review_runs(caption())
+        flagged = [run["t"] for run in runs if run["flag"]]
+
+        assert flagged == ["på"]
+
+    def test_unflagged_text_is_merged(self, editor):
+        editor.load_words(PAYLOAD)
+        editor.show_uncertain_words = True
+
+        runs = editor.review_runs(caption())
+
+        assert runs == [
+            {"t": "Hej ", "flag": False},
+            {"t": "på", "flag": True},
+            {"t": " dig idag", "flag": False},
+        ]
+
+    def test_whitespace_is_preserved(self, editor):
+        editor.load_words(PAYLOAD)
+        editor.show_uncertain_words = True
+
+        assert self.joined(editor.review_runs(caption("Hej på\ndig  idag"))) == (
+            "Hej på\ndig  idag"
+        )
+
+    def test_toggle_off_gives_one_unflagged_run(self, editor):
+        editor.load_words(PAYLOAD)
+        editor.show_uncertain_words = False
+
+        assert editor.review_runs(caption()) == [{"t": TEXT, "flag": False}]
+
+    def test_empty_text(self, editor):
+        editor.load_words(PAYLOAD)
+        editor.show_uncertain_words = True
+
+        assert editor.review_runs(caption("")) == []
+
+    def test_tracks_uncommitted_text(self, editor):
+        editor.load_words(PAYLOAD)
+        editor.show_uncertain_words = True
+
+        runs = editor.review_runs(caption(), "Hej TVÅ dig idag")
+
+        assert not any(run["flag"] for run in runs)
+        assert self.joined(runs) == "Hej TVÅ dig idag"
+
+
+class TestRenderOverride:
+    """
+    A transcription is drawn by the document editor. Everything that changes
+    the captions funnels through refresh_display, so that is where the
+    redirection has to happen -- otherwise the caption cards reappear whenever
+    the review toggle, a split or a merge fires.
+    """
+
+    @pytest.fixture
+    def live(self):
+        """
+        An editor with the real refresh_display, which the shared fixture
+        stubs out. These tests are about what refresh_display does.
+        """
+
+        editor = SRTEditor("job-uuid", "txt", "file.txt")
+        editor.save_state_for_undo = lambda *a, **k: None
+        editor.mark_as_changed = lambda *a, **k: None
+        editor.update_words_per_minute = lambda *a, **k: None
+
+        return editor
+
+    def test_caption_cards_are_not_drawn_when_overridden(self, live):
+        calls = []
+        drawn = []
+
+        class Container:
+            def clear(self):
+                drawn.append("cleared")
+
+        live.main_container = Container()
+        live.render_override = lambda: calls.append("document")
+
+        live.refresh_display(force_full_refresh=True)
+
+        assert calls == ["document"]
+        assert drawn == [], "the caption renderer must not have run"
+
+    def test_toggling_uncertain_words_redraws_the_document(self, live):
+        calls = []
+        live.render_override = lambda: calls.append("document")
+
+        live.set_show_uncertain_words(True)
+
+        assert calls == ["document"]
+
+    def test_sensitivity_change_redraws_the_document(self, live):
+        calls = []
+        live.show_uncertain_words = True
+        live.render_override = lambda: calls.append("document")
+
+        live.set_review_sensitivity("high")
+
+        assert calls == ["document"]
+
+    def test_split_and_merge_redraw_the_document(self, live):
+        live.captions = [
+            SRTCaption(1, "00:00:00,000", "00:00:02,000", "ett tva tre fyra"),
+            SRTCaption(2, "00:00:02,000", "00:00:04,000", "fem sex sju"),
+        ]
+        calls = []
+        live.render_override = lambda: calls.append("document")
+
+        live.split_caption(live.captions[0])
+        live.merge_with_next(live.captions[0])
+
+        assert calls == ["document", "document"]
+
+    def test_subtitles_still_use_the_caption_renderer(self, live):
+        """
+        With no override -- the subtitle editor -- nothing changes.
+        """
+
+        assert live.render_override is None
+
+        drawn = []
+
+        class Container:
+            """Enough of a container for the caption renderer to run."""
+
+            def clear(self):
+                drawn.append("cleared")
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+        live.main_container = Container()
+        live.caption_containers = {}
+        live.captions = []
+
+        live.refresh_display(force_full_refresh=True)
+
+        assert drawn == ["cleared"], "the caption renderer should have run"
+
+
+class TestWordHighlightRuns:
+    """
+    Following the audio word by word needs one run per word, carrying its
+    timing. Merged runs cannot be highlighted individually.
+    """
+
+    def test_every_word_becomes_its_own_run(self, editor):
+        editor.load_words(PAYLOAD)
+
+        runs = editor.review_runs(caption(), per_word=True)
+        words = [run["t"] for run in runs if run["t"].strip()]
+
+        assert words == ["Hej", "på", "dig", "idag"]
+
+    def test_words_carry_their_timings(self, editor):
+        editor.load_words(PAYLOAD)
+
+        runs = editor.review_runs(caption(), per_word=True)
+        timed = [(run["t"], run["s"], run["e"]) for run in runs if "s" in run]
+
+        assert timed == [
+            ("Hej", 0.0, 0.5),
+            ("på", 0.6, 0.8),
+            ("dig", 1.0, 1.4),
+            ("idag", 3.0, 3.6),
+        ]
+
+    def test_reconstructs_the_text(self, editor):
+        editor.load_words(PAYLOAD)
+
+        runs = editor.review_runs(caption(), per_word=True)
+
+        assert "".join(run["t"] for run in runs) == TEXT
+
+    def test_edited_word_gets_no_timing(self, editor):
+        """
+        An edited word has no timing we can attribute to it, so it is simply
+        never highlighted rather than borrowing its neighbour's.
+        """
+
+        editor.load_words(PAYLOAD)
+
+        runs = editor.review_runs(caption(), "Hej TVÅ dig idag", per_word=True)
+        timings = {run["t"]: run.get("s") for run in runs if run["t"].strip()}
+
+        assert timings["TVÅ"] is None
+        assert timings["dig"] == 1.0, "the others stay aligned"
+
+    def test_review_toggle_still_governs_flags(self, editor):
+        editor.load_words(PAYLOAD)
+
+        editor.show_uncertain_words = False
+        assert not any(
+            run["flag"] for run in editor.review_runs(caption(), per_word=True)
+        )
+
+        editor.show_uncertain_words = True
+        assert any(
+            run["flag"] for run in editor.review_runs(caption(), per_word=True)
+        )
+
+    def test_merged_runs_are_unchanged_by_default(self, editor):
+        """
+        One element per word is only paid for when it is asked for.
+        """
+
+        editor.load_words(PAYLOAD)
+        editor.show_uncertain_words = True
+
+        assert editor.review_runs(caption()) == [
+            {"t": "Hej ", "flag": False},
+            {"t": "på", "flag": True},
+            {"t": " dig idag", "flag": False},
+        ]
+
+    @pytest.mark.parametrize("stored", [None, "", 0, 1, "yes"])
+    def test_stored_preference_is_coerced(self, editor, stored):
+        editor.set_highlight_word(stored)
+
+        assert editor.highlight_word is bool(stored)
+
+
+class TestSplitAtBlockEdges:
+    """
+    A caret at the very start or end of a block has nothing on one side of it.
+    Falling back to the halfway split there breaks a word the user never asked
+    to touch -- pressing Enter after a one word block turned "Hej" into
+    "He" / "j".
+    """
+
+    @pytest.fixture
+    def live(self):
+        editor = SRTEditor("job-uuid", "txt", "file.txt")
+        for name in ("refresh_display", "update_words_per_minute",
+                     "save_state_for_undo", "mark_as_changed"):
+            setattr(editor, name, lambda *a, **k: None)
+
+        return editor
+
+    def block(self, live, text="Hej"):
+        target = SRTCaption(1, "00:00:00,000", "00:00:02,000", text)
+        live.captions = [target]
+
+        return target
+
+    @pytest.mark.parametrize("position", [0, 3, 99, -2])
+    def test_edge_caret_leaves_the_block_whole(self, live, position):
+        target = self.block(live)
+
+        live.split_caption(target, cursor_position=position)
+
+        assert [c.text for c in live.captions] == ["Hej"]
+
+    def test_trailing_space_still_counts_as_the_edge(self, live):
+        target = self.block(live, "Hej ")
+
+        live.split_caption(target, cursor_position=4)
+
+        assert len(live.captions) == 1
+
+    def test_caret_inside_a_word_still_splits(self, live):
+        """
+        Deliberate, so it is honoured: the caret says where.
+        """
+
+        target = self.block(live)
+
+        live.split_caption(target, cursor_position=1)
+
+        assert [c.text for c in live.captions] == ["H", "ej"]
+
+    def test_no_caret_still_halves(self, live):
+        """
+        The Split button and results without word data rely on this.
+        """
+
+        target = self.block(live)
+
+        live.split_caption(target)
+
+        assert [c.text for c in live.captions] == ["H", "ej"]
+
+    def test_refused_split_keeps_uncommitted_typing(self, live):
+        target = self.block(live)
+
+        live.split_caption(target, cursor_position=6, text="Hejsan")
+
+        assert [c.text for c in live.captions] == ["Hejsan"]
+
+    def test_refused_split_saves_no_undo_state(self, live):
+        """
+        Enter at the end of a block is easy to hit repeatedly; it should not
+        fill the undo stack with states that changed nothing.
+        """
+
+        saved = []
+        live.save_state_for_undo = lambda: saved.append(True)
+        target = self.block(live)
+
+        live.split_caption(target, cursor_position=3)
+
+        assert saved == []

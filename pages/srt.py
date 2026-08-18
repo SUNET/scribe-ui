@@ -33,6 +33,7 @@ from utils.srt import (
     REVIEW_SHOW_KEY,
     SRTEditor,
 )
+from utils.transcript_editor import TranscriptEditor
 from utils.video import create_video_proxy
 
 create_video_proxy()
@@ -186,6 +187,7 @@ def create() -> None:
             app.storage.user.get(REVIEW_SENSITIVITY_KEY, DEFAULT_REVIEW_SENSITIVITY),
         )
         editor.set_autoscroll(app.storage.user.get(AUTOSCROLL_KEY, False))
+        editor.set_highlight_word(editor.autoscroll)
 
         with ui.row().classes("justify-between w-full gap-2"):
             with ui.column().classes("flex-row items-center"):
@@ -214,18 +216,26 @@ def create() -> None:
             ).classes("editor-btn editor-toolbar-btn") as close_button:
                 close_button.on("click", lambda: editor.close_editor("/home"))
 
+        # Subtitles get the caption editor; transcriptions get the document
+        # editor. Two different jobs, so two different surfaces.
+        transcript = TranscriptEditor(editor) if data_format == "txt" else None
+
         with ui.splitter(value=60).classes("w-full h-full") as splitter:
             with splitter.before:
                 with ui.card().classes("w-full h-full"):
                     with ui.scroll_area().style("height: calc(90vh - 100px);"):
                         editor.main_container = ui.column().classes("w-full h-full")
 
-                    if data_format == "srt":
-                        editor.parse_srt(data["result"])
-                    else:
-                        editor.parse_txt(data["result"])
-
-                    editor.refresh_display()
+                        if data_format == "srt":
+                            editor.parse_srt(data["result"])
+                            editor.refresh_display()
+                        else:
+                            editor.parse_txt(data["result"])
+                            transcript.build()
+                            # Apply the restored autoscroll preference to the
+                            # new editor, not just to later clicks.
+                            transcript.set_follow(editor.autoscroll)
+                            transcript.body.set_highlight_word(editor.highlight_word)
                 with splitter.after:
                     with ui.card().classes("w-full h-full"):
                         video = ui.video(
@@ -236,24 +246,54 @@ def create() -> None:
                         ).classes("w-full h-full")
                         editor.set_video_player(video)
                         video.props("preload='auto'")
-                        video.on(
-                            "timeupdate",
-                            lambda: editor.select_caption_from_video(),
-                        )
+                        if transcript is None:
+                            video.on(
+                                "timeupdate",
+                                lambda: editor.select_caption_from_video(),
+                            )
+                        else:
+
+                            async def follow_transcript() -> None:
+                                if not editor.autoscroll:
+                                    return
+
+                                await transcript.follow_video()
+
+                            video.on("timeupdate", follow_transcript)
                         # Stays None when the result carries no confidence
                         # scores, which is what hides the review controls.
                         uncertain_switch = None
 
                         with ui.row().classes("items-center gap-4"):
-                            def save_autoscroll(event) -> None:
+
+                            def save_follow(event) -> None:
                                 value = bool(event.sender.value)
                                 editor.set_autoscroll(value)
                                 app.storage.user[AUTOSCROLL_KEY] = value
 
-                            autoscroll = ui.switch(
-                                "Autoscroll", value=editor.autoscroll
+                                if transcript is not None:
+                                    transcript.set_follow(value)
+                                    transcript.set_highlight_word(value)
+
+                            # Scrolling to the block and marking the word in it
+                            # are two halves of one thing -- following the
+                            # recording -- so the transcription editor offers
+                            # them as one switch. The subtitle editor has no
+                            # word marking, so it keeps plain Autoscroll.
+                            following_words = transcript is not None and editor.words
+
+                            follow = ui.switch(
+                                "Follow audio" if following_words else "Autoscroll",
+                                value=editor.autoscroll,
                             )
-                            autoscroll.on("click", save_autoscroll)
+                            follow.on("click", save_follow)
+
+                            if following_words:
+                                with follow:
+                                    ui.tooltip(
+                                        "Scroll to the block being played and "
+                                        "highlight each word as it is spoken"
+                                    )
 
                             # Only offered when the result carries confidence
                             # scores; older jobs have none to show.

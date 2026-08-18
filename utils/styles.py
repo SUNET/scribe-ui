@@ -83,6 +83,10 @@ theme_styles = """
         --color-review-accent: #6d51c9;
         --color-review-text: #2f1c66;
 
+        /* The word currently being spoken. A pale tint of the brand
+           navy, so it reads as "you are here" rather than as a status. */
+        --color-playing-bg: #dbe4f0;
+
         --color-header-bg: #ffffff;
 
         --color-help-bg-start: #ffffff;
@@ -178,6 +182,8 @@ theme_styles = """
         --color-review-bg: #2f2748;
         --color-review-accent: #b3a1f0;
         --color-review-text: #ece7ff;
+
+        --color-playing-bg: #1c3252;
 
         --color-header-bg: #1e1e1e;
 
@@ -869,6 +875,114 @@ theme_styles = """
         color: var(--color-text-primary);
         min-height: 5rem;
         resize: none;
+    }
+
+    /* ── Transcription editor ── */
+    /* One contenteditable holds every speaker turn. A two column grid puts the
+       speaker in the margin and the text beside it, so the gutter cells are
+       real elements that can be clicked without the text ever leaving a single
+       editable surface. They are contenteditable=false, so the caret cannot
+       enter them. */
+    .transcript-editor {
+        width: 100%;
+        padding: 0.5rem 0 4rem;
+    }
+    .transcript-body {
+        display: grid;
+        grid-template-columns: 8rem minmax(0, 1fr);
+        column-gap: 1rem;
+        row-gap: 1.25rem;
+        outline: none;
+        max-width: 60rem;
+        margin: 0 auto;
+    }
+
+    .transcript-gutter {
+        justify-self: end;
+        display: flex;
+        gap: 0.25rem;
+        /* Line the speaker up with the first line of its text, which sits
+           below the timestamp. */
+        padding-top: 1.9rem;
+        color: var(--color-text-muted);
+        font-size: 0.9rem;
+        user-select: none;
+        white-space: nowrap;
+    }
+    .transcript-speaker {
+        cursor: pointer;
+        border-radius: 3px;
+        padding: 0 2px;
+    }
+    .transcript-speaker:hover {
+        color: var(--color-text-primary);
+        background-color: var(--color-bg-surface-alt);
+    }
+    .transcript-colon {
+        color: var(--color-border-disabled);
+    }
+
+    /* A left rule per block, as the reference design has, standing in for the
+       card borders the subtitle editor uses. */
+    .transcript-cell {
+        border-left: 1px solid var(--color-border-subtle);
+        padding-left: 1rem;
+        min-width: 0;
+    }
+    .transcript-cell-active {
+        border-left-color: var(--color-brand-primary);
+        border-left-width: 2px;
+        padding-left: calc(1rem - 1px);
+    }
+
+    .transcript-time {
+        font-size: 0.8rem;
+        font-variant-numeric: tabular-nums;
+        color: var(--color-brand-primary);
+        cursor: pointer;
+        user-select: none;
+        margin-bottom: 0.35rem;
+        display: inline-block;
+    }
+    .transcript-time:hover {
+        text-decoration: underline;
+    }
+    .transcript-dash {
+        padding: 0 0.5rem;
+        color: var(--color-text-muted);
+    }
+
+    /* The reading surface. Generous leading, because this is read in long
+       stretches rather than scanned line by line. */
+    .transcript-text {
+        font-size: 1rem;
+        line-height: 1.85;
+        /* An empty block still has to be a line the caret can sit on. */
+        min-height: 1.85em;
+        white-space: pre-wrap;
+        overflow-wrap: break-word;
+        outline: none;
+    }
+
+    /* The word under the playhead. Marked with an attribute rather than a
+       class, because the spans carry a bound :class for the review marking and
+       Vue rewrites that list whenever it patches them.
+
+       Background only: padding or a border would shift the text as the
+       highlight travels along the line. */
+    .transcript-text [data-current] {
+        background-color: var(--color-playing-bg);
+        border-radius: 2px;
+        box-shadow: 0 0 0 1px var(--color-playing-bg);
+    }
+
+    .transcript-dialog {
+        min-width: 22rem;
+    }
+    .transcript-time-readout {
+        font-variant-numeric: tabular-nums;
+        color: var(--color-brand-primary);
+        font-weight: 600;
     }
 
     /* ── SRT editor info panel ── */
