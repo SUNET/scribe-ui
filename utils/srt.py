@@ -29,6 +29,8 @@ from utils.srt_render import RenderMixin, CHARACTER_LIMIT_EXCEEDED_COLOR
 from utils.srt_review import (
     AUTOSCROLL_KEY,
     DEFAULT_REVIEW_SENSITIVITY,
+    EDIT_TOOLTIP,
+    EDITS_SHOW_KEY,
     REVIEW_SENSITIVITIES,
     REVIEW_SENSITIVITY_KEY,
     REVIEW_SHOW_KEY,
@@ -45,6 +47,8 @@ __all__ = [
     "AUTOSCROLL_KEY",
     "CHARACTER_LIMIT_EXCEEDED_COLOR",
     "DEFAULT_REVIEW_SENSITIVITY",
+    "EDITS_SHOW_KEY",
+    "EDIT_TOOLTIP",
     "REVIEW_SENSITIVITIES",
     "REVIEW_SENSITIVITY_KEY",
     "REVIEW_SHOW_KEY",
@@ -94,6 +98,7 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         self._word_midpoints: List[float] = []
         self.has_confidence = False
         self.show_uncertain_words = False
+        self.show_my_edits = False
         self.review_sensitivity = DEFAULT_REVIEW_SENSITIVITY
         self.flagged_count_element = None
         self._active_text_area = None

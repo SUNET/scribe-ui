@@ -35,7 +35,7 @@ from typing import Callable, List, Optional
 from nicegui import ui
 
 from utils.caption import SRTCaption
-from utils.srt_review import REVIEW_TOOLTIP
+from utils.srt_review import EDIT_TOOLTIP, REVIEW_TOOLTIP
 
 
 def format_time_label(seconds: float) -> str:
@@ -67,6 +67,8 @@ class TranscriptBody(
         self._props["blocks"] = []
         self._props["activeId"] = -1
         self._props["reviewLabel"] = REVIEW_TOOLTIP
+        self._props["editLabel"] = EDIT_TOOLTIP
+        self._props["showEdits"] = False
         self._props["highlightWord"] = False
         self._props["follow"] = False
         self._props["revision"] = 0
@@ -95,6 +97,16 @@ class TranscriptBody(
 
     def set_highlight_word(self, highlight: bool) -> None:
         self._props["highlightWord"] = highlight
+        self.update()
+
+    def set_show_edits(self, show: bool) -> None:
+        """
+        Tell the component whether edited words are being marked, so that a
+        word typed into is marked the moment it changes rather than at the next
+        render.
+        """
+
+        self._props["showEdits"] = show
         self.update()
 
     def focus_block(self, block_id: int) -> None:
@@ -627,6 +639,19 @@ class TranscriptEditor:
     def set_follow(self, follow: bool) -> None:
         if self.body is not None:
             self.body.set_follow(follow)
+
+    def set_show_my_edits(self, show: bool) -> None:
+        """
+        Turn the marking of the reader's own words on or off.
+
+        Re-renders: which words count as edited is worked out on the server,
+        from the transcription the model produced.
+        """
+
+        self.editor.set_show_my_edits(show)
+
+        if self.body is not None:
+            self.body.set_show_edits(bool(show))
 
     def set_highlight_word(self, highlight: bool) -> None:
         """

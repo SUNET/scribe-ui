@@ -51,12 +51,14 @@ REVIEW_SENSITIVITIES = ("low", "medium", "high")
 DEFAULT_REVIEW_SENSITIVITY = "low"
 
 REVIEW_TOOLTIP = "This word may need review"
+EDIT_TOOLTIP = "You changed this word"
 
 # Where the review preferences live in app.storage.user, so a reload does not
 # reset them. Plain values: they are display preferences, not secrets, so they
 # do not go through storage_encrypt the way tokens and passwords do.
 REVIEW_SHOW_KEY = "srt_show_uncertain_words"
 REVIEW_SENSITIVITY_KEY = "srt_review_sensitivity"
+EDITS_SHOW_KEY = "srt_show_my_edits"
 AUTOSCROLL_KEY = "srt_autoscroll"
 
 
@@ -199,6 +201,22 @@ class ReviewMixin:
         return self.is_flagged(word["c"])
 
 
+    def word_is_edit(self, word: Optional[dict]) -> bool:
+        """
+        Whether a word is the reader's own rather than the model's.
+
+        A word that no longer matches anything the model transcribed did not
+        come from the recording, so it is something the reader wrote. That also
+        makes the two states exclusive: an edited word has no confidence score
+        to be uncertain about, which is why correcting a flagged word takes the
+        flag off it.
+
+        Meaningless without word data to compare against -- every word looks
+        unaligned then, and marking the whole transcription as edited would be
+        worse than marking none of it.
+        """
+
+        return bool(self.words) and word is None
 
 
 
@@ -222,7 +240,7 @@ class ReviewMixin:
         )
 
 
-    def restore_review_state(self, show, sensitivity) -> None:
+    def restore_review_state(self, show, sensitivity, edits=False) -> None:
         """
         Apply persisted review preferences before the first render.
 
@@ -233,6 +251,7 @@ class ReviewMixin:
         """
 
         self.show_uncertain_words = bool(show)
+        self.show_my_edits = bool(edits)
 
         if sensitivity in REVIEW_SENSITIVITIES:
             self.review_sensitivity = sensitivity
@@ -246,6 +265,18 @@ class ReviewMixin:
         self.show_uncertain_words = bool(show)
         self.refresh_display(force_full_refresh=True)
         self.update_flagged_count()
+
+
+    def set_show_my_edits(self, show: bool) -> None:
+        """
+        Toggle the marking of words the reader has changed.
+
+        No effect on the flagged count: an edited word carries no confidence
+        score, so it was never part of that number.
+        """
+
+        self.show_my_edits = bool(show)
+        self.refresh_display(force_full_refresh=True)
 
 
     def set_review_sensitivity(self, sensitivity: str) -> None:
@@ -347,9 +378,13 @@ class ReviewMixin:
         self, caption: SRTCaption, text: Optional[str] = None
     ) -> Optional[str]:
         """
-        Caption text with the words worth reviewing marked up.
+        Caption text with the words worth reviewing, and the ones the reader
+        has changed, marked up.
 
-        Returns None when nothing in this caption is flagged.
+        Returns None when neither applies to anything in this caption.
+
+        Both toggles are honoured here rather than at the call site, so that
+        turning one on cannot bring the other's marking with it.
         """
 
         source = caption.text if text is None else text
@@ -372,21 +407,35 @@ class ReviewMixin:
             word = words[index] if index < len(words) else None
             index += 1
 
-            if not self.word_needs_review(word):
+            flagged = self.show_uncertain_words and self.word_needs_review(word)
+            edited = self.show_my_edits and self.word_is_edit(word)
+
+            if not flagged and not edited:
                 parts.append(html_escape(token))
                 continue
 
             marked = True
 
-            # One marking and one message per flagged word: the score behind
-            # it is not precise enough to grade them against each other. The
-            # message rides on a data attribute rather than title= so the
-            # tooltip is a CSS box we can style; aria-label keeps it reachable
-            # for screen readers.
+            # One marking and one message per word: the score behind a flag is
+            # not precise enough to grade flags against each other. The message
+            # rides on a data attribute rather than title= so the tooltip is a
+            # CSS box we can style; aria-label keeps it reachable for screen
+            # readers.
+            #
+            # Flagged wins if both were somehow true. They cannot both be:
+            # word_is_edit holds only where there is no transcribed word, and
+            # word_needs_review only where there is one.
+            css, message = (
+                ("review-word", REVIEW_TOOLTIP)
+                if flagged
+                else ("edit-word", EDIT_TOOLTIP)
+            )
+            attribute = "data-review" if flagged else "data-edit"
+
             parts.append(
-                f'<span class="review-word" '
-                f'data-review="{REVIEW_TOOLTIP}" '
-                f'aria-label="{REVIEW_TOOLTIP}">{html_escape(token)}</span>'
+                f'<span class="{css}" '
+                f'{attribute}="{message}" '
+                f'aria-label="{message}">{html_escape(token)}</span>'
             )
 
         return "".join(parts) if marked else None
@@ -408,10 +457,14 @@ class ReviewMixin:
         Runs of unmarked text are merged by default, so a block with two
         flagged words is five runs rather than one per word.
 
-        With per_word, every word becomes its own run carrying its start and
-        end. That is what lets a client follow the audio word by word, at the
-        cost of one element per word, so it is only asked for when something
-        needs it.
+        Every word becomes a run of its own in two cases. With per_word each
+        one also carries its start and end, which is what lets a client follow
+        the audio word by word. While the reader's own words are being marked,
+        the split alone is needed: a word cannot be marked as changed part way
+        through being typed unless it is already a run by itself.
+
+        Either way it costs one element per word, so neither is done unless
+        something needs it.
         """
 
         source = caption.text if text is None else text
@@ -419,8 +472,17 @@ class ReviewMixin:
         if not source:
             return []
 
-        if not self.show_uncertain_words and not per_word:
+        if (
+            not self.show_uncertain_words
+            and not self.show_my_edits
+            and not per_word
+        ):
             return [{"t": source, "flag": False}]
+
+        # A word has to be a run of its own before it can be marked at all, so
+        # marking the reader's words needs the same split that following the
+        # audio does.
+        one_run_per_word = per_word or self.show_my_edits
 
         words = self.aligned_words(caption, source)
         runs: list = []
@@ -442,16 +504,31 @@ class ReviewMixin:
 
             word = words[index] if index < len(words) else None
             index += 1
-            # per_word bypasses the early return above, so the toggle has to
-            # be honoured here too or words stay flagged with it switched off.
+            # per_word bypasses the early return above, so the toggles have to
+            # be honoured here too or words stay marked with them switched off.
             flagged = self.show_uncertain_words and self.word_needs_review(word)
+            edited = self.show_my_edits and self.word_is_edit(word)
 
-            if not per_word and not flagged:
+            if not one_run_per_word and not flagged and not edited:
                 plain.append(token)
                 continue
 
             flush()
             run = {"t": token, "flag": flagged}
+
+            # Only carried when true, so a run reads the same as it always did
+            # wherever nothing has been edited.
+            if edited:
+                run["edit"] = True
+
+            # The word the model transcribed here, so the browser can tell a
+            # real change from tidied capitalisation while the caret is still in
+            # the block. The server decides that the same way but cannot
+            # re-render a block being typed into without moving the caret, and
+            # the two must not disagree. Carried by every run that is one word,
+            # which is every word once the reader is marking their own.
+            if word is not None:
+                run["w"] = word["t"]
 
             # Only a word still matching what the model transcribed has a
             # timing we can attribute to it; an edited word has none, and is
@@ -477,7 +554,7 @@ class ReviewMixin:
 
         markup = None
 
-        if self.show_uncertain_words:
+        if self.show_uncertain_words or self.show_my_edits:
             markup = self.get_review_html(caption, text)
 
         if markup is None:

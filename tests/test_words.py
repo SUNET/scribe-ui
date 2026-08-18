@@ -266,6 +266,7 @@ class TestReviewMarking:
 
     def test_marks_flagged_words_only(self, editor):
         editor.load_words(PAYLOAD)
+        editor.show_uncertain_words = True
 
         html = editor.get_review_html(caption())
 
@@ -280,6 +281,7 @@ class TestReviewMarking:
         """
 
         editor.load_words(PAYLOAD)
+        editor.show_uncertain_words = True
         editor.set_review_sensitivity("high")
 
         html = editor.get_review_html(caption())
@@ -293,11 +295,13 @@ class TestReviewMarking:
         editor.load_words(
             {"version": 1, "words": [{"t": "Hej", "s": 0.0, "e": 0.5, "c": 0.99}]}
         )
+        editor.show_uncertain_words = True
 
         assert editor.get_review_html(caption("Hej")) is None
 
     def test_no_marking_without_confidence_scores(self, editor):
         editor.load_words({"version": 1, "words": [{"t": "Hej", "s": 0.0, "e": 0.5}]})
+        editor.show_uncertain_words = True
 
         assert editor.get_review_html(caption("Hej")) is None
         assert editor.flagged_word_count() == 0
@@ -308,6 +312,7 @@ class TestReviewMarking:
         """
 
         editor.load_words(PAYLOAD)
+        editor.show_uncertain_words = True
 
         html = editor.get_review_html(caption())
 
@@ -319,6 +324,7 @@ class TestReviewMarking:
 
     def test_escapes_caption_text(self, editor):
         editor.load_words(PAYLOAD)
+        editor.show_uncertain_words = True
 
         html = editor.get_review_html(caption("Hej på <b>dig</b> idag"))
 
@@ -327,6 +333,7 @@ class TestReviewMarking:
 
     def test_keeps_line_breaks(self, editor):
         editor.load_words(PAYLOAD)
+        editor.show_uncertain_words = True
 
         html = editor.get_review_html(caption("Hej på\ndig idag"))
 
@@ -431,6 +438,7 @@ class TestMarkingSurvivesEditing:
 
     def marked(self, editor, text):
         """Words actually marked in a caption, in order."""
+        editor.show_uncertain_words = True
         html = editor.get_review_html(caption(text))
 
         return re.findall(r'aria-label="[^"]*">([^<]*)</span>', html or "")
@@ -648,7 +656,7 @@ class TestReviewRuns:
 
         assert runs == [
             {"t": "Hej ", "flag": False},
-            {"t": "på", "flag": True},
+            {"t": "på", "flag": True, "w": "på"},
             {"t": " dig idag", "flag": False},
         ]
 
@@ -851,7 +859,7 @@ class TestWordHighlightRuns:
 
         assert editor.review_runs(caption()) == [
             {"t": "Hej ", "flag": False},
-            {"t": "på", "flag": True},
+            {"t": "på", "flag": True, "w": "på"},
             {"t": " dig idag", "flag": False},
         ]
 

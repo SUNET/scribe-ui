@@ -82,6 +82,14 @@ theme_styles = """
         --color-review-bg: #ede9fb;
         --color-review-accent: #6d51c9;
         --color-review-text: #2f1c66;
+        --color-review-on-accent: #ffffff;
+
+        /* Words the reader has changed. A teal, far enough from the review
+           violet to be told apart at a glance, and used nowhere else. Not red
+           either: an edit is a correction, not a fault. */
+        --color-edit-bg: #dcf2ee;
+        --color-edit-accent: #12796a;
+        --color-edit-text: #10453d;
 
         /* The word currently being spoken. A pale tint of the brand
            navy, so it reads as "you are here" rather than as a status. */
@@ -182,6 +190,11 @@ theme_styles = """
         --color-review-bg: #2f2748;
         --color-review-accent: #b3a1f0;
         --color-review-text: #ece7ff;
+        --color-review-on-accent: #241a45;
+
+        --color-edit-bg: #1d3b37;
+        --color-edit-accent: #6fd3c1;
+        --color-edit-text: #dff5f0;
 
         --color-playing-bg: #1c3252;
 
@@ -733,29 +746,41 @@ theme_styles = """
         border-color: var(--color-warning-icon) !important;
     }
 
-    /* ── Words flagged for review ── */
+    /* ── Marked words: flagged for review, or changed by the reader ── */
     /* One marking for every flagged word, whatever its score. Deliberately
        not red and not a wavy underline: red reads as broken and wavy reads as
        a spellchecker, and neither is what this means. It is an invitation to
-       look, so it is a calm highlight in a colour used for nothing else. */
+       look, so it is a calm highlight in a colour used for nothing else.
 
-    .review-word {
+       Edited words follow the same shape in a second colour. A word is never
+       both: one is a word the model was unsure of, the other a word the model
+       never produced. */
+
+    .review-word,
+    .edit-word {
         position: relative;
-        cursor: help;
         padding: 1px 3px;
         border-radius: 3px;
-        color: var(--color-review-text);
-        background-color: var(--color-review-bg);
-        box-shadow: inset 0 -2px 0 var(--color-review-accent);
         /* Keep the highlight intact if a word wraps across lines. */
         box-decoration-break: clone;
         -webkit-box-decoration-break: clone;
     }
+    .review-word {
+        color: var(--color-review-text);
+        background-color: var(--color-review-bg);
+        box-shadow: inset 0 -2px 0 var(--color-review-accent);
+    }
+    .edit-word {
+        color: var(--color-edit-text);
+        background-color: var(--color-edit-bg);
+        box-shadow: inset 0 -2px 0 var(--color-edit-accent);
+    }
 
     /* Shared hover message. A CSS box rather than title=, which the browser
        draws itself and stylesheets cannot reach. */
-    .review-word::after {
-        content: attr(data-review);
+    .review-word::after,
+    .edit-word::after,
+    .transcript-show-edits [data-changed]::after {
         position: absolute;
         bottom: calc(100% + 6px);
         /* Anchored to the word's left edge rather than centred on it. Centred,
@@ -766,8 +791,6 @@ theme_styles = """
         z-index: 9000;
         padding: 4px 8px;
         border-radius: 4px;
-        border: 1px solid var(--color-review-accent);
-        color: var(--color-review-text);
         background-color: var(--color-bg-surface);
         box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
         font-size: 12px;
@@ -784,10 +807,83 @@ theme_styles = """
         visibility: hidden;
         transition: opacity 0.12s ease-in-out;
     }
+    .review-word::after {
+        content: attr(data-review);
+        border: 1px solid var(--color-review-accent);
+        color: var(--color-review-text);
+    }
+    .edit-word::after {
+        content: attr(data-edit);
+        border: 1px solid var(--color-edit-accent);
+        color: var(--color-edit-text);
+    }
     .review-word:hover::after,
-    .review-word:focus-visible::after {
+    .review-word:focus-visible::after,
+    .edit-word:hover::after,
+    .edit-word:focus-visible::after,
+    .transcript-show-edits [data-changed]:hover::after,
+    .transcript-show-edits [data-changed]:focus-visible::after {
         opacity: 1;
         visibility: visible;
+    }
+
+    /* A word being typed into, marked by the browser because the server cannot
+       re-render the block the caret is in without moving it. The word no longer
+       matches what was transcribed, so it is no longer a word the model was
+       unsure of -- and it becomes one of the reader's own. An attribute rather
+       than a class, so Vue does not take it away on the next patch, and so
+       undoing the change restores the marking rather than leaving it bare. */
+    .review-word[data-changed] {
+        color: inherit;
+        background-color: transparent;
+        box-shadow: none;
+    }
+    .review-word[data-changed]::after {
+        content: none;
+    }
+    .transcript-show-edits [data-changed] {
+        /* Stated here as well as on .edit-word: a word that was not flagged
+           carries neither class, so it has none of the shared geometry. */
+        position: relative;
+        padding: 1px 3px;
+        border-radius: 3px;
+        color: var(--color-edit-text);
+        background-color: var(--color-edit-bg);
+        box-shadow: inset 0 -2px 0 var(--color-edit-accent);
+        box-decoration-break: clone;
+        -webkit-box-decoration-break: clone;
+    }
+    /* After the rule above that silences the review message, and at the same
+       specificity, so a word that was flagged and has since been changed
+       carries the edit message rather than none at all. */
+    .transcript-show-edits [data-changed]::after {
+        content: attr(data-edit);
+        border: 1px solid var(--color-edit-accent);
+        color: var(--color-edit-text);
+    }
+
+    /* Quasar resolves a control's colour from a class name, so naming a colour
+       here is all it takes to hand one of ours to a Quasar control -- no
+       guessing at which child element ends up selected, and no fighting the
+       !important on its own palette classes. Used by the review sensitivity
+       selector, so it matches the switch that reveals it. */
+    .bg-review-accent {
+        background: var(--color-review-accent) !important;
+    }
+    .text-review-accent-fg {
+        color: var(--color-review-on-accent) !important;
+    }
+
+    /* Each switch wears the colour of the marking it turns on, so the control
+       and the words it affects read as one thing. Quasar draws both the track
+       and the thumb of a switch that is on in currentColor, so setting the
+       colour is all it takes. The class goes on the switch itself, which puts
+       it ahead of Quasar's own light and dark rules for the same element. */
+    .q-toggle.review-switch .q-toggle__inner--truthy {
+        color: var(--color-review-accent);
+    }
+    .q-toggle.edits-switch .q-toggle__inner--truthy {
+        color: var(--color-edit-accent);
     }
 
     /* Review controls under the video. */
@@ -840,7 +936,8 @@ theme_styles = """
        one already in the text area, and the padding would widen it, pushing
        every character after it out of step. Only background and inset shadow
        are safe -- neither takes up space. */
-    .caption-highlights .review-word {
+    .caption-highlights .review-word,
+    .caption-highlights .edit-word {
         color: transparent;
         padding: 0;
         border: 0;
@@ -851,9 +948,14 @@ theme_styles = """
         background-color: var(--color-review-bg);
         box-shadow: inset 0 -2px 0 var(--color-review-accent);
     }
+    .caption-highlights .edit-word {
+        background-color: var(--color-edit-bg);
+        box-shadow: inset 0 -2px 0 var(--color-edit-accent);
+    }
     /* No hover tooltips behind the text area: the caret is what matters
        there, and a tooltip would sit between the reader and their own text. */
-    .caption-highlights .review-word::after {
+    .caption-highlights .review-word::after,
+    .caption-highlights .edit-word::after {
         content: none;
     }
 

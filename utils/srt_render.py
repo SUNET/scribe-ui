@@ -249,11 +249,7 @@ class RenderMixin:
                                 f"{caption.start_time} - {caption.end_time}"
                             ).classes("text-sm text-theme-muted")
                         with ui.row().classes("w-full justify-between items-end"):
-                            review_html = (
-                                self.get_review_html(caption)
-                                if self.show_uncertain_words
-                                else None
-                            )
+                            review_html = self.get_review_html(caption)
 
                             if review_html:
                                 ui.html(review_html, sanitize=False).classes(
@@ -516,11 +512,7 @@ class RenderMixin:
                             "text-sm text-theme-muted"
                         )
                     with ui.row().classes("w-full justify-between items-end"):
-                        review_html = (
-                            self.get_review_html(caption)
-                            if self.show_uncertain_words
-                            else None
-                        )
+                        review_html = self.get_review_html(caption)
 
                         if review_html:
                             ui.html(review_html, sanitize=False).classes(

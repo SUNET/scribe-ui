@@ -31,7 +31,7 @@
 
 export default {
   template: `
-    <div class="transcript-editor">
+    <div class="transcript-editor" :class="{ 'transcript-show-edits': showEdits }">
       <div
         class="transcript-body"
         contenteditable="true"
@@ -58,7 +58,7 @@ export default {
           >{{ block.start_label }}<span class="transcript-dash">-</span>{{ block.end_label }}</div><div
             class="transcript-text"
             :data-id="block.id"
-          ><span v-for="(run, i) in block.runs" :key="i" :class="run.flag ? 'review-word' : null" :data-review="run.flag ? reviewLabel : null" :data-s="run.s" :data-e="run.e">{{ run.t }}</span><br v-if="!block.runs || block.runs.length === 0"></div></div></template></div>
+          ><span v-for="(run, i) in block.runs" :key="i" :class="run.flag ? 'review-word' : (run.edit ? 'edit-word' : null)" :data-review="run.flag ? reviewLabel : null" :data-edit="editLabel" :data-w="run.w" :data-s="run.s" :data-e="run.e">{{ run.t }}</span><br v-if="!block.runs || block.runs.length === 0"></div></div></template></div>
 
       <!-- Outside the contenteditable, or it would become editable content.
            Positioned against this component's own root rather than the
@@ -105,6 +105,8 @@ export default {
     blocks: { type: Array, default: () => [] },
     activeId: { type: Number, default: -1 },
     reviewLabel: { type: String, default: "" },
+    editLabel: { type: String, default: "" },
+    showEdits: { type: Boolean, default: false },
     highlightWord: { type: Boolean, default: false },
     follow: { type: Boolean, default: false },
     revision: { type: Number, default: 0 },
@@ -192,12 +194,68 @@ export default {
       };
     },
 
+    // The word the caret is inside, which is the one being typed into.
+    wordAt(range) {
+      let el = range?.startContainer;
+      if (el && !(el instanceof Element)) el = el.parentElement;
+      const span = el?.closest?.("span");
+      // Only the word spans, not the gutter's speaker or timestamp spans.
+      return span && this.blockOf(span) ? span : null;
+    },
+
+    // Normalised the same way as match_key on the server: neither case nor the
+    // punctuation around a word decides whether it is still the word that was
+    // transcribed. Both sides have to agree, or a mark would come off as the
+    // reader types and be put straight back by the next render.
+    //
+    // The character class is Python's \w -- letters, numbers, underscore -- so
+    // that the two strip the same things. toLowerCase stands in for casefold,
+    // which JavaScript has no equivalent of; they differ only on characters
+    // that change length when lowercased, such as ß.
+    matchKey(text) {
+      return (text || "")
+        .replace(/^[^\p{L}\p{N}_]+/u, "")
+        .replace(/[^\p{L}\p{N}_]+$/u, "")
+        .toLowerCase();
+    },
+
+    // A word that has been typed into is no longer the word the model
+    // transcribed: it has no confidence left to be uncertain about, and it is
+    // now the reader's own. Done here rather than waiting for the server, which
+    // reaches the same answer but cannot re-render the block the caret is
+    // sitting in without moving it.
+    //
+    // One attribute, set and cleared from the current text, rather than editing
+    // the class list: Vue owns the class, and rewrites it whenever it patches
+    // the span. It also means undoing the change puts the mark back, instead of
+    // leaving the word bare until the next render disagreed with the screen.
+    reclassify(span) {
+      // No transcribed word to compare against: either a merged run of several
+      // words, or one the reader had already replaced before this render.
+      if (!span || span.dataset.w === undefined) return;
+
+      const changed =
+        this.matchKey(span.textContent) !== this.matchKey(span.dataset.w);
+
+      // Only capitalisation or the punctuation around it changed, so this is
+      // still the word the score describes -- which is what the server decides
+      // too, and why this is not simply "anything was typed".
+      if (changed) span.setAttribute("data-changed", "");
+      else span.removeAttribute("data-changed");
+    },
+
     // Text edits are reported on a short delay: the server recomputes the
     // review highlighting from them, and doing that per keystroke would fight
     // the caret.
     onInput() {
+      const selection = window.getSelection();
       const at = this.caret();
       if (!at) return;
+
+      if (selection?.rangeCount) {
+        this.reclassify(this.wordAt(selection.getRangeAt(0)));
+      }
+
       clearTimeout(this.pending);
       const id = at.id;
       const text = at.block.textContent;
@@ -396,6 +454,11 @@ export default {
           break;
         }
       }
+
+      // The timing belonged to the word that was transcribed here. Once that
+      // word has been replaced it describes nothing on screen, so nothing is
+      // marked rather than the reader's own word being lit up as if spoken.
+      if (found && found.el.hasAttribute("data-changed")) found = null;
 
       if (found && found.el === marked) return;
 

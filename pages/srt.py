@@ -29,6 +29,7 @@ from utils.settings import get_settings
 from utils.srt import (
     AUTOSCROLL_KEY,
     DEFAULT_REVIEW_SENSITIVITY,
+    EDITS_SHOW_KEY,
     REVIEW_SENSITIVITY_KEY,
     REVIEW_SHOW_KEY,
     SRTEditor,
@@ -167,6 +168,7 @@ def create() -> None:
         editor.restore_review_state(
             app.storage.user.get(REVIEW_SHOW_KEY, False),
             app.storage.user.get(REVIEW_SENSITIVITY_KEY, DEFAULT_REVIEW_SENSITIVITY),
+            app.storage.user.get(EDITS_SHOW_KEY, False),
         )
         editor.set_autoscroll(app.storage.user.get(AUTOSCROLL_KEY, False))
         editor.set_highlight_word(editor.autoscroll)
@@ -218,6 +220,7 @@ def create() -> None:
                             # new editor, not just to later clicks.
                             transcript.set_follow(editor.autoscroll)
                             transcript.body.set_highlight_word(editor.highlight_word)
+                            transcript.body.set_show_edits(editor.show_my_edits)
                 with splitter.after:
                     with ui.card().classes("w-full h-full"):
                         video = ui.video(
@@ -289,11 +292,37 @@ def create() -> None:
                                 uncertain_switch = ui.switch(
                                     "Uncertain words",
                                     value=editor.show_uncertain_words,
-                                )
+                                ).classes("review-switch")
                                 uncertain_switch.on("click", save_show_uncertain)
                                 with uncertain_switch:
                                     ui.tooltip(
                                         "Highlight words that may need review"
+                                    )
+
+                            # Offered wherever there are transcribed words to
+                            # compare against, with or without confidence
+                            # scores: knowing which words came from the
+                            # recording is enough to know which ones did not.
+                            if editor.words:
+
+                                def save_show_edits(event) -> None:
+                                    value = bool(event.sender.value)
+
+                                    if transcript is not None:
+                                        transcript.set_show_my_edits(value)
+                                    else:
+                                        editor.set_show_my_edits(value)
+
+                                    app.storage.user[EDITS_SHOW_KEY] = value
+
+                                edits_switch = ui.switch(
+                                    "My edits",
+                                    value=editor.show_my_edits,
+                                ).classes("edits-switch")
+                                edits_switch.on("click", save_show_edits)
+                                with edits_switch:
+                                    ui.tooltip(
+                                        "Highlight words you have changed"
                                     )
 
                         if uncertain_switch is not None:
@@ -319,7 +348,11 @@ def create() -> None:
                                         "high": "High",
                                     },
                                     value=editor.review_sensitivity,
-                                ).props("dense unelevated no-caps")
+                                ).props(
+                                    "dense unelevated no-caps "
+                                    "toggle-color=review-accent "
+                                    "toggle-text-color=review-accent-fg"
+                                )
                                 sensitivity.on("update:model-value", save_sensitivity)
                                 with sensitivity:
                                     ui.tooltip(
