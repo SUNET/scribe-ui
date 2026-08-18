@@ -42,6 +42,52 @@ create_video_proxy()
 settings = get_settings()
 
 
+# ── TEMPORARY DIAGNOSTIC ─────────────────────────────────────────────────────
+# Prints, for the first few blocks, the words the transcription holds against
+# the words the recording says were spoken there. A word marked as edited is a
+# word the first list has and the second does not.
+#
+# Remove with:  git checkout -- pages/srt.py
+def _dump_alignment(editor, raw, blocks: int = 3) -> None:
+    import json as _json
+
+    try:
+        segments = _json.loads(raw).get("segments") or []
+
+        print("\n" + "=" * 72)
+        print("MY EDITS DIAGNOSTIC")
+        print("=" * 72)
+        print(f"words loaded: {len(editor.words)}   captions: {len(editor.captions)}")
+        print(f"has_confidence: {editor.has_confidence}")
+
+        print("\n--- first raw segments, as they arrived -------------------------")
+        for segment in segments[:blocks]:
+            print(_json.dumps(segment, ensure_ascii=False)[:400])
+
+        print("\n--- first words, as they arrived --------------------------------")
+        print(_json.dumps(editor.words[:20], ensure_ascii=False))
+
+        for caption in editor.captions[:blocks]:
+            tokens = caption.text.split()
+            claimed = editor.caption_words(caption)
+            aligned = editor.aligned_words(caption)
+            unaligned = [
+                token for token, word in zip(tokens, aligned) if word is None
+            ]
+
+            print(f"\n--- block {caption.index} "
+                  f"{caption.start_time} - {caption.end_time} "
+                  f"speaker={caption.speaker}")
+            print(f"  text tokens ({len(tokens)}): {tokens}")
+            print(f"  words claimed ({len(claimed)}): "
+                  f"{[word['t'] for word in claimed]}")
+            print(f"  WOULD BE MARKED AS EDITED: {unaligned}")
+
+        print("=" * 72 + "\n", flush=True)
+    except Exception as error:  # never let the diagnostic break the page
+        print(f"MY EDITS DIAGNOSTIC failed: {error!r}", flush=True)
+
+
 def create() -> None:
     @ui.page("/srt")
     def result(
@@ -215,6 +261,7 @@ def create() -> None:
                             editor.refresh_display()
                         else:
                             editor.parse_txt(data["result"])
+                            _dump_alignment(editor, data["result"])
                             transcript.build()
                             # Apply the restored autoscroll preference to the
                             # new editor, not just to later clicks.
