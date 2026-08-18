@@ -538,17 +538,63 @@ class TestSeekToCaret:
 
         assert view.time_at_offset(timed.captions[0], 10) == pytest.approx(10.0)
 
-    def test_an_edited_word_uses_the_nearest_timed_one(self, view, timed):
+    def test_an_edited_word_has_no_time_to_move_to(self, view, timed):
         """
-        An edited word has no timing of its own; the word before it is the
-        closer guess than the start of the block.
+        Nothing in the recording corresponds to a word the reader wrote, so
+        there is no honest place to move to.
         """
 
         caption = timed.captions[0]
         caption.text = "Vi har DEMOKRATI idag"
 
         # Caret inside the edited word.
-        assert view.time_at_offset(caption, 10) == pytest.approx(10.5)
+        assert view.time_at_offset(caption, 10) is None
+
+    def test_the_words_around_an_edit_still_have_their_own(self, view, timed):
+        caption = timed.captions[0]
+        caption.text = "Vi har DEMOKRATI idag"
+
+        assert view.time_at_offset(caption, 0) == pytest.approx(10.0)
+        assert view.time_at_offset(caption, 4) == pytest.approx(10.5)
+        assert view.time_at_offset(caption, 20) == pytest.approx(12.5)
+
+    def test_clicking_an_edited_word_leaves_the_recording_alone(self, view, timed):
+        """
+        Reported from a screenshot: clicking a word carrying "You changed this
+        word" moved the recording to the word before it, and the word-follower
+        then lit that word up as though it were the one clicked.
+        """
+
+        sought = []
+
+        class Player:
+            def seek(self, seconds):
+                sought.append(seconds)
+
+        timed.set_video_player(Player())
+        timed.captions[0].text = "Vi har DEMOKRATI idag"
+
+        view.seek({"id": 1, "offset": 10})
+
+        assert sought == []
+
+    def test_clicking_an_untouched_word_still_seeks(self, view, timed):
+        """
+        Guards the guard above: the seek must not have stopped working.
+        """
+
+        sought = []
+
+        class Player:
+            def seek(self, seconds):
+                sought.append(seconds)
+
+        timed.set_video_player(Player())
+        timed.captions[0].text = "Vi har DEMOKRATI idag"
+
+        view.seek({"id": 1, "offset": 4})
+
+        assert sought == [pytest.approx(10.5)]
 
     def test_empty_block_falls_back_to_the_block(self, view, timed):
         caption = timed.captions[0]
@@ -581,3 +627,63 @@ class TestSeekToCaret:
         view.seek({"id": 1})
 
         assert sought == [pytest.approx(10.0)]
+
+
+class TestSpeakerMenuIcons:
+    """
+    The rename control in the speaker menu.
+    """
+
+    def template(self) -> str:
+        from pathlib import Path
+
+        source = Path("utils/transcript_editor.js").read_text()
+        start = source.index("template: `")
+
+        return source[start:source.index("`,", start)]
+
+    def rename_icon(self) -> str:
+        template = self.template()
+        start = template.index("renamespeaker")
+        # Back up to the element the handler is on.
+        opening = template.rindex("<q-icon", 0, start)
+
+        return template[opening:template.index("</q-icon>", start) + len("</q-icon>")]
+
+    def test_rename_uses_the_person_edit_icon(self):
+        assert 'name="sym_o_person_edit"' in self.rename_icon()
+
+    def test_it_asks_for_it_from_the_symbols_set(self):
+        """
+        person_edit only exists in Material Symbols, not in Material Icons.
+        Without Quasar's sym_o_ prefix the name is not an icon at all and the
+        ligature text renders in its place. Both fonts ship with NiceGUI.
+        """
+
+        icon = self.rename_icon()
+
+        assert "person_edit" in icon
+        assert "sym_o_person_edit" in icon, "needs the Material Symbols prefix"
+
+    def test_it_says_what_it_does(self):
+        assert "<q-tooltip>Rename speaker</q-tooltip>" in self.rename_icon()
+
+    def test_the_tooltip_is_anchored_to_the_icon(self):
+        """
+        Inside the element, so Quasar anchors it there rather than to the row.
+        """
+
+        icon = self.rename_icon()
+
+        assert icon.endswith("<q-tooltip>Rename speaker</q-tooltip></q-icon>")
+
+    def test_it_still_only_renames(self):
+        """
+        The row underneath assigns the speaker, so the icon has to keep
+        swallowing the click.
+        """
+
+        icon = self.rename_icon()
+
+        assert "@click.stop=" in icon
+        assert "renamespeaker" in icon

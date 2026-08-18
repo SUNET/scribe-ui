@@ -26,6 +26,7 @@ import pathlib
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 
 import pytest
@@ -831,3 +832,252 @@ class TestMarkedWordCursor:
 
         assert declarations_for(".review-word")
         assert declarations_for(".edit-word")
+
+
+class TestCaretIsNotPaintedOver:
+    """
+    Reported in Safari: the caret was hidden behind the highlight, on marked
+    words only.
+
+    position: relative promotes an inline element to paint above the in-flow
+    text, and WebKit draws the caret with the block's own content -- so a
+    positioned marking painted its background over the caret. The playing-word
+    highlight has a background too and was never affected, because it was never
+    positioned. It was only ever positioned to anchor a hover message, so both
+    go, for every marking rather than for the word the caret is in: changing an
+    element's position while it is being clicked left Safari selecting the word
+    before the one clicked.
+    """
+
+    MARKINGS = [
+        ".transcript-text .review-word",
+        ".transcript-text .edit-word",
+        ".transcript-show-edits [data-changed]",
+    ]
+
+    def declarations(self, selector: str) -> dict:
+        body = declarations_for(selector)
+
+        assert body, f"{selector} is not styled at all"
+
+        return {
+            part.split(":", 1)[0].strip(): part.split(":", 1)[1].strip()
+            for part in body.split(";")
+            if ":" in part
+        }
+
+    @pytest.mark.parametrize("selector", MARKINGS)
+    def test_no_marking_in_the_transcription_is_positioned(self, selector):
+        assert self.declarations(selector)["position"] == "static"
+
+    @pytest.mark.parametrize("selector", MARKINGS)
+    def test_none_of_them_generates_a_hover_message(self, selector):
+        """
+        Required, not a preference: an absolutely positioned pseudo-element with
+        no positioned ancestor anchors somewhere else entirely.
+        """
+
+        assert self.declarations(f"{selector}::after")["content"] == "none"
+
+    @pytest.mark.parametrize(
+        "scoped, bare",
+        [
+            (".transcript-text .review-word", ".review-word"),
+            (".transcript-text .edit-word", ".edit-word"),
+        ],
+    )
+    def test_it_outweighs_the_rule_that_positions_that_marking(self, scoped, bare):
+        """
+        By weight rather than by ordering, so moving the block cannot break it.
+        """
+
+        sys.path.insert(0, str(pathlib.Path(__file__).parent))
+        from test_caption_editor_styles import specificity
+
+        assert "position: relative" in declarations_for(bare)
+        assert specificity(scoped) > specificity(bare)
+
+    def test_the_caret_has_a_colour_of_its_own(self):
+        """
+        Otherwise it inherits the marking's text colour and goes faint against
+        the marking's background.
+        """
+
+        assert self.declarations(".transcript-body")["caret-color"] == (
+            "var(--color-text-primary)"
+        )
+
+    def test_nothing_changes_position_while_a_word_is_clicked(self):
+        """
+        The transcription no longer tracks which word the caret is in, which is
+        what used to mutate the clicked element mid-click.
+        """
+
+        source = pathlib.Path("utils/transcript_editor.js").read_text()
+
+        assert "data-caret" not in source
+        assert "markCaretWord" not in source
+
+    def test_the_caption_editor_keeps_its_hover_messages(self):
+        """
+        Nothing is typed into the read view, and the layer behind the caption
+        text area already silenced its own.
+        """
+
+        assert "position: relative" in declarations_for(".review-word")
+        assert declarations_for(".review-word::after")
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="needs node")
+class TestMarksDoNotStrandThemselves:
+    """
+    Reported: placing the caret on an edited word left another word marked too.
+
+    The marks the browser puts on are a stopgap between renders, and they are
+    plain attributes -- not part of Vue's data. The spans are keyed by position,
+    so Vue reuses them, and a mark judged only for the word under the caret can
+    be left behind on a word nobody touched.
+    """
+
+    def run(self, script: str):
+        component = pathlib.Path("utils/transcript_editor.js").read_text()
+        component = component.replace("export default", "module.exports =", 1)
+
+        with tempfile.TemporaryDirectory() as directory:
+            module = pathlib.Path(directory) / "component.js"
+            module.write_text(component)
+            runner = pathlib.Path(directory) / "run.js"
+            runner.write_text(
+                "const component = require(%r);\n%s" % (str(module), script)
+            )
+
+            return json.loads(
+                subprocess.run(
+                    ["node", str(runner)],
+                    capture_output=True, text=True, check=True,
+                ).stdout
+            )
+
+    HARNESS = """
+    const methods = component.methods;
+
+    // The one bit of DOM these touch: a block holding word spans.
+    function span(text, transcribed, changed) {
+      const attributes = changed ? { "data-changed": "" } : {};
+      return {
+        textContent: text,
+        dataset: transcribed === null ? {} : { w: transcribed },
+        setAttribute: (k, v) => { attributes[k] = v; },
+        removeAttribute: (k) => { delete attributes[k]; },
+        hasAttribute: (k) => k in attributes,
+        attributes,
+      };
+    }
+
+    function block(words) {
+      const spans = words.map(([t, w, c]) => span(t, w, c));
+      return {
+        spans,
+        querySelectorAll: (selector) =>
+          selector === "[data-w]"
+            ? spans.filter((s) => s.dataset.w !== undefined)
+            : spans,
+      };
+    }
+
+    const context = {
+      matchKey: methods.matchKey,
+      reclassify: methods.reclassify,
+      reclassifyBlock: methods.reclassifyBlock,
+    };
+    """
+
+    def marked_after_block_pass(self, words) -> list:
+        return self.run(
+            self.HARNESS
+            + """
+            const b = block(%s);
+            context.reclassifyBlock(b);
+            console.log(JSON.stringify(
+              b.spans.map((s) => "data-changed" in s.attributes)
+            ));
+            """ % json.dumps(words)
+        )
+
+    def test_a_word_nobody_touched_loses_its_mark(self):
+        """
+        The stranded mark: set on a span whose text still matches what was
+        transcribed there, so nothing about it is an edit.
+        """
+
+        marked = self.marked_after_block_pass([
+            ["Hej", "Hej", False],
+            ["XX", "på", True],     # genuinely edited
+            ["dig", "dig", True],   # stranded, must come off
+            ["idag", "idag", False],
+        ])
+
+        assert marked == [False, True, False, False]
+
+    def test_a_word_the_caret_has_left_is_still_judged(self):
+        """
+        Two real edits stay marked -- the pass judges every word, so it neither
+        strands nor forgets.
+        """
+
+        marked = self.marked_after_block_pass([
+            ["Hej", "Hej", False],
+            ["XX", "på", False],
+            ["YY", "dig", False],
+            ["idag", "idag", False],
+        ])
+
+        assert marked == [False, True, True, False]
+
+    def test_putting_a_word_back_unmarks_it(self):
+        marked = self.marked_after_block_pass([
+            ["på", "på", True],
+            ["dig", "dig", False],
+        ])
+
+        assert marked == [False, False]
+
+    def test_words_with_nothing_transcribed_are_left_alone(self):
+        """
+        Whitespace runs and words already replaced carry no transcribed word, so
+        the pass skips them rather than guessing.
+        """
+
+        marked = self.marked_after_block_pass([
+            [" ", None, False],
+            ["XXX", None, True],
+            ["dig", "dig", False],
+        ])
+
+        assert marked == [False, True, False]
+
+
+class TestMarksAreDroppedOnRender:
+    """
+    A fresh render is the server's own account, diffed properly rather than word
+    by word, so the browser's stopgap marks give way to it.
+    """
+
+    def revision_watcher(self) -> str:
+        source = pathlib.Path("utils/transcript_editor.js").read_text()
+        body = source[source.index("    revision() {"):]
+
+        return body[: body.index("\n    },")]
+
+    def test_the_browser_marks_are_cleared(self):
+        body = self.revision_watcher()
+
+        assert 'querySelectorAll("[data-changed]")' in body
+        assert 'removeAttribute("data-changed")' in body
+
+    def test_the_whole_block_is_re_read_when_typing(self):
+        source = pathlib.Path("utils/transcript_editor.js").read_text()
+        body = source[source.index("onInput()"):]
+        body = body[: body.index("\n    },")]
+
+        assert "this.reclassifyBlock(at.block)" in body

@@ -324,7 +324,7 @@ class TranscriptEditor:
 
     def seek(self, args) -> None:
         """
-        Move the recording to where the caret was put.
+        Move the recording to where the caret was put, when that can be said.
         """
 
         caption = self.caption(self.block_id(args))
@@ -333,19 +333,32 @@ class TranscriptEditor:
             return
 
         offset = args.get("offset") if isinstance(args, dict) else None
+        seconds = self.time_at_offset(caption, offset)
 
-        self.editor.seek_video(self.time_at_offset(caption, offset))
+        if seconds is None:
+            return
 
-    def time_at_offset(self, caption: SRTCaption, offset) -> float:
+        self.editor.seek_video(seconds)
+
+    def time_at_offset(self, caption: SRTCaption, offset) -> Optional[float]:
         """
         When the word at a character offset into a block was spoken.
 
-        Falls back to the start of the block: without word data, or on a word
-        that has been edited since, there is no time to be had -- and the start
-        of the block is never wrong, only imprecise.
+        None for a word that has been edited: nothing in the recording
+        corresponds to it, so the recording stays where it is. It used to move
+        to the nearest word that did have a timing, which meant clicking a word
+        you had changed jumped the recording to the word before it -- and with
+        the audio being followed, lit that word up as though it were the one
+        clicked.
+
+        Without any word data at all there is nothing better than the start of
+        the block, which is never wrong, only imprecise.
         """
 
         start = caption.get_start_seconds()
+
+        if not self.editor.words:
+            return start
 
         if not isinstance(offset, (int, float)):
             return start
@@ -366,14 +379,9 @@ class TranscriptEditor:
         )
 
         words = self.editor.aligned_words(caption)
+        word = words[index] if index < len(words) else None
 
-        # Nearest word with a timing, looking back first: an edited word has
-        # none, and the one before it is the closer guess.
-        for candidate in list(range(index, -1, -1)) + list(range(index, len(words))):
-            if candidate < len(words) and words[candidate]:
-                return words[candidate]["s"]
-
-        return start
+        return word["s"] if word else None
 
     def changed(self) -> None:
         if self.on_change:

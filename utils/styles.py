@@ -893,8 +893,8 @@ theme_styles = """
     }
     .transcript-show-edits [data-changed] {
         /* Stated here as well as on .edit-word: a word that was not flagged
-           carries neither class, so it has none of the shared geometry. */
-        position: relative;
+           carries neither class, so it has none of the shared geometry. Not
+           positioned -- see the rule further down. */
         padding: 1px 3px;
         border-radius: 3px;
         color: var(--color-edit-text);
@@ -922,6 +922,36 @@ theme_styles = """
     }
     .text-review-accent-fg {
         color: var(--color-review-on-accent) !important;
+    }
+
+    /* No marking in the transcription is ever positioned.
+
+       position: relative promotes an inline element to paint above the in-flow
+       text, and WebKit draws the caret along with the block's own content -- so
+       a positioned marking paints its background over the caret and hides it.
+       The playing-word highlight has a background too and was never affected,
+       which is what gave this away: it was never positioned.
+
+       It was there only to anchor the hover message, and the message goes with
+       it: anchoring it per word is the only thing that ever needed a positioned
+       word, and in text being edited the caret matters more than an explanation
+       of a marking -- the same call the layer behind a caption text area makes.
+       The markings themselves are unchanged, and the switches that turn them on
+       say what each one means.
+
+       Doing it here for every marking, rather than for the word the caret
+       happens to be in, also means nothing changes an element's position while
+       it is being clicked. Doing that mid-click left Safari selecting the word
+       before the one that was clicked. */
+    .transcript-text .review-word,
+    .transcript-text .edit-word,
+    .transcript-show-edits [data-changed] {
+        position: static;
+    }
+    .transcript-text .review-word::after,
+    .transcript-text .edit-word::after,
+    .transcript-show-edits [data-changed]::after {
+        content: none;
     }
 
     /* Each switch wears the colour of the marking it turns on, so the control
@@ -1042,6 +1072,10 @@ theme_styles = """
         padding: 0.5rem 0 4rem;
     }
     .transcript-body {
+        /* Stated rather than left to currentColor, which a marked word
+           overrides -- the caret would take the marking's text colour and go
+           faint against the marking's own background. */
+        caret-color: var(--color-text-primary);
         display: grid;
         grid-template-columns: 8rem minmax(0, 1fr);
         column-gap: 1rem;

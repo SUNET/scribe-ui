@@ -322,7 +322,7 @@ def create() -> None:
                                 edits_switch.on("click", save_show_edits)
                                 with edits_switch:
                                     ui.tooltip(
-                                        "Highlight words you have changed"
+                                        "Highlight words you have added or changed"
                                     )
 
                         if uncertain_switch is not None:

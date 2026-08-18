@@ -84,12 +84,16 @@ export default {
           @click="assign(name)"
         >
           <span class="speaker-menu-name">{{ name }}</span>
+          <!-- sym_o_ is Quasar's prefix for Material Symbols Outlined, which
+               is where person_edit lives; the plain Material Icons set has no
+               such name and would render the ligature text instead. Both fonts
+               ship with NiceGUI, so nothing is fetched for this. -->
           <q-icon
-            name="edit"
+            name="sym_o_person_edit"
             size="18px"
             class="speaker-menu-icon"
             @click.stop="$emit('renamespeaker', { speaker: name })"
-          />
+          ><q-tooltip>Rename speaker</q-tooltip></q-icon>
           <q-icon
             v-if="unused.includes(name)"
             name="delete_outline"
@@ -128,7 +132,18 @@ export default {
       // the blocks themselves fires on every update, because an update
       // resends all props and the array arrives as a new reference -- several
       // times a second while the audio plays.
-      this.$nextTick(() => this.indexWords());
+      this.$nextTick(() => {
+        this.indexWords();
+
+        // A fresh render is the server's own account of which words have been
+        // changed, worked out by diffing the text properly rather than word by
+        // word, so the marks put on here in the meantime are dropped. Left in
+        // place they would decorate whatever word now sits where they were put:
+        // these spans are keyed by position, so Vue reuses them.
+        this.$refs.body
+          ?.querySelectorAll("[data-changed]")
+          .forEach((el) => el.removeAttribute("data-changed"));
+      });
     },
     highlightWord(on) {
       if (on) this.$nextTick(() => this.indexWords());
@@ -244,17 +259,29 @@ export default {
       else span.removeAttribute("data-changed");
     },
 
+    // Every word in a block re-read against what was transcribed in its place,
+    // rather than only the one the caret is in.
+    //
+    // A mark has to be able to come off a word the caret has already left. One
+    // edit can move text between neighbouring spans -- typing over a selection
+    // that spans two of them does -- and a word put back the way it was stops
+    // being an edit. Judging only the word under the caret leaves the rest
+    // showing whatever they were last told, which is how a word nobody touched
+    // ended up marked.
+    reclassifyBlock(block) {
+      block
+        ?.querySelectorAll("[data-w]")
+        .forEach((span) => this.reclassify(span));
+    },
+
     // Text edits are reported on a short delay: the server recomputes the
     // review highlighting from them, and doing that per keystroke would fight
     // the caret.
     onInput() {
-      const selection = window.getSelection();
       const at = this.caret();
       if (!at) return;
 
-      if (selection?.rangeCount) {
-        this.reclassify(this.wordAt(selection.getRangeAt(0)));
-      }
+      this.reclassifyBlock(at.block);
 
       clearTimeout(this.pending);
       const id = at.id;
