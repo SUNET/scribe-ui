@@ -268,3 +268,65 @@ class TestEnterAtBlockEnd:
 
         assert [c.text for c in editor.captions[3:]] == ["fyra", "fem"]
         assert "" not in [c.text for c in editor.captions]
+
+
+class TestEditorContract:
+    """
+    The transcription editor drives the SRTEditor rather than duplicating it,
+    so it depends on a set of methods there. Nothing else checks that they
+    exist: a missing one only shows up as an AttributeError when a user clicks
+    the thing that needs it. This caught seek_video going missing in a revert.
+    """
+
+    def required(self):
+        import re
+        from pathlib import Path
+
+        source = Path("utils/transcript_editor.py").read_text()
+
+        return sorted(set(re.findall(r"self\.editor\.(\w+)", source)))
+
+    def test_every_member_it_uses_exists(self, editor):
+        missing = [
+            name
+            for name in self.required()
+            if not hasattr(editor, name)
+        ]
+
+        assert missing == [], f"SRTEditor is missing {missing}"
+
+    def test_it_uses_more_than_nothing(self):
+        """
+        Guards the guard: a regex that stopped matching would pass silently.
+        """
+
+        assert len(self.required()) > 8
+
+    def test_seeking_reaches_the_player(self, view, editor):
+        sought = []
+
+        class Player:
+            def seek(self, seconds):
+                sought.append(seconds)
+
+        editor.set_video_player(Player())
+
+        view.seek({"id": editor.captions[1].index})
+
+        assert sought == [pytest.approx(1.0)]
+
+    def test_seeking_without_a_player_is_harmless(self, view, editor):
+        view.seek({"id": editor.captions[0].index})
+
+    def test_seeking_an_unknown_block_is_harmless(self, view, editor):
+        sought = []
+
+        class Player:
+            def seek(self, seconds):
+                sought.append(seconds)
+
+        editor.set_video_player(Player())
+
+        view.seek({"id": 9999})
+
+        assert sought == []

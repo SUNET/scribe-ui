@@ -521,6 +521,14 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
 
         return (total_words / total_seconds) * 60.0
 
+    def seek_video(self, seconds: float) -> None:
+        """
+        Move the video to a point in the recording, if a player is attached.
+        """
+
+        if self._video_player:
+            self._video_player.seek(seconds)
+
     def set_video_player(self, player) -> None:
         """
         Set the video player for the editor.
