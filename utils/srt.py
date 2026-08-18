@@ -502,88 +502,86 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
     def parse_txt(self, data: dict) -> None:
         """
         Parse TXT content and populate captions list.
+
+        Raw output from the worker arrives as many short diarisation segments
+        in lower case, so it is merged into readable blocks and capitalised.
+        Anything saved from the editor says so, and is taken exactly as it is:
+        merging it again would undo the reader's splits, and capitalising it
+        again would undo their corrections.
         """
 
         self.data_format = "txt"
 
         original_data = json.loads(data)
-
-        if not original_data.get("segments"):
-            return
-
-        raw_segments = original_data["segments"]
+        raw_segments = original_data.get("segments")
 
         if not raw_segments:
             return
 
+        if original_data.get("preserve_segments"):
+            segments = [segment.copy() for segment in raw_segments]
+        else:
+            segments = self.tidy_segments(raw_segments)
+
+        for index, segment in enumerate(segments):
+            if not segment.get("text", "").strip():
+                continue
+
+            self.captions.append(
+                SRTCaption(
+                    index,
+                    self.seconds_to_timestamp(segment.get("start", 0.0)),
+                    self.seconds_to_timestamp(segment.get("end", 0.0)),
+                    segment["text"],
+                    speaker=segment.get("speaker", ""),
+                )
+            )
+            self.speakers.add(segment.get("speaker", ""))
+
+        self.renumber_captions()
+
+    def tidy_segments(self, raw_segments: list) -> list:
+        """
+        Turn the worker's diarisation segments into readable blocks.
+
+        Neighbouring segments by one speaker are joined until the block is long
+        enough and has reached the end of a sentence, and the text is
+        capitalised -- the models emit it in lower case.
+        """
+
         max_words = 50
 
-        concatenated = []
+        merged = []
         current = raw_segments[0].copy()
 
         for segment in raw_segments[1:]:
-            word_count = len(current["text"].split())
-            past_limit = word_count >= max_words
+            past_limit = len(current["text"].split()) >= max_words
+
             if segment["speaker"] != current["speaker"]:
-                concatenated.append(current)
+                merged.append(current)
                 current = segment.copy()
             elif past_limit and current["text"].rstrip().endswith("."):
-                concatenated.append(current)
+                merged.append(current)
                 current = segment.copy()
             else:
                 current["text"] += " " + segment["text"]
                 current["end"] = segment["end"]
                 current["duration"] = current["end"] - current["start"]
 
-        concatenated.append(current)
+        merged.append(current)
 
-        import re
+        for segment in merged:
+            text = segment.get("text", "")
 
-        def capitalize_after_periods(text: str) -> str:
-            return re.sub(
-                r"(\.\s+)([a-z])", lambda m: m.group(1) + m.group(2).upper(), text
-            )
-
-        for index, seg in enumerate(concatenated):
-            if seg.get("text", "").strip():
-                seg["text"] = capitalize_after_periods(seg["text"])
-                seg["text"] = seg["text"][0].upper() + seg["text"][1:]
-                start_time = self.seconds_to_timestamp(seg.get("start", 0.0))
-                end_time = self.seconds_to_timestamp(seg.get("end", 0.0))
-
-                self.captions.append(
-                    SRTCaption(
-                        index,
-                        start_time,
-                        end_time,
-                        seg["text"],
-                        speaker=seg["speaker"],
-                    )
+            if text.strip():
+                text = re.sub(
+                    r"(\.\s+)([a-z])",
+                    lambda match: match.group(1) + match.group(2).upper(),
+                    text,
                 )
-                self.speakers.add(seg["speaker"])
+                segment["text"] = text[0].upper() + text[1:]
 
-        self.renumber_captions()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        return merged
 
     def parse_srt(self, srt_content: str) -> None:
         """
