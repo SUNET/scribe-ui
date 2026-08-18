@@ -745,35 +745,20 @@ class RenderMixin:
         Show keyboard shortcuts dialog.
         """
 
+        # The caption operations only exist in the subtitle editor. A
+        # transcription is drawn by the document editor, which has its own
+        # bindings for the same jobs, so listing them here would document
+        # shortcuts that do nothing.
+        captions = self.render_override is None
+
         shortcut_groups = [
-            (
-                "Navigation",
-                [
-                    ("Next caption", "Alt + ↓"),
-                    ("Previous caption", "Alt + ↑"),
-                    ("Close/deselect block", "Esc"),
-                ],
-            ),
-            (
-                "Editing",
-                [
-                    ("Split caption at cursor", "Ctrl/⌘ + Enter"),
-                    ("Move first word to previous block", "Ctrl/⌘ + ↑"),
-                    ("Move last word to next block", "Ctrl/⌘ + ↓"),
-                    ("Merge with next", "Ctrl + M"),
-                    ("Merge with previous", "Ctrl + Shift + M"),
-                    ("Add caption after", "Ctrl/⌘ + Shift + Enter"),
-                    ("Delete caption", "Ctrl + D"),
-                ],
-            ),
             (
                 "File Operations",
                 [
                     ("Save file", "Ctrl/⌘ + S"),
                     ("Export file", "Ctrl/⌘ + E"),
-                    ("Find", "Ctrl/⌘ + F"),
-                    ("Validate captions", "Ctrl + Shift + V"),
-                ],
+                ]
+                + ([("Find", "Ctrl/⌘ + F")] if captions else []),
             ),
             (
                 "History",
@@ -789,6 +774,29 @@ class RenderMixin:
                 ],
             ),
         ]
+
+        if captions:
+            shortcut_groups[:0] = [
+                (
+                    "Captions",
+                    [
+                        ("Close/deselect block", "Esc"),
+                    ],
+                ),
+            ]
+        else:
+            shortcut_groups.insert(
+                0,
+                (
+                    "Editing",
+                    [
+                        ("Split block at cursor", "Enter"),
+                        ("Join with the block above", "Backspace at the start"),
+                        ("Join with the block below", "Delete at the end"),
+                        ("New block after this one", "Enter at the end"),
+                    ],
+                ),
+            )
 
         with ui.dialog() as dialog:
             with ui.card().classes("w-2/3 max-w-2xl").style(

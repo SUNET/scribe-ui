@@ -884,6 +884,8 @@ theme_styles = """
        editable surface. They are contenteditable=false, so the caret cannot
        enter them. */
     .transcript-editor {
+        /* The speaker menu is placed against this box. */
+        position: relative;
         width: 100%;
         padding: 0.5rem 0 4rem;
     }
@@ -976,9 +978,65 @@ theme_styles = """
         box-shadow: 0 0 0 1px var(--color-playing-bg);
     }
 
+    /* Speaker menu, anchored under the label it belongs to. Fixed, so it is
+       positioned from the label's own screen position and is not clipped by
+       the scrolling transcription. */
+    .speaker-menu {
+        position: absolute;
+        z-index: 9500;
+        min-width: 11rem;
+        padding: 0.25rem 0;
+        border-radius: 4px;
+        background-color: var(--color-bg-surface);
+        border: 1px solid var(--color-border-subtle);
+        box-shadow: 0 4px 14px var(--color-shadow-medium);
+        font-size: 0.95rem;
+    }
+    .speaker-menu-add,
+    .speaker-menu-row {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.45rem 0.75rem;
+        cursor: pointer;
+    }
+    .speaker-menu-add {
+        border-bottom: 1px solid var(--color-border-subtle);
+        justify-content: space-between;
+    }
+    .speaker-menu-add:hover,
+    .speaker-menu-row:hover {
+        background-color: var(--color-bg-surface-alt);
+    }
+    /* The speaker this block already has. */
+    .speaker-menu-row-current {
+        background-color: var(--color-bg-surface-alt);
+        font-weight: 600;
+    }
+    .speaker-menu-name {
+        flex: 1 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .speaker-menu-icon {
+        flex: 0 0 auto;
+        color: var(--color-text-muted);
+        opacity: 0.55;
+    }
+    .speaker-menu-icon:hover {
+        opacity: 1;
+        color: var(--color-text-primary);
+    }
+    .speaker-menu-remove:hover {
+        color: var(--color-text-danger);
+    }
+
     .transcript-dialog {
         min-width: 22rem;
     }
+
     .transcript-time-readout {
         font-variant-numeric: tabular-nums;
         color: var(--color-brand-primary);

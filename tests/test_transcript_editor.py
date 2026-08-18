@@ -75,63 +75,138 @@ def speakers(editor):
     return [caption.speaker for caption in editor.captions]
 
 
-class TestApplySpeaker:
-    def test_renames_a_single_block(self, view, editor):
-        view.apply_speaker(editor.captions[1], "Anna", False)
+class TestAssignSpeaker:
+    """
+    Clicking a name in the menu moves this block to that speaker. One block:
+    who said this is a different question from what a speaker is called.
+    """
 
-        assert speakers(editor) == ["Speaker 1", "Anna", "Speaker 2", "Speaker 3"]
+    def test_assigns_one_block(self, view, editor):
+        view.assign_speaker({"id": 2, "speaker": "Speaker 3"})
 
-    def test_renames_the_whole_run(self, view, editor):
-        view.apply_speaker(editor.captions[1], "Anna", True)
-
-        assert speakers(editor) == ["Speaker 1", "Anna", "Anna", "Speaker 3"]
-
-    def test_a_new_name_is_remembered_for_next_time(self, view, editor):
-        view.apply_speaker(editor.captions[0], "Bertil", False)
-
-        assert "Bertil" in editor.speakers
+        assert speakers(editor) == ["Speaker 1", "Speaker 3", "Speaker 2", "Speaker 3"]
 
     def test_name_is_trimmed(self, view, editor):
-        view.apply_speaker(editor.captions[0], "  Anna  ", False)
+        view.assign_speaker({"id": 1, "speaker": "  Speaker 3  "})
 
-        assert editor.captions[0].speaker == "Anna"
+        assert editor.captions[0].speaker == "Speaker 3"
 
-    @pytest.mark.parametrize("name", ["", "   ", None])
-    def test_blank_name_is_refused(self, view, editor, name):
-        before = speakers(editor)
+    def test_a_name_not_yet_known_is_remembered(self, view, editor):
+        view.assign_speaker({"id": 1, "speaker": "Ida"})
 
-        view.apply_speaker(editor.captions[0], name, False)
+        assert "Ida" in editor.speakers
 
-        assert speakers(editor) == before
-
-    def test_unchanged_name_is_a_no_op(self, view, editor):
+    def test_same_speaker_is_a_no_op(self, view, editor):
         marked = []
         editor.mark_as_changed = lambda: marked.append(True)
 
-        view.apply_speaker(editor.captions[0], "Speaker 1", True)
+        view.assign_speaker({"id": 1, "speaker": "Speaker 1"})
 
-        assert marked == [], "nothing changed, so nothing should be marked dirty"
+        assert marked == []
 
-    def test_run_is_resolved_before_reassignment(self, view, editor):
+    @pytest.mark.parametrize(
+        "args",
+        [None, "nonsense", {}, {"id": 1}, {"id": 1, "speaker": None},
+         {"id": 1, "speaker": "  "}, {"id": 9999, "speaker": "Ida"}],
+    )
+    def test_bad_payload_is_ignored(self, view, editor, args):
+        before = speakers(editor)
+
+        view.assign_speaker(args)
+
+        assert speakers(editor) == before
+
+
+class TestRenameSpeaker:
+    """
+    The pencil renames a speaker wherever it appears -- what a diarisation
+    label needs, since "Speaker 2" is one person throughout.
+    """
+
+    def test_renames_every_block_with_that_name(self, view, editor):
+        view.rename_speaker("Speaker 2", "Ida")
+
+        assert speakers(editor) == ["Speaker 1", "Ida", "Ida", "Speaker 3"]
+
+    def test_old_name_leaves_the_list(self, view, editor):
+        view.rename_speaker("Speaker 2", "Ida")
+
+        assert "Speaker 2" not in editor.speakers
+        assert "Ida" in editor.speakers
+
+    def test_renaming_onto_an_existing_name_is_refused(self, view, editor):
         """
-        The run is found by matching the current speaker, so it has to be
-        worked out before any of it is renamed -- otherwise renaming the first
-        block cuts the run short.
+        Merging two speakers is a different act; doing it silently here would
+        make the old name unrecoverable.
         """
 
-        view.apply_speaker(editor.captions[1], "Anna", True)
+        view.rename_speaker("Speaker 2", "Speaker 1")
 
-        assert speakers(editor).count("Anna") == 2
+        assert speakers(editor) == ["Speaker 1", "Speaker 2", "Speaker 2", "Speaker 3"]
+
+    @pytest.mark.parametrize("new", ["", "   ", None])
+    def test_blank_name_is_refused(self, view, editor, new):
+        view.rename_speaker("Speaker 2", new)
+
+        assert "Speaker 2" in editor.speakers
+
+    def test_renaming_to_itself_is_a_no_op(self, view, editor):
+        marked = []
+        editor.mark_as_changed = lambda: marked.append(True)
+
+        view.rename_speaker("Speaker 2", "Speaker 2")
+
+        assert marked == []
+
+    def test_rename_of_an_unused_speaker_touches_no_blocks(self, view, editor):
+        editor.speakers.add("Leftover")
+        before = speakers(editor)
+
+        view.rename_speaker("Leftover", "Ida")
+
+        assert speakers(editor) == before
+        assert "Ida" in editor.speakers
+
+    @pytest.mark.parametrize(
+        "args", [None, "nonsense", {}, {"speaker": None}, {"speaker": "Nobody"}]
+    )
+    def test_bad_rename_payload_is_ignored(self, view, editor, args):
+        before = speakers(editor)
+
+        view.prompt_rename(args)
+
+        assert speakers(editor) == before
 
 
-class TestSpeakerRun:
-    def test_run_covers_neighbours_with_the_same_speaker(self, view, editor):
-        run = view.speaker_run(editor.captions[2])
+class TestAddSpeaker:
+    def test_adds_a_name_without_touching_blocks(self, view, editor):
+        before = speakers(editor)
 
-        assert [c.index for c in run] == [2, 3]
+        view.add_speaker("Ida")
 
-    def test_run_of_one(self, view, editor):
-        assert view.speaker_run(editor.captions[0]) == [editor.captions[0]]
+        assert "Ida" in editor.speakers
+        assert speakers(editor) == before
+
+    def test_duplicate_is_refused(self, view, editor):
+        marked = []
+        editor.mark_as_changed = lambda: marked.append(True)
+
+        view.add_speaker("Speaker 1")
+
+        assert marked == []
+
+    @pytest.mark.parametrize("name", ["", "   ", None])
+    def test_blank_is_refused(self, view, editor, name):
+        before = set(editor.speakers)
+
+        view.add_speaker(name)
+
+        assert editor.speakers == before
+
+    def test_name_is_trimmed(self, view, editor):
+        view.add_speaker("  Ida  ")
+
+        assert "Ida" in editor.speakers
 
 
 class TestBlocks:
@@ -330,3 +405,179 @@ class TestEditorContract:
         view.seek({"id": 9999})
 
         assert sought == []
+
+
+class TestRemoveSpeaker:
+    """
+    A speaker can only leave the list once nothing is attributed to it.
+    Removing one that is still in use would leave those blocks pointing at a
+    name the transcription no longer knows.
+    """
+
+    def test_unused_speaker_is_removed(self, view, editor):
+        editor.speakers.add("Unused")
+
+        assert view.remove_speaker("Unused") is True
+        assert "Unused" not in editor.speakers
+
+    def test_speaker_in_use_is_refused(self, view, editor):
+        assert view.remove_speaker("Speaker 1") is False
+        assert "Speaker 1" in editor.speakers
+
+    def test_speaker_used_by_one_block_is_refused(self, view, editor):
+        """
+        The last block of a speaker still counts as in use.
+        """
+
+        assert view.speaker_in_use("Speaker 3") is True
+        assert view.remove_speaker("Speaker 3") is False
+
+    def test_unknown_name_is_refused(self, view, editor):
+        assert view.remove_speaker("Nobody") is False
+
+    @pytest.mark.parametrize("name", ["", "   ", None])
+    def test_blank_name_is_refused(self, view, name):
+        assert view.remove_speaker(name) is False
+
+    def test_name_is_trimmed_before_matching(self, view, editor):
+        editor.speakers.add("Unused")
+
+        assert view.remove_speaker("  Unused  ") is True
+
+    def test_removal_marks_the_transcription_changed(self, view, editor):
+        """
+        The number of speakers is part of what gets saved, so this is not a
+        display-only change.
+        """
+
+        marked = []
+        editor.mark_as_changed = lambda: marked.append(True)
+        editor.speakers.add("Unused")
+
+        view.remove_speaker("Unused")
+
+        assert marked == [True]
+
+    def test_refused_removal_marks_nothing(self, view, editor):
+        marked = []
+        editor.mark_as_changed = lambda: marked.append(True)
+
+        view.remove_speaker("Speaker 1")
+
+        assert marked == []
+
+    def test_a_speaker_freed_by_renaming_can_then_be_removed(self, view, editor):
+        """
+        The realistic route: two labels are the same person, so one is renamed
+        onto the other and the empty label is tidied away.
+        """
+
+        view.assign_speaker({"id": 4, "speaker": "Speaker 1"})
+
+        assert view.speaker_in_use("Speaker 3") is False
+        assert view.remove_speaker("Speaker 3") is True
+
+    def test_speaker_in_use_is_exact(self, view, editor):
+        assert view.speaker_in_use("Speaker") is False
+        assert view.speaker_in_use("speaker 1") is False
+
+
+class TestSeekToCaret:
+    """
+    Clicking in the text moves the recording to the word the caret landed on,
+    so pressing play carries on from there rather than from the top of the
+    block.
+    """
+
+    @pytest.fixture
+    def timed(self, editor):
+        editor.captions = [
+            SRTCaption(1, "00:00:10,000", "00:00:20,000", "Vi har demokratin idag")
+        ]
+        editor.load_words({"version": 1, "words": [
+            {"t": "Vi", "s": 10.0, "e": 10.4},
+            {"t": "har", "s": 10.5, "e": 10.9},
+            {"t": "demokratin", "s": 11.0, "e": 12.2},
+            {"t": "idag", "s": 12.5, "e": 13.0},
+        ]})
+
+        return editor
+
+    def test_caret_maps_to_the_word_it_is_in(self, view, timed):
+        caption = timed.captions[0]
+
+        assert view.time_at_offset(caption, 0) == pytest.approx(10.0)
+        assert view.time_at_offset(caption, 4) == pytest.approx(10.5)
+        assert view.time_at_offset(caption, 10) == pytest.approx(11.0)
+        assert view.time_at_offset(caption, 20) == pytest.approx(12.5)
+
+    def test_right_edge_of_a_word_plays_that_word(self, view, timed):
+        """
+        Clicking a word's right hand side puts the caret at its end. That has
+        to play that word, not the next one.
+        """
+
+        assert view.time_at_offset(timed.captions[0], 2) == pytest.approx(10.0)
+        assert view.time_at_offset(timed.captions[0], 6) == pytest.approx(10.5)
+
+    def test_caret_in_the_space_plays_the_following_word(self, view, timed):
+        assert view.time_at_offset(timed.captions[0], 3) == pytest.approx(10.5)
+
+    def test_past_the_end_plays_the_last_word(self, view, timed):
+        caption = timed.captions[0]
+
+        assert view.time_at_offset(caption, len(caption.text)) == pytest.approx(12.5)
+        assert view.time_at_offset(caption, 9999) == pytest.approx(12.5)
+
+    @pytest.mark.parametrize("offset", [None, "nonsense", -5])
+    def test_an_unusable_offset_falls_back_to_the_block(self, view, timed, offset):
+        assert view.time_at_offset(timed.captions[0], offset) == pytest.approx(10.0)
+
+    def test_without_word_data_it_falls_back_to_the_block(self, view, timed):
+        timed.load_words(None)
+
+        assert view.time_at_offset(timed.captions[0], 10) == pytest.approx(10.0)
+
+    def test_an_edited_word_uses_the_nearest_timed_one(self, view, timed):
+        """
+        An edited word has no timing of its own; the word before it is the
+        closer guess than the start of the block.
+        """
+
+        caption = timed.captions[0]
+        caption.text = "Vi har DEMOKRATI idag"
+
+        # Caret inside the edited word.
+        assert view.time_at_offset(caption, 10) == pytest.approx(10.5)
+
+    def test_empty_block_falls_back_to_the_block(self, view, timed):
+        caption = timed.captions[0]
+        caption.text = ""
+
+        assert view.time_at_offset(caption, 0) == pytest.approx(10.0)
+
+    def test_click_seeks_the_player(self, view, timed):
+        sought = []
+
+        class Player:
+            def seek(self, seconds):
+                sought.append(seconds)
+
+        timed.set_video_player(Player())
+
+        view.seek({"id": 1, "offset": 10})
+
+        assert sought == [pytest.approx(11.0)]
+
+    def test_click_without_an_offset_seeks_the_block_start(self, view, timed):
+        sought = []
+
+        class Player:
+            def seek(self, seconds):
+                sought.append(seconds)
+
+        timed.set_video_player(Player())
+
+        view.seek({"id": 1})
+
+        assert sought == [pytest.approx(10.0)]

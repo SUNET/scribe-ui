@@ -942,3 +942,112 @@ class TestSplitAtBlockEdges:
         live.split_caption(target, cursor_position=3)
 
         assert saved == []
+
+
+class TestShortcutScope:
+    """
+    Both editors share one key handler. What remains bound is the conventional
+    file, history and playback set plus Esc. Every editing operation was
+    dropped: each duplicated a button on the caption card, and with ignore=[]
+    they fired while the user was typing into that very card.
+    """
+
+    @pytest.fixture
+    def live(self):
+        editor = SRTEditor("job-uuid", "txt", "file.txt")
+        for name in ("update_words_per_minute", "save_state_for_undo",
+                     "mark_as_changed"):
+            setattr(editor, name, lambda *a, **k: None)
+        editor.captions = [
+            SRTCaption(1, "00:00:00,000", "00:00:02,000", "ett tva"),
+            SRTCaption(2, "00:00:02,000", "00:00:04,000", "tre fyra"),
+        ]
+        editor.refresh_display = lambda *a, **k: None
+
+        return editor
+
+    def press(self, editor, key, **modifiers):
+        """Feed one keydown through the real handler."""
+        import asyncio
+        from types import SimpleNamespace
+
+        flags = {"ctrl": False, "meta": False, "shift": False, "alt": False}
+        flags.update(modifiers)
+        asyncio.run(editor.handle_key_event(SimpleNamespace(
+            key=key,
+            action=SimpleNamespace(keydown=True),
+            modifiers=SimpleNamespace(**flags),
+        )))
+
+    @pytest.mark.parametrize(
+        "key,modifiers",
+        [
+            ("m", {"ctrl": True}),                     # merge next
+            ("M", {"ctrl": True}),                     # merge previous
+            ("d", {"ctrl": True}),                     # delete caption
+            ("Enter", {"ctrl": True}),                 # split
+            ("Enter", {"meta": True}),                 # split
+            ("Enter", {"ctrl": True, "shift": True}),  # add caption
+            ("V", {"ctrl": True, "shift": True}),      # validate
+            ("ArrowDown", {"alt": True}),              # next caption
+            ("ArrowUp", {"alt": True}),                # previous caption
+            ("ArrowUp", {"ctrl": True}),               # move word up
+            ("ArrowDown", {"ctrl": True}),             # move word down
+            ("ArrowUp", {"meta": True}),               # move word up
+            ("ArrowDown", {"meta": True}),             # move word down
+        ],
+    )
+    def test_no_editing_shortcut_changes_anything(self, live, key, modifiers):
+        """
+        None of these are bound any more, in either editor. Pressing them must
+        leave the captions exactly as they were.
+        """
+
+        live.selected_caption = live.captions[0]
+        before = [(c.text, c.start_time, c.end_time) for c in live.captions]
+
+        self.press(live, key, **modifiers)
+
+        assert [(c.text, c.start_time, c.end_time) for c in live.captions] == before
+
+    def test_shared_shortcuts_fire_in_both_editors(self, live):
+        saved = []
+        live.save_srt_changes = lambda: saved.append(True)
+
+        self.press(live, "s", ctrl=True)
+        live.render_override = lambda: None
+        self.press(live, "s", meta=True)
+
+        assert saved == [True, True]
+
+    def test_undo_and_redo_still_fire(self, live):
+        calls = []
+        live.undo = lambda: calls.append("undo")
+        live.redo = lambda: calls.append("redo")
+
+        self.press(live, "z", ctrl=True)
+        self.press(live, "y", ctrl=True)
+        self.press(live, "z", meta=True, shift=True)
+
+        assert calls == ["undo", "redo", "redo"]
+
+    def test_find_is_subtitles_only(self, live):
+        opened = []
+        live.create_search_panel = lambda **kwargs: opened.append(True)
+
+        self.press(live, "f", ctrl=True)
+        assert opened == [True]
+
+        live.render_override = lambda: None
+        self.press(live, "f", ctrl=True)
+        assert opened == [True], "search is not wired into the document editor"
+
+    def test_no_selection_does_not_raise(self, live, monkeypatch):
+        # Escape reaches for the browser, which is not here.
+        monkeypatch.setattr("utils.srt.ui.run_javascript", lambda *a, **k: None)
+        live.create_search_panel = lambda **kwargs: None
+        live.save_srt_changes = lambda: None
+        live.selected_caption = None
+
+        for key, mods in (("Escape", {}), ("s", {"ctrl": True}), ("f", {"ctrl": True})):
+            self.press(live, key, **mods)

@@ -59,6 +59,46 @@ export default {
             class="transcript-text"
             :data-id="block.id"
           ><span v-for="(run, i) in block.runs" :key="i" :class="run.flag ? 'review-word' : null" :data-review="run.flag ? reviewLabel : null" :data-s="run.s" :data-e="run.e">{{ run.t }}</span><br v-if="!block.runs || block.runs.length === 0"></div></div></template></div>
+
+      <!-- Outside the contenteditable, or it would become editable content.
+           Positioned against this component's own root rather than the
+           viewport: the transcription sits in a Quasar scroll area, which sets
+           contain: strict, and that quietly makes it the containing block for
+           anything position: fixed inside it. Taking the difference between two
+           client rects sidesteps the question of which ancestor wins. -->
+      <div
+        v-if="menu.open"
+        class="speaker-menu"
+        :style="{ top: menu.y + 'px', left: menu.x + 'px' }"
+        @click.stop
+      >
+        <div class="speaker-menu-add" @click="$emit('addspeaker', {})">
+          <span>Add new</span>
+          <q-icon name="add" size="20px" />
+        </div>
+        <div
+          v-for="name in speakers"
+          :key="name"
+          class="speaker-menu-row"
+          :class="{ 'speaker-menu-row-current': name === menu.speaker }"
+          @click="assign(name)"
+        >
+          <span class="speaker-menu-name">{{ name }}</span>
+          <q-icon
+            name="edit"
+            size="18px"
+            class="speaker-menu-icon"
+            @click.stop="$emit('renamespeaker', { speaker: name })"
+          />
+          <q-icon
+            v-if="unused.includes(name)"
+            name="delete_outline"
+            size="18px"
+            class="speaker-menu-icon speaker-menu-remove"
+            @click.stop="$emit('removespeaker', { speaker: name })"
+          />
+        </div>
+      </div>
     </div>
   `,
   props: {
@@ -68,6 +108,8 @@ export default {
     highlightWord: { type: Boolean, default: false },
     follow: { type: Boolean, default: false },
     revision: { type: Number, default: 0 },
+    speakers: { type: Array, default: () => [] },
+    unused: { type: Array, default: () => [] },
   },
   // One watch block. Two would silently discard the first: duplicate keys in
   // an object literal keep only the last.
@@ -92,19 +134,33 @@ export default {
     },
   },
   data() {
-    return { pending: null, timed: [] };
+    return {
+      pending: null,
+      timed: [],
+      menu: { open: false, x: 0, y: 0, id: null, speaker: null },
+    };
   },
   mounted() {
     // Following the audio has to happen here rather than on the server: a
     // word lasts a few hundred milliseconds, and a round trip per word would
     // be both late and wasteful.
     this.onTime = () => this.markCurrentWord();
+    this.onOutside = (event) => {
+      if (!event.target.closest(".speaker-menu")) this.closeMenu();
+    };
+    this.onEscape = (event) => {
+      if (event.key === "Escape") this.closeMenu();
+    };
+    document.addEventListener("pointerdown", this.onOutside, true);
+    document.addEventListener("keydown", this.onEscape, true);
     this.attachVideo();
     this.$nextTick(() => this.indexWords());
   },
   beforeUnmount() {
     this.video?.removeEventListener("timeupdate", this.onTime);
     this.video?.removeEventListener("seeking", this.onTime);
+    document.removeEventListener("pointerdown", this.onOutside, true);
+    document.removeEventListener("keydown", this.onEscape, true);
   },
   methods: {
     // The block a node sits in, walking up from wherever the caret is.
@@ -186,12 +242,57 @@ export default {
       }
     },
 
+    assign(name) {
+      const id = this.menu.id;
+      this.closeMenu();
+      if (id !== null) this.$emit("assignspeaker", { id, speaker: name });
+    },
+
+    openMenu(label) {
+      const box = label.getBoundingClientRect();
+      const root = this.$el.getBoundingClientRect();
+
+      // Estimates, only used to keep the menu on screen. Width follows the
+      // min-width in the stylesheet; height is the "Add new" row plus one per
+      // speaker.
+      const width = 176;
+      const height = 44 + this.speakers.length * 38;
+      const gap = 8;
+      const edge = 8;
+
+      // Beside the label, on its right. If the right hand side has no room,
+      // it goes to the left instead rather than off the screen.
+      const fitsRight = box.right + gap + width <= window.innerWidth - edge;
+      const x = fitsRight ? box.right + gap : box.left - gap - width;
+
+      // Top aligned with the label, lifted only by as much as it would
+      // otherwise hang below the bottom of the window.
+      const overhang = Math.max(0, box.top + height - (window.innerHeight - edge));
+
+      // Offsets within this component, so the menu sits beside the label
+      // whatever the page has done to positioning further up the tree, and
+      // stays with it while the transcription scrolls.
+      this.menu = {
+        open: true,
+        x: Math.max(edge, x) - root.left,
+        y: Math.max(edge, box.top - overhang) - root.top,
+        id: Number(label.dataset.id),
+        speaker: label.textContent.trim(),
+      };
+    },
+
+    closeMenu() {
+      this.menu = { open: false, x: 0, y: 0, id: null, speaker: null };
+    },
+
     onClick(event) {
       const speaker = event.target.closest(".transcript-speaker");
       if (speaker) {
-        this.$emit("speakerclick", { id: Number(speaker.dataset.id) });
+        this.openMenu(speaker);
         return;
       }
+
+      this.closeMenu();
 
       const time = event.target.closest(".transcript-time");
       if (time) {
@@ -200,9 +301,19 @@ export default {
       }
 
       const block = this.blockOf(event.target);
-      if (block) {
-        this.$emit("blockclick", { id: Number(block.dataset.id) });
-      }
+      if (!block) return;
+
+      // Where in the block the caret landed, so the recording can be moved to
+      // that word rather than to the start of the block. The browser places
+      // the caret on mousedown, so it is already correct by the time click
+      // runs.
+      const id = Number(block.dataset.id);
+      const at = this.caret();
+
+      this.$emit("blockclick", {
+        id,
+        offset: at && at.id === id ? at.offset : 0,
+      });
     },
 
     // Put the caret in a block. Used after a new one is started, so it can be

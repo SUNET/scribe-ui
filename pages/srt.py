@@ -72,12 +72,12 @@ def create() -> None:
                 e.preventDefault();
             }
 
-            // Block Cmd + y / Ctrl + y for redo
+            // Block Cmd + s / Ctrl + s, which would save the page
             if ((e.metaKey || e.ctrlKey) && ! e.shiftKey && e.key.toLowerCase() === 's') {
                 e.preventDefault();
             }
 
-            // Block Cmd + Shift + z / Ctrl + Shift + z for redo
+            // Block Cmd + y / Ctrl + y for redo
             if ((e.metaKey || e.ctrlKey) && ! e.shiftKey && e.key.toLowerCase() === 'y') {
                 e.preventDefault();
             }
@@ -92,26 +92,8 @@ def create() -> None:
                 e.preventDefault();
             }
 
-            // Block Ctrl + d / Cmd + d for bookmark
-            if ((e.metaKey || e.ctrlKey) && ! e.shiftKey && e.key.toLowerCase() === 'd') {
-                e.preventDefault();
-            }
-
             // Block Ctrl + e / Cmd + e for search
             if ((e.metaKey || e.ctrlKey) && ! e.shiftKey && e.key.toLowerCase() === 'e') {
-                e.preventDefault();
-            }
-
-            // Block Ctrl + Shift + m / Cmd + Shift + m for mute tab
-            if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'm') {
-                e.preventDefault();
-            }
-
-            // Block Ctrl/Cmd + Up/Down, which scroll the page (and jump to
-            // the top or bottom of the document on macOS). Those move a word
-            // between blocks instead.
-            if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey &&
-                (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
                 e.preventDefault();
             }
 

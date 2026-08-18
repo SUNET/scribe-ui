@@ -360,51 +360,14 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         if not event.action.keydown:
             return
 
+        # The caption operations belong to the subtitle editor. A transcription
+        # is drawn by the document editor, which has no selected caption for
+        # them to act on and its own, better bindings for the same jobs: Enter
+        # splits a block, Backspace and Delete at the edges join them. Leaving
+        # these bound there would fire operations on nothing.
+        captions = self.render_override is None
+
         match event.key:
-            # Next block of captions, Alt+Down
-            case "ArrowDown" if event.modifiers.alt and not event.modifiers.shift and not event.modifiers.ctrl and not event.modifiers.meta:
-                self.select_next_caption()
-
-            # Prev block of captions, Alt+Up
-            case "ArrowUp" if event.modifiers.alt and not event.modifiers.shift and not event.modifiers.ctrl and not event.modifiers.meta:
-                self.select_prev_caption()
-
-            # Move the first word to the previous block, Ctrl/⌘+Up
-            case "ArrowUp" if (event.modifiers.ctrl or event.modifiers.meta) and not event.modifiers.shift and not event.modifiers.alt:
-                self.move_first_word_to_previous(self.selected_caption)
-
-            # Move the last word to the next block, Ctrl/⌘+Down
-            case "ArrowDown" if (event.modifiers.ctrl or event.modifiers.meta) and not event.modifiers.shift and not event.modifiers.alt:
-                self.move_last_word_to_next(self.selected_caption)
-
-            # Split block at the cursor, Ctrl/⌘+Enter
-            case "Enter" if event.modifiers.ctrl and not event.modifiers.shift and not event.modifiers.alt and not event.modifiers.meta:
-                await self.split_caption_at_cursor(self.selected_caption)
-            case "Enter" if event.modifiers.meta and not event.modifiers.shift and not event.modifiers.alt and not event.modifiers.ctrl:
-                await self.split_caption_at_cursor(self.selected_caption)
-
-            # Merge block with next, Ctrl+M
-            case "m" if event.modifiers.ctrl:
-                self.merge_with_next(self.selected_caption)
-
-            # Merge block with previous, Ctrl+Shift+M
-            case "M" if event.modifiers.ctrl:
-                self.merge_with_previous(self.selected_caption)
-
-            # Add caption after, Shift+Ctrl+Enter
-            case "Enter" if event.modifiers.ctrl and event.modifiers.shift:
-                self.add_caption_after(self.selected_caption)
-            case "Enter" if event.modifiers.meta and event.modifiers.shift:
-                self.add_caption_after(self.selected_caption)
-
-            # Delete block, Ctrl+D
-            case "d" if event.modifiers.ctrl:
-                self.remove_caption(self.selected_caption)
-
-            # Validate captions, Ctrl+Shift+V
-            case "V" if event.modifiers.ctrl and event.modifiers.shift:
-                self.validate_captions()
-
             # Play/pause video, Ctrl+Space
             case " " if event.modifiers.ctrl and not event.modifiers.shift and not event.modifiers.alt and not event.modifiers.meta:
                 if self._video_player:
@@ -430,15 +393,15 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
                 self.redo()
 
             # Close block, Escape
-            case "Escape":
+            case "Escape" if captions:
                 # Click the "Close" button to save changes before closing
                 # This behaves the same as clicking the Close button
                 ui.run_javascript("document.querySelector('.caption-close')?.click()")
 
             # Open find, Ctrl+F
-            case "f" if event.modifiers.ctrl and not event.modifiers.shift:
+            case "f" if captions and event.modifiers.ctrl and not event.modifiers.shift:
                 self.create_search_panel(open_window=True)
-            case "f" if event.modifiers.meta and not event.modifiers.shift:
+            case "f" if captions and event.modifiers.meta and not event.modifiers.shift:
                 self.create_search_panel(open_window=True)
 
             # Save file, Ctrl+S / Cmd+S
@@ -1052,6 +1015,9 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         Add a new caption after the selected one.
         """
 
+        if not caption:
+            return
+
         # Save state before making changes
         self.save_state_for_undo()
 
@@ -1223,6 +1189,9 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         the next caption and remove the next caption.
         """
 
+        if not caption:
+            return
+
         caption_index = self.captions.index(caption)
         if caption_index == len(self.captions) - 1:
             ui.notify("No next caption to merge with", type="warning")
@@ -1250,6 +1219,9 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         Update the current cation with the text and end_time from
         the previous caption and remove the previous caption.
         """
+
+        if not caption:
+            return
 
         caption_index = self.captions.index(caption)
         if caption_index == 0:
