@@ -1081,3 +1081,111 @@ class TestMarksAreDroppedOnRender:
         body = body[: body.index("\n    },")]
 
         assert "this.reclassifyBlock(at.block)" in body
+
+
+class TestWordsWithoutTimings:
+    """
+    A word can be transcribed without a timing. It used to be discarded at load,
+    which left a hole in the word list: the token in the text aligned to nothing,
+    so it was marked as a word the reader had written, and the confidence score
+    that went out with it stopped being flagged. Both readings were wrong, and
+    both were silent.
+    """
+
+    MIXED = {
+        "version": 1,
+        "words": [
+            {"t": "Hej", "s": 0.0, "e": 1.0, "c": 0.99},
+            {"t": "på", "c": 0.15},                       # no timing
+            {"t": "dig", "s": 2.0, "e": 3.0, "c": 0.99},
+            {"t": "idag", "s": 3.0, "e": 4.0, "c": 0.99},
+        ],
+    }
+
+    @pytest.fixture
+    def mixed(self):
+        editor = SRTEditor("job-uuid", "txt", "file.txt")
+        editor.refresh_display = lambda *a, **k: None
+        editor.save_state_for_undo = lambda *a, **k: None
+        editor.mark_as_changed = lambda *a, **k: None
+        editor.load_words(self.MIXED)
+        editor.captions = [caption()]
+        editor.show_uncertain_words = True
+        editor.show_my_edits = True
+
+        return editor
+
+    def test_the_untimed_word_is_kept(self, mixed):
+        assert [word["t"] for word in mixed.words] == ["Hej", "på", "dig", "idag"]
+
+    def test_it_keeps_the_order_of_the_transcript(self, mixed):
+        """
+        Placed beside the word before it, so it lands in the same caption rather
+        than outside every time range.
+        """
+
+        assert [word["t"] for word in mixed.caption_words(caption())] == [
+            "Hej", "på", "dig", "idag"
+        ]
+
+    def test_it_is_not_reported_as_the_reader_s_own(self, mixed):
+        words = mixed.aligned_words(caption())
+
+        assert not any(mixed.word_is_edit(word) for word in words)
+        assert [run["t"] for run in mixed.review_runs(caption(), TEXT)
+                if run.get("edit")] == []
+
+    def test_it_is_still_flagged_for_review(self, mixed):
+        """
+        The score is what decides that, and it never depended on a timing.
+        """
+
+        assert [run["t"] for run in mixed.review_runs(caption(), TEXT)
+                if run["flag"]] == ["på"]
+        assert mixed.flagged_word_count() == 1
+
+    def test_it_carries_no_timing_to_be_followed_by(self, mixed):
+        runs = mixed.review_runs(caption(), TEXT, per_word=True)
+        timed = {run["t"] for run in runs if "s" in run}
+
+        assert timed == {"Hej", "dig", "idag"}
+
+    def test_editing_it_still_marks_it_as_an_edit(self, mixed):
+        """
+        It aligns like any other word, so changing it behaves like changing any
+        other word.
+        """
+
+        text = "Hej XX dig idag"
+
+        assert [run["t"] for run in mixed.review_runs(caption(text), text)
+                if run.get("edit")] == ["XX"]
+
+    def test_splitting_falls_back_when_a_side_has_no_timing(self, mixed):
+        """
+        The gap between two words only means something if both are placed in the
+        recording. Without that the ordinary fallback decides, rather than the
+        split raising.
+        """
+
+        boundary = mixed.split_time(
+            caption(), "Hej på", "dig idag", at_cursor=True
+        )
+
+        assert 0.0 < boundary < 4.0
+
+    def test_seeking_to_it_is_declined(self, mixed):
+        """
+        Nothing in the recording is known to correspond to it, the same as for a
+        word the reader wrote.
+        """
+
+        from utils.transcript_editor import TranscriptEditor
+
+        view = TranscriptEditor(mixed)
+
+        # Caret inside "på", the word with no timing.
+        assert view.time_at_offset(caption(), 5) is None
+        # Its neighbours are unaffected.
+        assert view.time_at_offset(caption(), 0) == pytest.approx(0.0)
+        assert view.time_at_offset(caption(), 9) == pytest.approx(2.0)

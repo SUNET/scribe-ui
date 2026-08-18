@@ -108,16 +108,25 @@ class ReviewMixin:
                 continue
 
             text = word.get("t")
+
+            if not text:
+                continue
+
+            entry = {"t": str(text)}
             start = word.get("s")
             end = word.get("e")
 
-            if not text or start is None or end is None:
-                continue
-
-            try:
-                entry = {"t": str(text), "s": float(start), "e": float(end)}
-            except (TypeError, ValueError):
-                continue
+            # A timing is optional. A word can be transcribed without one and
+            # is still part of the transcript, still carrying its confidence
+            # score; only seeking to it and following it are unavailable.
+            # Discarding it left a hole that read as a word the reader had
+            # written, and took its review flag out with it.
+            if start is not None and end is not None:
+                try:
+                    entry["s"] = float(start)
+                    entry["e"] = float(end)
+                except (TypeError, ValueError):
+                    pass
 
             confidence = word.get("c")
 
@@ -130,16 +139,25 @@ class ReviewMixin:
 
             loaded.append(entry)
 
-        loaded.sort(key=lambda word: word["s"])
+        # Ordered and located by midpoint -- the same value words_in_range
+        # searches on, so the list it bisects is sorted by the key it is
+        # searched with. A word with no timing takes the midpoint of the last
+        # word that had one: it was spoken after that word, which is enough to
+        # put it in the same caption rather than outside every range. The sort
+        # is stable, so words sharing a midpoint keep the order they arrived in.
+        midpoints = []
+        carried = 0.0
 
-        # Stable identity for each word, used to remember which ones have been
-        # marked correct. Position in the caption cannot serve: it shifts the
-        # moment a word is inserted.
-        for position, word in enumerate(loaded):
-            word["i"] = position
+        for word in loaded:
+            if "s" in word:
+                carried = (word["s"] + word["e"]) / 2
 
-        self.words = loaded
-        self._word_midpoints = [(word["s"] + word["e"]) / 2 for word in loaded]
+            midpoints.append(carried)
+
+        order = sorted(range(len(loaded)), key=lambda position: midpoints[position])
+
+        self.words = [loaded[position] for position in order]
+        self._word_midpoints = [midpoints[position] for position in order]
 
 
     def words_in_range(self, start: float, end: float) -> List[dict]:
@@ -188,6 +206,19 @@ class ReviewMixin:
         """
 
         return score is not None and score < self.review_threshold()
+
+
+    @staticmethod
+    def word_is_timed(word: Optional[dict]) -> bool:
+        """
+        Whether a word can be placed in the recording.
+
+        A word can be transcribed without a timing. It still belongs to the
+        transcript and can still be uncertain; what it cannot do is be sought
+        to, or be followed as the audio plays.
+        """
+
+        return bool(word) and "s" in word and "e" in word
 
 
     def word_needs_review(self, word: Optional[dict]) -> bool:
@@ -531,9 +562,9 @@ class ReviewMixin:
                 run["w"] = word["t"]
 
             # Only a word still matching what the model transcribed has a
-            # timing we can attribute to it; an edited word has none, and is
-            # simply never highlighted.
-            if per_word and word is not None:
+            # timing we can attribute to it; an edited word has none, and nor
+            # has a word transcribed without one. Neither is ever highlighted.
+            if per_word and self.word_is_timed(word):
                 run["s"] = word["s"]
                 run["e"] = word["e"]
 

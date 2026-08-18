@@ -81,7 +81,6 @@ class TestLoadWords:
             [1, 2, 3],
             {"words": "not a list"},
             {"version": 99, "words": [{"t": "Hej", "s": 0.0, "e": 0.5}]},
-            {"version": 1, "words": [{"t": "Hej"}]},
             {"version": 1, "words": [{"s": 0.0, "e": 0.5}]},
         ],
     )
@@ -90,6 +89,35 @@ class TestLoadWords:
 
         assert editor.words == []
         assert editor.has_confidence is False
+
+    def test_a_word_without_a_timing_is_still_a_word(self, editor):
+        """
+        Text is what makes an entry a word; a timing only says where in the
+        recording it was said. Dropping it left a hole in the transcript that
+        read as a word the reader had written.
+        """
+
+        editor.load_words(
+            {"version": 1, "words": [{"t": "Hej", "c": 0.15}]}
+        )
+
+        assert [word["t"] for word in editor.words] == ["Hej"]
+        assert editor.words[0]["c"] == pytest.approx(0.15)
+        assert editor.has_confidence is True
+
+    def test_a_word_without_a_timing_is_not_timed(self, editor):
+        editor.load_words({"version": 1, "words": [{"t": "Hej"}]})
+
+        assert editor.words[0].keys() == {"t"}
+        assert editor.word_is_timed(editor.words[0]) is False
+
+    def test_an_unusable_timing_leaves_the_word_behind(self, editor):
+        editor.load_words(
+            {"version": 1, "words": [{"t": "Hej", "s": "soon", "e": "later"}]}
+        )
+
+        assert [word["t"] for word in editor.words] == ["Hej"]
+        assert editor.word_is_timed(editor.words[0]) is False
 
     def test_timings_without_confidence(self, editor):
         editor.load_words({"version": 1, "words": [{"t": "Hej", "s": 0.0, "e": 0.5}]})

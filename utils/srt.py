@@ -761,10 +761,16 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         offset = len(first_part.split())
 
         if words and 0 < offset < len(words):
-            boundary = (words[offset - 1]["e"] + words[offset]["s"]) / 2
+            before = words[offset - 1]
+            after = words[offset]
 
-            if start_seconds < boundary < end_seconds:
-                return boundary
+            # Both sides have to be placed in the recording for the gap between
+            # them to mean anything. Without that, the fallbacks below decide.
+            if self.word_is_timed(before) and self.word_is_timed(after):
+                boundary = (before["e"] + after["s"]) / 2
+
+                if start_seconds < boundary < end_seconds:
+                    return boundary
 
         if at_cursor:
             first_length = len(first_part.strip())
@@ -945,7 +951,7 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         previous.text = f"{previous.text.rstrip()} {moved_word}"
         caption.text = remaining
 
-        if moved_timing and next_timing:
+        if self.word_is_timed(moved_timing) and self.word_is_timed(next_timing):
             previous.end_time = self.seconds_to_timestamp(moved_timing["e"])
             caption.start_time = self.seconds_to_timestamp(next_timing["s"])
         else:
@@ -993,7 +999,7 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         following.text = f"{moved_word} {following.text.lstrip()}"
         caption.text = remaining
 
-        if moved_timing and previous_timing:
+        if self.word_is_timed(moved_timing) and self.word_is_timed(previous_timing):
             following.start_time = self.seconds_to_timestamp(moved_timing["s"])
             caption.end_time = self.seconds_to_timestamp(previous_timing["e"])
         else:

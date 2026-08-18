@@ -381,7 +381,8 @@ class TranscriptEditor:
         words = self.editor.aligned_words(caption)
         word = words[index] if index < len(words) else None
 
-        return word["s"] if word else None
+        # Nor has a word that was transcribed without a timing of its own.
+        return word["s"] if self.editor.word_is_timed(word) else None
 
     def changed(self) -> None:
         if self.on_change:
