@@ -24,10 +24,7 @@ flag goes with it.
 import json
 import pathlib
 import re
-import shutil
-import subprocess
 import sys
-import tempfile
 
 import pytest
 
@@ -48,8 +45,16 @@ PAYLOAD = {
 }
 
 
-def caption(text: str = TEXT) -> SRTCaption:
-    return SRTCaption(1, "00:00:00,000", "00:00:04,000", text)
+def caption(text: str = TEXT, edited=()) -> SRTCaption:
+    """
+    A caption, optionally already carrying a record of which of its words the
+    reader changed -- word positions counted from its start.
+    """
+
+    built = SRTCaption(1, "00:00:00,000", "00:00:04,000", text)
+    built.edited_words = set(edited)
+
+    return built
 
 
 @pytest.fixture
@@ -66,49 +71,14 @@ def editor():
     return editor
 
 
-def marked(editor, text=TEXT):
+def marked(editor, text=TEXT, edited=()):
     """
     Every marked word, paired with the marking it carries.
     """
 
-    html = editor.get_review_html(caption(text), text) or ""
+    html = editor.get_review_html(caption(text, edited), text) or ""
 
     return re.findall(r'<span class="([\w-]+)"[^>]*>([^<]*)</span>', html)
-
-
-class TestWordIsEdit:
-    def test_a_replaced_word_is_an_edit(self, editor):
-        words = editor.aligned_words(caption("Hej två dig idag"))
-
-        # Second word: "två" replaced "på", so it aligns to nothing.
-        assert editor.word_is_edit(words[1])
-
-    def test_an_untouched_word_is_not(self, editor):
-        words = editor.aligned_words(caption())
-
-        assert not any(editor.word_is_edit(word) for word in words)
-
-    def test_recasing_and_punctuation_are_not_edits(self, editor):
-        """
-        The alignment ignores case and surrounding punctuation, so tidying a
-        word must not report it as rewritten.
-        """
-
-        words = editor.aligned_words(caption("Hej På, dig idag"))
-
-        assert not any(editor.word_is_edit(word) for word in words)
-
-    def test_nothing_is_an_edit_without_word_data(self):
-        """
-        With nothing to compare against every word looks unaligned, and marking
-        the whole transcription would be worse than marking none of it.
-        """
-
-        bare = SRTEditor("job-uuid", "txt", "file.txt")
-        bare.refresh_display = lambda *a, **k: None
-
-        assert bare.words == []
-        assert not bare.word_is_edit(None)
 
 
 class TestEditingClearsTheFlag:
@@ -126,19 +96,21 @@ class TestEditingClearsTheFlag:
         editor.show_uncertain_words = True
         editor.show_my_edits = True
 
-        assert marked(editor, "Hej två dig idag") == [("edit-word", "två")]
+        assert marked(editor, "Hej två dig idag", edited=[1]) == [
+            ("edit-word", "två")
+        ]
 
-    def test_a_word_is_never_both(self, editor):
+    def test_the_flag_wins_if_a_word_is_somehow_both(self, editor):
+        """
+        No longer exclusive by construction: one comes from the model's score,
+        the other from the reader. A word worth a second look is the more
+        useful thing to say.
+        """
+
         editor.show_uncertain_words = True
         editor.show_my_edits = True
 
-        for text in (TEXT, "Hej två dig idag", "helt annan text", "Hej"):
-            words = editor.aligned_words(caption(text), text)
-
-            assert not any(
-                editor.word_needs_review(word) and editor.word_is_edit(word)
-                for word in words
-            )
+        assert marked(editor, TEXT, edited=[1]) == [("review-word", "på")]
 
     def test_the_flagged_count_drops(self, editor):
         editor.show_uncertain_words = True
@@ -177,7 +149,8 @@ class TestTogglesAreIndependent:
         editor.show_uncertain_words = True
         editor.show_my_edits = True
 
-        assert marked(editor, "Hej på XXX idag") == [
+        # "på" is the uncertain word; the third is one the reader changed.
+        assert marked(editor, "Hej på XXX idag", edited=[2]) == [
             ("review-word", "på"),
             ("edit-word", "XXX"),
         ]
@@ -187,7 +160,7 @@ class TestMarkup:
     def test_the_edit_marking_carries_its_message(self, editor):
         editor.show_my_edits = True
 
-        html = editor.get_review_html(caption("Hej två dig idag"))
+        html = editor.get_review_html(caption("Hej två dig idag", edited=[1]))
 
         assert 'data-edit="You changed this word"' in html
         assert 'aria-label="You changed this word"' in html
@@ -197,7 +170,9 @@ class TestMarkup:
     def test_edited_text_is_escaped(self, editor):
         editor.show_my_edits = True
 
-        html = editor.get_review_html(caption("Hej <b>två</b> dig idag"))
+        html = editor.get_review_html(
+            caption("Hej <b>två</b> dig idag", edited=[1])
+        )
 
         assert "<b>" not in html
         assert "&lt;b&gt;" in html
@@ -209,7 +184,9 @@ class TestMarkup:
         """
 
         editor.show_my_edits = True
-        html = editor.review_backdrop_html(caption(), "Hej två dig idag")
+        html = editor.review_backdrop_html(
+            caption(edited=[1]), "Hej två dig idag"
+        )
 
         assert 'class="edit-word"' in html
 
@@ -229,7 +206,8 @@ class TestRuns:
 
     def test_an_edited_word_is_its_own_run(self, editor):
         editor.show_my_edits = True
-        runs = editor.review_runs(caption("Hej två dig idag"), "Hej två dig idag")
+        target = caption("Hej två dig idag", edited=[1])
+        runs = editor.review_runs(target, target.text)
 
         assert [run for run in runs if run.get("edit")] == [
             {"t": "två", "flag": False, "edit": True}
@@ -259,9 +237,8 @@ class TestRuns:
         """
 
         editor.show_my_edits = True
-        runs = editor.review_runs(
-            caption("Hej två dig idag"), "Hej två dig idag", per_word=True
-        )
+        target = caption("Hej två dig idag", edited=[1])
+        runs = editor.review_runs(target, target.text, per_word=True)
         edited = [run for run in runs if run.get("edit")]
 
         assert edited and all("s" not in run for run in edited)
@@ -326,9 +303,9 @@ class TestClientContract:
         assert {"editLabel", "showEdits"} <= declared
         assert sent <= declared, f"not declared in the component: {sent - declared}"
 
-    def reclassify(self) -> str:
+    def mark_changed(self) -> str:
         body = self.source()
-        body = body[body.index("reclassify(span)"):]
+        body = body[body.index("markChanged() {"):]
 
         return body[: body.index("\n    },")]
 
@@ -339,17 +316,23 @@ class TestClientContract:
         undoes the change.
         """
 
-        body = self.reclassify()
+        body = self.mark_changed()
 
         assert 'setAttribute("data-changed", "")' in body
-        assert 'removeAttribute("data-changed")' in body
         assert "classList" not in body
 
-    def test_the_decision_is_the_same_one_the_server_makes(self):
-        body = self.reclassify()
+    def test_nothing_is_compared(self):
+        """
+        An edit is something that happened, not something to be worked out from
+        how the text differs from what the model transcribed -- which is the
+        deduction that marked words nobody had touched.
+        """
 
-        assert "this.matchKey(span.textContent)" in body
-        assert "this.matchKey(span.dataset.w)" in body
+        source = self.source()
+
+        assert "matchKey" not in source
+        assert "dataset.w" not in source
+        assert "data-w" not in source
 
     def test_a_changed_word_is_never_followed_as_spoken(self):
         source = self.source()
@@ -358,12 +341,12 @@ class TestClientContract:
 
         assert 'hasAttribute("data-changed")' in body
 
-    def test_reclassify_runs_on_input(self):
+    def test_it_runs_on_input(self):
         source = self.source()
         body = source[source.index("onInput()"):]
         body = body[: body.index("\n    },")]
 
-        assert "this.reclassify" in body
+        assert "this.markChanged()" in body
 
     def test_the_template_renders_the_edit_marking(self):
         source = self.source()
@@ -380,222 +363,6 @@ class TestClientContract:
         """
 
         assert self.source().count("\n  watch: {") == 1
-
-
-# Characters where Python's casefold and JavaScript's toLowerCase agree. The
-# two part company only on characters that change length when lowercased, and
-# nothing in the JS can do better -- it has no casefold.
-NORMALISED = [
-    "på", "På", "PÅ", "på,", '"på"', "på.", "(på)", "på!?", "Hej", "HEJ",
-    "två", "Två", "idag", "i_dag", "3:e", "1985", "l'été", "Über", "ÜBER",
-    "naïve", "co-op", "...", "", "   ", "don't", "Ω", "ω", "мир", "東京",
-]
-
-
-@pytest.mark.skipif(shutil.which("node") is None, reason="needs node")
-class TestNormalisationParity:
-    """
-    The browser decides whether a flagged word still matches what was
-    transcribed, and so does the server. If they disagree, a mark comes off as
-    the reader types and the next render puts it back -- which is the bug this
-    whole path exists to avoid. So the two implementations are compared
-    directly rather than trusted to stay in step.
-    """
-
-    def js(self, script: str) -> list:
-        component = pathlib.Path("utils/transcript_editor.js").read_text()
-        component = component.replace("export default", "module.exports =", 1)
-
-        with tempfile.TemporaryDirectory() as directory:
-            module = pathlib.Path(directory) / "component.js"
-            module.write_text(component)
-            runner = pathlib.Path(directory) / "run.js"
-            runner.write_text(
-                f'const component = require({str(module)!r});\n{script}'
-            )
-
-            result = subprocess.run(
-                ["node", str(runner)],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-
-        return json.loads(result.stdout)
-
-    def test_match_key_agrees_with_the_server(self):
-        keys = self.js(
-            "const m = component.methods.matchKey;\n"
-            f"console.log(JSON.stringify({json.dumps(NORMALISED)}.map(m)));"
-        )
-        expected = [SRTEditor.match_key(text) for text in NORMALISED]
-
-        assert keys == expected
-
-    def reclassified(self, cases) -> list:
-        """
-        Run reclassify against a stub of the one bit of DOM it touches, and
-        report whether each word came out marked as changed.
-        """
-
-        return self.js(
-            """
-            const reclassify = component.methods.reclassify;
-            const context = { matchKey: component.methods.matchKey };
-
-            function span(text, transcribed, changed) {
-              const attributes = changed ? { "data-changed": "" } : {};
-              return {
-                textContent: text,
-                dataset: transcribed === null ? {} : { w: transcribed },
-                setAttribute: (k, v) => { attributes[k] = v; },
-                removeAttribute: (k) => { delete attributes[k]; },
-                hasAttribute: (k) => k in attributes,
-                attributes,
-              };
-            }
-
-            console.log(JSON.stringify(
-            """
-            + json.dumps(cases)
-            + """.map(([text, transcribed, changed]) => {
-                const el = span(text, transcribed, changed);
-                reclassify.call(context, el);
-                return "data-changed" in el.attributes;
-              })
-            ));
-            """
-        )
-
-    def test_the_flag_comes_off_a_word_that_was_changed(self):
-        marked = self.reclassified([
-            ["på", "på", False],        # untouched
-            ["två", "på", False],       # replaced
-            ["p", "på", False],         # part way through retyping
-            ["", "på", False],          # deleted
-        ])
-
-        assert marked == [False, True, True, True]
-
-    def test_tidying_case_or_punctuation_is_not_a_change(self):
-        """
-        The server keeps the score in these cases, so the browser must keep the
-        mark -- otherwise it flickers off and comes back.
-        """
-
-        marked = self.reclassified([
-            ["På", "på", False],
-            ["PÅ", "på", False],
-            ["på,", "på", False],
-            ['"på."', "på", False],
-        ])
-
-        assert marked == [False, False, False, False]
-
-    def test_undoing_the_change_puts_the_mark_back(self):
-        marked = self.reclassified([
-            ["på", "på", True],         # already marked, then typed back
-            ["två", "på", True],        # still different
-        ])
-
-        assert marked == [False, True]
-
-    def test_a_word_with_nothing_to_compare_is_left_alone(self):
-        """
-        A merged run of several words, or one already replaced, carries no
-        transcribed word. Nothing can be concluded, so nothing is touched.
-        """
-
-        marked = self.reclassified([
-            ["anything", None, False],
-            ["anything", None, True],
-        ])
-
-        assert marked == [False, True]
-
-
-class TestRunsCarryTheTranscribedWord:
-    """
-    Without it the browser cannot tell a real change from tidied
-    capitalisation, so a word that has one can be marked while it is still
-    being typed and a word that has none cannot.
-    """
-
-    def words_with_a_key(self, editor):
-        runs = editor.review_runs(caption(), TEXT)
-
-        return [run["t"] for run in runs if "w" in run]
-
-    def test_a_flagged_run_says_what_was_transcribed(self, editor):
-        editor.show_uncertain_words = True
-        runs = editor.review_runs(caption(), TEXT)
-
-        assert [run for run in runs if run["flag"]] == [
-            {"t": "på", "flag": True, "w": "på"}
-        ]
-
-    def test_only_the_flagged_word_has_one_by_default(self, editor):
-        editor.show_uncertain_words = True
-
-        assert self.words_with_a_key(editor) == ["på"]
-
-    def test_marking_edits_gives_every_word_one(self, editor):
-        """
-        The reported bug: only flagged words could be marked while typing,
-        because they were the only ones that were a run of their own.
-        """
-
-        editor.show_my_edits = True
-
-        assert self.words_with_a_key(editor) == ["Hej", "på", "dig", "idag"]
-
-    def test_marking_edits_splits_every_word_into_its_own_run(self, editor):
-        editor.show_my_edits = True
-        runs = editor.review_runs(caption(), TEXT)
-
-        assert [run["t"] for run in runs] == [
-            "Hej", " ", "på", " ", "dig", " ", "idag"
-        ]
-
-    def test_the_text_still_survives_the_split(self, editor):
-        editor.show_my_edits = True
-        text = "Hej  på\ndig idag"
-        runs = editor.review_runs(caption(text), text)
-
-        assert "".join(run["t"] for run in runs) == text
-
-    def test_splitting_costs_no_timings_it_was_not_asked_for(self, editor):
-        """
-        Following the audio is what pays for start and end; the split on its
-        own does not.
-        """
-
-        editor.show_my_edits = True
-        runs = editor.review_runs(caption(), TEXT)
-
-        assert all("s" not in run for run in runs)
-
-    def test_following_the_audio_still_carries_timings(self, editor):
-        editor.show_my_edits = True
-        runs = editor.review_runs(caption(), TEXT, per_word=True)
-
-        assert [run["t"] for run in runs if "s" in run] == [
-            "Hej", "på", "dig", "idag"
-        ]
-
-    def test_an_already_replaced_word_has_none(self, editor):
-        """
-        Nothing was transcribed there, so there is nothing to compare against
-        and the browser leaves it alone -- it is already marked as an edit.
-        """
-
-        editor.show_my_edits = True
-        text = "Hej XXX dig idag"
-        runs = editor.review_runs(caption(text), text)
-
-        assert [run["t"] for run in runs if "w" not in run and run["t"].strip()] == [
-            "XXX"
-        ]
 
 
 def css_rules() -> list:
@@ -928,135 +695,6 @@ class TestCaretIsNotPaintedOver:
         assert declarations_for(".review-word::after")
 
 
-@pytest.mark.skipif(shutil.which("node") is None, reason="needs node")
-class TestMarksDoNotStrandThemselves:
-    """
-    Reported: placing the caret on an edited word left another word marked too.
-
-    The marks the browser puts on are a stopgap between renders, and they are
-    plain attributes -- not part of Vue's data. The spans are keyed by position,
-    so Vue reuses them, and a mark judged only for the word under the caret can
-    be left behind on a word nobody touched.
-    """
-
-    def run(self, script: str):
-        component = pathlib.Path("utils/transcript_editor.js").read_text()
-        component = component.replace("export default", "module.exports =", 1)
-
-        with tempfile.TemporaryDirectory() as directory:
-            module = pathlib.Path(directory) / "component.js"
-            module.write_text(component)
-            runner = pathlib.Path(directory) / "run.js"
-            runner.write_text(
-                "const component = require(%r);\n%s" % (str(module), script)
-            )
-
-            return json.loads(
-                subprocess.run(
-                    ["node", str(runner)],
-                    capture_output=True, text=True, check=True,
-                ).stdout
-            )
-
-    HARNESS = """
-    const methods = component.methods;
-
-    // The one bit of DOM these touch: a block holding word spans.
-    function span(text, transcribed, changed) {
-      const attributes = changed ? { "data-changed": "" } : {};
-      return {
-        textContent: text,
-        dataset: transcribed === null ? {} : { w: transcribed },
-        setAttribute: (k, v) => { attributes[k] = v; },
-        removeAttribute: (k) => { delete attributes[k]; },
-        hasAttribute: (k) => k in attributes,
-        attributes,
-      };
-    }
-
-    function block(words) {
-      const spans = words.map(([t, w, c]) => span(t, w, c));
-      return {
-        spans,
-        querySelectorAll: (selector) =>
-          selector === "[data-w]"
-            ? spans.filter((s) => s.dataset.w !== undefined)
-            : spans,
-      };
-    }
-
-    const context = {
-      matchKey: methods.matchKey,
-      reclassify: methods.reclassify,
-      reclassifyBlock: methods.reclassifyBlock,
-    };
-    """
-
-    def marked_after_block_pass(self, words) -> list:
-        return self.run(
-            self.HARNESS
-            + """
-            const b = block(%s);
-            context.reclassifyBlock(b);
-            console.log(JSON.stringify(
-              b.spans.map((s) => "data-changed" in s.attributes)
-            ));
-            """ % json.dumps(words)
-        )
-
-    def test_a_word_nobody_touched_loses_its_mark(self):
-        """
-        The stranded mark: set on a span whose text still matches what was
-        transcribed there, so nothing about it is an edit.
-        """
-
-        marked = self.marked_after_block_pass([
-            ["Hej", "Hej", False],
-            ["XX", "på", True],     # genuinely edited
-            ["dig", "dig", True],   # stranded, must come off
-            ["idag", "idag", False],
-        ])
-
-        assert marked == [False, True, False, False]
-
-    def test_a_word_the_caret_has_left_is_still_judged(self):
-        """
-        Two real edits stay marked -- the pass judges every word, so it neither
-        strands nor forgets.
-        """
-
-        marked = self.marked_after_block_pass([
-            ["Hej", "Hej", False],
-            ["XX", "på", False],
-            ["YY", "dig", False],
-            ["idag", "idag", False],
-        ])
-
-        assert marked == [False, True, True, False]
-
-    def test_putting_a_word_back_unmarks_it(self):
-        marked = self.marked_after_block_pass([
-            ["på", "på", True],
-            ["dig", "dig", False],
-        ])
-
-        assert marked == [False, False]
-
-    def test_words_with_nothing_transcribed_are_left_alone(self):
-        """
-        Whitespace runs and words already replaced carry no transcribed word, so
-        the pass skips them rather than guessing.
-        """
-
-        marked = self.marked_after_block_pass([
-            [" ", None, False],
-            ["XXX", None, True],
-            ["dig", "dig", False],
-        ])
-
-        assert marked == [False, True, False]
-
-
 class TestMarksAreDroppedOnRender:
     """
     A fresh render is the server's own account, diffed properly rather than word
@@ -1075,12 +713,12 @@ class TestMarksAreDroppedOnRender:
         assert 'querySelectorAll("[data-changed]")' in body
         assert 'removeAttribute("data-changed")' in body
 
-    def test_the_whole_block_is_re_read_when_typing(self):
+    def test_the_caret_word_is_marked_when_typing(self):
         source = pathlib.Path("utils/transcript_editor.js").read_text()
         body = source[source.index("onInput()"):]
         body = body[: body.index("\n    },")]
 
-        assert "this.reclassifyBlock(at.block)" in body
+        assert "this.markChanged()" in body
 
 
 class TestWordsWithoutTimings:
@@ -1129,9 +767,6 @@ class TestWordsWithoutTimings:
         ]
 
     def test_it_is_not_reported_as_the_reader_s_own(self, mixed):
-        words = mixed.aligned_words(caption())
-
-        assert not any(mixed.word_is_edit(word) for word in words)
         assert [run["t"] for run in mixed.review_runs(caption(), TEXT)
                 if run.get("edit")] == []
 
@@ -1150,15 +785,12 @@ class TestWordsWithoutTimings:
 
         assert timed == {"Hej", "dig", "idag"}
 
-    def test_editing_it_still_marks_it_as_an_edit(self, mixed):
-        """
-        It aligns like any other word, so changing it behaves like changing any
-        other word.
-        """
+    def test_editing_it_is_recorded_like_any_other_word(self, mixed):
+        target = caption()
 
-        text = "Hej XX dig idag"
+        mixed.update_caption_text(target, "Hej XX dig idag")
 
-        assert [run["t"] for run in mixed.review_runs(caption(text), text)
+        assert [run["t"] for run in mixed.review_runs(target, target.text)
                 if run.get("edit")] == ["XX"]
 
     def test_splitting_falls_back_when_a_side_has_no_timing(self, mixed):
@@ -1189,3 +821,242 @@ class TestWordsWithoutTimings:
         # Its neighbours are unaffected.
         assert view.time_at_offset(caption(), 0) == pytest.approx(0.0)
         assert view.time_at_offset(caption(), 9) == pytest.approx(2.0)
+
+
+class TestEditsAreRecordedNotDeduced:
+    """
+    An edit is something that happened, so it is written down when it happens.
+
+    It used to be deduced afterwards, from a word failing to align against the
+    words the model transcribed. That deduction marked words nobody had
+    touched: reported from a real recording where whisper dated a segment from
+    2.32 and its first word from 0.00, so the caption never claimed that word
+    and the token had nothing to align to.
+    """
+
+    @pytest.fixture
+    def reported(self, editor):
+        """
+        The recording that was reported, with its first word timed before the
+        caption it belongs to.
+        """
+
+        editor.load_words({"version": 1, "words": [
+            {"t": "Ja,", "s": 0.0, "e": 1.62, "c": 0.686},
+            {"t": "tack", "s": 2.96, "e": 4.08, "c": 0.421},
+            {"t": "för", "s": 4.08, "e": 4.32, "c": 0.604},
+            {"t": "inbjudan.", "s": 4.32, "e": 5.08, "c": 0.946},
+        ]})
+        editor.captions = [
+            SRTCaption(1, "00:00:02,320", "00:00:05,100", "Ja, tack för inbjudan.")
+        ]
+        editor.show_my_edits = True
+
+        return editor
+
+    def edited(self, editor, caption):
+        return [
+            run["t"]
+            for run in editor.review_runs(caption, caption.text)
+            if run.get("edit")
+        ]
+
+    def test_an_untouched_transcription_marks_nothing(self, reported):
+        assert self.edited(reported, reported.captions[0]) == []
+
+    def test_changing_a_word_records_it(self, reported):
+        target = reported.captions[0]
+
+        reported.update_caption_text(target, "Ja, tack för allt.")
+
+        assert self.edited(reported, target) == ["allt."]
+
+    def test_changing_only_the_capitalisation_still_counts(self, reported):
+        """
+        The reader changed it. Unlike the alignment used for confidence, this
+        does not normalise the word away.
+        """
+
+        target = reported.captions[0]
+
+        reported.update_caption_text(target, "Ja, TACK för inbjudan.")
+
+        assert self.edited(reported, target) == ["TACK"]
+
+    def test_a_mark_moves_when_a_word_is_added_ahead_of_it(self, reported):
+        target = reported.captions[0]
+
+        reported.update_caption_text(target, "Ja, tack för allt.")
+        reported.update_caption_text(target, "Så, ja, tack för allt.")
+
+        # "allt." is still the marked word, now one place further along.
+        assert "allt." in self.edited(reported, target)
+        assert "inbjudan." not in self.edited(reported, target)
+
+    def test_a_mark_goes_when_its_word_is_deleted(self, reported):
+        target = reported.captions[0]
+
+        reported.update_caption_text(target, "Ja, tack för allt.")
+        reported.update_caption_text(target, "Ja, tack för")
+
+        assert self.edited(reported, target) == []
+
+    def test_a_snapshot_carries_the_marks(self):
+        """
+        The undo stack holds copies of the captions, so undoing a change has to
+        take its marks back with it.
+        """
+
+        original = caption("Hej på dig idag", edited=[1])
+        snapshot = original.copy()
+
+        assert snapshot.edited_words == {1}
+
+        # And they are separate sets, or undoing would edit the live caption.
+        snapshot.edited_words.add(2)
+
+        assert original.edited_words == {1}
+
+    def test_a_word_no_caption_claimed_is_not_an_edit(self, reported):
+        """
+        The reported case in one line: "Ja," is claimed now, but even if it
+        were not, nothing about the word list decides this any more.
+        """
+
+        reported.captions[0].start_time = "00:00:04,000"
+
+        assert self.edited(reported, reported.captions[0]) == []
+
+
+class TestMarksSurviveStructuralEdits:
+    @pytest.fixture
+    def editing(self, editor):
+        editor.captions = [caption("Hej på dig idag", edited=[3])]
+        editor.show_my_edits = True
+
+        return editor
+
+    def edited(self, editor, caption):
+        return [
+            run["t"]
+            for run in editor.review_runs(caption, caption.text)
+            if run.get("edit")
+        ]
+
+    def test_a_split_hands_the_mark_to_the_half_that_has_the_word(self, editing):
+        editing.split_caption(editing.captions[0], cursor_position=len("Hej på"))
+
+        first, second = editing.captions
+
+        assert self.edited(editing, first) == []
+        assert self.edited(editing, second) == ["idag"]
+
+    def test_a_merge_moves_the_mark_along(self, editing):
+        editing.captions.insert(0, caption("Ett två", edited=[]))
+        editing.renumber_captions()
+
+        editing.merge_with_previous(editing.captions[1])
+
+        assert self.edited(editing, editing.captions[0]) == ["idag"]
+
+    def test_merging_forwards_moves_the_second_half(self, editing):
+        editing.captions.append(caption("Ett två", edited=[1]))
+        editing.renumber_captions()
+
+        editing.merge_with_next(editing.captions[0])
+
+        assert self.edited(editing, editing.captions[0]) == ["idag", "två"]
+
+
+class TestMarksAreSaved:
+    """
+    Persisted with the transcription, so they still mean something after a
+    reload -- which was the point of recording them rather than deducing them.
+    """
+
+    def reloaded(self, editor):
+        fresh = SRTEditor("job-uuid", "txt", "file.txt")
+        fresh.refresh_display = lambda *a, **k: None
+        fresh.parse_txt(json.dumps(editor.export_json()))
+        fresh.show_my_edits = True
+
+        return fresh
+
+    @pytest.fixture
+    def saved(self, editor):
+        editor.captions = [
+            caption("Hej på dig idag", edited=[1]),
+            caption("Ett två tre"),
+        ]
+        editor.captions[1].index = 2
+        editor.speakers = {"UNKNOWN"}
+        editor.show_my_edits = True
+
+        return editor
+
+    def test_an_untouched_transcription_records_nothing(self, editor):
+        editor.captions = [caption()]
+        editor.speakers = {"UNKNOWN"}
+
+        exported = editor.export_json()
+
+        assert "edited" not in exported["segments"][0]
+
+    def test_the_marks_are_written_out(self, saved):
+        exported = saved.export_json()
+
+        assert exported["segments"][0]["edited"] == [1]
+        assert "edited" not in exported["segments"][1]
+
+    def test_they_come_back_on_reload(self, saved):
+        fresh = self.reloaded(saved)
+
+        assert fresh.captions[0].edited_words == {1}
+        assert fresh.captions[1].edited_words == set()
+
+    def test_the_marking_survives_the_round_trip(self, saved):
+        fresh = self.reloaded(saved)
+        target = fresh.captions[0]
+
+        assert [run["t"] for run in fresh.review_runs(target, target.text)
+                if run.get("edit")] == ["på"]
+
+    def test_a_transcription_saved_before_this_existed_marks_nothing(self):
+        """
+        Backward compatible: no record, so nothing is claimed about it.
+        """
+
+        # A fresh editor: parse_txt appends, so the fixture's own caption would
+        # be the one inspected.
+        editor = SRTEditor("job-uuid", "txt", "file.txt")
+        editor.refresh_display = lambda *a, **k: None
+        editor.parse_txt(json.dumps({
+            "segments": [
+                {"speaker": "A", "text": "Hej på dig idag",
+                 "start": 0.0, "end": 4.0},
+            ],
+            "preserve_segments": True,
+        }))
+        editor.show_my_edits = True
+        target = editor.captions[0]
+
+        assert target.edited_words == set()
+        assert [run["t"] for run in editor.review_runs(target, target.text)
+                if run.get("edit")] == []
+
+    def test_a_bad_record_is_ignored_rather_than_trusted(self):
+        """
+        It came back over the wire, so it is not taken on faith.
+        """
+
+        editor = SRTEditor("job-uuid", "txt", "file.txt")
+        editor.refresh_display = lambda *a, **k: None
+        editor.parse_txt(json.dumps({
+            "segments": [
+                {"speaker": "A", "text": "Hej på", "start": 0.0, "end": 4.0,
+                 "edited": ["nonsense", None, 1]},
+            ],
+            "preserve_segments": True,
+        }))
+
+        assert editor.captions[0].edited_words == {1}

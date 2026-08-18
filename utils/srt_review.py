@@ -178,14 +178,50 @@ class ReviewMixin:
     def caption_words(self, caption: SRTCaption) -> List[dict]:
         """
         Words belonging to a caption.
+
+        Claimed from where the previous caption ended rather than from this
+        one's own start, and to the end of the recording for the last one, so
+        that the captions divide the whole of it and leave no gaps to fall into.
+
+        A word's own timing cannot be relied on to sit inside the segment it was
+        transcribed in: whisper dates a leading word from the silence before it,
+        so a caption starting at 2.32 has been seen holding a word timed from
+        0.00. Matching each caption only against its own range left that word
+        claimed by nobody -- invisible to the review marking, and, back when
+        edits were inferred rather than recorded, looking like a word the reader
+        had written.
         """
 
         if not caption:
             return []
 
-        return self.words_in_range(
-            caption.get_start_seconds(), caption.get_end_seconds()
+        captions = getattr(self, "captions", None) or []
+        position = next(
+            (
+                index
+                for index, candidate in enumerate(captions)
+                if candidate is caption
+            ),
+            None,
         )
+
+        if position is None:
+            # Not one of ours -- an uncommitted copy, say. Nothing to bound it
+            # against, so it answers for its own range as it always did.
+            return self.words_in_range(
+                caption.get_start_seconds(), caption.get_end_seconds()
+            )
+
+        floor = (
+            captions[position - 1].get_end_seconds() if position > 0 else 0.0
+        )
+        ceiling = (
+            caption.get_end_seconds()
+            if position < len(captions) - 1
+            else float("inf")
+        )
+
+        return self.words_in_range(floor, ceiling)
 
 
     def review_threshold(self) -> float:
@@ -232,26 +268,80 @@ class ReviewMixin:
         return self.is_flagged(word["c"])
 
 
-    def word_is_edit(self, word: Optional[dict]) -> bool:
+    @staticmethod
+    def token_is_edit(caption: SRTCaption, index: int) -> bool:
         """
-        Whether a word is the reader's own rather than the model's.
+        Whether the word at this position is one the reader changed.
 
-        A word that no longer matches anything the model transcribed did not
-        come from the recording, so it is something the reader wrote. That also
-        makes the two states exclusive: an edited word has no confidence score
-        to be uncertain about, which is why correcting a flagged word takes the
-        flag off it.
-
-        Meaningless without word data to compare against -- every word looks
-        unaligned then, and marking the whole transcription as edited would be
-        worse than marking none of it.
+        Read from what the caption recorded as it was edited. This used to be
+        inferred instead, from a word failing to align against the words the
+        model transcribed -- but a word fails to align for several reasons, only
+        one of which is the reader having written it, so untouched words came
+        out marked.
         """
 
-        return bool(self.words) and word is None
+        return index in caption.edited_words
 
 
+    @staticmethod
+    def retag_edits(previous: str, current: str, edited: set) -> set:
+        """
+        Carry a caption's marks across a change to its text.
+
+        Marks are word positions, so they move when words are added or removed
+        ahead of them, and words the change itself brought in take marks of
+        their own -- that is precisely what the reader just did.
+
+        Compared word for word without normalising, unlike the alignment used
+        for confidence: changing only a word's capitalisation is still the
+        reader changing it.
+        """
+
+        before = previous.split()
+        after = current.split()
+        carried = set()
+
+        matcher = SequenceMatcher(None, before, after, autojunk=False)
+
+        for tag, before_start, before_end, after_start, after_end in (
+            matcher.get_opcodes()
+        ):
+            if tag == "equal":
+                # The same words, possibly at new positions: their marks move
+                # with them.
+                for offset in range(before_end - before_start):
+                    if before_start + offset in edited:
+                        carried.add(after_start + offset)
+            elif tag in ("replace", "insert"):
+                carried.update(range(after_start, after_end))
+
+            # "delete" contributes nothing: those words are gone, and so is
+            # anything that was marked about them.
+
+        return carried
 
 
+    @staticmethod
+    def split_edits(edited: set, at: int) -> tuple:
+        """
+        Divide a caption's marks where its text is split, the second half
+        counted from its own first word.
+        """
+
+        return (
+            {index for index in edited if index < at},
+            {index - at for index in edited if index >= at},
+        )
+
+
+    @staticmethod
+    def joined_edits(first: set, second: set, offset: int) -> set:
+        """
+        Combine two captions' marks when their text is joined, the second half
+        moved along by however many words now precede it.
+        """
+
+        return set(first) | {index + offset for index in second}
 
 
     def flagged_word_count(self) -> int:
@@ -439,7 +529,7 @@ class ReviewMixin:
             index += 1
 
             flagged = self.show_uncertain_words and self.word_needs_review(word)
-            edited = self.show_my_edits and self.word_is_edit(word)
+            edited = self.show_my_edits and self.token_is_edit(caption, index - 1)
 
             if not flagged and not edited:
                 parts.append(html_escape(token))
@@ -453,9 +543,10 @@ class ReviewMixin:
             # CSS box we can style; aria-label keeps it reachable for screen
             # readers.
             #
-            # Flagged wins if both were somehow true. They cannot both be:
-            # word_is_edit holds only where there is no transcribed word, and
-            # word_needs_review only where there is one.
+            # Flagged wins if a word is somehow both. They are no longer
+            # exclusive by construction: one comes from the score the model gave
+            # the word here, the other from the reader having changed it, and a
+            # word worth a second look is the more useful thing to say.
             css, message = (
                 ("review-word", REVIEW_TOOLTIP)
                 if flagged
@@ -538,7 +629,7 @@ class ReviewMixin:
             # per_word bypasses the early return above, so the toggles have to
             # be honoured here too or words stay marked with them switched off.
             flagged = self.show_uncertain_words and self.word_needs_review(word)
-            edited = self.show_my_edits and self.word_is_edit(word)
+            edited = self.show_my_edits and self.token_is_edit(caption, index - 1)
 
             if not one_run_per_word and not flagged and not edited:
                 plain.append(token)
@@ -551,15 +642,6 @@ class ReviewMixin:
             # wherever nothing has been edited.
             if edited:
                 run["edit"] = True
-
-            # The word the model transcribed here, so the browser can tell a
-            # real change from tidied capitalisation while the caret is still in
-            # the block. The server decides that the same way but cannot
-            # re-render a block being typed into without moving the caret, and
-            # the two must not disagree. Carried by every run that is one word,
-            # which is every word once the reader is marking their own.
-            if word is not None:
-                run["w"] = word["t"]
 
             # Only a word still matching what the model transcribed has a
             # timing we can attribute to it; an edited word has none, and nor

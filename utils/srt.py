@@ -532,15 +532,25 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
             if not segment.get("text", "").strip():
                 continue
 
-            self.captions.append(
-                SRTCaption(
-                    index,
-                    self.seconds_to_timestamp(segment.get("start", 0.0)),
-                    self.seconds_to_timestamp(segment.get("end", 0.0)),
-                    segment["text"],
-                    speaker=segment.get("speaker", ""),
-                )
+            restored = SRTCaption(
+                index,
+                self.seconds_to_timestamp(segment.get("start", 0.0)),
+                self.seconds_to_timestamp(segment.get("end", 0.0)),
+                segment["text"],
+                speaker=segment.get("speaker", ""),
             )
+
+            # Which words the reader had changed, as the last save recorded
+            # them. Absent from the worker's own output and from anything saved
+            # before this was kept, and then nothing is marked.
+            marks = segment.get("edited")
+
+            if isinstance(marks, list):
+                restored.edited_words = {
+                    position for position in marks if isinstance(position, int)
+                }
+
+            self.captions.append(restored)
             self.speakers.add(segment.get("speaker", ""))
 
         self.renumber_captions()
@@ -833,7 +843,10 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
 
         if text is not None and text != caption.text:
             # The text area holds edits that have not been committed yet;
-            # splitting must not discard them.
+            # splitting must not discard them, nor the marks they earned.
+            caption.edited_words = self.retag_edits(
+                caption.text, text, caption.edited_words
+            )
             caption.text = text
             self.mark_as_changed()
 
@@ -862,8 +875,14 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         end_seconds = caption.get_end_seconds()
         mid_seconds = self.split_time(caption, first_part, second_part, at_cursor)
 
+        # Marks follow their words across the break.
+        kept, moved = self.split_edits(
+            caption.edited_words, len(first_part.split())
+        )
+
         # Update first caption
         caption.text = first_part
+        caption.edited_words = kept
         caption.end_time = self.seconds_to_timestamp(mid_seconds)
 
         # Create second caption
@@ -874,6 +893,7 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
             second_part,
             speaker=caption.speaker,
         )
+        new_caption.edited_words = moved
 
         # Insert new caption
         caption_index = self.captions.index(caption)
@@ -1145,6 +1165,11 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         # Only save state if text actually changed
         if caption.text != new_text or force:
             self.save_state_for_undo()
+            # Worked out before the text is replaced, while there is still
+            # something to compare it against.
+            caption.edited_words = self.retag_edits(
+                caption.text, new_text, caption.edited_words
+            )
             caption.text = new_text
             # Editing a word can take it off the count, or put one on it.
             self.update_flagged_count()
@@ -1212,6 +1237,11 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         next_caption = self.captions[caption_index + 1]
 
         # Merge text and update end time
+        caption.edited_words = self.joined_edits(
+            caption.edited_words,
+            next_caption.edited_words,
+            len(caption.text.split()),
+        )
         caption.text += "\n" + next_caption.text
         caption.end_time = next_caption.end_time
 
@@ -1243,6 +1273,11 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         previous_caption = self.captions[caption_index - 1]
 
         # Merge text and update end time
+        previous_caption.edited_words = self.joined_edits(
+            previous_caption.edited_words,
+            caption.edited_words,
+            len(previous_caption.text.split()),
+        )
         previous_caption.text += "\n" + caption.text
         previous_caption.end_time = caption.end_time
 

@@ -174,6 +174,103 @@ class TestWordLookup:
         ]
 
 
+class TestCaptionsDivideTheRecording:
+    """
+    A word's own timing cannot be relied on to sit inside the segment it was
+    transcribed in. Reported from a real recording: whisper dated a segment from
+    2.32 and that segment's first word from 0.00, reaching back into the silence
+    before it. Matching each caption only against its own range left that word
+    claimed by nobody.
+    """
+
+    # The numbers are the ones that were reported.
+    REPORTED = {
+        "version": 1,
+        "words": [
+            {"t": "Ja,", "s": 0.0, "e": 1.62, "c": 0.686},
+            {"t": "tack", "s": 2.96, "e": 4.08, "c": 0.421},
+            {"t": "för", "s": 4.08, "e": 4.32, "c": 0.604},
+            {"t": "inbjudan.", "s": 4.32, "e": 5.08, "c": 0.946},
+            {"t": "Jag", "s": 5.14, "e": 5.2, "c": 0.726},
+            {"t": "ska", "s": 5.2, "e": 5.4, "c": 0.538},
+        ],
+    }
+
+    @pytest.fixture
+    def reported(self, editor):
+        editor.load_words(self.REPORTED)
+        editor.captions = [
+            SRTCaption(1, "00:00:02,320", "00:00:05,100", "Ja, tack för inbjudan."),
+            SRTCaption(2, "00:00:05,140", "00:00:13,220", "Jag ska"),
+        ]
+
+        return editor
+
+    def test_a_word_timed_before_its_caption_is_still_claimed(self, reported):
+        assert [word["t"] for word in reported.caption_words(reported.captions[0])] == [
+            "Ja,", "tack", "för", "inbjudan.",
+        ]
+
+    def test_the_next_caption_does_not_take_it_as_well(self, reported):
+        assert [word["t"] for word in reported.caption_words(reported.captions[1])] == [
+            "Jag", "ska",
+        ]
+
+    def test_every_word_is_claimed_exactly_once(self, reported):
+        claimed = [
+            word["t"]
+            for caption in reported.captions
+            for word in reported.caption_words(caption)
+        ]
+
+        assert sorted(claimed) == sorted(word["t"] for word in reported.words)
+
+    def test_it_aligns_and_so_is_not_taken_for_an_edit(self, reported):
+        aligned = reported.aligned_words(reported.captions[0])
+
+        assert all(word is not None for word in aligned)
+
+    def test_it_can_be_flagged_for_review_again(self, reported):
+        """
+        A word no caption claimed could never be marked, whatever its score.
+        """
+
+        reported.show_uncertain_words = True
+        reported.set_review_sensitivity("high")
+        caption = reported.captions[0]
+
+        assert "Ja," in [
+            run["t"] for run in reported.review_runs(caption, caption.text)
+            if run["flag"]
+        ]
+
+    def test_the_last_caption_claims_what_trails_off_the_end(self, reported):
+        """
+        A word can drift past its segment as well as before it.
+        """
+
+        reported.load_words({"version": 1, "words": [
+            {"t": "Ja,", "s": 0.0, "e": 1.0},
+            {"t": "slut", "s": 30.0, "e": 31.0},
+        ]})
+
+        assert [word["t"] for word in reported.caption_words(reported.captions[1])] == [
+            "slut"
+        ]
+
+    def test_a_caption_of_its_own_still_answers_for_its_own_range(self, editor):
+        """
+        Nothing to bound it against, so it behaves as it always did.
+        """
+
+        editor.load_words(self.REPORTED)
+        loose = SRTCaption(1, "00:00:02,320", "00:00:05,100", "Ja, tack för inbjudan.")
+
+        assert [word["t"] for word in editor.caption_words(loose)] == [
+            "tack", "för", "inbjudan.",
+        ]
+
+
 class TestSplitAtCursor:
     """
     Splitting a caption where the caret sits.
@@ -684,7 +781,7 @@ class TestReviewRuns:
 
         assert runs == [
             {"t": "Hej ", "flag": False},
-            {"t": "på", "flag": True, "w": "på"},
+            {"t": "på", "flag": True},
             {"t": " dig idag", "flag": False},
         ]
 
@@ -887,7 +984,7 @@ class TestWordHighlightRuns:
 
         assert editor.review_runs(caption()) == [
             {"t": "Hej ", "flag": False},
-            {"t": "på", "flag": True, "w": "på"},
+            {"t": "på", "flag": True},
             {"t": " dig idag", "flag": False},
         ]
 

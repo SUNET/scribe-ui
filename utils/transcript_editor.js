@@ -58,7 +58,7 @@ export default {
           >{{ block.start_label }}<span class="transcript-dash">-</span>{{ block.end_label }}</div><div
             class="transcript-text"
             :data-id="block.id"
-          ><span v-for="(run, i) in block.runs" :key="i" :class="run.flag ? 'review-word' : (run.edit ? 'edit-word' : null)" :data-review="run.flag ? reviewLabel : null" :data-edit="editLabel" :data-w="run.w" :data-s="run.s" :data-e="run.e">{{ run.t }}</span><br v-if="!block.runs || block.runs.length === 0"></div></div></template></div>
+          ><span v-for="(run, i) in block.runs" :key="i" :class="run.flag ? 'review-word' : (run.edit ? 'edit-word' : null)" :data-review="run.flag ? reviewLabel : null" :data-edit="editLabel" :data-s="run.s" :data-e="run.e">{{ run.t }}</span><br v-if="!block.runs || block.runs.length === 0"></div></div></template></div>
 
       <!-- Outside the contenteditable, or it would become editable content.
            Positioned against this component's own root rather than the
@@ -227,51 +227,27 @@ export default {
     // that the two strip the same things. toLowerCase stands in for casefold,
     // which JavaScript has no equivalent of; they differ only on characters
     // that change length when lowercased, such as ß.
-    matchKey(text) {
-      return (text || "")
-        .replace(/^[^\p{L}\p{N}_]+/u, "")
-        .replace(/[^\p{L}\p{N}_]+$/u, "")
-        .toLowerCase();
-    },
-
-    // A word that has been typed into is no longer the word the model
-    // transcribed: it has no confidence left to be uncertain about, and it is
-    // now the reader's own. Done here rather than waiting for the server, which
-    // reaches the same answer but cannot re-render the block the caret is
-    // sitting in without moving it.
+    // The word the caret is in has just been typed into, so it is a word the
+    // reader has changed. Nothing is compared: an edit is something that
+    // happened, not something to be worked out from how the text now differs
+    // from what the model transcribed. Working it out that way marked words
+    // nobody had touched, wherever a word's timing put it outside the segment
+    // it belongs to.
     //
-    // One attribute, set and cleared from the current text, rather than editing
-    // the class list: Vue owns the class, and rewrites it whenever it patches
-    // the span. It also means undoing the change puts the mark back, instead of
-    // leaving the word bare until the next render disagreed with the screen.
-    reclassify(span) {
-      // No transcribed word to compare against: either a merged run of several
-      // words, or one the reader had already replaced before this render.
-      if (!span || span.dataset.w === undefined) return;
-
-      const changed =
-        this.matchKey(span.textContent) !== this.matchKey(span.dataset.w);
-
-      // Only capitalisation or the punctuation around it changed, so this is
-      // still the word the score describes -- which is what the server decides
-      // too, and why this is not simply "anything was typed".
-      if (changed) span.setAttribute("data-changed", "");
-      else span.removeAttribute("data-changed");
-    },
-
-    // Every word in a block re-read against what was transcribed in its place,
-    // rather than only the one the caret is in.
+    // Done here rather than waiting for the server, which records the same
+    // thing but cannot re-render the block the caret is sitting in without
+    // moving it. A render clears these and takes the server's account instead.
     //
-    // A mark has to be able to come off a word the caret has already left. One
-    // edit can move text between neighbouring spans -- typing over a selection
-    // that spans two of them does -- and a word put back the way it was stops
-    // being an edit. Judging only the word under the caret leaves the rest
-    // showing whatever they were last told, which is how a word nobody touched
-    // ended up marked.
-    reclassifyBlock(block) {
-      block
-        ?.querySelectorAll("[data-w]")
-        .forEach((span) => this.reclassify(span));
+    // An attribute rather than a class: Vue owns the class and rewrites it
+    // whenever it patches the span.
+    markChanged() {
+      const selection = window.getSelection();
+
+      if (!selection?.rangeCount) return;
+
+      const span = this.wordAt(selection.getRangeAt(0));
+
+      if (span) span.setAttribute("data-changed", "");
     },
 
     // Text edits are reported on a short delay: the server recomputes the
@@ -281,7 +257,7 @@ export default {
       const at = this.caret();
       if (!at) return;
 
-      this.reclassifyBlock(at.block);
+      this.markChanged();
 
       clearTimeout(this.pending);
       const id = at.id;

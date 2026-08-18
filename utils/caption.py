@@ -15,7 +15,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Set
 
 
 class SRTCaption:
@@ -40,6 +40,14 @@ class SRTCaption:
         self.is_valid = True  # For validation
         self.speaker = speaker if speaker else "UNKNOWN"
 
+        # Word positions the reader has changed, counted in whitespace
+        # separated words from the start of this caption. Recorded as the edit
+        # happens rather than worked out afterwards by comparing the text
+        # against the words the model transcribed: that comparison cannot tell
+        # a word the reader wrote from one the transcription has no entry for,
+        # and marked untouched words as edited.
+        self.edited_words: Set[int] = set()
+
     def copy(self) -> "SRTCaption":
         """
         Create a deep copy of the caption.
@@ -55,6 +63,9 @@ class SRTCaption:
         new_caption.is_selected = self.is_selected
         new_caption.is_highlighted = self.is_highlighted
         new_caption.is_valid = self.is_valid
+        # Copied rather than shared: the undo stack holds these snapshots, so
+        # undoing a change has to take its marks back with it.
+        new_caption.edited_words = set(self.edited_words)
         return new_caption
 
     def to_dict(self) -> Dict[str, Any]:
@@ -64,6 +75,9 @@ class SRTCaption:
             "start": self.get_start_seconds(),
             "end": self.get_end_seconds(),
             "duration": self.get_end_seconds() - self.get_start_seconds(),
+            # Only when there are any, so a transcription nobody has touched
+            # exports exactly as it did before this was recorded.
+            **({"edited": sorted(self.edited_words)} if self.edited_words else {}),
         }
 
     def to_srt_format(self) -> str:
