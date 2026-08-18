@@ -30,13 +30,18 @@ from utils.styles import default_styles
 
 
 def rules():
-    """Every rule in the stylesheet, as (selectors, declarations)."""
+    """
+    Every rule in the stylesheet, as (selectors, declarations).
 
-    for match in re.finditer(r"([^{}]+)\{([^{}]*)\}", default_styles):
+    Comments come out first: they contain both commas and semicolons, so left in
+    they get split up and read as selectors and declarations of their own.
+    """
+
+    css = re.sub(r"/\*.*?\*/", "", default_styles, flags=re.S)
+
+    for match in re.finditer(r"([^{}]+)\{([^{}]*)\}", css):
         selectors = [
-            re.sub(r"^.*\*/\s*", "", part.strip(), flags=re.S)
-            for part in match.group(1).split(",")
-            if part.strip()
+            part.strip() for part in match.group(1).split(",") if part.strip()
         ]
         yield selectors, match.group(2)
 
@@ -124,3 +129,98 @@ class TestMarkedWordsAreLayoutNeutral:
 
     def test_no_tooltip_behind_the_text_area(self):
         assert effective(".caption-highlights .review-word::after")["content"] == "none"
+
+
+def specificity(selector: str) -> tuple:
+    """
+    A selector's weight, as the browser counts it: ids, then classes and
+    attributes and pseudo-classes, then elements and pseudo-elements.
+
+    Enough for the selectors here, which are all classes -- the point is to show
+    an override wins on its own rather than by sitting further down the file.
+    """
+
+    ids = re.findall(r"#[\w-]+", selector)
+    classes = re.findall(r"\.[\w-]+|\[[^\]]+\]|(?<!:):[\w-]+(?:\([^)]*\))?", selector)
+    elements = re.findall(r"(?:^|[\s>+~])[a-z][\w-]*|::[\w-]+", selector)
+
+    return len(ids), len(classes), len(elements)
+
+
+class TestSpecificityHelper:
+    """
+    Guards the guard below: a counter that stopped counting would make every
+    override look fine.
+    """
+
+    def test_counts_classes(self):
+        assert specificity(".a .b .c") == (0, 3, 0)
+
+    def test_counts_a_pseudo_class_as_a_class(self):
+        assert specificity(".a:hover") == (0, 2, 0)
+
+    def test_counts_a_pseudo_element_as_an_element(self):
+        assert specificity(".a::after") == (0, 1, 1)
+
+    def test_more_classes_outweighs_fewer(self):
+        assert specificity(".a.b .c") > specificity(".a .c")
+
+
+class TestCaptionActionButtons:
+    """
+    Split, Merge prev, Merge next, Close, Add and Delete, which repeat under
+    every open caption. They share .editor-btn with the toolbar buttons above
+    them and then narrow it, so what matters is that the narrowing actually
+    takes -- by weight, not by ordering.
+    """
+
+    def test_they_are_sized_to_their_labels(self):
+        """
+        They used to be given a floor of 100px each and told to share the row
+        out between them, which is what made them large.
+        """
+
+        applied = effective(".editor-caption-btn")
+
+        assert applied["min-width"] == "0 !important"
+        assert applied["flex"] == "0 0 auto"
+
+    def test_they_are_smaller_than_a_default_button(self):
+        applied = effective(".editor-caption-btn")
+        size = int(re.match(r"(\d+)", applied["font-size"]).group(1))
+
+        # Quasar's own button text is 14px.
+        assert size < 14
+        assert int(re.match(r"(\d+)", applied["min-height"]).group(1)) <= 28
+
+    def test_the_row_gap_is_not_doubled(self):
+        """
+        Quasar gives every button a margin of its own, and the row already has a
+        gap; both would space them twice as far apart as intended.
+        """
+
+        assert effective(".editor-caption-btn")["margin"] == "0 !important"
+
+    @pytest.mark.parametrize("theme", ["light", "dark"])
+    def test_the_caption_look_outweighs_the_toolbar_look(self, theme):
+        assert specificity(
+            f".body--{theme} .q-btn.editor-btn.editor-caption-btn"
+        ) > specificity(f".body--{theme} .q-btn.editor-btn")
+
+    @pytest.mark.parametrize("theme", ["light", "dark"])
+    def test_delete_is_the_danger_colour_on_its_label_too(self, theme):
+        """
+        .editor-btn paints .q-btn__content explicitly, so a colour set on the
+        button alone never reaches the label -- which is why Delete carried an
+        inline style that did nothing.
+        """
+
+        for target in ("", " .q-btn__content", " .q-icon"):
+            selector = (
+                f".body--{theme} .q-btn.editor-caption-btn.caption-btn-danger{target}"
+            )
+
+            assert effective(selector)["color"] == "var(--color-text-danger) !important"
+            assert specificity(selector) > specificity(
+                f".body--{theme} .q-btn.editor-btn{target}"
+            )

@@ -164,7 +164,7 @@ class RenderMixin:
                     self._active_text_area = text_area
 
                     # Action buttons
-                    with ui.row().classes("w-full justify-between"):
+                    with ui.row().classes("w-full items-center gap-1"):
                         split_button = ui.button("Split", icon="call_split").props(
                             "flat dense"
                         ).classes("editor-btn editor-caption-btn")
@@ -195,7 +195,7 @@ class RenderMixin:
                         )
 
                         ui.button("Close").props("flat dense").classes(
-                            "editor-btn editor-caption-btn caption-close"
+                            "editor-btn editor-caption-btn"
                         ).on(
                             "click",
                             lambda: self.select_caption(
@@ -211,8 +211,8 @@ class RenderMixin:
                         ).on("click", lambda: self.add_caption_after(caption))
 
                         ui.button("Delete").props("flat dense").classes(
-                            "editor-btn editor-caption-btn"
-                        ).style("color: var(--color-text-danger) !important;").on(
+                            "editor-btn editor-caption-btn caption-btn-danger ml-auto"
+                        ).on(
                             "click", lambda: self.remove_caption(caption)
                         )
                 else:
@@ -435,7 +435,7 @@ class RenderMixin:
 
                 self._active_text_area = text_area
 
-                with ui.row().classes("w-full justify-between"):
+                with ui.row().classes("w-full items-center gap-1"):
                     split_button = ui.button("Split", icon="call_split").props(
                         "flat dense"
                     ).classes("editor-btn editor-caption-btn")
@@ -466,7 +466,7 @@ class RenderMixin:
                     )
 
                     ui.button("Close").props("flat dense").classes(
-                        "editor-btn editor-caption-btn caption-close"
+                        "editor-btn editor-caption-btn"
                     ).on(
                         "click",
                         lambda: self.select_caption(
@@ -479,8 +479,8 @@ class RenderMixin:
                     ).on("click", lambda: self.add_caption_after(caption))
 
                     ui.button("Delete").props("flat dense").classes(
-                        "editor-btn editor-caption-btn"
-                    ).style("color: var(--color-text-danger) !important;").on(
+                        "editor-btn editor-caption-btn caption-btn-danger ml-auto"
+                    ).on(
                         "click", lambda: self.remove_caption(caption)
                     )
             else:

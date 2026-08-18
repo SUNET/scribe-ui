@@ -448,10 +448,6 @@ theme_styles = """
     .editor-toolbar-btn {
         min-width: 130px !important;
     }
-    .editor-caption-btn {
-        min-width: 100px !important;
-        flex: 1 1 0;
-    }
     .body--light .q-btn.editor-btn {
         background-color: #ffffff !important;
         border: 1px solid var(--color-border-subtle) !important;
@@ -485,6 +481,60 @@ theme_styles = """
         background-color: var(--color-bg-page) !important;
         border: 1px solid var(--color-border-subtle) !important;
         opacity: 0.4;
+    }
+
+    /* ── Caption action buttons ── */
+    /* A row of these sits under every open caption, so they are deliberately
+       smaller and quieter than the toolbar buttons they share .editor-btn with:
+       sized to their own labels rather than stretched across the row, on a
+       tinted surface rather than in a filled white box, and with the border
+       only appearing under the pointer.
+
+       Two classes deep so it wins over .editor-btn's own light and dark rules
+       outright, rather than by being further down the stylesheet. */
+    .editor-caption-btn {
+        min-width: 0 !important;
+        min-height: 26px !important;
+        /* Quasar spaces buttons with a margin of their own; the row's gap does
+           that here, and both would double it. */
+        margin: 0 !important;
+        padding: 3px 9px !important;
+        border-radius: 6px !important;
+        font-size: 12px !important;
+        font-weight: 500 !important;
+        letter-spacing: 0 !important;
+        flex: 0 0 auto;
+    }
+    .editor-caption-btn .q-icon {
+        font-size: 15px !important;
+    }
+    .editor-caption-btn .q-btn__content {
+        gap: 5px;
+    }
+    /* Quasar's own icon-to-label gap, sized for a larger button. */
+    .editor-caption-btn .q-btn__content .on-left {
+        margin-right: 0 !important;
+    }
+    .body--light .q-btn.editor-btn.editor-caption-btn,
+    .body--dark .q-btn.editor-btn.editor-caption-btn {
+        background-color: var(--color-bg-surface-alt) !important;
+        border: 1px solid transparent !important;
+    }
+    .body--light .q-btn.editor-btn.editor-caption-btn:hover,
+    .body--dark .q-btn.editor-btn.editor-caption-btn:hover {
+        background-color: var(--color-bg-surface-hover) !important;
+        border-color: var(--color-border-subtle) !important;
+    }
+    /* Destructive, so it says so in colour rather than in size. The label needs
+       stating as well as the button: .editor-btn paints .q-btn__content
+       explicitly, which an inherited colour cannot reach past. */
+    .body--light .q-btn.editor-caption-btn.caption-btn-danger,
+    .body--light .q-btn.editor-caption-btn.caption-btn-danger .q-btn__content,
+    .body--light .q-btn.editor-caption-btn.caption-btn-danger .q-icon,
+    .body--dark .q-btn.editor-caption-btn.caption-btn-danger,
+    .body--dark .q-btn.editor-caption-btn.caption-btn-danger .q-btn__content,
+    .body--dark .q-btn.editor-caption-btn.caption-btn-danger .q-icon {
+        color: var(--color-text-danger) !important;
     }
 
     /* ── Dark mode primary button contrast ── */
