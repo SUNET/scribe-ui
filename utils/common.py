@@ -15,13 +15,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import asyncio
 import httpx
 import pytz
 
 
 from datetime import datetime, timedelta
-from nicegui import ui, app
+from nicegui import background_tasks, ui, app
 from starlette.formparsers import MultiPartParser
 from typing import Optional
 from utils.settings import get_settings
@@ -1098,7 +1097,10 @@ async def handle_upload_with_feedback(files, dialog, table):
             if fresh_rows is not None:
                 table.update_rows(fresh_rows, clear_selection=False)
 
-    asyncio.create_task(_upload())
+    # Not asyncio.create_task: the loop keeps only a weak reference, so an
+    # upload could be collected part way through and its errors would never
+    # surface. NiceGUI holds onto the task and reports what it raises.
+    background_tasks.create(_upload(), name=f"upload of {len(file_items)} file(s)")
 
 
 def table_transcribe(selected_row, on_complete=None) -> None:
