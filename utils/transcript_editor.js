@@ -39,8 +39,9 @@ export default {
         @input="onInput"
         @keydown="onKeydown"
         @click="onClick"
+        @blur="flush"
         ref="body"
-      ><template v-for="block in blocks" :key="block.id"><div
+      ><template v-for="block in blocks" :key="blockKey(block)"><div
           class="transcript-gutter"
           contenteditable="false"
           :data-id="block.id"
@@ -132,6 +133,25 @@ export default {
       // the blocks themselves fires on every update, because an update
       // resends all props and the array arrives as a new reference -- several
       // times a second while the audio plays.
+      //
+      // A block that was typed into has its text changed directly in the DOM,
+      // not through Vue -- the server does not re-render the block the caret
+      // is in while it is still being typed into, see set_text. So Vue's own
+      // record of that block's text is still whatever it was at the last
+      // render, and stays that way through the edit. If a later render (undo,
+      // most of all) sends back exactly that same text, Vue's diff finds
+      // nothing to do and leaves the browser's own DOM as it is -- which
+      // still holds the typed word, unrelated to what was just sent down. The
+      // word looked as if undo had not reached it, because for that block it
+      // truly had not: nothing told Vue that the DOM no longer matched what
+      // it last rendered. Changing the block's key throws the element away
+      // instead of patching it, so the next render always builds it fresh
+      // from the props actually sent.
+      this.dirty.forEach((id) => {
+        this.stamps[id] = (this.stamps[id] || 0) + 1;
+      });
+      this.dirty.clear();
+
       this.$nextTick(() => {
         this.indexWords();
 
@@ -153,6 +173,14 @@ export default {
   data() {
     return {
       pending: null,
+      // The edit waiting to be sent, kept separately from the caret because
+      // by the time it is sent -- on blur, in particular -- the caret may
+      // already have moved or gone.
+      edit: null,
+      // Blocks typed into since the last real render, and how many times
+      // each has had to be rebuilt because of it. See the revision watcher.
+      dirty: new Set(),
+      stamps: {},
       timed: [],
       menu: { open: false, x: 0, y: 0, id: null, speaker: null },
     };
@@ -259,21 +287,52 @@ export default {
 
       this.markChanged();
 
+      // This block now disagrees with what Vue thinks it rendered. See the
+      // revision watcher for why that matters.
+      this.dirty.add(at.id);
+
       clearTimeout(this.pending);
-      const id = at.id;
-      const text = at.block.textContent;
-      this.pending = setTimeout(() => this.$emit("blocktext", { id, text }), 400);
+      this.edit = { id: at.id, text: at.block.textContent };
+      this.pending = setTimeout(() => this.flush(), 400);
     },
 
+    // Report a waiting edit now, e.g. before the caret is going to leave the
+    // block it is in. Kept rather than read back off the caret when sent: by
+    // the time this runs -- on blur, in particular -- the caret may already
+    // be gone.
     flush() {
       clearTimeout(this.pending);
-      const at = this.caret();
-      if (at) {
-        this.$emit("blocktext", { id: at.id, text: at.block.textContent });
-      }
+
+      const edit = this.edit;
+      this.edit = null;
+
+      if (edit) this.$emit("blocktext", edit);
+    },
+
+    // The key a block is drawn under -- see the revision watcher.
+    blockKey(block) {
+      return `${block.id}:${this.stamps[block.id] || 0}`;
     },
 
     onKeydown(event) {
+      // Undo and redo are the server's alone. It holds the real history --
+      // every block, speaker and timing, not just the text of the one being
+      // typed into -- and this key reaches it too, through the page's own
+      // keyboard handler. Left alone, the browser also treats Ctrl/Cmd+Z and
+      // +Y as contenteditable's native undo/redo: it replays a DOM edit of
+      // its own, invisible to the server, and that replay fires an input
+      // event that onInput reports as a fresh edit -- on whatever word the
+      // caret ends up in, which is how a redo left an unrelated word marked.
+      // Only preventDefault is needed to stop it; the key itself still
+      // reaches the document handler that drives the server's undo.
+      const key = event.key.toLowerCase();
+
+      if ((event.ctrlKey || event.metaKey) && (key === "z" || key === "y")) {
+        event.preventDefault();
+        this.flush();
+        return;
+      }
+
       const at = this.caret();
       if (!at) return;
 
