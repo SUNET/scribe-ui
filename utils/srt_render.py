@@ -292,12 +292,12 @@ class RenderMixin:
         Show keyboard shortcuts dialog.
         """
 
-        # One editor now, for both formats, but Enter itself differs: a
-        # subtitle is short enough that the reader controls its own line
-        # breaks, which is a far more frequent thing to want there than
-        # starting a new timed cue, so bare Enter is a line break and
-        # splitting moves to Ctrl/Cmd+Enter. Running speech has no manual
-        # line breaks, so a transcription keeps plain Enter for splitting.
+        # One editor now, for both formats, and Enter itself matches: bare
+        # Enter is a line break, splitting moves to Ctrl/Cmd+Enter -- a
+        # subtitle needs that because the reader controls its own line
+        # breaks more often than starting a new timed cue; a transcription
+        # gets the same split key so a speaker's own paragraph breaks stay
+        # separate from starting a new block.
         subtitles = self.data_format == "srt"
 
         shortcut_groups = [
@@ -317,10 +317,11 @@ class RenderMixin:
                     ]
                     if subtitles
                     else [
-                        ("Split block at cursor", "Enter"),
+                        ("New line in the block", "Enter"),
+                        ("Split block at cursor", "Ctrl/⌘ + Enter"),
                         ("Join with the block above", "Backspace at the start"),
                         ("Join with the block below", "Delete at the end"),
-                        ("New block after this one", "Enter at the end"),
+                        ("New block after this one", "Ctrl/⌘ + Enter at the end"),
                     ]
                 ),
             ),

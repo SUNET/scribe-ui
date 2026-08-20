@@ -248,9 +248,16 @@ export default {
       this.liveCounts = {};
 
       // Rebuilt from scratch below, so whatever span it named is about to
-      // stop existing -- pastWordBoundary would just fail its identity
-      // check either way, this only saves it the trouble.
+      // stop existing -- effectiveSpan would just fail its identity check
+      // either way, this only saves it the trouble. editingWord the same:
+      // left stale it still compares unequal to whatever wordAt finds next
+      // (a detached node matches nothing), so it costs nothing beyond an
+      // unnecessary flush() of an edit that was likely already sent -- but
+      // nothing needs that flush to keep pointing at an element that no
+      // longer exists either.
       this.newWordBoundary = null;
+      this.editingWord = null;
+      this.syntheticSpace = null;
 
       this.$nextTick(() => {
         this.indexWords();
@@ -268,7 +275,24 @@ export default {
           const block = this.$refs.body?.querySelector(
             `.transcript-text[data-id="${restoring.id}"]`
           );
-          if (block) this.placeCaretAt(block, restoring.offset);
+          if (block) {
+            // The caret was always at or after whatever just changed --
+            // typing leaves it there, and so does clicking undo or redo
+            // right after. Carrying the block's own change in length along
+            // with it is what keeps the caret at the same word rather than
+            // the naive offset overshooting into the next one once undo
+            // shrinks the text out from under it (or redo falling short
+            // once it grows again): restoring offset 12 unchanged into a
+            // block one character shorter lands one character into
+            // whatever now sits where the old offset 12 used to be, not
+            // the same place in the word the reader was actually at.
+            const newLength = this.plainText(block.textContent).length;
+            const offset = Math.max(
+              0,
+              restoring.offset + (newLength - restoring.length)
+            );
+            this.placeCaretAt(block, offset);
+          }
         }
       });
     },
@@ -292,6 +316,10 @@ export default {
       // Where, within editingWord's own span, the word itself ends and a
       // new one starts forming -- see pastWordBoundary.
       newWordBoundary: null,
+      // A space inserted by hand, not typed, to hold a new word apart from
+      // the one right after it until the reader types a separator of
+      // their own -- see effectiveSpan's headMatch branch.
+      syntheticSpace: null,
       // Blocks typed into since the last real render, and how many times
       // each has had to be rebuilt because of it. See the revision watcher.
       dirty: new Set(),
@@ -461,36 +489,157 @@ export default {
     // actually starting the next one.
     //
     // Remembered as a span-and-offset pair rather than re-derived, then, and
-    // kept only for as long as the caret stays in that same span: once the
-    // caret sits at or past the remembered offset, everything from there on
-    // is the new word forming, whatever it is made of. wordAt resetting to a
-    // genuinely different span, or a real render rebuilding the spans
-    // outright, both leave the remembered span no longer matching, which is
-    // what retires it without needing to clear it explicitly everywhere.
+    // kept only for as long as the caret stays in that same span. wordAt
+    // resetting to a genuinely different span, or a real render rebuilding
+    // the spans outright, both leave the remembered span no longer
+    // matching, which is what retires it without needing to clear it
+    // explicitly everywhere.
     //
-    // But a Backspace that reaches back before the remembered offset --
-    // undoing the space itself, or eating into the new word and then the
-    // original one -- means the reader is editing that earlier content now,
-    // not extending what came after it, and the boundary stops describing
+    // A Backspace that reaches back before the remembered offset -- undoing
+    // the space itself, or eating into the new word and then the original
+    // one -- means the reader is editing that earlier content now, not
+    // extending what came after it, and the boundary stops describing
     // anything real. Forgotten there rather than left standing, or typing
     // forward again later -- appending to the original word for a real
     // reason, nothing to do with the space any more -- would still read as
-    // past a boundary that should not apply to it, which is exactly the
+    // past a boundary that should not apply to it, which is exactly a
     // regression this once caused: a genuine edit stopped marking at all.
-    pastWordBoundary(span, range) {
-      if (this.spaceAtTail(span, range)) {
-        this.newWordBoundary = { span, offset: this.offsetWithinSpan(span, range) };
-        return true;
-      }
-
+    //
+    // The other side of that same regression: once real content exists past
+    // the boundary, it is a word of its own and has to be markable as one --
+    // but marking the span it still physically shares with the original
+    // word would mark that word too, right back to the first regression.
+    // splitNewWord gives it a span of its own the moment that happens, the
+    // one time this needs to reach into the DOM directly rather than only
+    // read it -- a plain move of existing nodes into a new wrapper, nothing
+    // like the execCommand corruption insertLineBreak hit, and dirty
+    // already guarantees whatever shape it leaves behind is thrown away and
+    // rebuilt whenever a real render finally reaches this block anyway.
+    effectiveSpan(span, range) {
       if (this.newWordBoundary && this.newWordBoundary.span === span) {
-        if (this.offsetWithinSpan(span, range) >= this.newWordBoundary.offset) {
-          return true;
+        const boundary = this.newWordBoundary.offset;
+        const offset = this.offsetWithinSpan(span, range);
+
+        if (offset > boundary) {
+          // Still nothing but whitespace past the space -- a second space,
+          // typed right after the first -- extends the boundary rather
+          // than splitting off a span with nothing in it worth marking.
+          if (/^\s*$/.test(span.textContent.slice(boundary, offset))) {
+            this.newWordBoundary = { span, offset };
+            return null;
+          }
+
+          const wrapper = this.splitNewWord(span, boundary);
+          this.newWordBoundary = null;
+          // Set here rather than left to onInput's own comparison below:
+          // the space keystroke that started this already cleared
+          // editingWord (spaceAtTail's own null), so onInput would read
+          // this new wrapper as a different word and flush whatever was
+          // still pending -- the space's own transient snapshot, not a
+          // finished edit in its own right, which split the reader's one
+          // continuous "type a word after a space" action into two undo
+          // steps, the second one landing on that half-finished text.
+          // Setting it here first makes onInput's span !== editingWord
+          // already false, so nothing flushes and the pending edit simply
+          // keeps being overwritten with fuller text until the real,
+          // debounced flush finally sends the finished word.
+          this.editingWord = wrapper;
+          return wrapper;
         }
+        if (offset === boundary) return null;
+
         this.newWordBoundary = null;
+        return span;
       }
 
-      return false;
+      if (this.spaceAtTail(span, range)) {
+        // A real separator now exists where the synthetic one was standing
+        // in -- see the headMatch branch below -- so it is retired here,
+        // the same moment spaceAtTail itself starts tracking this space.
+        if (this.syntheticSpace && this.syntheticSpace.previousSibling === span) {
+          this.syntheticSpace.remove();
+          this.syntheticSpace = null;
+        }
+        this.newWordBoundary = { span, offset: this.offsetWithinSpan(span, range) };
+        return null;
+      }
+
+      // The mirror image of spaceAtTail: a separator span -- pure
+      // whitespace up to here -- has just gained its first real character,
+      // typed at its own tail. A caret sitting between a separator and the
+      // word right after it resolves into the separator's own tail, not
+      // the word's head, so this is what a new word inserted right before
+      // an existing one looks like as it starts. Left alone the new word
+      // keeps growing inside the separator's own span, flush against the
+      // word after it with nothing keeping them apart -- harmless while
+      // the reader keeps typing, since nothing has been sent yet, but the
+      // debounced flush 400ms out does not know that: a natural pause
+      // mid-word sends the two run together as whatever is on screen at
+      // that moment, and undo then makes that permanent.
+      //
+      // splitNewWord isolates the new word into a span of its own, same as
+      // the boundary-crossing branch above, and a synthetic space follows
+      // it immediately so every flush from here on stays properly spaced
+      // even before the reader has typed a separator of their own.
+      const headMatch = /^(\s+)(\S+)$/.exec(span.textContent);
+      if (headMatch && this.offsetWithinSpan(span, range) === span.textContent.length) {
+        const wrapper = this.splitNewWord(span, headMatch[1].length);
+        if (wrapper) {
+          const next = span.nextSibling;
+          if (next && !/^\s/.test(next.textContent || "")) {
+            this.syntheticSpace = document.createTextNode(" ");
+            span.appendChild(this.syntheticSpace);
+          }
+          return wrapper;
+        }
+      }
+
+      return span;
+    },
+
+    // Moves everything from characterOffset onward, within span, into a new
+    // sibling span of its own -- left holding the caret, since that is
+    // always at its end (see effectiveSpan, the only caller: this only ever
+    // runs the instant typing forward crosses the boundary, and only once
+    // effectiveSpan has already checked there is something other than more
+    // whitespace to move). Marking it is onInput's own job, same as any
+    // other span -- effectiveSpan hands this one back just like it would
+    // any other. Text.splitText divides the one text node characterOffset
+    // falls in; any further nodes after it (rare here, but a span can hold
+    // more than one) move across whole.
+    splitNewWord(span, characterOffset) {
+      const walker = document.createTreeWalker(span, NodeFilter.SHOW_TEXT);
+      let remaining = characterOffset;
+      let node = walker.nextNode();
+
+      while (node && remaining > node.textContent.length) {
+        remaining -= node.textContent.length;
+        node = walker.nextNode();
+      }
+      if (!node) return null;
+
+      const tail = remaining < node.textContent.length ? node.splitText(remaining) : node.nextSibling;
+      if (!tail) return null;
+
+      const wrapper = document.createElement("span");
+      span.insertBefore(wrapper, tail);
+
+      let moving = tail;
+      while (moving) {
+        const next = moving.nextSibling;
+        wrapper.appendChild(moving);
+        moving = next;
+      }
+
+      const range = document.createRange();
+      range.selectNodeContents(wrapper);
+      range.collapse(false);
+
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+
+      return wrapper;
     },
 
     // Normalised the same way as match_key on the server: neither case nor the
@@ -515,8 +664,16 @@ export default {
     //
     // An attribute rather than a class: Vue owns the class and rewrites it
     // whenever it patches the span.
+    //
+    // Whitespace has no word in it to have changed, so it never earns the
+    // marking even when wordAt does hand back a separator's own span --
+    // caret() and effectiveSpan() both work at the DOM's own element
+    // boundaries, not word boundaries, so a caret landing in the gap
+    // between two words is exactly as valid a position as one inside
+    // either of them. Highlighting it would draw a floating green box over
+    // a plain space, nothing there for the reader to actually look at.
     markChanged(span) {
-      if (span) span.setAttribute("data-changed", "");
+      if (span && !/^\s*$/.test(span.textContent)) span.setAttribute("data-changed", "");
     },
 
     // Text edits are reported on a short delay: the server recomputes the
@@ -530,7 +687,7 @@ export default {
       const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
       let span = range ? this.wordAt(range) : null;
 
-      if (this.pastWordBoundary(span, range)) span = null;
+      span = this.effectiveSpan(span, range);
 
       this.markChanged(span);
 
@@ -744,13 +901,10 @@ export default {
       const at = this.caret();
       if (!at) return;
 
-      // Subtitles get a line break on a bare Enter -- a caption is short
-      // enough that the reader controls where it wraps by hand, and that is
-      // a far more frequent thing to want than starting a whole new timed
-      // cue, which now needs Ctrl/Cmd held down. A transcription has no use
-      // for a manual line break in running speech, so Enter there still
-      // always splits, exactly as before.
-      if (event.key === "Enter" && this.subtitleMode && !event.ctrlKey && !event.metaKey) {
+      // A bare Enter inserts a line break, in a transcription the same as
+      // a subtitle -- starting a whole new block (a new timed cue, or a
+      // fresh speaker turn) now needs Ctrl/Cmd held down instead.
+      if (event.key === "Enter" && !event.ctrlKey && !event.metaKey) {
         event.preventDefault();
         this.insertLineBreak();
         return;

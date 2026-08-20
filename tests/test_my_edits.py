@@ -321,6 +321,20 @@ class TestClientContract:
         assert 'setAttribute("data-changed", "")' in body
         assert "classList" not in body
 
+    def test_a_span_of_pure_whitespace_is_never_marked(self):
+        """
+        wordAt and effectiveSpan both work at the DOM's own element
+        boundaries, not word boundaries -- a caret landing in the gap
+        between two words, in a separator's own span, is exactly as valid a
+        position as one inside either word either side of it. Marking it
+        would draw a floating highlight over a plain space, nothing there
+        for the reader to actually look at.
+        """
+
+        body = self.mark_changed()
+
+        assert r"/^\s*$/.test(span.textContent)" in body
+
     def test_nothing_is_compared(self):
         """
         An edit is something that happened, not something to be worked out from
@@ -382,7 +396,7 @@ class TestClientContract:
         body = source[source.index("onInput()"):]
         body = body[: body.index("\n    },")]
 
-        assert "this.pastWordBoundary(span, range)" in body
+        assert "this.effectiveSpan(span, range)" in body
 
         helper = source[source.index("spaceAtTail(span, range) {"):]
         helper = helper[: helper.index("\n    },")]
@@ -391,43 +405,189 @@ class TestClientContract:
         assert "span.contains(range.startContainer)" in helper
         assert "this.offsetWithinSpan(span, range) === span.textContent.length" in helper
 
-    def test_a_real_character_after_the_space_still_does_not_mark_it(self):
+    def test_a_real_character_after_the_space_gets_a_span_of_its_own(self):
         """
         The very next real character typed after the space removes the
         span's own trailing whitespace -- the browser keeps extending the
         same span for it too -- so spaceAtTail alone stops matching on that
-        keystroke. pastWordBoundary has to remember where the boundary was
-        instead of re-deriving it fresh each time, or the word before the
-        space reads as edited by a keystroke that was actually starting the
-        next one.
+        keystroke. Marking the shared span at that point would mark the
+        word before the space right along with the new one forming after
+        it, the exact regression this once caused; splitNewWord gives the
+        new content a span of its own instead, so it can be marked without
+        marking the original word too.
         """
 
         source = self.source()
-        body = source[source.index("pastWordBoundary(span, range) {"):]
+        body = source[source.index("effectiveSpan(span, range) {"):]
         body = body[: body.index("\n    },")]
 
         assert "this.newWordBoundary = { span, offset:" in body
-        assert "this.newWordBoundary.span === span" in body
-        assert "this.offsetWithinSpan(span, range) >= this.newWordBoundary.offset" in body
+        assert "offset > boundary" in body
+        assert "this.splitNewWord(span, boundary)" in body
 
-    def test_backspacing_before_the_boundary_forgets_it(self):
+    def test_sitting_right_at_the_boundary_marks_nothing_yet(self):
         """
-        Backspace undoing the space, or eating into the word that follows
-        it and then the original word, means the reader is editing that
-        earlier content now -- the remembered offset has to be dropped
-        there, or typing forward again later (appending to the original
-        word for an unrelated, genuine reason) reads as still past a
-        boundary that no longer describes anything real. This is the exact
-        regression that once made a real edit stop marking at all.
+        The instant the space itself was typed, or the caret is still
+        sitting right after it with nothing typed there yet -- no new word
+        exists to split off, and the original one is not to be marked
+        either.
         """
 
         source = self.source()
-        body = source[source.index("pastWordBoundary(span, range) {"):]
+        body = source[source.index("effectiveSpan(span, range) {"):]
         body = body[: body.index("\n    },")]
 
-        below = body[body.index("if (this.newWordBoundary && this.newWordBoundary.span === span) {"):]
+        assert "if (offset === boundary) return null;" in body
+
+    def test_backspacing_before_the_boundary_forgets_it(self):
+        """
+        Backspace undoing the space, or eating into the new word and then
+        the original one, means the reader is editing that earlier content
+        now -- the remembered offset has to be dropped there, or typing
+        forward again later (appending to the original word for an
+        unrelated, genuine reason) reads as still past a boundary that no
+        longer describes anything real. This is the exact regression that
+        once made a real edit stop marking at all.
+        """
+
+        source = self.source()
+        body = source[source.index("effectiveSpan(span, range) {"):]
+        body = body[: body.index("\n    },")]
+
+        below = body[body.index("if (offset === boundary) return null;"):]
 
         assert "this.newWordBoundary = null;" in below
+        assert "return span;" in below
+
+    def test_split_new_word_moves_the_caret_to_the_end(self):
+        """
+        The new span is where the caret has to end up too -- typing there
+        is always at its own end, since splitNewWord only ever runs the
+        instant the boundary is first crossed. Marking it is left to
+        onInput's own markChanged call afterward, the same as any other
+        span -- not done here, so a span split off holding nothing but more
+        whitespace (a second space typed right after the first) is not
+        marked either. That case is refused before this ever runs though
+        (see TestClientContract's whitespace tests) -- effectiveSpan
+        extends the boundary instead of splitting for it.
+        """
+
+        source = self.source()
+        body = source[source.index("splitNewWord(span, characterOffset) {"):]
+        body = body[: body.index("\n    },")]
+
+        assert 'setAttribute("data-changed"' not in body
+        assert "node.splitText(remaining)" in body
+        assert "range.collapse(false)" in body
+
+    def test_a_second_space_extends_the_boundary_instead_of_splitting(self):
+        """
+        Nothing but whitespace past the remembered boundary -- a second
+        space typed right after the first -- is not a new word yet, so
+        there is nothing to give a span of its own or mark. The boundary
+        moves out to cover it instead, the same as if the first space had
+        landed there to begin with.
+        """
+
+        source = self.source()
+        body = source[source.index("effectiveSpan(span, range) {"):]
+        body = body[: body.index("\n    },")]
+
+        whitespace_check = body[body.index("if (offset > boundary) {"):]
+        whitespace_check = whitespace_check[: whitespace_check.index("const wrapper")]
+
+        assert "span.textContent.slice(boundary, offset)" in whitespace_check
+        assert "this.newWordBoundary = { span, offset };" in whitespace_check
+        assert "return null;" in whitespace_check
+
+    def test_splitting_does_not_flush_the_spaces_own_pending_edit(self):
+        """
+        spaceAtTail's own null already cleared editingWord on the space
+        keystroke -- if the split left onInput to compare against that on
+        its own, the new wrapper would read as a different word and flush
+        whatever was still pending: the space's own transient snapshot
+        (the word with a bare trailing space, not the finished word that
+        followed it), splitting one continuous "type a word after a space"
+        action into two undo steps. The second one lands on that
+        half-finished text, which is why this showed up as a stray extra
+        space appearing after a single undo -- the real separator space
+        plus the one the reader had just typed, both still there in a
+        state nothing should have flushed on its own.
+        """
+
+        source = self.source()
+        body = source[source.index("effectiveSpan(span, range) {"):]
+        body = body[: body.index("\n    },")]
+
+        split_branch = body[body.index("if (offset > boundary) {"):]
+        split_branch = split_branch[: split_branch.index("return wrapper;")]
+
+        assert "this.editingWord = wrapper;" in split_branch
+
+    def test_typing_at_the_head_of_the_next_word_gets_a_span_of_its_own(self):
+        """
+        A caret sitting between a separator and the word right after it
+        resolves into the separator's own tail, not the word's head -- so
+        inserting a new word there looks, to the DOM, like typing real
+        content into what was pure whitespace. Left unsplit the new word
+        keeps growing inside the separator's own span, flush against the
+        word after it with no whitespace between them in the DOM at all --
+        the mirror image of the space-then-word case above, just without a
+        remembered boundary, since the whitespace prefix here never
+        changes keystroke to keystroke the way a growing word does.
+        """
+
+        source = self.source()
+        body = source[source.index("effectiveSpan(span, range) {"):]
+        body = body[: body.index("\n    },")]
+
+        assert r"/^(\s+)(\S+)$/.exec(span.textContent)" in body
+        assert "this.offsetWithinSpan(span, range) === span.textContent.length" in body
+        assert "this.splitNewWord(span, headMatch[1].length)" in body
+
+    def test_a_synthetic_separator_follows_the_new_word(self):
+        """
+        Splitting the new word off its separator is not enough on its own:
+        nothing yet stands between it and the word right after it, so a
+        debounced flush landing before the reader types their own trailing
+        space would still send the two run together -- undo then makes
+        that merge permanent, which is what a single Undo actually showed
+        after this exact keystroke pattern. A synthetic space, inserted the
+        moment the new word is split off, keeps every flush from here on
+        properly spaced even before the reader finishes typing one of
+        their own.
+        """
+
+        source = self.source()
+        body = source[source.index("effectiveSpan(span, range) {"):]
+        body = body[: body.index("\n    },")]
+
+        head_branch = body[body.index("const headMatch ="):]
+
+        assert 'document.createTextNode(" ")' in head_branch
+        assert "this.syntheticSpace = document.createTextNode" in head_branch
+        assert "span.appendChild(this.syntheticSpace)" in head_branch
+        assert '!/^\\s/.test(next.textContent || "")' in head_branch
+
+    def test_the_synthetic_separator_is_retired_once_a_real_one_exists(self):
+        """
+        The reader typing their own trailing space is exactly what
+        spaceAtTail already watches for -- the moment it fires against the
+        new word's own span, whatever synthetic separator was standing in
+        is now redundant, and is removed rather than left to sit
+        alongside a real one and read back as a double space.
+        """
+
+        source = self.source()
+        body = source[source.index("effectiveSpan(span, range) {"):]
+        body = body[: body.index("\n    },")]
+
+        space_branch = body[body.index("if (this.spaceAtTail(span, range)) {"):]
+        space_branch = space_branch[: space_branch.index("this.newWordBoundary = {")]
+
+        assert "this.syntheticSpace.previousSibling === span" in space_branch
+        assert "this.syntheticSpace.remove();" in space_branch
+        assert "this.syntheticSpace = null;" in space_branch
 
     def test_the_template_renders_the_edit_marking(self):
         source = self.source()

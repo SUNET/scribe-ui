@@ -174,6 +174,14 @@ class TranscriptEditor:
 
         self.body = TranscriptBody().classes("w-full")
         self.body.set_subtitle_mode(self.editor.data_format == "srt")
+        # "My edits" can already be on when the page loads -- it is a saved
+        # preference, restored onto the editor before build() runs (see
+        # restore_review_state). TranscriptBody starts every client with it
+        # off regardless, so without this the live, while-typing marking
+        # (data-changed) stays invisible until some real render happens to
+        # call set_show_my_edits and finally sync the two -- an edit right
+        # after opening the page looked unmarked for no visible reason.
+        self.body.set_show_edits(self.editor.show_my_edits)
 
         # Everything that mutates the captions calls refresh_display; send it
         # here so there is only ever one place captions get drawn.

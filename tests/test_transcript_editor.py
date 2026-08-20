@@ -209,6 +209,35 @@ class TestAddSpeaker:
         assert "Ida" in editor.speakers
 
 
+class TestBuildSyncsShowEdits:
+    """
+    "My edits" is a saved preference, restored onto the editor (see
+    restore_review_state in pages/srt.py) before build() ever runs.
+    TranscriptBody itself always starts a fresh client with showEdits off,
+    so without syncing it here, opening the page with the preference
+    already on left the live, while-typing marking invisible until some
+    unrelated real render happened to call set_show_my_edits and catch the
+    two up -- an edit right after opening the page looked unmarked for no
+    visible reason.
+    """
+
+    def test_the_client_prop_matches_the_restored_preference(self, editor):
+        editor.show_my_edits = True
+
+        view = TranscriptEditor(editor)
+        view.build()
+
+        assert view.body._props["showEdits"] is True
+
+    def test_off_stays_off(self, editor):
+        editor.show_my_edits = False
+
+        view = TranscriptEditor(editor)
+        view.build()
+
+        assert view.body._props["showEdits"] is False
+
+
 class TestBlocks:
     def test_one_block_per_caption(self, view, editor):
         assert len(view.blocks()) == len(editor.captions)
@@ -493,13 +522,11 @@ class TestSplitFocus:
 
 class TestSubtitleEnter:
     """
-    Enter means something different in subtitle mode: a caption is short
-    enough that the reader controls its own line breaks by hand, which is
-    wanted far more often than starting a new timed cue, so splitting moves
-    to Ctrl/Cmd+Enter there and bare Enter inserts a line break instead. A
-    transcription has no use for a manual line break in running speech, so
-    it keeps plain Enter for splitting -- see the onKeydown routing itself,
-    since only the client-side gate decides which one a keypress reaches.
+    Enter means the same thing in both modes now: bare Enter inserts a line
+    break, and starting a new block -- a new timed cue in a subtitle, a new
+    speaker turn in a transcription -- moves to Ctrl/Cmd+Enter instead. See
+    the onKeydown routing itself, since only the client-side gate decides
+    which one a keypress reaches.
     """
 
     def source(self) -> str:
@@ -513,21 +540,19 @@ class TestSubtitleEnter:
 
         return body[: body.index("\n    },\n")]
 
-    def test_bare_enter_is_gated_on_subtitle_mode_and_no_modifier(self):
+    def test_bare_enter_is_gated_on_no_modifier(self):
         body = self.keydown_body()
 
         assert (
-            'event.key === "Enter" && this.subtitleMode '
-            "&& !event.ctrlKey && !event.metaKey"
-            in body
+            'event.key === "Enter" && !event.ctrlKey && !event.metaKey' in body
         )
         assert "this.insertLineBreak()" in body
 
-    def test_splitting_still_falls_through_for_every_other_case(self):
+    def test_splitting_still_falls_through_for_ctrl_or_cmd(self):
         """
-        The unconditional split further down is what a transcription's bare
-        Enter reaches, and what Ctrl/Cmd+Enter reaches in subtitle mode too --
-        the gate above only intercepts the one case that is not a split.
+        The unconditional split further down is what Ctrl/Cmd+Enter reaches
+        in either mode -- the gate above only intercepts the one case that
+        is not a split.
         """
 
         body = self.keydown_body()
@@ -673,7 +698,62 @@ class TestCaretSurvivesUndo:
 
         next_tick = body[body.index("this.$nextTick(() => {"):]
 
-        assert "this.placeCaretAt(block, restoring.offset)" in next_tick
+        assert "this.placeCaretAt(block, offset)" in next_tick
+
+    def test_the_offset_is_carried_by_the_blocks_own_change_in_length(self):
+        """
+        Undo (most of all) changes the very text the caret's offset was
+        measured against -- restoring that offset unchanged into a block
+        that shrank lands past the word the caret was actually at, into
+        whatever now sits where the old, larger offset used to point,
+        which is exactly how a word one over from the one just undone
+        started reading as edited: the reader kept typing where they
+        thought the caret still was, and it was not. Carrying the block's
+        own change in length along with the offset is what keeps it at the
+        same word regardless of which way the text moved.
+        """
+
+        body = self.revision_watcher_body()
+
+        next_tick = body[body.index("this.$nextTick(() => {"):]
+
+        assert "const newLength = this.plainText(block.textContent).length;" in next_tick
+        assert (
+            "const offset = Math.max(\n"
+            "              0,\n"
+            "              restoring.offset + (newLength - restoring.length)\n"
+            "            );"
+            in next_tick
+        )
+
+    def test_editing_word_is_reset_along_with_the_rest(self):
+        """
+        Left stale it would still compare unequal to whatever wordAt finds
+        next -- a detached node matches nothing -- so this changes no
+        behaviour by itself; it just keeps nothing pointing at an element
+        that no longer exists, the same reasoning newWordBoundary and
+        liveCounts are already reset here for.
+        """
+
+        body = self.revision_watcher_body()
+
+        before_rebuild = body[: body.index("this.$nextTick(() => {")]
+
+        assert "this.editingWord = null;" in before_rebuild
+
+    def test_synthetic_space_is_reset_along_with_the_rest(self):
+        """
+        A block that was typed into is rebuilt from scratch on a real
+        render, same as editingWord and newWordBoundary above -- whatever
+        synthetic separator effectiveSpan's headMatch branch left standing
+        in the old DOM is about to stop existing along with it.
+        """
+
+        body = self.revision_watcher_body()
+
+        before_rebuild = body[: body.index("this.$nextTick(() => {")]
+
+        assert "this.syntheticSpace = null;" in before_rebuild
 
     def test_place_caret_at_falls_back_to_the_end(self):
         """
