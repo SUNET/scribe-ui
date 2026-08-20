@@ -8,17 +8,30 @@ NiceGUI-based web frontend for Sunet Scribe (transcription service). Requires Py
 
 - **Framework**: NiceGUI (Python-based web UI built on Quasar/Vue)
 - **Entry point**: `main.py` — registers `@ui.page("/")` and `/logout`, handles OIDC auth callback and encryption-password bootstrap
-- **Pages**: `pages/` — `home.py`, `admin.py`, `srt.py`, `user.py`, `status.py`. Each exports a `create()` function called from `main.py`
+- **Pages**: `pages/` — `home.py`, `admin/` (package, one module per admin page: `analytics.py`, `announcements.py`, `customers.py`, `groups.py`, `health.py`, `rules.py`, `shared.py`, `users.py`), `srt.py`, `user.py`, `status.py`. Each top-level page module exports a `create()` function called from `main.py`; `pages/admin/__init__.py` imports the admin submodules for their `@ui.page` side effects and re-exports `create` from `groups.py` for `/admin` itself.
 - **Utilities**: `utils/` — split by concern:
   - `helpers.py` — `storage_encrypt`/`storage_decrypt` (AES-256-GCM), filename sanitisation, encryption-password set/verify/reset, customer/realm CRUD
   - `token.py` — `get_auth_header`, `token_refresh`, `get_user_info`, `get_admin_status`, `get_bofh_status`
   - `common.py` — `page_init()` and shared UI scaffolding
   - `settings.py` — pydantic `BaseSettings` loaded from `.env` via `get_settings()` (lru-cached)
-  - `caption.py` (`SRTCaption`), `srt.py` (`SRTEditor`), `video.py`, `undo_redo.py`, `customer.py`, `group.py`, `crypto.py`, `styles.py`
+  - `caption.py` (`SRTCaption`), `video.py`, `undo_redo.py`, `customer.py`, `group.py`, `crypto.py`, `styles.py`
+  - The SRT/transcript editor is split across several files rather than one monolith — see "Editor split" below.
 - **DB / analytics**: `db/analytics.py` — async `httpx` calls to backend API
 - **Static assets**: `static/` — logos, favicon
-- **Tests**: `tests/` — pytest with `nicegui.testing.user_plugin`; run with `.venv/bin/python -m pytest` (not system python)
+- **Tests**: `tests/` — pytest with `nicegui.testing.user_plugin`; run with `uv run pytest` (or `.venv/bin/python -m pytest`)
 - **Container**: `Dockerfile` at repo root
+
+### Editor split (`utils/srt*.py`, `utils/transcript_editor.*`)
+
+`pages/srt.py` opens either the caption editor or the document editor depending on `data_format`, both backed by one `SRTEditor` (`utils/srt.py`) so saving, exporting, and word/review data work identically either way:
+
+- `srt.py` — `SRTEditor` core: state, caption CRUD, undo/redo wiring (delegates to `undo_redo.py`), `parse_srt`/`parse_txt`.
+- `srt_render.py` — caption-card rendering for the **subtitle (SRT)** editor.
+- `srt_review.py` — word-level review/edit marking shared by both editors (`retag_edits`, `review_runs`, confidence flagging).
+- `srt_search.py`, `srt_export.py` — search panel and export dialog, shared by both editors.
+- `transcript_editor.py` / `transcript_editor.js` — the **document editor** used for `txt` transcriptions: one `contenteditable` (speaker + timestamp gutter, Vue component `transcript_editor.js`) instead of caption cards. Structural edits (split/merge/speaker/timing) are reported to the server rather than left to the browser, which owns the block structure and sends a fresh set back. `SRTEditor.render_override` points at `TranscriptEditor.refresh` when this editor is active, which is what `refresh_display()` checks to redirect instead of building caption cards.
+
+**Gotcha with `transcript_editor.js`:** NiceGUI registers a custom Vue component (`component="…js"`) once, at class-definition/import time, keyed by file content — a running server keeps serving the old JS until the *process* restarts, not just the browser. `ui.run(reload=True)` is on by default, but uvicorn's reload watcher only globs `*.py` by default, so an edit to this file was silently invisible to a running dev server. `main.py` now passes `uvicorn_reload_includes="*.py, *.js, *.vue"` so edits here trigger the same auto-reload `.py` changes do — if a JS fix still doesn't seem to apply, restart the server by hand and confirm that setting is intact.
 
 ## Key conventions
 
@@ -74,9 +87,9 @@ This app holds session tokens, user PII, and an encryption password that gates b
 - `Dockerfile` should not run as root in production; pin base image and pip-installed versions.
 - Dependencies are tracked in `pyproject.toml` / `uv.lock`. Run `uv lock --upgrade` deliberately, review the diff, and prefer libraries from the "secure-by-default" list (Bleach, defusedxml, Tink) over hand-rolled equivalents.
 
-## Word timings (`utils/srt.py`)
+## Word timings (`utils/srt_review.py`)
 
-`SRTEditor.load_words()` takes the optional payload from `GET /api/v1/transcriber/{uuid}/words`:
+`SRTEditor` is `ReviewMixin, SearchMixin, ExportMixin, RenderMixin` composed onto the core defined in `utils/srt.py` (see "Editor split" above). `ReviewMixin.load_words()` takes the optional payload from `GET /api/v1/transcriber/{uuid}/words`:
 
 ```json
 {"version": 1, "words": [{"t": "Hej", "s": 0.12, "e": 0.34, "c": 0.98}]}
@@ -116,7 +129,7 @@ Access via `get_settings()` (cached).
 - **Realm Admin** (`admin=True`): scoped to own realm + `admin_domains`. Can manage rules for their realms
 - **Regular User**: no admin access
 
-## Onboarding rules (pages/admin.py)
+## Onboarding rules (pages/admin/rules.py)
 
 - Rules page at `/admin/rules` — table with create/edit/delete dialogs and per-row test/delete actions
 - Realm field is a multi-select dropdown filtered to real domains (containing a dot/TLD)
@@ -130,7 +143,7 @@ Access via `get_settings()` (cached).
 
 ```bash
 # All tests
-.venv/bin/python -m pytest
+uv run pytest
 ```
 
-`pytest.ini` configures `asyncio_mode = auto`, `main_file = main.py`, and loads `nicegui.testing.user_plugin`. Current test files: `tests/test_srt.py`, `tests/test_storage.py`, `tests/conftest.py`.
+A `pytest.ini` (gitignored, not committed) normally configures `asyncio_mode = auto`, `main_file = main.py`, and loads `nicegui.testing.user_plugin` — check it exists locally if async tests misbehave; the suite currently collects and passes without one too. Current test files: `tests/test_srt.py`, `tests/test_storage.py`, `tests/test_transcript_editor.py`, `tests/test_my_edits.py`, `tests/test_words.py`, `tests/test_word_moves.py`, `tests/test_parse_txt.py`, `tests/test_caption_editor_styles.py`, `tests/test_billing_export.py`, `tests/test_event_loop_hygiene.py`, `tests/conftest.py`.
