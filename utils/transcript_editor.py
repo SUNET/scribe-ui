@@ -16,16 +16,19 @@
 # limitations under the License.
 
 """
-Editor for transcriptions, as opposed to subtitles.
+The document editor: one contenteditable holding every caption, used for
+both transcriptions and subtitles.
 
-A transcription is read in long stretches and edited in place; it is not a
-series of timed cues the user is deliberately shaping. So this presents the
-whole thing as one document -- one contenteditable, speakers and timestamps in
-the margin -- rather than as a list of caption cards.
+A transcription is read in long stretches and edited in place, with speakers
+and timestamps in the margin. A subtitle is a short, timed cue meant to fit
+on screen in a line or two -- no speakers, and a length guideline instead.
+Both are still just a list of timed text blocks, so one editor draws both;
+subtitleMode on the component swaps the margin for a character/line count and
+turns on the per-caption delete action.
 
 It edits the SRTEditor's own captions, so saving, exporting, the review
-highlighting and the word data all keep working exactly as they do for
-subtitles. The subtitle editor is untouched.
+highlighting and the word data all keep working exactly as they do today,
+whichever format is open.
 """
 
 import re
@@ -35,6 +38,7 @@ from typing import Callable, List, Optional
 from nicegui import ui
 
 from utils.caption import SRTCaption
+from utils.settings import get_settings
 from utils.srt_review import EDIT_TOOLTIP, REVIEW_TOOLTIP
 
 
@@ -51,6 +55,27 @@ def format_time_label(seconds: float) -> str:
     secs, milliseconds = divmod(remainder, 1000)
 
     return f"{hours:02d}:{minutes:02d}:{secs:02d} .{milliseconds:03d}"
+
+
+TIME_LABEL_PATTERN = re.compile(r"^\s*(\d{1,2}):(\d{2}):(\d{2})\s*\.(\d{3})\s*$")
+
+
+def parse_time_label(text: str) -> Optional[float]:
+    """
+    The inverse of format_time_label, for editing a subtitle's timing
+    directly where it is shown rather than through the slider dialog. None
+    for anything that does not match, so a mistyped or partial value leaves
+    the timing untouched rather than being guessed at.
+    """
+
+    match = TIME_LABEL_PATTERN.match(text or "")
+
+    if not match:
+        return None
+
+    hours, minutes, seconds, millis = (int(group) for group in match.groups())
+
+    return hours * 3600 + minutes * 60 + seconds + millis / 1000
 
 
 class TranscriptBody(
@@ -74,6 +99,16 @@ class TranscriptBody(
         self._props["revision"] = 0
         self._props["speakers"] = []
         self._props["unused"] = []
+        # Subtitle-only UI: no speaker margin, a length guideline instead, and
+        # a delete action per caption. Off for a transcription.
+        self._props["subtitleMode"] = False
+        # So the client can recompute a caption's own character-count
+        # guideline as it is typed into, without a round trip to the server
+        # -- see onInput in the .js file for why that round trip is
+        # deliberately not taken.
+        settings = get_settings()
+        self._props["characterLimit"] = settings.CHARACTER_LIMIT
+        self._props["maxSubtitleLines"] = settings.MAX_SUBTITLE_LINES
 
     def set_speakers(self, speakers: List[str], unused: List[str]) -> None:
         self._props["speakers"] = speakers
@@ -109,8 +144,15 @@ class TranscriptBody(
         self._props["showEdits"] = show
         self.update()
 
-    def focus_block(self, block_id: int) -> None:
-        self.run_method("focusBlock", block_id)
+    def focus_block(self, block_id: int, offset: int = 0) -> None:
+        self.run_method("focusBlock", block_id, offset)
+
+    def scroll_to_block(self, block_id: int) -> None:
+        self.run_method("scrollToBlock", block_id)
+
+    def set_subtitle_mode(self, subtitle_mode: bool) -> None:
+        self._props["subtitleMode"] = subtitle_mode
+        self.update()
 
 
 class TranscriptEditor:
@@ -131,20 +173,26 @@ class TranscriptEditor:
         """
 
         self.body = TranscriptBody().classes("w-full")
+        self.body.set_subtitle_mode(self.editor.data_format == "srt")
 
         # Everything that mutates the captions calls refresh_display; send it
-        # here so the caption cards are never drawn for a transcription.
+        # here so there is only ever one place captions get drawn.
         self.editor.render_override = self.refresh
+        # And this is what refresh_display's caller, select_caption, uses to
+        # say which caption search or autoscroll just moved to.
+        self.editor.on_select = self.scroll_to
 
         self.body.on("blocktext", lambda event: self.set_text(event.args))
         self.body.on("splitblock", lambda event: self.split(event.args))
         self.body.on("mergeblock", lambda event: self.merge(event.args))
+        self.body.on("addblock", lambda event: self.add_after(event.args))
+        self.body.on("deleteblock", lambda event: self.delete(event.args))
         self.body.on("blockclick", lambda event: self.seek(event.args))
         self.body.on("assignspeaker", lambda event: self.assign_speaker(event.args))
         self.body.on("addspeaker", lambda event: self.prompt_new_speaker())
         self.body.on("renamespeaker", lambda event: self.prompt_rename(event.args))
         self.body.on("removespeaker", lambda event: self.drop_speaker(event.args))
-        self.body.on("timeclick", lambda event: self.edit_time(event.args))
+        self.body.on("retime", lambda event: self.retime(event.args))
 
         self.refresh()
 
@@ -157,8 +205,12 @@ class TranscriptEditor:
         reference to it.
         """
 
-        return [
-            {
+        subtitles = self.editor.data_format == "srt"
+
+        blocks = []
+
+        for caption in self.editor.captions:
+            block = {
                 "id": caption.index,
                 "speaker": caption.speaker,
                 "start_label": format_time_label(caption.get_start_seconds()),
@@ -166,9 +218,16 @@ class TranscriptEditor:
                 "runs": self.editor.review_runs(
                     caption, per_word=self.editor.highlight_word
                 ),
+                "invalid": not caption.is_valid,
+                "highlighted": caption.is_highlighted,
             }
-            for caption in self.editor.captions
-        ]
+
+            if subtitles:
+                block["line_counts"] = self.editor.caption_line_counts(caption)
+
+            blocks.append(block)
+
+        return blocks
 
     def refresh(self) -> None:
         """
@@ -240,6 +299,14 @@ class TranscriptEditor:
         is started instead -- the same thing Enter does at the end of a
         paragraph anywhere else. Only the transcription editor behaves this
         way; the subtitle editor's split is unchanged.
+
+        Refocuses the start of the new second block afterward, the same as
+        splitting a paragraph anywhere else leaves the caret at the start of
+        the part that just became its own -- not because the caret would
+        otherwise end up somewhere broken (the first block keeps its own
+        identity and DOM node here, unlike a merge's removal), just because
+        that is where a reader who just pressed Enter mid-sentence expects
+        to keep typing.
         """
 
         caption = self.caption(self.block_id(args))
@@ -255,9 +322,19 @@ class TranscriptEditor:
             self.focus(added.index)
             return
 
+        before = len(self.editor.captions)
+        list_position = self.editor.captions.index(caption)
+
         self.editor.split_caption(caption, cursor_position=position)
         self.refresh()
         self.changed()
+
+        # split_caption refuses a split with nothing on one side of the
+        # caret (see its own docstring) -- when that happens no second
+        # block was ever created, and there is nothing to refocus.
+        if len(self.editor.captions) > before:
+            second = self.editor.captions[list_position + 1]
+            self.focus(second.index)
 
     def insert_block_after(self, caption: SRTCaption) -> SRTCaption:
         """
@@ -291,17 +368,26 @@ class TranscriptEditor:
 
         return added
 
-    def focus(self, block_id: int) -> None:
+    def focus(self, block_id: int, offset: int = 0) -> None:
         """
-        Put the caret in a block, so a new one can be typed into straight away.
+        Put the caret in a block, so it can be typed into straight away --
+        at the start by default, for a freshly started block, or at a
+        specific character offset, for merge() to land it at the seam.
         """
 
         if self.body is not None:
-            self.body.focus_block(block_id)
+            self.body.focus_block(block_id, offset)
 
     def merge(self, args) -> None:
         """
         Join a block with the one before or after it.
+
+        Refocuses the surviving block at the seam between the two texts
+        afterward -- merging previous removes the block the caret was in
+        (that block's own DOM node goes with it, and the browser does not
+        leave the caret anywhere sensible once it has), and even merging
+        next, which does not, is more useful landing exactly where the two
+        met than wherever the caret already happened to be.
         """
 
         caption = self.caption(self.block_id(args))
@@ -313,14 +399,67 @@ class TranscriptEditor:
         position = self.editor.captions.index(caption)
 
         if direction == "previous" and position > 0:
+            survivor = self.editor.captions[position - 1]
+            # A "\n" only actually lands between the two if caption itself
+            # has text to put after it -- merge_with_previous does not add
+            # a separator for nothing, see its own comment -- so the seam
+            # is the survivor's own end when it is empty.
+            offset = len(survivor.text) + (len("\n") if caption.text else 0)
             self.editor.merge_with_previous(caption)
         elif direction == "next" and position < len(self.editor.captions) - 1:
+            survivor = caption
+            offset = len(caption.text)
             self.editor.merge_with_next(caption)
         else:
             return
 
         self.refresh()
         self.changed()
+        self.focus(survivor.index, offset)
+
+    def delete(self, args) -> None:
+        """
+        Drop a caption outright, rather than merging its text into a
+        neighbour. Subtitle-only: the click that reaches this only exists
+        when the component is in subtitle mode, see transcript_editor.js.
+
+        Refocuses a neighbour afterward, the same as add_after does for the
+        caption it starts -- refresh() removes the deleted caption's own
+        DOM node, and a caret that was inside it does not survive that: the
+        browser collapses the now-invalid selection to the start of the
+        contenteditable rather than anywhere near where it just was, which
+        reads as the cursor jumping to the top of the page.
+        """
+
+        caption = self.caption(self.block_id(args))
+
+        if caption is None:
+            return
+
+        position = self.editor.captions.index(caption)
+
+        self.editor.remove_caption(caption)
+        self.refresh()
+        self.changed()
+
+        remaining = self.editor.captions
+        if remaining:
+            neighbor = remaining[min(position, len(remaining) - 1)]
+            self.focus(neighbor.index)
+
+    def add_after(self, args) -> None:
+        """
+        Insert a new empty caption after this one and focus it. The "+" next
+        to delete; subtitle-only, same reasoning as delete above.
+        """
+
+        caption = self.caption(self.block_id(args))
+
+        if caption is None:
+            return
+
+        added = self.insert_block_after(caption)
+        self.focus(added.index)
 
     def seek(self, args) -> None:
         """
@@ -387,6 +526,15 @@ class TranscriptEditor:
     def changed(self) -> None:
         if self.on_change:
             self.on_change()
+
+    def scroll_to(self, caption: SRTCaption) -> None:
+        """
+        Bring a caption into view -- what search and autoscroll ask for via
+        editor.on_select once they have picked which caption that is.
+        """
+
+        if self.body is not None:
+            self.body.scroll_to_block(caption.index)
 
     # ── speaker ─────────────────────────────────────────────────────────────
 
@@ -566,75 +714,15 @@ class TranscriptEditor:
 
         return True
 
-    def edit_time(self, args) -> None:
+    def apply_time(self, caption: SRTCaption, start: float, end: float) -> bool:
         """
-        Adjust a block's start and end, bounded by its neighbours so blocks
-        cannot be dragged through one another.
-        """
-
-        caption = self.caption(self.block_id(args))
-
-        if caption is None:
-            return
-
-        position = self.editor.captions.index(caption)
-        captions = self.editor.captions
-
-        floor = (
-            captions[position - 1].get_end_seconds() if position > 0 else 0.0
-        )
-        ceiling = (
-            captions[position + 1].get_start_seconds()
-            if position < len(captions) - 1
-            else caption.get_end_seconds() + 60.0
-        )
-
-        with ui.dialog() as dialog, ui.card().classes("transcript-dialog"):
-            ui.label("Timing").classes("text-subtitle1 font-semibold")
-
-            readout = ui.label().classes("transcript-time-readout")
-
-            span = ui.range(
-                min=round(floor, 3),
-                max=round(ceiling, 3),
-                step=0.01,
-                value={
-                    "min": caption.get_start_seconds(),
-                    "max": caption.get_end_seconds(),
-                },
-            ).props("label-always snap")
-
-            def show() -> None:
-                readout.set_text(
-                    f"{format_time_label(span.value['min'])}"
-                    f"   -   {format_time_label(span.value['max'])}"
-                )
-
-            span.on("update:model-value", lambda: show())
-            show()
-
-            with ui.row().classes("w-full justify-end gap-2"):
-                ui.button("Cancel", on_click=dialog.close).props("flat")
-                ui.button(
-                    "Apply",
-                    on_click=lambda: (
-                        self.apply_time(
-                            caption, span.value["min"], span.value["max"]
-                        ),
-                        dialog.close(),
-                    ),
-                )
-
-        dialog.open()
-
-    def apply_time(self, caption: SRTCaption, start: float, end: float) -> None:
-        """
-        Write adjusted times back to a block.
+        Write adjusted times back to a block. Returns whether it did, since
+        retime() below has an input to revert if it did not.
         """
 
         if end <= start:
             ui.notify("A block has to end after it starts", type="warning")
-            return
+            return False
 
         self.editor.save_state_for_undo()
         caption.start_time = self.editor.seconds_to_timestamp(start)
@@ -642,6 +730,39 @@ class TranscriptEditor:
         self.editor.mark_as_changed()
         self.refresh()
         self.changed()
+
+        return True
+
+    def retime(self, args) -> None:
+        """
+        A start or end time typed directly where it is shown, in either
+        mode -- no dialog.
+        """
+
+        caption = self.caption(self.block_id(args))
+
+        if caption is None:
+            return
+
+        edge = args.get("edge") if isinstance(args, dict) else None
+        text = args.get("value") if isinstance(args, dict) else None
+
+        if edge not in ("start", "end"):
+            return
+
+        seconds = parse_time_label(text)
+
+        if seconds is not None:
+            start = seconds if edge == "start" else caption.get_start_seconds()
+            end = seconds if edge == "end" else caption.get_end_seconds()
+
+            if self.apply_time(caption, start, end):
+                return
+
+        # Nothing usable was typed, or applying it was refused: put the real
+        # value back rather than leave the input showing text that was never
+        # saved.
+        self.refresh()
 
     # ── following the video ─────────────────────────────────────────────────
 

@@ -817,10 +817,10 @@ class TestReviewRuns:
 
 class TestRenderOverride:
     """
-    A transcription is drawn by the document editor. Everything that changes
-    the captions funnels through refresh_display, so that is where the
-    redirection has to happen -- otherwise the caption cards reappear whenever
-    the review toggle, a split or a merge fires.
+    One editor draws every caption now, whichever format is open. Everything
+    that changes the captions funnels through refresh_display, which only
+    ever forwards to it -- there is no separate caption renderer to redirect
+    away from any more.
     """
 
     @pytest.fixture
@@ -837,21 +837,20 @@ class TestRenderOverride:
 
         return editor
 
-    def test_caption_cards_are_not_drawn_when_overridden(self, live):
+    def test_forwards_to_the_document_editor_when_built(self, live):
         calls = []
-        drawn = []
-
-        class Container:
-            def clear(self):
-                drawn.append("cleared")
-
-        live.main_container = Container()
         live.render_override = lambda: calls.append("document")
 
         live.refresh_display(force_full_refresh=True)
 
         assert calls == ["document"]
-        assert drawn == [], "the caption renderer must not have run"
+
+    def test_does_nothing_before_the_editor_is_built(self, live):
+        # render_override is still None at this point -- refresh_display is
+        # called this early by some setup paths, and must not raise.
+        assert live.render_override is None
+
+        live.refresh_display(force_full_refresh=True)
 
     def test_toggling_uncertain_words_redraws_the_document(self, live):
         calls = []
@@ -882,36 +881,6 @@ class TestRenderOverride:
         live.merge_with_next(live.captions[0])
 
         assert calls == ["document", "document"]
-
-    def test_subtitles_still_use_the_caption_renderer(self, live):
-        """
-        With no override -- the subtitle editor -- nothing changes.
-        """
-
-        assert live.render_override is None
-
-        drawn = []
-
-        class Container:
-            """Enough of a container for the caption renderer to run."""
-
-            def clear(self):
-                drawn.append("cleared")
-
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *args):
-                return False
-
-        live.main_container = Container()
-        live.caption_containers = {}
-        live.captions = []
-
-        live.refresh_display(force_full_refresh=True)
-
-        assert drawn == ["cleared"], "the caption renderer should have run"
-
 
 class TestWordHighlightRuns:
     """
@@ -1079,10 +1048,12 @@ class TestSplitAtBlockEdges:
 
 class TestShortcutScope:
     """
-    Both editors share one key handler. What remains bound is the conventional
-    file, history and playback set plus Esc. Every editing operation was
-    dropped: each duplicated a button on the caption card, and with ignore=[]
-    they fired while the user was typing into that very card.
+    There is one editor now, for both formats, and one key handler. What
+    remains bound is the conventional file, history, search and playback set.
+    Every editing operation was dropped: each duplicated a gesture the
+    document editor already provides on its own (Enter to split,
+    Backspace/Delete to merge, a click to delete a caption outright), and with
+    ignore=[] they fired while the reader was typing.
     """
 
     @pytest.fixture
@@ -1164,16 +1135,15 @@ class TestShortcutScope:
 
         assert calls == ["undo", "redo", "redo"]
 
-    def test_find_is_subtitles_only(self, live):
+    def test_find_works_whichever_format_is_open(self, live):
         opened = []
         live.create_search_panel = lambda **kwargs: opened.append(True)
 
         self.press(live, "f", ctrl=True)
-        assert opened == [True]
-
         live.render_override = lambda: None
         self.press(live, "f", ctrl=True)
-        assert opened == [True], "search is not wired into the document editor"
+
+        assert opened == [True, True]
 
     def test_no_selection_does_not_raise(self, live, monkeypatch):
         # Escape reaches for the browser, which is not here.

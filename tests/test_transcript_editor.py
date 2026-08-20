@@ -223,6 +223,86 @@ class TestBlocks:
     def test_ids_match_caption_indices(self, view, editor):
         assert [b["id"] for b in view.blocks()] == [c.index for c in editor.captions]
 
+    def test_transcription_blocks_have_no_line_counts(self, view):
+        """
+        A transcription has no length guideline to show, so blocks() must
+        not attach one -- see TestSubtitleBlocks for the format that does.
+        """
+
+        assert "line_counts" not in view.blocks()[0]
+
+
+class TestSubtitleLineCounts:
+    """
+    caption_line_counts is what blocks() surfaces in the margin next to each
+    line of a subtitle -- one entry per line, in place of a single combined
+    count a transcription has no equivalent of.
+    """
+
+    def subtitle_editor(self) -> SRTEditor:
+        editor = SRTEditor("job-uuid", "srt", "file.srt")
+        editor.data_format = "srt"
+
+        return editor
+
+    def test_one_entry_per_line(self):
+        editor = self.subtitle_editor()
+        caption = SRTCaption(1, "00:00:00,000", "00:00:02,000", "en rad\ntva rad")
+
+        counts = editor.caption_line_counts(caption)
+
+        assert [c["length"] for c in counts] == [len("en rad"), len("tva rad")]
+
+    def test_a_long_line_is_flagged_alone(self):
+        editor = self.subtitle_editor()
+        long_line = "x" * 50
+        caption = SRTCaption(1, "00:00:00,000", "00:00:02,000", f"{long_line}\nkort")
+
+        counts = editor.caption_line_counts(caption)
+
+        assert [c["exceeded"] for c in counts] == [True, False]
+
+    def test_too_many_lines_flags_every_line(self):
+        """
+        A caption with more lines than the guideline allows is a problem
+        with the caption as a whole, not with any one line's length, so
+        every line is flagged -- not only whichever one happens to be long.
+        """
+
+        editor = self.subtitle_editor()
+        caption = SRTCaption(1, "00:00:00,000", "00:00:02,000", "en\ntva\ntre")
+
+        counts = editor.caption_line_counts(caption)
+
+        assert [c["exceeded"] for c in counts] == [True, True, True]
+
+    def test_the_tooltip_names_the_guideline(self):
+        editor = self.subtitle_editor()
+        caption = SRTCaption(1, "00:00:00,000", "00:00:02,000", "kort rad")
+
+        tooltip = editor.caption_line_counts(caption)[0]["tooltip"]
+
+        assert "42" in tooltip
+        assert "2 lines" in tooltip
+
+
+class TestSubtitleBlocks:
+    """
+    blocks() only attaches line_counts for subtitles -- a transcription has
+    no length guideline to show, per TestBlocks above.
+    """
+
+    def test_subtitle_blocks_carry_line_counts(self, editor, view):
+        editor.data_format = "srt"
+        editor.captions[0].text = "en rad\ntva rad"
+
+        block = view.blocks()[0]
+
+        assert [c["length"] for c in block["line_counts"]] == [
+            len("en rad"),
+            len("tva rad"),
+        ]
+
 
 class TestEventPayloads:
     """
@@ -343,6 +423,766 @@ class TestEnterAtBlockEnd:
 
         assert [c.text for c in editor.captions[3:]] == ["fyra", "fem"]
         assert "" not in [c.text for c in editor.captions]
+
+
+class TestSplitFocus:
+    """
+    Splitting mid-text leaves the caret at the start of the new second
+    block afterward -- the same place a reader who just pressed Enter
+    mid-sentence anywhere else expects to keep typing. Unlike a merge's
+    removal, the first block keeps its own identity and DOM node here, so
+    this is not about the caret ending up somewhere broken without it, just
+    about landing where the reader would.
+    """
+
+    def focused(self, view) -> list:
+        calls = []
+
+        class FakeBody:
+            def focus_block(self, block_id, offset=0):
+                calls.append((block_id, offset))
+
+            def set_blocks(self, blocks):
+                pass
+
+            def set_speakers(self, *args, **kwargs):
+                pass
+
+        view.body = FakeBody()
+        return calls
+
+    def test_it_focuses_the_start_of_the_new_second_block(self, view, editor):
+        target = editor.captions[0]
+        calls = self.focused(view)
+
+        view.split({"id": target.index, "offset": 2})
+
+        second = editor.captions[1]
+        assert second.text == "t."
+        assert calls == [(second.index, 0)]
+
+    def test_a_refused_split_focuses_nothing(self, view, editor):
+        """
+        Nothing before the caret (see split_caption's own docstring) means
+        no second block was ever created -- there is nothing to move the
+        caret to, and it is left wherever it already was.
+        """
+
+        target = editor.captions[0]
+        calls = self.focused(view)
+
+        view.split({"id": target.index, "offset": 0})
+
+        assert calls == []
+
+    def test_the_end_of_block_branch_is_unaffected(self, view, editor):
+        """
+        insert_block_after already focuses the block it starts -- this
+        class only covers the mid-text branch, but a regression here would
+        show up as a second, conflicting focus_block call for the same
+        split.
+        """
+
+        target = editor.captions[0]
+        calls = self.focused(view)
+
+        view.split({"id": target.index, "offset": len(target.text)})
+
+        assert calls == [(editor.captions[1].index, 0)]
+
+
+class TestSubtitleEnter:
+    """
+    Enter means something different in subtitle mode: a caption is short
+    enough that the reader controls its own line breaks by hand, which is
+    wanted far more often than starting a new timed cue, so splitting moves
+    to Ctrl/Cmd+Enter there and bare Enter inserts a line break instead. A
+    transcription has no use for a manual line break in running speech, so
+    it keeps plain Enter for splitting -- see the onKeydown routing itself,
+    since only the client-side gate decides which one a keypress reaches.
+    """
+
+    def source(self) -> str:
+        import pathlib
+
+        return pathlib.Path("utils/transcript_editor.js").read_text()
+
+    def keydown_body(self) -> str:
+        source = self.source()
+        body = source[source.index("onKeydown(event) {"):]
+
+        return body[: body.index("\n    },\n")]
+
+    def test_bare_enter_is_gated_on_subtitle_mode_and_no_modifier(self):
+        body = self.keydown_body()
+
+        assert (
+            'event.key === "Enter" && this.subtitleMode '
+            "&& !event.ctrlKey && !event.metaKey"
+            in body
+        )
+        assert "this.insertLineBreak()" in body
+
+    def test_splitting_still_falls_through_for_every_other_case(self):
+        """
+        The unconditional split further down is what a transcription's bare
+        Enter reaches, and what Ctrl/Cmd+Enter reaches in subtitle mode too --
+        the gate above only intercepts the one case that is not a split.
+        """
+
+        body = self.keydown_body()
+        after_gate = body[body.index("this.insertLineBreak()"):]
+
+        assert '$emit("splitblock"' in after_gate
+
+    def insert_line_break_body(self) -> str:
+        source = self.source()
+        body = source[source.index("insertLineBreak() {"):]
+
+        return body[: body.index("\n    },\n")]
+
+    def test_it_builds_a_real_text_node_rather_than_execcommand(self):
+        """
+        document.execCommand("insertText", ..., "\\n") looked like the
+        natural fit but corrupted surrounding content in testing -- went as
+        far as deleting it -- so this is spliced in by hand with the Range
+        API instead.
+        """
+
+        body = self.insert_line_break_body()
+
+        assert "execCommand" not in body
+        assert "document.createTextNode(" in body
+        assert "range.insertNode(node)" in body
+
+    def test_it_reports_the_change_itself(self):
+        """
+        Inserting through the DOM this way fires no input event, so onInput's
+        own bookkeeping never runs unless this calls it directly.
+        """
+
+        body = self.insert_line_break_body()
+
+        assert "this.onInput()" in body
+
+    def test_a_break_at_the_true_end_gets_a_caret_anchor(self):
+        """
+        A "\\n" with nothing after it gets no line box at all in most
+        browsers -- a forced break needs real content following it to be
+        reserved room for -- so a break landing at the very end of the
+        caption's text carries a zero-width space along with it, giving the
+        browser something to hang a caret on for that now-empty last line.
+        A break in the middle of existing text needs none of this: the text
+        after it already earns the line box.
+        """
+
+        body = self.insert_line_break_body()
+
+        assert 'atEnd ? "\\n\\u200B" : "\\n"' in body
+        assert "this.plainText(rest.toString()).length === 0" in body
+
+    def test_the_caret_lands_after_the_break_either_way(self):
+        """
+        setStart(node, 1) means "right after the break" whether or not the
+        zero-width space was added -- position 1 is the end of a bare "\\n"
+        and the midpoint of "\\n\\u200B" alike.
+        """
+
+        body = self.insert_line_break_body()
+
+        assert "range.setStart(node, 1)" in body
+
+
+class TestPlainText:
+    """
+    The zero-width space insertLineBreak plants at a caption's true end
+    (see TestSubtitleEnter) is a rendering aid only -- caret(), which
+    split-at-cursor and the Backspace/Delete edge checks all read, and
+    onInput's own report to the server both have to see the caption's real
+    text, not that placeholder.
+    """
+
+    def source(self) -> str:
+        import pathlib
+
+        return pathlib.Path("utils/transcript_editor.js").read_text()
+
+    def test_it_strips_the_zero_width_space(self):
+        source = self.source()
+        body = source[source.index("plainText(text) {"):]
+        body = body[: body.index("\n    },\n")]
+
+        assert 'replace(/\\u200B/g, "")' in body
+
+    def test_caret_reads_through_it(self):
+        source = self.source()
+        body = source[source.index("caret() {"):]
+        body = body[: body.index("\n    },\n")]
+
+        assert "this.plainText(measure.toString()).length" in body
+        assert "this.plainText(block.textContent).length" in body
+
+    def test_the_reported_edit_reads_through_it(self):
+        source = self.source()
+        body = source[source.index("onInput() {"):]
+        body = body[: body.index("\n    },\n")]
+
+        assert "this.plainText(at.block.textContent)" in body
+
+
+class TestCaretSurvivesUndo:
+    """
+    A block that was typed into and never got a real render in between (see
+    the revision watcher's own comment on why undo, most of all, is when
+    that happens) gets its DOM element thrown away and rebuilt once undo
+    finally does force one -- changing its key is what makes Vue rebuild
+    rather than patch it. A caret anchored inside the old element does not
+    survive that: the browser collapses it to the very start of the
+    contenteditable, which reads as the cursor jumping to the top of the
+    page. Reading it before the rebuild and restoring it after is what
+    keeps the reader where undo actually put them.
+
+    A block that keeps its own key is not exempt either -- undoing a merge
+    patches the survivor's runs back down to fewer spans than it had a
+    moment ago, and a caret anchored in one of the spans that patch removes
+    is lost the same way, so this is not restricted to blocks known to be
+    dirty; every render tries, and a block whose content did not change
+    under the caret just gets put back where it already was.
+    """
+
+    def source(self) -> str:
+        import pathlib
+
+        return pathlib.Path("utils/transcript_editor.js").read_text()
+
+    def revision_watcher_body(self) -> str:
+        source = self.source()
+        body = source[source.index("revision() {"):]
+
+        return body[: body.index("\n    },\n")]
+
+    def test_the_caret_is_read_before_the_block_is_keyed_away(self):
+        body = self.revision_watcher_body()
+
+        before_rekey = body[: body.index("this.dirty.forEach(")]
+
+        assert "const restoring = this.caret();" in before_rekey
+
+    def test_it_is_restored_after_the_rebuild_not_before(self):
+        body = self.revision_watcher_body()
+
+        next_tick = body[body.index("this.$nextTick(() => {"):]
+
+        assert "this.placeCaretAt(block, restoring.offset)" in next_tick
+
+    def test_place_caret_at_falls_back_to_the_end(self):
+        """
+        The block undo sent down can be shorter than where the caret was --
+        collapsing to the end rather than failing is what a caption that
+        shrank out from under the caret needs.
+        """
+
+        source = self.source()
+        body = source[source.index("placeCaretAt(block, offset) {"):]
+        body = body[: body.index("\n    },\n")]
+
+        assert "range.selectNodeContents(block);" in body
+        assert "range.collapse(false);" in body
+
+
+class TestSubtitleMargin:
+    """
+    A subtitle's margin carries only its index and its per-line character
+    counts -- the timing moved into the cell, over the text it times, so it
+    is no longer something the margin shows at all. See TestTiming for
+    that, and caption_line_counts on the Python side for what feeds the
+    counts here (redrawn live from the typed text by computeLineCounts --
+    see TestLiveLineCounts).
+    """
+
+    def source(self) -> str:
+        import pathlib
+
+        return pathlib.Path("utils/transcript_editor.js").read_text()
+
+    def test_the_index_is_in_the_margin(self):
+        source = self.source()
+        gutter = source[source.index('class="transcript-gutter"'):]
+        gutter = gutter[: gutter.index("</div><div")]
+
+        assert "#{{ block.id }}" in gutter
+
+    def test_one_count_per_line(self):
+        source = self.source()
+
+        assert "transcript-subtitle-counts" in source
+        assert (
+            "v-for=\"(count, i) in (liveCounts[block.id] || block.line_counts)\""
+            in source
+        )
+
+
+class TestLiveLineCounts:
+    """
+    The character-count guideline in the margin has to move as the caption
+    is typed into, not just at the next real render -- set_text deliberately
+    does not trigger one (see its own docstring), so nothing would update
+    the counts at all if this did not exist. Mirrors caption_line_counts on
+    the Python side; TestSubtitleLineCounts covers the guideline logic
+    itself; this just checks the two stay wired the same way.
+    """
+
+    def source(self) -> str:
+        import pathlib
+
+        return pathlib.Path("utils/transcript_editor.js").read_text()
+
+    def test_on_input_recomputes_live_counts_for_subtitles_only(self):
+        source = self.source()
+        body = source[source.index("onInput() {"):]
+        body = body[: body.index("\n    },\n")]
+
+        assert "if (this.subtitleMode)" in body
+        assert "this.liveCounts = { ...this.liveCounts, [at.id]: this.computeLineCounts(text) };" in body
+
+    def test_a_real_render_clears_the_guess(self):
+        """
+        Once the server has answered with its own authoritative counts, the
+        local guess has to step aside for them -- otherwise a stale guess
+        could keep showing after an undo or a split changes the text some
+        other way than typing into it.
+        """
+
+        source = self.source()
+        watcher = source[source.index("revision() {"):]
+        watcher = watcher[: watcher.index("this.$nextTick(() => {")]
+
+        assert "this.liveCounts = {};" in watcher
+
+    def test_the_guideline_settings_are_props_not_hardcoded(self):
+        source = self.source()
+
+        assert "characterLimit: { type: Number, default: 42 }" in source
+        assert "maxSubtitleLines: { type: Number, default: 2 }" in source
+
+
+class TestTiming:
+    """
+    A caption's start and end are edited directly where they are shown, in
+    the cell above the text they time -- no dialog, in either mode. See
+    retime() on the Python side for what a typed value reaches.
+    """
+
+    def source(self) -> str:
+        import pathlib
+
+        return pathlib.Path("utils/transcript_editor.js").read_text()
+
+    def test_the_timing_sits_over_the_text_not_the_margin(self):
+        source = self.source()
+
+        assert "transcript-subtitle-content" in source
+        gutter = source[source.index('class="transcript-gutter"'):]
+        gutter = gutter[: gutter.index("</div><div")]
+
+        assert "transcript-time-input" not in gutter
+
+    def test_it_is_a_plain_input_not_a_dialog_trigger(self):
+        """
+        No @click handler opening a slider dialog anywhere -- that dialog
+        does not exist any more, in either mode -- and one input pair for
+        each of the two branches, transcription and subtitle.
+        """
+
+        source = self.source()
+
+        assert source.count("transcript-time-input") >= 4
+        assert "timeclick" not in source
+
+    def test_typing_in_it_does_not_reach_the_document_handler(self):
+        """
+        Enter in this input commits the edit; Enter in the document at large
+        splits a caption. Without stopping propagation, typing a time would
+        also be typing into whichever handler reads document-level keydowns.
+        """
+
+        source = self.source()
+        body = source[source.index("onTimeInputKeydown(event) {"):]
+        body = body[: body.index("\n    },\n")]
+
+        assert "event.stopPropagation()" in body
+
+    def test_it_is_marked_dirty_before_reporting(self):
+        """
+        A reply that leaves the value exactly as it was -- a mistyped time
+        is refused, not guessed at -- is an unchanged prop, which is a patch
+        Vue's own diff skips. Without forcing a fresh remount the input
+        would keep showing whatever was typed, never having actually saved
+        it.
+        """
+
+        source = self.source()
+        body = source[source.index("retimeBlock(id, edge, event) {"):]
+        body = body[: body.index("\n    },\n")]
+
+        assert "this.dirty.add(id)" in body
+        assert "$emit(\"retime\"" in body
+
+
+class TestRetime:
+    """
+    retime() is what a time typed directly into its input reaches, in
+    either mode -- there is no dialog any more.
+    """
+
+    def test_a_valid_value_is_applied(self, view, editor):
+        from utils.transcript_editor import format_time_label
+
+        target = editor.captions[0]
+
+        view.retime({
+            "id": target.index,
+            "edge": "start",
+            "value": format_time_label(0.5),
+        })
+
+        assert target.get_start_seconds() == pytest.approx(0.5)
+
+    def test_the_other_edge_is_left_alone(self, view, editor):
+        target = editor.captions[0]
+        original_end = target.get_end_seconds()
+
+        view.retime({
+            "id": target.index,
+            "edge": "start",
+            "value": "00:00:00 .500",
+        })
+
+        assert target.get_end_seconds() == pytest.approx(original_end)
+
+    def test_unparsable_text_is_refused(self, view, editor):
+        target = editor.captions[0]
+        original_start = target.start_time
+
+        view.retime({"id": target.index, "edge": "start", "value": "garbage"})
+
+        assert target.start_time == original_start
+
+    def test_an_end_before_the_start_is_refused(self, view, editor):
+        target = editor.captions[0]
+        original_end = target.end_time
+
+        view.retime({
+            "id": target.index,
+            "edge": "end",
+            "value": "00:00:00 .000",
+        })
+
+        assert target.end_time == original_end
+
+    def test_an_unknown_block_is_harmless(self, view):
+        view.retime({"id": 9999, "edge": "start", "value": "00:00:01 .000"})
+
+    def test_an_unknown_edge_is_harmless(self, view, editor):
+        target = editor.captions[0]
+        before = (target.start_time, target.end_time)
+
+        view.retime({"id": target.index, "edge": "middle", "value": "00:00:01 .000"})
+
+        assert (target.start_time, target.end_time) == before
+
+
+class TestParseTimeLabel:
+    """
+    The inverse of format_time_label -- what a typed value in the margin is
+    read back as.
+    """
+
+    def test_it_round_trips_format_time_label(self):
+        from utils.transcript_editor import format_time_label, parse_time_label
+
+        assert parse_time_label(format_time_label(92.44)) == pytest.approx(92.44)
+
+    def test_garbage_is_refused(self):
+        from utils.transcript_editor import parse_time_label
+
+        assert parse_time_label("not a time") is None
+        assert parse_time_label("") is None
+        assert parse_time_label(None) is None
+
+
+class TestSplitButton:
+    """
+    The split icon in a caption's own action row, alongside add and delete --
+    the mouse equivalent of Ctrl/Cmd+Enter. A click carries no cursor
+    position of its own, so it prefers the caret when it is already in this
+    caption, and otherwise falls back to the middle of the text, matching
+    split_caption's own fallback for a caret-less split.
+    """
+
+    def source(self) -> str:
+        import pathlib
+
+        return pathlib.Path("utils/transcript_editor.js").read_text()
+
+    def split_at_body(self) -> str:
+        source = self.source()
+        body = source[source.index("splitAt(id) {"):]
+
+        return body[: body.index("\n    },\n")]
+
+    def test_the_icon_is_wired_to_splitat(self):
+        assert '@click.stop="splitAt(block.id)"' in self.source()
+
+    def test_it_prefers_the_caret_already_in_this_caption(self):
+        body = self.split_at_body()
+
+        assert "at.id === id" in body
+        assert "offset = at.offset" in body
+
+    def test_it_falls_back_to_the_middle_of_the_text(self):
+        assert "Math.floor(text.length / 2)" in self.split_at_body()
+
+    def test_it_flushes_before_splitting(self):
+        """
+        Any edit still pending in this caption's text has to reach the
+        server before the split does, or it is lost -- the same reasoning
+        Ctrl/Cmd+Enter's own path follows.
+        """
+
+        body = self.split_at_body()
+
+        assert "this.flush()" in body
+        assert '$emit("splitblock"' in body
+
+
+class TestMergeButton:
+    """
+    The merge icon in a caption's own action row, alongside split, add and
+    delete -- the mouse equivalent of Delete at the end of its text. Always
+    merges with the caption after this one: reuses the existing
+    mergeblock/direction:"next" event that key already emits, rather than a
+    new server-side method, and offering only one direction keeps the row
+    from needing an icon per direction for what a reader can already reach
+    the other way from the neighbouring caption.
+    """
+
+    def source(self) -> str:
+        import pathlib
+
+        return pathlib.Path("utils/transcript_editor.js").read_text()
+
+    def merge_with_next_body(self) -> str:
+        source = self.source()
+        body = source[source.index("mergeWithNext(id) {"):]
+
+        return body[: body.index("\n    },\n")]
+
+    def test_the_icon_is_wired_to_mergewithnext(self):
+        assert '@click.stop="mergeWithNext(block.id)"' in self.source()
+
+    def test_it_merges_with_the_next_caption(self):
+        body = self.merge_with_next_body()
+
+        assert '$emit("mergeblock"' in body
+        assert '"next"' in body
+
+    def test_it_flushes_before_merging(self):
+        assert "this.flush()" in self.merge_with_next_body()
+
+
+class TestMergeFocus:
+    """
+    Enter at the end of a block starts a new one (see TestEnterAtBlockEnd);
+    Backspace at its start merges it away again. Merging previous removes
+    that very block -- the one the caret was in -- and the browser does not
+    leave the caret anywhere sensible once its own DOM node is gone: it was
+    reported landing in the block after, unrelated to either side of the
+    merge. Refocusing the surviving block at the seam between the two texts
+    is what a backspace-merge reads as anywhere else a caret keeps working
+    after one.
+    """
+
+    def focused(self, view) -> list:
+        calls = []
+
+        class FakeBody:
+            def focus_block(self, block_id, offset=0):
+                calls.append((block_id, offset))
+
+            def set_blocks(self, blocks):
+                pass
+
+            def set_speakers(self, *args, **kwargs):
+                pass
+
+        view.body = FakeBody()
+        return calls
+
+    def test_merging_an_empty_caption_previous_focuses_the_plain_end(self, view, editor):
+        """
+        Enter at the end starts an empty block (see TestEnterAtBlockEnd);
+        Backspace right away merges it straight back out. Nothing on that
+        side means merge_with_previous adds no separator (see its own
+        comment), so the seam is just the survivor's own end, not one past
+        it -- landing one further would have been past the survivor's own
+        text, wherever the fallback in placeCaretAt happens to send it.
+        """
+
+        first = editor.captions[0]
+        view.split({"id": first.index, "offset": len(first.text)})
+        added = editor.captions[1]
+        calls = self.focused(view)
+
+        view.merge({"id": added.index, "direction": "previous"})
+
+        assert calls == [(first.index, len("ett."))]
+        assert first.text == "ett."
+
+    def test_merging_a_real_caption_previous_focuses_past_the_join(self, view, editor):
+        first = editor.captions[0]
+        second = editor.captions[1]
+        calls = self.focused(view)
+
+        view.merge({"id": second.index, "direction": "previous"})
+
+        assert calls == [(first.index, len("ett.") + len("\n"))]
+        assert first.text == "ett.\ntva."
+
+    def test_merging_next_focuses_the_survivor_at_its_old_end(self, view, editor):
+        first = editor.captions[0]
+        second = editor.captions[1]
+        calls = self.focused(view)
+
+        view.merge({"id": first.index, "direction": "next"})
+
+        assert calls == [(first.index, len("ett."))]
+        assert first.text == "ett.\ntva."
+        assert second not in editor.captions
+
+    def test_merging_at_the_very_start_is_harmless(self, view, editor):
+        calls = self.focused(view)
+
+        view.merge({"id": editor.captions[0].index, "direction": "previous"})
+
+        assert calls == []
+
+    def test_merging_at_the_very_end_is_harmless(self, view, editor):
+        calls = self.focused(view)
+
+        view.merge({"id": editor.captions[-1].index, "direction": "next"})
+
+        assert calls == []
+
+
+class TestMergeEmptyCaption:
+    """
+    "Add caption after" then Backspace right away merges the empty caption
+    it just started straight back out (Backspace at the start of an empty
+    block merges previous). Joining with "\n" unconditionally left that
+    newline on the original caption even though there was nothing on the
+    other side for it to separate -- a blank line the reader never typed,
+    appended to a caption they never touched.
+    """
+
+    def test_merging_an_empty_caption_previous_adds_no_newline(self, editor):
+        first, second = editor.captions[0], editor.captions[1]
+        second.text = ""
+
+        editor.merge_with_previous(second)
+
+        assert first.text == "ett."
+
+    def test_merging_an_empty_caption_next_adds_no_newline(self, editor):
+        first, second = editor.captions[0], editor.captions[1]
+        second.text = ""
+
+        editor.merge_with_next(first)
+
+        assert first.text == "ett."
+
+    def test_two_real_captions_still_join_with_a_newline(self, editor):
+        first, second = editor.captions[0], editor.captions[1]
+
+        editor.merge_with_next(first)
+
+        assert first.text == "ett.\ntva."
+
+    def test_merging_into_an_empty_caption_previous_takes_the_other_text(self, editor):
+        first, second = editor.captions[0], editor.captions[1]
+        first.text = ""
+
+        editor.merge_with_previous(second)
+
+        assert first.text == "tva."
+
+    def test_merging_into_an_empty_caption_next_takes_the_other_text(self, editor):
+        first, second = editor.captions[0], editor.captions[1]
+        first.text = ""
+
+        editor.merge_with_next(first)
+
+        assert first.text == "tva."
+
+
+class TestDeleteCaption:
+    """
+    Deleting a caption removes its own DOM node -- refresh() takes care of
+    that -- but a caret that was inside it does not survive the removal:
+    the browser collapses the now-invalid selection to the start of the
+    contenteditable instead of anywhere near where it just was, which reads
+    as the cursor jumping to the top of the page. Refocusing a neighbour
+    afterward, the same as add_after already does for the caption it
+    starts, is what keeps the caret somewhere sensible.
+    """
+
+    def focused(self, view) -> list:
+        calls = []
+
+        class FakeBody:
+            def focus_block(self, block_id, offset=0):
+                calls.append((block_id, offset))
+
+            def set_blocks(self, blocks):
+                pass
+
+            def set_speakers(self, *args, **kwargs):
+                pass
+
+        view.body = FakeBody()
+        return calls
+
+    def test_it_removes_the_caption(self, view, editor):
+        target = editor.captions[1]
+
+        view.delete({"id": target.index})
+
+        assert target not in editor.captions
+
+    def test_it_focuses_the_caption_that_took_its_place(self, view, editor):
+        calls = self.focused(view)
+        target = editor.captions[1]
+
+        view.delete({"id": target.index})
+
+        assert calls == [(editor.captions[1].index, 0)]
+
+    def test_deleting_the_last_caption_focuses_the_new_last_one(self, view, editor):
+        calls = self.focused(view)
+        target = editor.captions[-1]
+
+        view.delete({"id": target.index})
+
+        assert calls == [(editor.captions[-1].index, 0)]
+
+    def test_an_unknown_block_is_harmless(self, view, editor):
+        calls = self.focused(view)
+        before = list(editor.captions)
+
+        view.delete({"id": 9999})
+
+        assert editor.captions == before
+        assert calls == []
 
 
 class TestEditorContract:

@@ -17,11 +17,14 @@
 
 
 """
-Drawing the caption list, and the dialogs that sit alongside it.
+Validation and the caption-list bookkeeping that both editors share.
 
-Every caption is a card: prose until selected, a set of fields and actions
-once it is. refresh_display rebuilds only what changed, so typing in one
-caption does not redraw the whole transcription.
+Subtitles and transcriptions are both drawn by the document editor now (see
+utils/transcript_editor.py) -- there is no separate per-caption card
+renderer here any more. What is left is format-agnostic: refresh_display,
+which forwards to whichever editor built itself, and validation, which is
+specific to subtitles (a transcription has no line-length or line-count
+guideline to check).
 """
 
 from typing import Optional
@@ -38,527 +41,68 @@ CHARACTER_LIMIT_EXCEEDED_COLOR = "text-red"
 
 class RenderMixin:
     """
-    Caption cards, the caption list, validation and the shortcut help.
+    Caption list bookkeeping, validation and the shortcut help.
     """
 
-    def create_caption_input(self, caption: SRTCaption):
+    def caption_line_counts(self, caption: SRTCaption) -> list:
         """
-        The text area for an open caption, with the review highlighting shown
-        behind it.
-
-        A text area cannot render markup, so the highlights are painted on a
-        layer underneath: that layer holds the same text in a transparent
-        colour and shows only the highlight boxes, while the text area sits on
-        top with a transparent background. Keeping the text in a real text
-        area is the point -- caret, selection, undo, IME and the caret offset
-        the split shortcut reads all keep working untouched.
-
-        The two layers must agree on every metric that affects where a
-        character lands, so both take their font, padding and wrapping from
-        the same rules in styles.py rather than inheriting them.
+        A caption's character-count guideline, one entry per line, for the
+        document editor to show in the margin beside that line rather than
+        as one summary under the caption. Each entry flags whether that line
+        alone has drifted past the guideline -- over CHARACTER_LIMIT, or the
+        caption has more than MAX_SUBTITLE_LINES of them, in which case every
+        line's count is flagged, not only the one that is individually long.
+        This only flags it, the same as "Validate" does; nothing is
+        truncated or auto-wrapped.
         """
 
-        with ui.element("div").classes("caption-editor w-full"):
-            backdrop = ui.html(
-                self.review_backdrop_html(caption, caption.text), sanitize=False
-            ).classes("caption-highlights")
-            backdrop.props('aria-hidden=true')
+        lines = caption.text.split("\n")
+        too_many_lines = len(lines) > settings.MAX_SUBTITLE_LINES
 
-            text_area = (
-                ui.textarea(value=caption.text)
-                .classes("caption-entry w-full")
-                # autogrow rather than a fixed height: a text area that never
-                # scrolls cannot scroll out of step with the layer behind it.
-                .props("borderless autogrow")
+        counts = []
+
+        for line in lines:
+            length = len(line)
+            line_too_long = length > settings.CHARACTER_LIMIT
+
+            tooltip = (
+                f"Guideline: max {settings.CHARACTER_LIMIT} characters per line, "
+                f"{settings.MAX_SUBTITLE_LINES} lines."
+            )
+            if line_too_long:
+                tooltip += f" This line is {length} characters."
+            if too_many_lines:
+                tooltip += f" {len(lines)} lines in this caption."
+
+            counts.append(
+                {
+                    "length": length,
+                    "exceeded": line_too_long or too_many_lines,
+                    "tooltip": tooltip,
+                }
             )
 
-            def repaint(event) -> None:
-                # The new value comes on the event itself. Reading it back off
-                # the element would race NiceGUI's own listener for the same
-                # event and could repaint one keystroke behind.
-                value = event.args
-
-                if not isinstance(value, str):
-                    value = event.sender.value or ""
-
-                backdrop.set_content(self.review_backdrop_html(caption, value))
-
-            # Throttled, so the highlighting follows typing without a round
-            # trip per keystroke. The authoritative pass runs on blur.
-            text_area.on("update:model-value", repaint, throttle=0.3)
-
-        return text_area
-
-    def create_caption_card(self, caption: SRTCaption) -> ui.card:
-        """
-        Create a visual card for a caption.
-        """
-
-        card_class = "cursor-pointer border-0 transition-all duration-200 w-full"
-
-        if not caption.is_valid:
-            card_class += " caption-card-invalid"
-        elif caption.is_selected and caption.is_highlighted:
-            # Slightly darker yellow background
-            card_class += " shadow-lg caption-card-selected-highlighted"
-        elif caption.is_selected:
-            card_class += " shadow-lg"
-        elif caption.is_highlighted:
-            card_class += " caption-card-highlighted"
-        else:
-            card_class += " hover:shadow-md shadow-none"
-
-        # Create container for this caption that persists
-        container = ui.column().classes("w-full")
-
-        with container:
-            with ui.card().classes(card_class) as card:
-                # Caption text (editable when selected)
-                if caption.is_selected:
-                    with ui.row().classes("w-full justify-between") as action_row:
-                        action_row.props("id=action_row")
-                        ui.label(f"#{caption.index}").classes(
-                            "font-bold text-sm text-theme-muted"
-                        )
-
-                        if self.data_format == "txt":
-                            self.speakers.add(caption.speaker)
-                            speaker_select = ui.select(
-                                options=list(self.speakers),
-                                value=caption.speaker,
-                                with_input=True,
-                                label="Speaker",
-                                new_value_mode="add",
-                            )
-                        else:
-                            speaker_select = None
-
-                        start_input = ui.input("", value=caption.start_time).props(
-                            "dense borderless"
-                        )
-                        end_input = ui.input("", value=caption.end_time).props(
-                            "dense borderless"
-                        )
-
-                    start_input.on(
-                        "blur",
-                        lambda: self.update_caption_timing(
-                            caption, start_input.value, end_input.value
-                        ),
-                    )
-                    end_input.on(
-                        "blur",
-                        lambda: self.update_caption_timing(
-                            caption, start_input.value, end_input.value
-                        ),
-                    )
-
-                    text_area = self.create_caption_input(caption)
-                    text_area.on(
-                        "blur",
-                        lambda e: self.update_caption_text(caption, e.sender.value),
-                    )
-
-                    # Only one caption is open at a time, so this is the text
-                    # area the caret lives in when splitting.
-                    self._active_text_area = text_area
-
-                    # Action buttons
-                    with ui.row().classes("w-full items-center gap-1"):
-                        split_button = ui.button("Split", icon="call_split").props(
-                            "flat dense"
-                        ).classes("editor-btn editor-caption-btn")
-                        split_button.on(
-                            "click", lambda: self.split_caption_at_cursor(caption)
-                        )
-                        with split_button:
-                            ui.tooltip("Split at the cursor (Ctrl/⌘ + Enter)")
-                        ui.button("Merge prev", icon="merge_type").props(
-                            "flat dense"
-                        ).classes("editor-btn editor-caption-btn").on(
-                            "click",
-                            lambda: (
-                                self.merge_with_previous(caption)
-                                if self.captions.index(caption) > 0
-                                else None
-                            ),
-                        )
-                        ui.button("Merge next", icon="merge_type").props(
-                            "flat dense"
-                        ).classes("editor-btn editor-caption-btn").on(
-                            "click",
-                            lambda: (
-                                self.merge_with_next(caption)
-                                if self.captions.index(caption) < len(self.captions) - 1
-                                else None
-                            ),
-                        )
-
-                        ui.button("Close").props("flat dense").classes(
-                            "editor-btn editor-caption-btn"
-                        ).on(
-                            "click",
-                            lambda: self.select_caption(
-                                caption,
-                                speaker_select,
-                                True,
-                                new_text=text_area.value,
-                            ),
-                        )
-
-                        ui.button("Add").props("flat dense").classes(
-                            "editor-btn editor-caption-btn"
-                        ).on("click", lambda: self.add_caption_after(caption))
-
-                        ui.button("Delete").props("flat dense").classes(
-                            "editor-btn editor-caption-btn caption-btn-danger ml-auto"
-                        ).on(
-                            "click", lambda: self.remove_caption(caption)
-                        )
-                else:
-                    # Show text with search highlighting
-                    if caption.is_highlighted and self.search_term:
-                        highlighted_text = self.get_highlighted_text(caption.text)
-
-                        with ui.row():
-                            ui.label(f"#{caption.index}").classes("font-bold text-sm")
-
-                            if self.data_format == "txt":
-                                ui.label(f"{caption.speaker}:").classes(
-                                    "font-bold text-sm"
-                                )
-                        ui.label(f"{caption.start_time} - {caption.end_time}").classes(
-                            "text-sm text-theme-muted"
-                        )
-
-                        ui.html(highlighted_text, sanitize=False).classes(
-                            "text-sm leading-relaxed whitespace-pre-wrap"
-                        )
-                    else:
-                        with ui.row().classes("w-full justify-between"):
-                            with ui.row():
-                                ui.label(f"#{caption.index}").classes(
-                                    "font-bold text-sm"
-                                )
-
-                                if self.data_format == "txt":
-                                    ui.label(f"{caption. speaker}:").classes(
-                                        "font-bold text-sm"
-                                    )
-                            ui.label(
-                                f"{caption.start_time} - {caption.end_time}"
-                            ).classes("text-sm text-theme-muted")
-                        with ui.row().classes("w-full justify-between items-end"):
-                            review_html = self.get_review_html(caption)
-
-                            if review_html:
-                                ui.html(review_html, sanitize=False).classes(
-                                    "text-sm leading-relaxed whitespace-pre-wrap"
-                                )
-                            else:
-                                ui.label(caption.text).classes(
-                                    "text-sm leading-relaxed whitespace-pre-wrap"
-                                )
-                            text_color = "text-theme-muted"
-
-                            tooltip_text = (
-                                "Character count."
-                                if self.data_format == "txt"
-                                else f"Character count.  Max {settings.CHARACTER_LIMIT} per line (guideline)."
-                            )
-
-                            lines = caption.text.split("\n")
-                            line_lengths = [str(len(x)) for x in lines]
-
-                            # Check for exceeded limit
-                            exceeded = self.data_format != "txt" and any(
-                                len(x) > settings.CHARACTER_LIMIT for x in lines
-                            )
-                            if exceeded:
-                                text_color = settings.CHARACTER_LIMIT_EXCEEDED_COLOR
-                                tooltip_text = f"Character limit of {settings.CHARACTER_LIMIT} exceeded in one or more lines."
-
-                            character_label = "/".join(line_lengths)
-
-                            with ui.row().classes("items-center gap-1"):
-                                if exceeded:
-                                    ui.icon("warning", size="xs").style(
-                                        "color: var(--color-text-danger);"
-                                    )
-                                with ui.label(f"({character_label})").classes(
-                                    f"text-sm text-right {text_color}"
-                                ):
-                                    ui.tooltip(tooltip_text)
-
-                card.on(
-                    "click",
-                    lambda: (
-                        self.select_caption(caption)
-                        if not caption.is_selected
-                        else None
-                    ),
-                )
-
-        # Store reference to container
-        self.caption_containers[caption.index] = container
-        return card
-
+        return counts
 
     def refresh_display(
         self, force_full_refresh: bool = False, specific_indices: set = None
     ) -> None:
-        """Refresh the caption display - only recreate if necessary
-
-        Args:
-            force_full_refresh: If True, recreate all captions
-            specific_indices: If provided, only update these specific caption indices
         """
-        # A transcription is shown by the document editor, not as caption
-        # cards. Everything that changes the captions ends up here -- splits,
-        # merges, the review toggle, sensitivity -- so redirecting once covers
-        # all of them, and the caption renderer never runs for a format it was
-        # not built for.
+        Ask the document editor to redraw.
+
+        force_full_refresh and specific_indices are accepted rather than
+        removed so every existing call site -- splits, merges, undo, the
+        review toggle -- keeps working unchanged: the component always
+        redraws every block regardless, and NiceGUI's own diffing is what
+        keeps that cheap, not this distinction.
+        """
+
         if self.render_override is not None:
             self.render_override()
-            return
-
-        if self.main_container:
-            if force_full_refresh or not self.caption_containers:
-                # Full refresh - clear and recreate everything
-                self.main_container.clear()
-                self.caption_containers.clear()
-                with self.main_container:
-                    if not self.captions:
-                        ui.label("No captions loaded").classes(
-                            "text-theme-muted text-center p-8"
-                        )
-                    else:
-                        for caption in self.captions:
-                            self.create_caption_card(caption)
-            else:
-                # Incremental update - update existing containers
-                current_indices = {cap.index for cap in self.captions}
-                existing_indices = set(self.caption_containers.keys())
-
-                # Remove containers for deleted captions
-                for idx in existing_indices - current_indices:
-                    if idx in self.caption_containers:
-                        container = self.caption_containers[idx]
-                        container.clear()
-                        container.delete()
-                        del self.caption_containers[idx]
-
-                # Add new captions or update existing ones
-                with self.main_container:
-                    for caption in self.captions:
-                        # Only update if no specific_indices filter, or if index is in the filter
-                        should_update = (
-                            specific_indices is None
-                            or caption.index in specific_indices
-                        )
-
-                        if caption.index not in self.caption_containers:
-                            # New caption - create it
-                            self.create_caption_card(caption)
-                        elif should_update:
-                            # Existing caption - update it only if needed
-                            container = self.caption_containers[caption.index]
-                            container.clear()
-                            with container:
-                                self.update_caption_card_content(caption)
 
         # Splits, merges and deletions all land here, and each of them can
         # change how many words are flagged.
         self.update_flagged_count()
-
-
-    def update_caption_card_content(self, caption: SRTCaption) -> None:
-        """
-        Update the content of an existing caption card
-        """
-        card_class = "cursor-pointer border-0 transition-all duration-200 w-full"
-
-        if not caption.is_valid:
-            card_class += " caption-card-invalid"
-        elif caption.is_selected and caption.is_highlighted:
-            card_class += " shadow-lg caption-card-selected-highlighted"
-        elif caption.is_selected:
-            card_class += " shadow-lg"
-        elif caption.is_highlighted:
-            card_class += " caption-card-highlighted"
-        else:
-            card_class += " hover:shadow-md shadow-none"
-
-        with ui.card().classes(card_class) as card:
-            if caption.is_selected:
-                with ui.row().classes("w-full justify-between") as action_row:
-                    action_row.props("id=action_row")
-                    ui.label(f"#{caption.index}").classes(
-                        "font-bold text-sm text-theme-muted"
-                    )
-
-                    if self.data_format == "txt":
-                        speaker_select = ui.select(
-                            options=list(self.speakers),
-                            value=caption.speaker,
-                            with_input=True,
-                            label="Speaker",
-                            new_value_mode="add",
-                        )
-                    else:
-                        speaker_select = None
-
-                    start_input = ui.input("", value=caption.start_time).props(
-                        "dense borderless"
-                    )
-                    end_input = ui.input("", value=caption.end_time).props(
-                        "dense borderless"
-                    )
-
-                start_input.on(
-                    "blur",
-                    lambda: self.update_caption_timing(
-                        caption, start_input.value, end_input.value
-                    ),
-                )
-                end_input.on(
-                    "blur",
-                    lambda: self.update_caption_timing(
-                        caption, start_input.value, end_input.value
-                    ),
-                )
-
-                text_area = self.create_caption_input(caption)
-                text_area.on(
-                    "blur", lambda e: self.update_caption_text(caption, e.sender.value)
-                )
-
-                self._active_text_area = text_area
-
-                with ui.row().classes("w-full items-center gap-1"):
-                    split_button = ui.button("Split", icon="call_split").props(
-                        "flat dense"
-                    ).classes("editor-btn editor-caption-btn")
-                    split_button.on(
-                        "click", lambda: self.split_caption_at_cursor(caption)
-                    )
-                    with split_button:
-                        ui.tooltip("Split at the cursor (Ctrl/⌘ + Enter)")
-                    ui.button("Merge prev", icon="merge_type").props(
-                        "flat dense"
-                    ).classes("editor-btn editor-caption-btn").on(
-                        "click",
-                        lambda: (
-                            self.merge_with_previous(caption)
-                            if self.captions.index(caption) > 0
-                            else None
-                        ),
-                    )
-                    ui.button("Merge next", icon="merge_type").props(
-                        "flat dense"
-                    ).classes("editor-btn editor-caption-btn").on(
-                        "click",
-                        lambda: (
-                            self.merge_with_next(caption)
-                            if self.captions.index(caption) < len(self.captions) - 1
-                            else None
-                        ),
-                    )
-
-                    ui.button("Close").props("flat dense").classes(
-                        "editor-btn editor-caption-btn"
-                    ).on(
-                        "click",
-                        lambda: self.select_caption(
-                            caption, speaker_select, True, new_text=text_area.value
-                        ),
-                    )
-
-                    ui.button("Add").props("flat dense").classes(
-                        "editor-btn editor-caption-btn"
-                    ).on("click", lambda: self.add_caption_after(caption))
-
-                    ui.button("Delete").props("flat dense").classes(
-                        "editor-btn editor-caption-btn caption-btn-danger ml-auto"
-                    ).on(
-                        "click", lambda: self.remove_caption(caption)
-                    )
-            else:
-                if caption.is_highlighted and self.search_term:
-                    highlighted_text = self.get_highlighted_text(caption.text)
-
-                    with ui.row():
-                        ui.label(f"#{caption.index}").classes("font-bold text-sm")
-
-                        if self.data_format == "txt":
-                            ui.label(f"{caption.speaker}:").classes("font-bold text-sm")
-                    ui.label(f"{caption.start_time} - {caption.end_time}").classes(
-                        "text-sm text-theme-muted"
-                    )
-
-                    ui.html(highlighted_text, sanitize=False).classes(
-                        "text-sm leading-relaxed whitespace-pre-wrap"
-                    )
-                else:
-                    with ui.row().classes("w-full justify-between"):
-                        with ui.row():
-                            ui.label(f"#{caption.index}").classes("font-bold text-sm")
-
-                            if self.data_format == "txt":
-                                ui.label(f"{caption. speaker}:").classes(
-                                    "font-bold text-sm"
-                                )
-                        ui.label(f"{caption.start_time} - {caption.end_time}").classes(
-                            "text-sm text-theme-muted"
-                        )
-                    with ui.row().classes("w-full justify-between items-end"):
-                        review_html = self.get_review_html(caption)
-
-                        if review_html:
-                            ui.html(review_html, sanitize=False).classes(
-                                "text-sm leading-relaxed whitespace-pre-wrap"
-                            )
-                        else:
-                            ui.label(caption.text).classes(
-                                "text-sm leading-relaxed whitespace-pre-wrap"
-                            )
-                        text_color = "text-theme-muted"
-
-                        tooltip_text = (
-                            "Character count."
-                            if self.data_format == "txt"
-                            else f"Character count.  Max {settings.CHARACTER_LIMIT} per line (guideline)."
-                        )
-
-                        lines = caption.text.split("\n")
-                        line_lengths = [str(len(x)) for x in lines]
-
-                        # Check for exceeded limit
-                        exceeded = self.data_format != "txt" and any(
-                            len(x) > settings.CHARACTER_LIMIT for x in lines
-                        )
-                        if exceeded:
-                            text_color = settings.CHARACTER_LIMIT_EXCEEDED_COLOR
-                            tooltip_text = f"Character limit of {settings.CHARACTER_LIMIT} exceeded in one or more lines."
-
-                        character_label = "/".join(line_lengths)
-
-                        with ui.row().classes("items-center gap-1"):
-                            if exceeded:
-                                ui.icon("warning", size="xs").style(
-                                    "color: var(--color-text-danger);"
-                                )
-                            with ui.label(f"({character_label})").classes(
-                                f"text-sm text-right {text_color}"
-                            ):
-                                ui.tooltip(tooltip_text)
-
-            card.on(
-                "click",
-                lambda: (
-                    self.select_caption(caption) if not caption.is_selected else None
-                ),
-            )
 
 
     def validate_captions(self):
@@ -587,9 +131,11 @@ class RenderMixin:
                 errorenous_captions.append(caption)
                 changed_indices.add(caption.index)
 
-            # Check character limit per line (only for SRT format)
+            # Check character limit per line and line count (only for SRT format)
             if self.data_format == "srt":
-                for line in caption.text.split("\n"):
+                lines = caption.text.split("\n")
+
+                for line in lines:
                     if len(line) > settings.CHARACTER_LIMIT:
                         errors.append(
                             f"Caption #{caption.index} has a line with {len(line)} characters (max {settings.CHARACTER_LIMIT})."
@@ -599,6 +145,15 @@ class RenderMixin:
                             errorenous_captions.append(caption)
                         changed_indices.add(caption.index)
                         break
+
+                if len(lines) > settings.MAX_SUBTITLE_LINES:
+                    errors.append(
+                        f"Caption #{caption.index} has {len(lines)} lines (max {settings.MAX_SUBTITLE_LINES})."
+                    )
+                    caption.is_valid = False
+                    if caption not in errorenous_captions:
+                        errorenous_captions.append(caption)
+                    changed_indices.add(caption.index)
 
             if (caption.start_time, caption.end_time) in seen_times:
                 errors.append(f"Caption #{caption.index} has duplicate timestamp.")
@@ -737,20 +292,45 @@ class RenderMixin:
         Show keyboard shortcuts dialog.
         """
 
-        # The caption operations only exist in the subtitle editor. A
-        # transcription is drawn by the document editor, which has its own
-        # bindings for the same jobs, so listing them here would document
-        # shortcuts that do nothing.
-        captions = self.render_override is None
+        # One editor now, for both formats, but Enter itself differs: a
+        # subtitle is short enough that the reader controls its own line
+        # breaks, which is a far more frequent thing to want there than
+        # starting a new timed cue, so bare Enter is a line break and
+        # splitting moves to Ctrl/Cmd+Enter. Running speech has no manual
+        # line breaks, so a transcription keeps plain Enter for splitting.
+        subtitles = self.data_format == "srt"
 
         shortcut_groups = [
+            (
+                "Editing",
+                (
+                    [
+                        ("New line in the caption", "Enter"),
+                        ("Split caption at cursor", "Ctrl/⌘ + Enter"),
+                        ("Join with the caption above", "Backspace at the start"),
+                        ("Join with the caption below", "Delete at the end"),
+                        ("New caption after this one", "Ctrl/⌘ + Enter at the end"),
+                        ("Split caption at cursor (mouse)", "Click its split icon"),
+                        ("Merge with the caption below (mouse)", "Click its merge icon"),
+                        ("Add a caption after this one", "Click its + icon"),
+                        ("Delete a caption", "Click its trash icon"),
+                    ]
+                    if subtitles
+                    else [
+                        ("Split block at cursor", "Enter"),
+                        ("Join with the block above", "Backspace at the start"),
+                        ("Join with the block below", "Delete at the end"),
+                        ("New block after this one", "Enter at the end"),
+                    ]
+                ),
+            ),
             (
                 "File Operations",
                 [
                     ("Save file", "Ctrl/⌘ + S"),
                     ("Export file", "Ctrl/⌘ + E"),
-                ]
-                + ([("Find", "Ctrl/⌘ + F")] if captions else []),
+                    ("Find", "Ctrl/⌘ + F"),
+                ],
             ),
             (
                 "History",
@@ -766,29 +346,6 @@ class RenderMixin:
                 ],
             ),
         ]
-
-        if captions:
-            shortcut_groups[:0] = [
-                (
-                    "Captions",
-                    [
-                        ("Close/deselect block", "Esc"),
-                    ],
-                ),
-            ]
-        else:
-            shortcut_groups.insert(
-                0,
-                (
-                    "Editing",
-                    [
-                        ("Split block at cursor", "Enter"),
-                        ("Join with the block above", "Backspace at the start"),
-                        ("Join with the block below", "Delete at the end"),
-                        ("New block after this one", "Enter at the end"),
-                    ],
-                ),
-            )
 
         with ui.dialog() as dialog:
             with ui.card().classes("w-2/3 max-w-2xl").style(

@@ -305,7 +305,7 @@ class TestClientContract:
 
     def mark_changed(self) -> str:
         body = self.source()
-        body = body[body.index("markChanged() {"):]
+        body = body[body.index("markChanged(span) {"):]
 
         return body[: body.index("\n    },")]
 
@@ -346,7 +346,88 @@ class TestClientContract:
         body = source[source.index("onInput()"):]
         body = body[: body.index("\n    },")]
 
-        assert "this.markChanged()" in body
+        assert "this.markChanged(span)" in body
+
+    def test_switching_words_flushes_the_previous_edit(self):
+        """
+        Two words edited one after another must be two undo steps, not one:
+        a keystroke landing in a different word flushes whatever was pending
+        first, rather than letting it merge silently into the next word.
+        """
+
+        source = self.source()
+        body = source[source.index("onInput()"):]
+        body = body[: body.index("\n    },")]
+
+        assert "this.editingWord" in body
+        assert "this.flush()" in body
+
+    def test_a_trailing_space_does_not_mark_the_word_before_it(self):
+        """
+        A caret sitting right after a word, with a space typed there, must
+        not mark that word as edited: the browser routinely appends the
+        space into the word's own span rather than starting new content --
+        verified in an actual browser, both mid-caption and on a caption's
+        last word, since this bug has twice looked fixed on paper and then
+        broken something else.
+
+        The check has to require the caret at the very end of the span, not
+        just whitespace anywhere in it: My edits off renders several words
+        into one merged span, and a real edit to a word in the middle of
+        that span must still be marked, even though the span as a whole
+        contains plenty of whitespace.
+        """
+
+        source = self.source()
+        body = source[source.index("onInput()"):]
+        body = body[: body.index("\n    },")]
+
+        assert "this.pastWordBoundary(span, range)" in body
+
+        helper = source[source.index("spaceAtTail(span, range) {"):]
+        helper = helper[: helper.index("\n    },")]
+
+        assert r'/\s$/.test(span.textContent)' in helper
+        assert "span.contains(range.startContainer)" in helper
+        assert "this.offsetWithinSpan(span, range) === span.textContent.length" in helper
+
+    def test_a_real_character_after_the_space_still_does_not_mark_it(self):
+        """
+        The very next real character typed after the space removes the
+        span's own trailing whitespace -- the browser keeps extending the
+        same span for it too -- so spaceAtTail alone stops matching on that
+        keystroke. pastWordBoundary has to remember where the boundary was
+        instead of re-deriving it fresh each time, or the word before the
+        space reads as edited by a keystroke that was actually starting the
+        next one.
+        """
+
+        source = self.source()
+        body = source[source.index("pastWordBoundary(span, range) {"):]
+        body = body[: body.index("\n    },")]
+
+        assert "this.newWordBoundary = { span, offset:" in body
+        assert "this.newWordBoundary.span === span" in body
+        assert "this.offsetWithinSpan(span, range) >= this.newWordBoundary.offset" in body
+
+    def test_backspacing_before_the_boundary_forgets_it(self):
+        """
+        Backspace undoing the space, or eating into the word that follows
+        it and then the original word, means the reader is editing that
+        earlier content now -- the remembered offset has to be dropped
+        there, or typing forward again later (appending to the original
+        word for an unrelated, genuine reason) reads as still past a
+        boundary that no longer describes anything real. This is the exact
+        regression that once made a real edit stop marking at all.
+        """
+
+        source = self.source()
+        body = source[source.index("pastWordBoundary(span, range) {"):]
+        body = body[: body.index("\n    },")]
+
+        below = body[body.index("if (this.newWordBoundary && this.newWordBoundary.span === span) {"):]
+
+        assert "this.newWordBoundary = null;" in below
 
     def test_the_template_renders_the_edit_marking(self):
         source = self.source()
@@ -718,7 +799,7 @@ class TestMarksAreDroppedOnRender:
         body = source[source.index("onInput()"):]
         body = body[: body.index("\n    },")]
 
-        assert "this.markChanged()" in body
+        assert "this.markChanged(span)" in body
 
 
 class TestWordsWithoutTimings:

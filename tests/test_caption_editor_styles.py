@@ -16,10 +16,8 @@
 # limitations under the License.
 
 """
-The highlight layer sits behind the caption text area and has to line up with
-it character for character. That is a property of the stylesheet, so it is
-guarded here: the failure mode is a silent visual one that no behavioural test
-would catch.
+CSS properties of the document editor that a behavioural test cannot reach --
+the failure mode is a silent visual one, so it is guarded here instead.
 """
 
 import re
@@ -46,6 +44,11 @@ def rules():
         yield selectors, match.group(2)
 
 
+def rem(value: str) -> float:
+    assert value.endswith("rem"), value
+    return float(value[: -len("rem")])
+
+
 def effective(selector: str) -> dict:
     """
     Properties a selector ends up with, after later rules of equal weight have
@@ -69,66 +72,6 @@ def effective(selector: str) -> dict:
     assert found, f"no rule for {selector!r}"
 
     return applied
-
-
-class TestSharedTextMetrics:
-    """
-    Anything that decides where a character lands must be set on both layers
-    by the same rule, never inherited.
-    """
-
-    @pytest.mark.parametrize(
-        "prop",
-        ["font-size", "line-height", "letter-spacing", "padding",
-         "white-space", "overflow-wrap"],
-    )
-    def test_metric_is_shared_by_both_layers(self, prop):
-        shared = re.search(
-            r"\.caption-highlights,\s*\.caption-editor \.caption-entry "
-            r"\.q-field__native \{([^}]*)\}",
-            default_styles,
-        )
-
-        assert shared, "the two layers no longer share one metrics rule"
-        assert prop in shared.group(1), f"{prop} is not shared, so it can drift"
-
-
-class TestMarkedWordsAreLayoutNeutral:
-    """
-    A marked word in the layer may only paint. Anything that takes up space
-    widens it and pushes the rest of the line out of step with the text area;
-    anything that gives it a colour draws the word a second time under the one
-    the reader is typing.
-    """
-
-    def test_read_view_styling_is_neutralised(self):
-        applied = effective(".caption-highlights .review-word")
-
-        assert applied["color"] == "transparent"
-        assert applied["padding"] == "0"
-        assert applied["border"] == "0"
-
-    def test_flag_paints_with_background_and_shadow_only(self):
-        """
-        Background and inset shadow are the only visible properties that cost
-        no space.
-        """
-
-        applied = effective(".caption-highlights .review-word")
-
-        assert applied["background-color"] == "var(--color-review-bg)"
-        assert applied["box-shadow"].startswith("inset")
-        # Whatever else it sets must not take up space.
-        assert applied["padding"] == "0"
-        assert applied["border"] == "0"
-        assert "font-size" not in applied
-        assert "margin" not in applied
-
-    def test_layer_hides_its_text(self):
-        assert effective(".caption-highlights")["color"] == "transparent"
-
-    def test_no_tooltip_behind_the_text_area(self):
-        assert effective(".caption-highlights .review-word::after")["content"] == "none"
 
 
 def specificity(selector: str) -> tuple:
@@ -166,61 +109,187 @@ class TestSpecificityHelper:
         assert specificity(".a.b .c") > specificity(".a .c")
 
 
-class TestCaptionActionButtons:
+class TestSubtitleGuidelineColouring:
     """
-    Split, Merge prev, Merge next, Close, Add and Delete, which repeat under
-    every open caption. They share .editor-btn with the toolbar buttons above
-    them and then narrow it, so what matters is that the narrowing actually
-    takes -- by weight, not by ordering.
+    The character/line count under a subtitle's timestamp reads as ordinary
+    muted text until the caption drifts past the guideline, then it takes the
+    danger colour -- never a background or a border, so it does not read as
+    an error the way the review marking deliberately avoids doing too.
     """
 
-    def test_they_are_sized_to_their_labels(self):
+    def test_exceeded_uses_the_danger_colour(self):
+        assert effective(".transcript-count-exceeded")["color"] == (
+            "var(--color-text-danger)"
+        )
+
+
+class TestTranscriptCellStates:
+    """
+    A block's left rule marks its state: invalid (failed "Validate") and
+    highlighted (a search match) each get their own colour, distinct from
+    active (currently playing).
+    """
+
+    def test_invalid_and_highlighted_are_distinct_colours(self):
+        invalid = effective(".transcript-cell-invalid")["border-left-color"]
+        highlighted = effective(".transcript-cell-highlighted")["border-left-color"]
+        active = effective(".transcript-cell-active")["border-left-color"]
+
+        assert len({invalid, highlighted, active}) == 3
+
+
+class TestCaptionActions:
+    """
+    Split, merge, add and delete (subtitles only) stay out of the way until
+    the block they belong to is hovered or focused, so a long list of cues
+    is not lined with icons -- and when they do appear, they ride the same
+    hover-reveal separator a caption's boundary is already drawn with (see
+    TestCaptionSeparator), rather than sitting beside the text as a fifth
+    thing to read there.
+    """
+
+    def test_hidden_by_default(self):
+        assert effective(".transcript-cell-actions")["opacity"] == "0"
+
+    def test_revealed_on_hover(self):
+        assert effective(
+            ".transcript-cell:hover .transcript-cell-actions"
+        )["opacity"] == "1"
+
+    def test_revealed_on_hovering_the_margin_too(self):
         """
-        They used to be given a floor of 100px each and told to share the row
-        out between them, which is what made them large.
+        The separator itself has this same second trigger -- the margin
+        (its timing) belongs to the same caption as the cell right before
+        it, so hovering either one reveals both the line and the actions
+        riding it.
         """
 
-        applied = effective(".editor-caption-btn")
+        assert effective(
+            ".transcript-gutter:hover + .transcript-cell .transcript-cell-actions"
+        )["opacity"] == "1"
 
-        assert applied["min-width"] == "0 !important"
-        assert applied["flex"] == "0 0 auto"
+    def test_revealed_on_keyboard_focus(self):
+        assert effective(".transcript-cell-actions:focus-within")["opacity"] == "1"
 
-    def test_they_are_smaller_than_a_default_button(self):
-        applied = effective(".editor-caption-btn")
-        size = int(re.match(r"(\d+)", applied["font-size"]).group(1))
-
-        # Quasar's own button text is 14px.
-        assert size < 14
-        assert int(re.match(r"(\d+)", applied["min-height"]).group(1)) <= 28
-
-    def test_the_row_gap_is_not_doubled(self):
+    def test_it_sits_on_the_separator_not_beside_the_text(self):
         """
-        Quasar gives every button a margin of its own, and the row already has a
-        gap; both would space them twice as far apart as intended.
+        Absolutely positioned at the same bottom offset the separator's own
+        border-bottom sits at (see TestCaptionSeparator), centred on that
+        line both ways by translate(-50%, 50%) -- not a flex sibling of the
+        text any more, which is what let it sit beside the text in the
+        first place.
         """
 
-        assert effective(".editor-caption-btn")["margin"] == "0 !important"
+        applied = effective(".transcript-cell-actions")
 
-    @pytest.mark.parametrize("theme", ["light", "dark"])
-    def test_the_caption_look_outweighs_the_toolbar_look(self, theme):
-        assert specificity(
-            f".body--{theme} .q-btn.editor-btn.editor-caption-btn"
-        ) > specificity(f".body--{theme} .q-btn.editor-btn")
+        assert applied["position"] == "absolute"
+        assert applied["left"] == "50%"
+        assert applied["bottom"] == effective(
+            ".transcript-subtitle-mode .transcript-cell::before"
+        )["bottom"]
+        assert applied["transform"] == "translate(-50%, 50%)"
 
-    @pytest.mark.parametrize("theme", ["light", "dark"])
-    def test_delete_is_the_danger_colour_on_its_label_too(self, theme):
+    def test_each_icon_has_a_solid_background(self):
         """
-        .editor-btn paints .q-btn__content explicitly, so a colour set on the
-        button alone never reaches the label -- which is why Delete carried an
-        inline style that did nothing.
+        The separator passes directly behind these -- without a solid
+        background of its own, the line would show through the gaps an
+        icon's shape leaves inside its circle.
         """
 
-        for target in ("", " .q-btn__content", " .q-icon"):
-            selector = (
-                f".body--{theme} .q-btn.editor-caption-btn.caption-btn-danger{target}"
-            )
+        assert (
+            effective(".transcript-action")["background-color"]
+            == "var(--color-bg-page)"
+        )
 
-            assert effective(selector)["color"] == "var(--color-text-danger) !important"
-            assert specificity(selector) > specificity(
-                f".body--{theme} .q-btn.editor-btn{target}"
-            )
+
+class TestCaptionSeparator:
+    """
+    Subtitles are read as separate cues, so hovering one draws a line above
+    it to mark where it ends and its neighbour begins. Quiet otherwise, or a
+    long list of captions would read as a table.
+    """
+
+    def test_hidden_by_default(self):
+        assert effective(".transcript-subtitle-mode .transcript-cell::before")[
+            "opacity"
+        ] == "0"
+
+    def test_revealed_on_hover(self):
+        assert effective(
+            ".transcript-subtitle-mode .transcript-cell:hover::before"
+        )["opacity"] == "1"
+
+
+class TestSubtitleTimingInputWidth:
+    """
+    A timestamp reads as "start - end" with even space either side of the
+    dash. ch is the width of "0", not of the punctuation a timestamp is
+    mostly made of, so a fixed ch-based width left slack after the text that
+    made the gap before the dash wider than the one after it -- sizing to
+    the input's own content instead is what keeps the two gaps equal.
+    """
+
+    def test_the_input_sizes_to_its_own_content(self):
+        applied = effective(".transcript-time-input")
+
+        assert applied["field-sizing"] == "content"
+        assert "width" not in applied
+
+
+class TestSubtitleMarginAlignment:
+    """
+    The margin skips the timing row the same way the base rule skips a
+    speaker past the timestamp (see .transcript-gutter's own padding-top),
+    rather than heading the timing with an index of matched height -- so a
+    count lines up with its text line only because each row's own
+    line-height takes up exactly the space one text line does.
+    """
+
+    def test_the_margin_skips_the_timing_row(self):
+        assert effective(".transcript-subtitle-mode .transcript-gutter")[
+            "padding-top"
+        ] != "0"
+
+    def test_the_count_row_line_height_matches_the_text(self):
+        """
+        .transcript-count-row's line-height is stated in absolute terms to
+        equal .transcript-text's own (1.85 times its font-size) -- the two
+        have to move together, or a row drifts away from the line it
+        belongs to.
+        """
+
+        text_size = rem(effective(".transcript-text")["font-size"])
+        row_line_height = rem(effective(".transcript-count-row")["line-height"])
+
+        assert row_line_height == pytest.approx(text_size * 1.85)
+
+
+class TestSubtitleTextOffset:
+    """
+    A subtitle's text, and the divider before it, have to sit the same
+    distance from the edge a transcription's do -- otherwise the two read as
+    differently indented rather than as the same editor in a different mode.
+    Three rules place that distance (the margin column's width, the column
+    gap, and the cell's own padding-left); subtitleMode leaves all three at
+    the base rule's own values rather than overriding them, so this checks
+    that no override has crept back in.
+    """
+
+    def test_the_margin_column_and_gap_are_not_overridden(self):
+        subtitle_body = effective(".transcript-subtitle-mode .transcript-body")
+
+        assert "grid-template-columns" not in subtitle_body
+        assert "column-gap" not in subtitle_body
+
+    def test_the_cell_padding_is_not_overridden(self):
+        """
+        There is no ".transcript-subtitle-mode .transcript-cell" rule at
+        all any more -- the actions that once needed it to lay out beside
+        the text now ride the separator instead (see TestCaptionActions),
+        so subtitleMode has nothing left to say about the cell's own
+        layout, padding-left included.
+        """
+
+        selectors = {selector for selectors, _ in rules() for selector in selectors}
+
+        assert ".transcript-subtitle-mode .transcript-cell" not in selectors

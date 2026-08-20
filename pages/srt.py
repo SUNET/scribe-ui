@@ -185,6 +185,8 @@ def create() -> None:
                     "editor-btn editor-toolbar-btn"
                 ).on("click", lambda: editor.show_export_dialog(filename))
 
+                editor.create_search_panel()
+                editor.show_keyboard_shortcuts()
                 if data_format == "srt":
                     with ui.button("Validate", icon="check").props(
                         "flat"
@@ -193,34 +195,31 @@ def create() -> None:
                             "click",
                             lambda: editor.validate_captions(),
                         )
-                editor.create_search_panel()
-                editor.show_keyboard_shortcuts()
             with ui.button("Close editor", icon="close").props(
                 "flat"
             ).classes("editor-btn editor-toolbar-btn") as close_button:
                 close_button.on("click", lambda: editor.close_editor("/home"))
 
-        # Subtitles get the caption editor; transcriptions get the document
-        # editor. Two different jobs, so two different surfaces.
-        transcript = TranscriptEditor(editor) if data_format == "txt" else None
+        # One document editor for both formats now; subtitleMode (set in
+        # TranscriptEditor.build) is what tells it to drop the speaker margin
+        # for a length guideline and a per-caption delete action.
+        transcript = TranscriptEditor(editor)
 
         with ui.splitter(value=60).classes("w-full h-full") as splitter:
             with splitter.before:
                 with ui.card().classes("w-full h-full"):
                     with ui.scroll_area().style("height: calc(90vh - 100px);"):
-                        editor.main_container = ui.column().classes("w-full h-full")
-
                         if data_format == "srt":
                             editor.parse_srt(data["result"])
-                            editor.refresh_display()
                         else:
                             editor.parse_txt(data["result"])
-                            transcript.build()
-                            # Apply the restored autoscroll preference to the
-                            # new editor, not just to later clicks.
-                            transcript.set_follow(editor.autoscroll)
-                            transcript.body.set_highlight_word(editor.highlight_word)
-                            transcript.body.set_show_edits(editor.show_my_edits)
+
+                        transcript.build()
+                        # Apply the restored autoscroll preference to the new
+                        # editor, not just to later clicks.
+                        transcript.set_follow(editor.autoscroll)
+                        transcript.body.set_highlight_word(editor.highlight_word)
+                        transcript.body.set_show_edits(editor.show_my_edits)
                 with splitter.after:
                     with ui.card().classes("w-full h-full"):
                         video = ui.video(
@@ -231,20 +230,14 @@ def create() -> None:
                         ).classes("w-full h-full")
                         editor.set_video_player(video)
                         video.props("preload='auto'")
-                        if transcript is None:
-                            video.on(
-                                "timeupdate",
-                                lambda: editor.select_caption_from_video(),
-                            )
-                        else:
 
-                            async def follow_transcript() -> None:
-                                if not editor.autoscroll:
-                                    return
+                        async def follow_transcript() -> None:
+                            if not editor.autoscroll:
+                                return
 
-                                await transcript.follow_video()
+                            await transcript.follow_video()
 
-                            video.on("timeupdate", follow_transcript)
+                        video.on("timeupdate", follow_transcript)
                         # Stays None when the result carries no confidence
                         # scores, which is what hides the review controls.
                         uncertain_switch = None
@@ -255,17 +248,15 @@ def create() -> None:
                                 value = bool(event.sender.value)
                                 editor.set_autoscroll(value)
                                 app.storage.user[AUTOSCROLL_KEY] = value
-
-                                if transcript is not None:
-                                    transcript.set_follow(value)
-                                    transcript.set_highlight_word(value)
+                                transcript.set_follow(value)
+                                transcript.set_highlight_word(value)
 
                             # Scrolling to the block and marking the word in it
                             # are two halves of one thing -- following the
-                            # recording -- so the transcription editor offers
-                            # them as one switch. The subtitle editor has no
-                            # word marking, so it keeps plain Autoscroll.
-                            following_words = transcript is not None and editor.words
+                            # recording -- so the switch offers them as one
+                            # when there is word-level data to follow, and
+                            # plain Autoscroll (block only) when there is not.
+                            following_words = bool(editor.words)
 
                             follow = ui.switch(
                                 "Follow audio" if following_words else "Autoscroll",
@@ -307,12 +298,7 @@ def create() -> None:
 
                                 def save_show_edits(event) -> None:
                                     value = bool(event.sender.value)
-
-                                    if transcript is not None:
-                                        transcript.set_show_my_edits(value)
-                                    else:
-                                        editor.set_show_my_edits(value)
-
+                                    transcript.set_show_my_edits(value)
                                     app.storage.user[EDITS_SHOW_KEY] = value
 
                                 edits_switch = ui.switch(

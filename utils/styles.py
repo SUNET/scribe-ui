@@ -483,60 +483,6 @@ theme_styles = """
         opacity: 0.4;
     }
 
-    /* ── Caption action buttons ── */
-    /* A row of these sits under every open caption, so they are deliberately
-       smaller and quieter than the toolbar buttons they share .editor-btn with:
-       sized to their own labels rather than stretched across the row, on a
-       tinted surface rather than in a filled white box, and with the border
-       only appearing under the pointer.
-
-       Two classes deep so it wins over .editor-btn's own light and dark rules
-       outright, rather than by being further down the stylesheet. */
-    .editor-caption-btn {
-        min-width: 0 !important;
-        min-height: 26px !important;
-        /* Quasar spaces buttons with a margin of their own; the row's gap does
-           that here, and both would double it. */
-        margin: 0 !important;
-        padding: 3px 9px !important;
-        border-radius: 6px !important;
-        font-size: 12px !important;
-        font-weight: 500 !important;
-        letter-spacing: 0 !important;
-        flex: 0 0 auto;
-    }
-    .editor-caption-btn .q-icon {
-        font-size: 15px !important;
-    }
-    .editor-caption-btn .q-btn__content {
-        gap: 5px;
-    }
-    /* Quasar's own icon-to-label gap, sized for a larger button. */
-    .editor-caption-btn .q-btn__content .on-left {
-        margin-right: 0 !important;
-    }
-    .body--light .q-btn.editor-btn.editor-caption-btn,
-    .body--dark .q-btn.editor-btn.editor-caption-btn {
-        background-color: var(--color-bg-surface-alt) !important;
-        border: 1px solid transparent !important;
-    }
-    .body--light .q-btn.editor-btn.editor-caption-btn:hover,
-    .body--dark .q-btn.editor-btn.editor-caption-btn:hover {
-        background-color: var(--color-bg-surface-hover) !important;
-        border-color: var(--color-border-subtle) !important;
-    }
-    /* Destructive, so it says so in colour rather than in size. The label needs
-       stating as well as the button: .editor-btn paints .q-btn__content
-       explicitly, which an inherited colour cannot reach past. */
-    .body--light .q-btn.editor-caption-btn.caption-btn-danger,
-    .body--light .q-btn.editor-caption-btn.caption-btn-danger .q-btn__content,
-    .body--light .q-btn.editor-caption-btn.caption-btn-danger .q-icon,
-    .body--dark .q-btn.editor-caption-btn.caption-btn-danger,
-    .body--dark .q-btn.editor-caption-btn.caption-btn-danger .q-btn__content,
-    .body--dark .q-btn.editor-caption-btn.caption-btn-danger .q-icon {
-        color: var(--color-text-danger) !important;
-    }
-
     /* ── Dark mode primary button contrast ── */
     .body--dark .q-btn.bg-primary {
         background-color: var(--color-btn-primary-bg) !important;
@@ -773,29 +719,6 @@ theme_styles = """
         background-color: var(--color-bg-surface);
     }
 
-    /* ── SRT editor caption card states ── */
-    .caption-card-invalid {
-        border-color: var(--color-status-error-border) !important;
-        background-color: var(--color-status-error-bg) !important;
-    }
-    .caption-card-invalid:hover {
-        border-color: var(--color-text-danger) !important;
-    }
-    .caption-card-highlighted {
-        border-color: var(--color-warning-border) !important;
-        background-color: var(--color-warning-bg) !important;
-    }
-    .caption-card-highlighted:hover {
-        border-color: var(--color-warning-icon) !important;
-    }
-    .caption-card-selected-highlighted {
-        border-color: var(--color-warning-border) !important;
-        background-color: var(--color-warning-bg) !important;
-    }
-    .caption-card-selected-highlighted:hover {
-        border-color: var(--color-warning-icon) !important;
-    }
-
     /* ── Marked words: flagged for review, or changed by the reader ── */
     /* One marking for every flagged word, whatever its score. Deliberately
        not red and not a wavy underline: red reads as broken and wavy reads as
@@ -971,100 +894,16 @@ theme_styles = """
         font-variant-numeric: tabular-nums;
     }
 
-    /* ── Caption editor with review highlighting ── */
-    /* A text area cannot render markup, so the highlights live on a layer
-       behind it. Every metric that decides where a character lands is stated
-       once here and applied to both layers -- inherit any of them and the
-       highlight boxes slide off their words. */
-    .caption-editor {
-        position: relative;
-        border: 1px solid var(--color-border-subtle);
-        border-radius: 4px;
-        background-color: var(--color-bg-surface);
-        overflow: hidden;
-    }
-    .caption-editor:focus-within {
-        border-color: var(--color-brand-primary);
-    }
-
-    .caption-editor .caption-highlights,
-    .caption-editor .caption-entry .q-field__native {
-        font-family: inherit;
-        font-size: 0.875rem;
-        line-height: 1.6;
-        letter-spacing: normal;
-        padding: 8px 10px;
-        margin: 0;
-        border: 0;
-        white-space: pre-wrap;
-        overflow-wrap: break-word;
-        word-break: normal;
-    }
-
-    /* The layer holds the same text in a transparent colour, so only the
-       highlight boxes show through from underneath. */
-    .caption-highlights {
-        position: absolute;
-        inset: 0;
-        z-index: 0;
-        color: transparent;
-        pointer-events: none;
-        overflow: hidden;
-    }
-    /* The read view gives a marked word its own colour and padding. Both have
-       to go here: the colour would draw the word a second time underneath the
-       one already in the text area, and the padding would widen it, pushing
-       every character after it out of step. Only background and inset shadow
-       are safe -- neither takes up space. */
-    .caption-highlights .review-word,
-    .caption-highlights .edit-word {
-        color: transparent;
-        padding: 0;
-        border: 0;
-        box-shadow: none;
-        background-color: transparent;
-    }
-    .caption-highlights .review-word {
-        background-color: var(--color-review-bg);
-        box-shadow: inset 0 -2px 0 var(--color-review-accent);
-    }
-    .caption-highlights .edit-word {
-        background-color: var(--color-edit-bg);
-        box-shadow: inset 0 -2px 0 var(--color-edit-accent);
-    }
-    /* No hover tooltips behind the text area: the caret is what matters
-       there, and a tooltip would sit between the reader and their own text. */
-    .caption-highlights .review-word::after,
-    .caption-highlights .edit-word::after {
-        content: none;
-    }
-
-    /* The text area itself: transparent, so the layer shows through. */
-    .caption-editor .caption-entry {
-        position: relative;
-        z-index: 1;
-    }
-    .caption-editor .caption-entry .q-field__control,
-    .caption-editor .caption-entry .q-field__control::before,
-    .caption-editor .caption-entry .q-field__control::after {
-        padding: 0;
-        border: 0;
-        background: transparent;
-        min-height: 0;
-    }
-    .caption-editor .caption-entry .q-field__native {
-        background: transparent;
-        color: var(--color-text-primary);
-        min-height: 5rem;
-        resize: none;
-    }
-
-    /* ── Transcription editor ── */
-    /* One contenteditable holds every speaker turn. A two column grid puts the
-       speaker in the margin and the text beside it, so the gutter cells are
-       real elements that can be clicked without the text ever leaving a single
-       editable surface. They are contenteditable=false, so the caret cannot
-       enter them. */
+    /* ── Document editor (transcriptions and subtitles alike) ── */
+    /* One contenteditable holds every block. A two column grid puts the
+       margin beside the text, so the margin cells are real elements that can
+       be clicked without the text ever leaving a single editable surface.
+       They are contenteditable=false, so the caret cannot enter them. A
+       transcription puts the speaker there; a subtitle has no speaker, so
+       its margin carries a length guideline instead -- see
+       .transcript-subtitle-mode throughout this section. The timing itself
+       (.transcript-time / .transcript-subtitle-time) is in the cell in both
+       modes, as a pair of plain inputs, over the text it belongs to. */
     .transcript-editor {
         /* The speaker menu is placed against this box. */
         position: relative;
@@ -1084,6 +923,17 @@ theme_styles = """
         max-width: 60rem;
         margin: 0 auto;
     }
+    /* The margin holds only the caption's index and its per-line character
+       counts now -- the timing moved into the cell, over the text it times,
+       rather than the margin tuned for a speaker name. Column width and gap
+       are left at the base rule's own values, not just an equal sum of
+       them, so the divider itself -- not only the text past it -- lines up
+       with a transcription's. Only row-gap differs: more room between
+       captions than the base rule's, which reads dense at a transcription's
+       own smaller, denser scale. */
+    .transcript-subtitle-mode .transcript-body {
+        row-gap: 1.75rem;
+    }
 
     .transcript-gutter {
         justify-self: end;
@@ -1096,6 +946,16 @@ theme_styles = """
         font-size: 0.9rem;
         user-select: none;
         white-space: nowrap;
+    }
+    /* A subtitle's margin skips its own timing row the same way the base
+       rule above skips a speaker past the timestamp -- the index is not a
+       heading level with the timing, it rides on the first line's count, so
+       there is nothing in the margin to line up with the timing row at all.
+       Tuned against .transcript-subtitle-time's own height, which differs
+       from the base rule's .transcript-time. */
+    .transcript-subtitle-mode .transcript-gutter {
+        align-items: flex-end;
+        padding-top: 2.2rem;
     }
     .transcript-speaker {
         cursor: pointer;
@@ -1110,34 +970,214 @@ theme_styles = """
         color: var(--color-border-disabled);
     }
 
-    /* A left rule per block, as the reference design has, standing in for the
-       card borders the subtitle editor uses. */
+    /* A left rule per block marks its state -- active (being played), invalid
+       (failed "Validate", subtitles only) or highlighted (a search match).
+       Invalid and highlighted are mutually exclusive in practice, since
+       Validate and search are two different actions, but if both were ever
+       true at once the later rule -- highlighted -- would win, which is the
+       more immediate thing to have drawn the reader's attention here. */
     .transcript-cell {
+        position: relative;
         border-left: 1px solid var(--color-border-subtle);
         padding-left: 1rem;
         min-width: 0;
+        transition: border-color 0.15s ease-in-out, background-color 0.15s ease-in-out;
+    }
+    /* Subtitles are read as separate cues, not a continuous document, so
+       hovering one draws a line under it -- in the middle of the row gap --
+       to show where it ends and its neighbour begins. Quiet until then, or a
+       long list of captions would read as a table. Hovering the margin
+       (its timing) counts too, via the adjacent-sibling match below, since
+       that margin belongs to the same caption as the cell right before it. */
+    .transcript-subtitle-mode .transcript-cell::before {
+        content: "";
+        position: absolute;
+        bottom: -0.625rem;
+        left: -1rem;
+        right: 0;
+        border-bottom: 1px solid var(--color-border-subtle);
+        opacity: 0;
+        transition: opacity 0.12s ease-in-out;
+        pointer-events: none;
+    }
+    .transcript-subtitle-mode .transcript-cell:hover::before,
+    .transcript-subtitle-mode .transcript-gutter:hover + .transcript-cell::before {
+        opacity: 1;
     }
     .transcript-cell-active {
         border-left-color: var(--color-brand-primary);
         border-left-width: 2px;
         padding-left: calc(1rem - 1px);
     }
+    .transcript-cell-invalid {
+        border-left-color: var(--color-status-error-border);
+        background-color: var(--color-status-error-bg);
+    }
+    .transcript-cell-highlighted {
+        border-left-color: var(--color-warning-border);
+        background-color: var(--color-warning-bg);
+    }
 
     .transcript-time {
-        font-size: 0.8rem;
-        font-variant-numeric: tabular-nums;
-        color: var(--color-brand-primary);
-        cursor: pointer;
-        user-select: none;
+        display: flex;
+        align-items: baseline;
         margin-bottom: 0.35rem;
-        display: inline-block;
-    }
-    .transcript-time:hover {
-        text-decoration: underline;
     }
     .transcript-dash {
         padding: 0 0.5rem;
         color: var(--color-text-muted);
+    }
+
+    /* The caption's index, read the same way the speaker name is in a
+       transcription -- riding on the first line rather than heading the
+       block -- so it sits inline with that line's own count instead of
+       above the column. */
+    .transcript-subtitle-index {
+        font-size: 0.8rem;
+        color: var(--color-text-muted);
+        opacity: 0.7;
+    }
+
+    /* One row per line, each carrying that line's character count and
+       lined up with the text line it belongs to; the first row also
+       carries the index. */
+    .transcript-subtitle-counts {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+    }
+    .transcript-count-row {
+        display: flex;
+        align-items: baseline;
+        gap: 0.35rem;
+        /* Has to equal .transcript-text's own line-height (1.85 times its
+           font-size, 1rem -- the same size a transcription's own text
+           is) in absolute terms, or a row drifts away from the text line
+           it belongs to. */
+        line-height: 1.85rem;
+    }
+    .transcript-count {
+        color: var(--color-text-muted);
+        font-size: 0.7rem;
+    }
+    .transcript-count-exceeded {
+        color: var(--color-text-danger);
+    }
+
+    /* padding-left is left at the base rule's own 1rem (and
+       .transcript-cell-active's calc(1rem - 1px) needs no override to
+       match), so the divider sits the same distance from the text a
+       transcription's does. The actions used to sit beside the text here
+       too, which is why this was a flex row -- now that they ride the
+       separator instead (.transcript-cell-actions below), the timing and
+       text are the cell's only content and need nothing beyond the plain
+       block layout the base rule already gives it. */
+    /* The timing sits over the caption it belongs to, not over the margin's
+       character counts, so it is a heading inside the cell rather than
+       something the margin carries -- the margin has no heading of its own
+       to match against, the same as the base rule's speaker. */
+    .transcript-subtitle-content {
+        display: flex;
+        flex-direction: column;
+    }
+    .transcript-subtitle-time {
+        display: flex;
+        align-items: baseline;
+        margin-bottom: 0.6rem;
+    }
+    /* Edited directly, in place, rather than through a dialog: a plain
+       input styled to read as the same clickable-looking label it replaces,
+       text selection and a caret instead of the pointer cursor a label
+       would have. Sized to its own value rather than a fixed character
+       count -- ch is the width of "0", not of the punctuation in a
+       timestamp, and a fixed width wide enough for the digits left slack
+       after the narrower characters that made the space either side of the
+       dash uneven. */
+    .transcript-time-input {
+        field-sizing: content;
+        border: none;
+        outline: none;
+        padding: 0;
+        background: transparent;
+        font: inherit;
+        font-size: 0.8rem;
+        line-height: 1.2;
+        font-variant-numeric: tabular-nums;
+        color: var(--color-brand-primary);
+        cursor: text;
+    }
+    .transcript-time-input:hover,
+    .transcript-time-input:focus {
+        text-decoration: underline;
+    }
+
+    /* Split this caption at the caret, add one after it, merge it with the
+       next, or delete it outright -- subtitles only. Ride the hover-reveal
+       separator itself (.transcript-subtitle-mode .transcript-cell::before
+       above) rather than sitting beside the text: both are the same idea,
+       a caption boundary the reader only needs once they are near it, so
+       they appear and fade together. bottom matches the separator's own,
+       and translate(-50%, 50%) centres the icons on that line, left and
+       right at once, the same way align-items: baseline centres a shorter
+       box on a taller one -- half of this box's own size, each axis, is
+       what "the middle of a line positioned by its near edge" comes out to.
+       Taken out of the cell's flex row (an absolute position does that on
+       its own) so the text beside it no longer shares width with a sibling
+       that is not actually part of the row's own reading anymore. */
+    .transcript-cell-actions {
+        display: flex;
+        position: absolute;
+        left: 50%;
+        bottom: -0.625rem;
+        transform: translate(-50%, 50%);
+        gap: 2px;
+        opacity: 0;
+        transition: opacity 0.12s ease-in-out;
+    }
+    .transcript-cell:hover .transcript-cell-actions,
+    .transcript-gutter:hover + .transcript-cell .transcript-cell-actions,
+    .transcript-cell-actions:focus-within {
+        opacity: 1;
+    }
+    /* A solid background rather than the transparent one an icon this size
+       would otherwise get, since the separator passes directly behind these
+       -- without one the line would show through the gaps an icon's own
+       shape leaves inside its circle, breaking rather than reading as part
+       of the line. --color-bg-page rather than -surface: this sits directly
+       on the page, not on a raised surface. */
+    .transcript-action {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.5rem;
+        height: 1.5rem;
+        border-radius: 50%;
+        background-color: var(--color-bg-page);
+        color: var(--color-text-muted);
+        cursor: pointer;
+        transition: color 0.12s ease-in-out, background-color 0.12s ease-in-out;
+    }
+    /* Each a distinct colour for its own kind of action, rather than the
+       four sharing one -- split in the same blue as the clickable timestamp
+       it acts relative to, merge in the amber a caption losing its own
+       identity into a neighbour warrants, creation (add) in the green
+       already used for success, destructive (delete) in the same red as
+       every other danger state. */
+    .transcript-action-split:hover {
+        color: var(--color-brand-primary);
+        background-color: var(--color-bg-surface-alt);
+    }
+    .transcript-action-merge:hover {
+        color: var(--color-severity-maint-icon);
+        background-color: var(--color-severity-maint-bg);
+    }
+    .transcript-action-add:hover {
+        color: var(--color-status-ok-border);
+        background-color: var(--color-status-ok-bg);
+    }
+    .transcript-action-delete:hover {
+        color: var(--color-text-danger);
+        background-color: var(--color-status-error-bg);
     }
 
     /* The reading surface. Generous leading, because this is read in long
@@ -1221,12 +1261,6 @@ theme_styles = """
 
     .transcript-dialog {
         min-width: 22rem;
-    }
-
-    .transcript-time-readout {
-        font-variant-numeric: tabular-nums;
-        color: var(--color-brand-primary);
-        font-weight: 600;
     }
 
     /* ── SRT editor info panel ── */

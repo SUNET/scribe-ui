@@ -53,6 +53,11 @@ class Settings(BaseSettings):
     CHARACTER_LIMIT: int = 42
     CHARACTER_LIMIT_EXCEEDED_COLOR: str = "text-red"
 
+    # Subtitle row count guideline, alongside CHARACTER_LIMIT. A caption with
+    # more lines than this is flagged the same way; nothing is truncated or
+    # auto-wrapped.
+    MAX_SUBTITLE_LINES: int = 2
+
     # Review sensitivity: how far up the confidence range to flag words for
     # review. A word is flagged when its score falls below the threshold for
     # the selected sensitivity, so raising sensitivity flags strictly more.

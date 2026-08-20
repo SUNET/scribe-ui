@@ -17,9 +17,10 @@
 
 // A transcription editor: one contenteditable holding every speaker turn.
 //
-// The gutter cells carry the speaker and the timestamps. They are real
-// elements so they can be clicked, but contenteditable=false, so the caret
-// cannot enter them and typing can never damage them.
+// The gutter cells carry the speaker; the cell itself carries the timing,
+// as a pair of plain inputs. Both are real elements so they can be clicked
+// or typed into, but contenteditable=false, so the caret cannot enter them
+// through the surrounding text and typing there can never damage it.
 //
 // Structural keys are intercepted rather than left to the browser. Enter,
 // Backspace at the start of a block and Delete at its end would otherwise let
@@ -31,7 +32,7 @@
 
 export default {
   template: `
-    <div class="transcript-editor" :class="{ 'transcript-show-edits': showEdits }">
+    <div class="transcript-editor" :class="{ 'transcript-show-edits': showEdits, 'transcript-subtitle-mode': subtitleMode }">
       <div
         class="transcript-body"
         contenteditable="true"
@@ -45,21 +46,89 @@ export default {
           class="transcript-gutter"
           contenteditable="false"
           :data-id="block.id"
-        ><span
+        ><div
+            v-if="subtitleMode"
+            class="transcript-subtitle-counts"
+          ><span
+              v-for="(count, i) in (liveCounts[block.id] || block.line_counts)"
+              :key="i"
+              class="transcript-count-row"
+            ><span
+                v-if="i === 0"
+                class="transcript-subtitle-index"
+              >#{{ block.id }}</span><span
+                class="transcript-count"
+                :class="{ 'transcript-count-exceeded': count.exceeded }"
+                :title="count.tooltip"
+              >{{ count.length }}</span></span></div><span
+            v-else
             class="transcript-speaker"
             :data-id="block.id"
-          >{{ block.speaker }}</span><span class="transcript-colon">:</span></div><div
+          >{{ block.speaker }}</span><span v-if="!subtitleMode" class="transcript-colon">:</span></div><div
           class="transcript-cell"
-          :class="{ 'transcript-cell-active': block.id === activeId }"
+          :class="{ 'transcript-cell-active': block.id === activeId, 'transcript-cell-invalid': block.invalid, 'transcript-cell-highlighted': block.highlighted }"
           :data-id="block.id"
         ><div
+            v-if="!subtitleMode"
             class="transcript-time"
             contenteditable="false"
             :data-id="block.id"
-          >{{ block.start_label }}<span class="transcript-dash">-</span>{{ block.end_label }}</div><div
+          ><input
+              class="transcript-time-input"
+              :value="block.start_label"
+              @click.stop
+              @keydown="onTimeInputKeydown($event)"
+              @blur="retimeBlock(block.id, 'start', $event)"
+            /><span class="transcript-dash">-</span><input
+              class="transcript-time-input"
+              :value="block.end_label"
+              @click.stop
+              @keydown="onTimeInputKeydown($event)"
+              @blur="retimeBlock(block.id, 'end', $event)"
+            /></div><div
+            v-if="subtitleMode"
+            class="transcript-subtitle-content"
+          ><div
+              class="transcript-subtitle-time"
+              contenteditable="false"
+              :data-id="block.id"
+            ><input
+                class="transcript-time-input"
+                :value="block.start_label"
+                @click.stop
+                @keydown="onTimeInputKeydown($event)"
+                @blur="retimeBlock(block.id, 'start', $event)"
+              /><span class="transcript-dash">-</span><input
+                class="transcript-time-input"
+                :value="block.end_label"
+                @click.stop
+                @keydown="onTimeInputKeydown($event)"
+                @blur="retimeBlock(block.id, 'end', $event)"
+              /></div><div
+              class="transcript-text"
+              :data-id="block.id"
+            ><span v-for="(run, i) in block.runs" :key="i" :class="run.flag ? 'review-word' : (run.edit ? 'edit-word' : null)" :data-review="run.flag ? reviewLabel : null" :data-edit="editLabel" :data-s="run.s" :data-e="run.e">{{ run.t }}</span><br v-if="!block.runs || block.runs.length === 0"></div></div><div
+            v-else
             class="transcript-text"
             :data-id="block.id"
-          ><span v-for="(run, i) in block.runs" :key="i" :class="run.flag ? 'review-word' : (run.edit ? 'edit-word' : null)" :data-review="run.flag ? reviewLabel : null" :data-edit="editLabel" :data-s="run.s" :data-e="run.e">{{ run.t }}</span><br v-if="!block.runs || block.runs.length === 0"></div></div></template></div>
+          ><span v-for="(run, i) in block.runs" :key="i" :class="run.flag ? 'review-word' : (run.edit ? 'edit-word' : null)" :data-review="run.flag ? reviewLabel : null" :data-edit="editLabel" :data-s="run.s" :data-e="run.e">{{ run.t }}</span><br v-if="!block.runs || block.runs.length === 0"></div><div
+            v-if="subtitleMode"
+            class="transcript-cell-actions"
+            contenteditable="false"
+            :data-id="block.id"
+          ><div
+              class="transcript-action transcript-action-split"
+              @click.stop="splitAt(block.id)"
+            ><q-icon name="call_split" size="16px" /><q-tooltip>Split caption at cursor</q-tooltip></div><div
+              class="transcript-action transcript-action-merge"
+              @click.stop="mergeWithNext(block.id)"
+            ><q-icon name="merge_type" size="16px" /><q-tooltip>Merge with next caption</q-tooltip></div><div
+              class="transcript-action transcript-action-add"
+              @click.stop="$emit('addblock', { id: block.id })"
+            ><q-icon name="add" size="16px" /><q-tooltip>Add caption after</q-tooltip></div><div
+              class="transcript-action transcript-action-delete"
+              @click.stop="$emit('deleteblock', { id: block.id })"
+            ><q-icon name="delete_outline" size="16px" /><q-tooltip>Delete caption</q-tooltip></div></div></div></template></div>
 
       <!-- Outside the contenteditable, or it would become editable content.
            Positioned against this component's own root rather than the
@@ -117,16 +186,16 @@ export default {
     revision: { type: Number, default: 0 },
     speakers: { type: Array, default: () => [] },
     unused: { type: Array, default: () => [] },
+    subtitleMode: { type: Boolean, default: false },
+    characterLimit: { type: Number, default: 42 },
+    maxSubtitleLines: { type: Number, default: 2 },
   },
   // One watch block. Two would silently discard the first: duplicate keys in
   // an object literal keep only the last.
   watch: {
     activeId(id) {
       if (!this.follow) return;
-      const cell = this.$refs.body?.querySelector(
-        `.transcript-cell[data-id="${id}"]`
-      );
-      if (cell) cell.scrollIntoView({ block: "center", behavior: "smooth" });
+      this.scrollToBlock(id);
     },
     revision() {
       // Bumped by the server only when the blocks actually change. Watching
@@ -147,10 +216,41 @@ export default {
       // it last rendered. Changing the block's key throws the element away
       // instead of patching it, so the next render always builds it fresh
       // from the props actually sent.
+      //
+      // Thrown away is the operative word for a dirty block's own element --
+      // typed into, then undo pressed while it was still dirty, is the usual
+      // way there. But even a block that keeps its own key can lose the
+      // specific node the caret was anchored to: undoing a merge, for one,
+      // patches the survivor's runs back down to fewer spans than it had a
+      // moment ago, and if the caret was in one that no longer exists past
+      // the patch, the browser does not so much as leave it at the block's
+      // edge. A caret whose node was removed collapses to the very start of
+      // the contenteditable, or to an unrelated block adjacent to where the
+      // node used to be -- either way it reads as the cursor jumping
+      // somewhere it was never asked to go. Read before this render can
+      // touch anything, restored once Vue has finished patching, for
+      // whichever block held it -- a block whose own content did not
+      // change under the caret just gets put back where it already was, so
+      // there is no reason to restrict this to only the blocks known to be
+      // dirty. Superseded a moment later wherever a render is paired with
+      // its own explicit focus() call (add_after, delete, merge): that
+      // always reaches the client as a second, later message, and wins.
+      const restoring = this.caret();
+
       this.dirty.forEach((id) => {
         this.stamps[id] = (this.stamps[id] || 0) + 1;
       });
       this.dirty.clear();
+
+      // A fresh render's own block.line_counts is the server's authoritative
+      // account, worked out from the caption text it actually holds now --
+      // whatever was guessed at locally in the meantime is stale.
+      this.liveCounts = {};
+
+      // Rebuilt from scratch below, so whatever span it named is about to
+      // stop existing -- pastWordBoundary would just fail its identity
+      // check either way, this only saves it the trouble.
+      this.newWordBoundary = null;
 
       this.$nextTick(() => {
         this.indexWords();
@@ -163,6 +263,13 @@ export default {
         this.$refs.body
           ?.querySelectorAll("[data-changed]")
           .forEach((el) => el.removeAttribute("data-changed"));
+
+        if (restoring) {
+          const block = this.$refs.body?.querySelector(
+            `.transcript-text[data-id="${restoring.id}"]`
+          );
+          if (block) this.placeCaretAt(block, restoring.offset);
+        }
       });
     },
     highlightWord(on) {
@@ -177,12 +284,25 @@ export default {
       // by the time it is sent -- on blur, in particular -- the caret may
       // already have moved or gone.
       edit: null,
+      // The word span currently being typed into. A keystroke landing in a
+      // different word flushes whatever was pending first, so two words
+      // edited one after another become two undo steps rather than one --
+      // see onInput.
+      editingWord: null,
+      // Where, within editingWord's own span, the word itself ends and a
+      // new one starts forming -- see pastWordBoundary.
+      newWordBoundary: null,
       // Blocks typed into since the last real render, and how many times
       // each has had to be rebuilt because of it. See the revision watcher.
       dirty: new Set(),
       stamps: {},
       timed: [],
       menu: { open: false, x: 0, y: 0, id: null, speaker: null },
+      // A block's own guess at its character-count guideline, from the text
+      // as typed rather than what the server last rendered -- keyed by
+      // block id, and only ever set for subtitles. See onInput and the
+      // revision watcher.
+      liveCounts: {},
     };
   },
   mounted() {
@@ -217,6 +337,14 @@ export default {
       return el;
     },
 
+    // A block's real text, with the zero-width space insertLineBreak plants
+    // at the end of a trailing empty line stripped back out -- that
+    // character exists only to give the browser something to hang a caret
+    // on there (see insertLineBreak), never part of the caption itself.
+    plainText(text) {
+      return (text || "").replace(/\u200B/g, "");
+    },
+
     caret() {
       const selection = window.getSelection();
       if (!selection || selection.rangeCount === 0) return null;
@@ -230,11 +358,54 @@ export default {
       measure.setEnd(range.startContainer, range.startOffset);
       return {
         id: Number(block.dataset.id),
-        offset: measure.toString().length,
-        length: block.textContent.length,
+        offset: this.plainText(measure.toString()).length,
+        length: this.plainText(block.textContent).length,
         collapsed: range.collapsed,
         block,
       };
+    },
+
+    // The inverse of caret()'s own offset -- used to put the caret back
+    // after a block has been rebuilt from scratch (see the revision
+    // watcher), where nothing else remembers where it was. A freshly
+    // rendered block is the server's own text with none of plainText's
+    // placeholder in it, so this walks the DOM's own text nodes directly
+    // rather than stripping anything. An offset past the end (the caption
+    // shrank out from under it) collapses to the end instead of failing.
+    placeCaretAt(block, offset) {
+      const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+      let remaining = offset;
+      let node = walker.nextNode();
+      let target = null;
+      let targetOffset = 0;
+
+      while (node) {
+        const length = node.textContent.length;
+        if (remaining <= length) {
+          target = node;
+          targetOffset = remaining;
+          break;
+        }
+        remaining -= length;
+        node = walker.nextNode();
+      }
+
+      const range = document.createRange();
+      if (target) {
+        // setStart alone leaves the range collapsed already -- a fresh
+        // Range starts out collapsed at the document's own start, and
+        // setStart pulls the end boundary along with it rather than
+        // leaving a start-after-end range behind.
+        range.setStart(target, targetOffset);
+      } else {
+        range.selectNodeContents(block);
+        range.collapse(false);
+      }
+
+      this.$refs.body?.focus();
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
     },
 
     // The word the caret is inside, which is the one being typed into.
@@ -244,6 +415,82 @@ export default {
       const span = el?.closest?.("span");
       // Only the word spans, not the gutter's speaker or timestamp spans.
       return span && this.blockOf(span) ? span : null;
+    },
+
+    // How far into a span the caret sits, in characters -- caret()'s own
+    // offset, but scoped to one span instead of the whole block.
+    offsetWithinSpan(span, range) {
+      const measure = range.cloneRange();
+      measure.selectNodeContents(span);
+      measure.setEnd(range.startContainer, range.startOffset);
+
+      return measure.toString().length;
+    },
+
+    // A space typed right after a word starts a new word; it is not an edit
+    // to the word before it. The browser disagrees: a caret sitting at the
+    // very end of a word's span -- wherever that word is, mid-caption or the
+    // last one, verified against both -- keeps extending that span's own text
+    // node instead of starting a new one, because there is nowhere else there
+    // for the character to go.
+    //
+    // Caught by asking two things together: does the span the caret is in now
+    // end in whitespace, and does the caret sit at the very end of it. Either
+    // one alone is not enough. A span ending in whitespace but with the caret
+    // still inside its real content is a genuine edit -- most of all a span
+    // holding several whitespace-joined words at once, which is what My edits
+    // being off renders instead of one span per word, and where the caret is
+    // essentially never at the tail while the reader is editing one of the
+    // words in the middle. And a caret at the tail of a span that does not
+    // end in whitespace is just the ordinary case of typing at the end of a
+    // word, real content and no quirk to catch.
+    spaceAtTail(span, range) {
+      if (!span || !range || !/\s$/.test(span.textContent)) return false;
+      if (!span.contains(range.startContainer)) return false;
+
+      return this.offsetWithinSpan(span, range) === span.textContent.length;
+    },
+
+    // spaceAtTail alone only catches the instant the space is typed, while
+    // the span still ends in whitespace. The very next real character
+    // removes that trailing whitespace -- the browser keeps extending the
+    // same span for as long as the caret stays at its own tail, same as it
+    // did for the space itself -- so on that keystroke spaceAtTail no
+    // longer matches, and without remembering where the boundary was, the
+    // word before the space reads as edited by a keystroke that was
+    // actually starting the next one.
+    //
+    // Remembered as a span-and-offset pair rather than re-derived, then, and
+    // kept only for as long as the caret stays in that same span: once the
+    // caret sits at or past the remembered offset, everything from there on
+    // is the new word forming, whatever it is made of. wordAt resetting to a
+    // genuinely different span, or a real render rebuilding the spans
+    // outright, both leave the remembered span no longer matching, which is
+    // what retires it without needing to clear it explicitly everywhere.
+    //
+    // But a Backspace that reaches back before the remembered offset --
+    // undoing the space itself, or eating into the new word and then the
+    // original one -- means the reader is editing that earlier content now,
+    // not extending what came after it, and the boundary stops describing
+    // anything real. Forgotten there rather than left standing, or typing
+    // forward again later -- appending to the original word for a real
+    // reason, nothing to do with the space any more -- would still read as
+    // past a boundary that should not apply to it, which is exactly the
+    // regression this once caused: a genuine edit stopped marking at all.
+    pastWordBoundary(span, range) {
+      if (this.spaceAtTail(span, range)) {
+        this.newWordBoundary = { span, offset: this.offsetWithinSpan(span, range) };
+        return true;
+      }
+
+      if (this.newWordBoundary && this.newWordBoundary.span === span) {
+        if (this.offsetWithinSpan(span, range) >= this.newWordBoundary.offset) {
+          return true;
+        }
+        this.newWordBoundary = null;
+      }
+
+      return false;
     },
 
     // Normalised the same way as match_key on the server: neither case nor the
@@ -268,13 +515,7 @@ export default {
     //
     // An attribute rather than a class: Vue owns the class and rewrites it
     // whenever it patches the span.
-    markChanged() {
-      const selection = window.getSelection();
-
-      if (!selection?.rangeCount) return;
-
-      const span = this.wordAt(selection.getRangeAt(0));
-
+    markChanged(span) {
       if (span) span.setAttribute("data-changed", "");
     },
 
@@ -285,15 +526,69 @@ export default {
       const at = this.caret();
       if (!at) return;
 
-      this.markChanged();
+      const selection = window.getSelection();
+      const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+      let span = range ? this.wordAt(range) : null;
+
+      if (this.pastWordBoundary(span, range)) span = null;
+
+      this.markChanged(span);
+
+      // A different word than the one already being typed into: whatever was
+      // pending belongs to a finished edit, so it is sent now, as its own
+      // undo step, before this one starts accumulating. Comparing elements
+      // rather than text or position is what makes this safe -- the server
+      // does not re-render the block the caret is in while it is still being
+      // typed into, so the same word keeps the same span for as long as the
+      // reader stays on it, and a real render (see the revision watcher)
+      // resets this along with everything else.
+      if (span !== this.editingWord) {
+        this.flush();
+        this.editingWord = span;
+      }
 
       // This block now disagrees with what Vue thinks it rendered. See the
       // revision watcher for why that matters.
       this.dirty.add(at.id);
 
+      const text = this.plainText(at.block.textContent);
+
+      // The character-count guideline in the margin, redrawn from what was
+      // just typed rather than waiting for the debounced report below and
+      // the server's own answer to it -- that round trip is exactly what
+      // set_text avoids taking for the block's own text, for the same
+      // reason: it would fight the caret. Vue-reactive rather than a direct
+      // DOM write, unlike markChanged above, because these spans live in
+      // the gutter, outside the contenteditable -- patching them here
+      // cannot disturb the caret the way patching the text ever could.
+      if (this.subtitleMode) {
+        this.liveCounts = { ...this.liveCounts, [at.id]: this.computeLineCounts(text) };
+      }
+
       clearTimeout(this.pending);
-      this.edit = { id: at.id, text: at.block.textContent };
+      this.edit = { id: at.id, text };
       this.pending = setTimeout(() => this.flush(), 400);
+    },
+
+    // Mirrors caption_line_counts on the Python side exactly -- same
+    // guideline, same tooltip wording -- so what is shown while typing
+    // matches what the next real render sends down.
+    computeLineCounts(text) {
+      const lines = (text || "").split("\n");
+      const tooManyLines = lines.length > this.maxSubtitleLines;
+
+      return lines.map((line) => {
+        const length = line.length;
+        const lineTooLong = length > this.characterLimit;
+
+        let tooltip =
+          `Guideline: max ${this.characterLimit} characters per line, ` +
+          `${this.maxSubtitleLines} lines.`;
+        if (lineTooLong) tooltip += ` This line is ${length} characters.`;
+        if (tooManyLines) tooltip += ` ${lines.length} lines in this caption.`;
+
+        return { length, exceeded: lineTooLong || tooManyLines, tooltip };
+      });
     },
 
     // Report a waiting edit now, e.g. before the caret is going to leave the
@@ -302,6 +597,7 @@ export default {
     // be gone.
     flush() {
       clearTimeout(this.pending);
+      this.editingWord = null;
 
       const edit = this.edit;
       this.edit = null;
@@ -312,6 +608,118 @@ export default {
     // The key a block is drawn under -- see the revision watcher.
     blockKey(block) {
       return `${block.id}:${this.stamps[block.id] || 0}`;
+    },
+
+    // A literal line break at the caret, replacing any selection the way
+    // typing a character would. document.execCommand("insertText", ...)
+    // looked like the natural fit but does not behave as a plain insertion
+    // for "\n" -- it went as far as deleting surrounding content in testing
+    // -- so this builds the same result by hand: a real text node, spliced
+    // in with the Range API. white-space: pre-wrap is what turns that
+    // character into a visible line break; nothing here draws one.
+    //
+    // A "\n" with nothing after it does not get a line box at all -- the
+    // browser only reserves room for a forced break when there is a real
+    // character following it, so a break at the very end of a caption drew
+    // no second line and the caret had nowhere on it to go. A zero-width
+    // space after the "\n" is exactly that character, invisible but real,
+    // and only added when the break lands at the true end -- one already
+    // followed by real text needs nothing extra, that text already earns
+    // its line box. plainText strips it back out wherever a block's text
+    // is read for anything other than drawing it, so it never reaches the
+    // caption's saved text, a character count, or an offset.
+    //
+    // Inserting through the DOM this way fires no input event, so onInput's
+    // own bookkeeping (marking the block dirty, scheduling the debounced
+    // send) is called directly afterward rather than left to fire on its
+    // own the way a real keystroke's insertion does.
+    insertLineBreak() {
+      const selection = window.getSelection();
+      if (!selection.rangeCount) return;
+
+      const range = selection.getRangeAt(0);
+      const block = this.blockOf(range.startContainer);
+
+      let atEnd = false;
+      if (block) {
+        const rest = range.cloneRange();
+        rest.selectNodeContents(block);
+        rest.setStart(range.endContainer, range.endOffset);
+        atEnd = this.plainText(rest.toString()).length === 0;
+      }
+
+      range.deleteContents();
+
+      const node = document.createTextNode(atEnd ? "\n\u200B" : "\n");
+      range.insertNode(node);
+      range.setStart(node, 1);
+      range.collapse(true);
+
+      selection.removeAllRanges();
+      selection.addRange(range);
+
+      this.onInput();
+    },
+
+    // The split icon in a caption's own action row -- the mouse equivalent
+    // of Ctrl/Cmd+Enter, for a reader who has not necessarily got the caret
+    // in this particular caption's text right now (clicking the icon does
+    // not itself move it there). Splits at the caret when it already is;
+    // otherwise the middle of the caption's own text is as reasonable a
+    // point as any, and split_caption falls back to exactly that when no
+    // cursor position reaches it at all -- this just picks it here instead,
+    // since a click always carries a block id and this event needs an
+    // offset it can act on.
+    splitAt(id) {
+      const at = this.caret();
+      let offset;
+
+      if (at && at.id === id) {
+        offset = at.offset;
+      } else {
+        const text = this.plainText(
+          this.$refs.body?.querySelector(`.transcript-text[data-id="${id}"]`)
+            ?.textContent
+        );
+        offset = text ? Math.floor(text.length / 2) : 0;
+      }
+
+      this.flush();
+      this.$emit("splitblock", { id, offset });
+    },
+
+    // The merge icon in a caption's own action row -- the mouse equivalent
+    // of Delete at the end of its text. Always the caption after this one:
+    // "after" is already the direction Add works in, and a reader wanting
+    // the other direction can open that caption's own menu instead, rather
+    // than this row carrying two arrows for what Backspace and Delete
+    // already do without needing a direction spelled out.
+    mergeWithNext(id) {
+      this.flush();
+      this.$emit("mergeblock", { id, direction: "next" });
+    },
+
+    // A start or end time typed directly into its own input -- no dialog,
+    // no slider, in either mode. Marked dirty the same way a text edit
+    // does: the reply might leave the value exactly as it was (a mistyped
+    // time is refused, not guessed at), and an unchanged prop is a patch
+    // Vue's own diff skips, which would leave whatever the reader typed
+    // showing in an input that never actually saved it.
+    retimeBlock(id, edge, event) {
+      this.dirty.add(id);
+      this.$emit("retime", { id, edge, value: event.target.value });
+    },
+
+    // Typing in a time input must not reach the document's own keydown
+    // handling below -- Enter there splits a caption, not this. Enter and
+    // Escape here just commit or abandon the edit, the same as leaving the
+    // field any other way.
+    onTimeInputKeydown(event) {
+      event.stopPropagation();
+
+      if (event.key === "Enter" || event.key === "Escape") {
+        event.target.blur();
+      }
     },
 
     onKeydown(event) {
@@ -335,6 +743,18 @@ export default {
 
       const at = this.caret();
       if (!at) return;
+
+      // Subtitles get a line break on a bare Enter -- a caption is short
+      // enough that the reader controls where it wraps by hand, and that is
+      // a far more frequent thing to want than starting a whole new timed
+      // cue, which now needs Ctrl/Cmd held down. A transcription has no use
+      // for a manual line break in running speech, so Enter there still
+      // always splits, exactly as before.
+      if (event.key === "Enter" && this.subtitleMode && !event.ctrlKey && !event.metaKey) {
+        event.preventDefault();
+        this.insertLineBreak();
+        return;
+      }
 
       // Let the server split and re-render, rather than letting the browser
       // guess what element a new line should be.
@@ -414,12 +834,6 @@ export default {
 
       this.closeMenu();
 
-      const time = event.target.closest(".transcript-time");
-      if (time) {
-        this.$emit("timeclick", { id: Number(time.dataset.id) });
-        return;
-      }
-
       const block = this.blockOf(event.target);
       if (!block) return;
 
@@ -436,24 +850,34 @@ export default {
       });
     },
 
-    // Put the caret in a block. Used after a new one is started, so it can be
-    // typed into without reaching for the mouse.
-    focusBlock(id) {
+    // Put the caret in a block, at a character offset that defaults to its
+    // very start. Used after a new block is started, so it can be typed
+    // into without reaching for the mouse, and after a merge, so the caret
+    // lands at the seam between the two texts rather than wherever a
+    // removed block leaves the browser's own selection -- see merge() on
+    // the Python side. placeCaretAt is what actually walks to the offset;
+    // this only waits for the block to exist to hand it to.
+    focusBlock(id, offset = 0) {
       this.$nextTick(() => {
         const block = this.$refs.body?.querySelector(
           `.transcript-text[data-id="${id}"]`
         );
         if (!block) return;
 
-        this.$refs.body.focus();
+        this.placeCaretAt(block, offset);
+      });
+    },
 
-        const range = document.createRange();
-        range.selectNodeContents(block);
-        range.collapse(true);
-
-        const selection = window.getSelection();
-        selection.removeAllRanges();
-        selection.addRange(range);
+    // Bring a block into view without moving the caret -- what search and
+    // autoscroll use once they have picked a caption, and what the activeId
+    // watcher above uses too. Wrapped in nextTick since this can follow a
+    // render, e.g. when search has just changed which block is highlighted.
+    scrollToBlock(id) {
+      this.$nextTick(() => {
+        const cell = this.$refs.body?.querySelector(
+          `.transcript-cell[data-id="${id}"]`
+        );
+        if (cell) cell.scrollIntoView({ block: "center", behavior: "smooth" });
       });
     },
 
