@@ -122,6 +122,17 @@ Because the speaker list rides the snapshot, anything that changes it needs a hi
 
 Find and Replace (`replace_in_current_caption`, `replace_all` in `utils/srt_search.py`) retags edit marks inline via `retag_edits()` rather than going through `update_caption_text()`, which would take a second snapshot on top of the one already saved — Replace All across many captions has to stay one undo step. Assigning `caption.text` directly, as both once did, skipped retagging altogether: the replaced word came out unmarked, and a replacement of a different length left every mark after it pointing at whatever word had shifted into its position.
 
+## Subtitle keyboard shortcuts
+
+Two handlers, split by what each needs to know:
+
+- **Caption-scoped** (subtitles only, in `transcript_editor.js`'s `onKeydown`, gated on `this.subtitleMode && (event.ctrlKey || event.metaKey)`): Ctrl/⌘+Enter split, Ctrl/⌘+Shift+Enter add after, Ctrl/⌘+↑/↓ move a word across the boundary, Ctrl+M merge with next, Ctrl+D delete. These are the keyboard's half of the caption row's own action icons, and each has to know which caption the caret is in — which the page's document-level handler does not. Each one `preventDefault()`s and `flush()`es before reporting, so a pending edit reaches the server before the structure changes under it. **The Shift+Enter branch must stay ahead of the split branch**, which only checks for Enter plus a modifier and would otherwise swallow it.
+- **Document-scoped** (in `SRTEditor.handle_key_event`, driven by the page's `ui.keyboard`): save, export, find, undo/redo, play/pause, and Ctrl+Shift+V validate (subtitles only — a transcription has no line-length or line-count guideline to check).
+
+`moveword` is the event that finally reaches `move_first_word_to_previous()`/`move_last_word_to_next()` in `utils/srt.py`; both had existed and been tested for a while with **nothing calling them**. `TranscriptEditor.move_word()` refocuses the caption being trimmed rather than following the word across, so a second press means the same as the first. Both captions are re-timed from the word data by the editor methods themselves.
+
+**Modifier choices are deliberate, not oversights.** Ctrl only (never ⌘) for M, D and Shift+V: ⌘+M minimises, ⌘+D bookmarks, and ⌘+Shift+V is paste-without-formatting on a Mac, and taking any of them would take them from the whole window. Note also that macOS binds Ctrl+↑/↓ to Mission Control at the OS level, so the ⌘ variant is the one that actually reaches the page there — which is why the word moves accept both.
+
 ## Following the video (`TranscriptEditor.follow_video`, `pages/srt.py`)
 
 `video.on("timeupdate", transcript.follow_video)` (`pages/srt.py`) drives two separate things from one server round trip, a linear scan of `editor.captions` for the one whose `[get_start_seconds(), get_end_seconds())` window contains the player's current time (`ui.run_javascript` reads `document.querySelector("video").currentTime` — timeupdate itself carries no position):

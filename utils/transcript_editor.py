@@ -228,6 +228,7 @@ class TranscriptEditor:
         self.body.on("blocktext", lambda event: self.set_text(event.args))
         self.body.on("splitblock", lambda event: self.split(event.args))
         self.body.on("mergeblock", lambda event: self.merge(event.args))
+        self.body.on("moveword", lambda event: self.move_word(event.args))
         self.body.on("addblock", lambda event: self.add_after(event.args))
         self.body.on("deleteblock", lambda event: self.delete(event.args))
         self.body.on("blockclick", lambda event: self.seek(event.args))
@@ -462,6 +463,39 @@ class TranscriptEditor:
         self.refresh()
         self.changed()
         self.focus(survivor.index, offset)
+
+    def move_word(self, args) -> None:
+        """
+        Hand one word across the boundary to the caption either side.
+
+        The editor's own methods refuse the cases that have nowhere to go --
+        the first caption has no previous, the last has no next, and neither
+        will empty a caption outright -- so this only has to say which way,
+        and re-render whatever came back. Both captions are re-timed from the
+        word data by those methods, not here.
+
+        The caret is put back in the caption the reader is working in rather
+        than following the word across: they are trimming this caption's
+        edges, and a caret that jumped to the neighbour on every keystroke
+        would make a second press mean something different from the first.
+        """
+
+        caption = self.caption(self.block_id(args))
+        direction = args.get("direction") if isinstance(args, dict) else None
+
+        if caption is None:
+            return
+
+        if direction == "previous":
+            self.editor.move_first_word_to_previous(caption)
+        elif direction == "next":
+            self.editor.move_last_word_to_next(caption)
+        else:
+            return
+
+        self.refresh()
+        self.changed()
+        self.focus(caption.index)
 
     def delete(self, args) -> None:
         """

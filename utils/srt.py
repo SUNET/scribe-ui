@@ -432,6 +432,19 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
                 self.show_export_dialog(self.filename)
             case "e" if event.modifiers.meta and not event.modifiers.shift:
                 self.show_export_dialog(self.filename)
+
+            # Validate captions, Ctrl+Shift+V. Subtitles only -- there is
+            # nothing to validate in a transcription, which has neither a
+            # line-length guideline nor a line count to exceed. Ctrl rather
+            # than Cmd as well: Cmd+Shift+V is paste-without-formatting on a
+            # Mac, which a text editor should not be taking.
+            case "v" if (
+                event.modifiers.ctrl
+                and event.modifiers.shift
+                and self.data_format == "srt"
+            ):
+                self.validate_captions()
+
             # Everything else
             case _:
                 pass

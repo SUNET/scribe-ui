@@ -15,7 +15,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from utils.srt import SRTCaption, UndoRedoManager
+from utils.srt import SRTCaption, SRTEditor, UndoRedoManager
 
 
 class TestSRTCaption:
@@ -570,3 +570,70 @@ class TestSpeakersTravelWithHistory:
         manager.save_state(self.captions("Speaker 1"))
 
         assert manager.undo_stack[0].speakers is None
+
+
+class TestValidateShortcut:
+    """
+    Ctrl+Shift+V validates. Subtitles only -- a transcription has neither a
+    line-length guideline nor a line count to exceed -- and Ctrl rather than
+    Cmd, since Cmd+Shift+V is paste-without-formatting on a Mac.
+    """
+
+    def editor(self, data_format):
+        editor = SRTEditor("job-uuid", data_format, "file")
+        editor.data_format = data_format
+        editor.captions = []
+
+        return editor
+
+    def press(self, editor, key, ctrl=False, meta=False, shift=False):
+        import asyncio
+        from types import SimpleNamespace
+
+        event = SimpleNamespace(
+            key=key,
+            action=SimpleNamespace(keydown=True),
+            modifiers=SimpleNamespace(ctrl=ctrl, meta=meta, shift=shift, alt=False),
+        )
+        asyncio.run(editor.handle_key_event(event))
+
+    def test_it_validates_a_subtitle(self):
+        editor = self.editor("srt")
+        called = []
+        editor.validate_captions = lambda *a, **k: called.append(True)
+
+        self.press(editor, "v", ctrl=True, shift=True)
+
+        assert called == [True]
+
+    def test_a_transcription_is_left_alone(self):
+        editor = self.editor("txt")
+        called = []
+        editor.validate_captions = lambda *a, **k: called.append(True)
+
+        self.press(editor, "v", ctrl=True, shift=True)
+
+        assert called == []
+
+    def test_the_command_key_is_not_taken(self):
+        editor = self.editor("srt")
+        called = []
+        editor.validate_captions = lambda *a, **k: called.append(True)
+
+        self.press(editor, "v", meta=True, shift=True)
+
+        assert called == []
+
+    def test_plain_ctrl_v_still_pastes(self):
+        """
+        Without Shift this is the browser's own paste, which the editor must
+        not intercept.
+        """
+
+        editor = self.editor("srt")
+        called = []
+        editor.validate_captions = lambda *a, **k: called.append(True)
+
+        self.press(editor, "v", ctrl=True)
+
+        assert called == []

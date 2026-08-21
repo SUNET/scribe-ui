@@ -942,6 +942,60 @@ export default {
       const at = this.caret();
       if (!at) return;
 
+      // The caption-scoped shortcuts, subtitles only -- they are the
+      // keyboard's half of the split/merge/add/delete actions the caption
+      // row offers the mouse, and a transcription has none of those. Each
+      // needs to know which caption the caret is in, which is why they live
+      // here rather than in the page's own document-level handler.
+      //
+      // Ahead of the Enter branches below: Ctrl/Cmd+Shift+Enter would
+      // otherwise fall through to the split, which only checks for Enter
+      // with a modifier and would not notice the Shift.
+      if (this.subtitleMode && (event.ctrlKey || event.metaKey)) {
+        // Add a caption after this one. Shift is what separates it from the
+        // plain Ctrl/Cmd+Enter split.
+        if (event.key === "Enter" && event.shiftKey) {
+          event.preventDefault();
+          this.flush();
+          this.$emit("addblock", { id: at.id });
+          return;
+        }
+
+        // Hand a word across the boundary to the caption either side. The
+        // server picks the timings back up from the word data, so this is a
+        // report rather than anything worked out here.
+        if (event.key === "ArrowUp") {
+          event.preventDefault();
+          this.flush();
+          this.$emit("moveword", { id: at.id, direction: "previous" });
+          return;
+        }
+
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          this.flush();
+          this.$emit("moveword", { id: at.id, direction: "next" });
+          return;
+        }
+
+        // Ctrl only for these two, deliberately: Cmd+D and Cmd+M are the
+        // browser's own bookmark and minimise on a Mac, and taking them
+        // would be taking them from the whole window.
+        if (key === "m" && !event.metaKey) {
+          event.preventDefault();
+          this.flush();
+          this.$emit("mergeblock", { id: at.id, direction: "next" });
+          return;
+        }
+
+        if (key === "d" && !event.metaKey) {
+          event.preventDefault();
+          this.flush();
+          this.$emit("deleteblock", { id: at.id });
+          return;
+        }
+      }
+
       // A bare Enter inserts a line break, in a transcription the same as
       // a subtitle -- starting a whole new block (a new timed cue, or a
       // fresh speaker turn) now needs Ctrl/Cmd held down instead.

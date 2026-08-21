@@ -520,6 +520,154 @@ class TestSplitFocus:
         assert calls == [(editor.captions[1].index, 0)]
 
 
+class TestSubtitleShortcuts:
+    """
+    The keyboard half of the caption row's split/merge/add/delete actions,
+    plus handing a word across a caption boundary. Subtitles only: a
+    transcription offers none of those actions, and these all need to know
+    which caption the caret is in, which is why they live in the component
+    rather than the page's own document-level keyboard handler.
+    """
+
+    def source(self) -> str:
+        import pathlib
+
+        return pathlib.Path("utils/transcript_editor.js").read_text()
+
+    def body(self) -> str:
+        source = self.source()
+        body = source[source.index("onKeydown(event) {"):]
+
+        return body[: body.index("\n    },\n")]
+
+    def test_they_are_gated_on_subtitle_mode_and_a_modifier(self):
+        assert "if (this.subtitleMode && (event.ctrlKey || event.metaKey)) {" in self.body()
+
+    def test_add_caption_after_is_shift_enter(self):
+        body = self.body()
+
+        assert 'if (event.key === "Enter" && event.shiftKey) {' in body
+        assert '$emit("addblock", { id: at.id })' in body
+
+    def test_add_is_checked_before_the_plain_split(self):
+        """
+        Ctrl/Cmd+Shift+Enter would otherwise fall through to the split,
+        which only looks for Enter with a modifier and would not notice the
+        Shift.
+        """
+
+        body = self.body()
+
+        assert body.index('event.shiftKey') < body.index('$emit("splitblock"')
+
+    def test_the_word_moves_report_their_direction(self):
+        body = self.body()
+
+        assert 'if (event.key === "ArrowUp") {' in body
+        assert '$emit("moveword", { id: at.id, direction: "previous" })' in body
+        assert 'if (event.key === "ArrowDown") {' in body
+        assert '$emit("moveword", { id: at.id, direction: "next" })' in body
+
+    def test_merge_and_delete_refuse_the_command_key(self):
+        """
+        Cmd+D and Cmd+M are the browser's own bookmark and minimise on a
+        Mac, and taking them would be taking them from the whole window.
+        """
+
+        body = self.body()
+
+        assert 'if (key === "m" && !event.metaKey) {' in body
+        assert 'if (key === "d" && !event.metaKey) {' in body
+
+    def test_merge_goes_to_the_next_caption(self):
+        body = self.body()
+        branch = body[body.index('if (key === "m"'):]
+
+        assert '$emit("mergeblock", { id: at.id, direction: "next" })' in branch
+
+    def test_delete_reports_the_caption_the_caret_is_in(self):
+        body = self.body()
+        branch = body[body.index('if (key === "d"'):]
+
+        assert '$emit("deleteblock", { id: at.id })' in branch
+
+    def test_each_one_stops_the_browser_and_flushes_first(self):
+        """
+        A pending edit has to reach the server before the structure changes
+        under it, and every one of these keys means something to the browser
+        too.
+        """
+
+        body = self.body()
+        gated = body[body.index("if (this.subtitleMode &&"):body.index("// A bare Enter")]
+
+        assert gated.count("event.preventDefault()") == 5
+        assert gated.count("this.flush()") == 5
+
+
+class TestMoveWordIsWired:
+    """
+    The editor has had move_first_word_to_previous/move_last_word_to_next
+    for a while, but nothing called them -- there was no event for the
+    client to raise.
+    """
+
+    def test_the_event_reaches_the_view(self):
+        import pathlib
+
+        source = pathlib.Path("utils/transcript_editor.py").read_text()
+
+        assert 'self.body.on("moveword", lambda event: self.move_word(event.args))' in source
+
+    def test_previous_moves_the_first_word_back(self, view, editor, monkeypatch):
+        moved = []
+        monkeypatch.setattr(
+            editor, "move_first_word_to_previous", lambda c: moved.append(c.index)
+        )
+        view.focus = lambda *a, **k: None
+
+        view.move_word({"id": editor.captions[1].index, "direction": "previous"})
+
+        assert moved == [editor.captions[1].index]
+
+    def test_next_moves_the_last_word_on(self, view, editor, monkeypatch):
+        moved = []
+        monkeypatch.setattr(
+            editor, "move_last_word_to_next", lambda c: moved.append(c.index)
+        )
+        view.focus = lambda *a, **k: None
+
+        view.move_word({"id": editor.captions[0].index, "direction": "next"})
+
+        assert moved == [editor.captions[0].index]
+
+    def test_an_unknown_direction_does_nothing(self, view, editor, monkeypatch):
+        calls = []
+        monkeypatch.setattr(editor, "move_first_word_to_previous", lambda c: calls.append(c))
+        monkeypatch.setattr(editor, "move_last_word_to_next", lambda c: calls.append(c))
+
+        view.move_word({"id": editor.captions[0].index, "direction": "sideways"})
+
+        assert calls == []
+
+    def test_an_unknown_block_is_harmless(self, view, editor):
+        view.move_word({"id": 9999, "direction": "next"})
+
+    def test_the_caret_stays_in_the_caption_being_trimmed(self, view, editor, monkeypatch):
+        """
+        Following the word across would make a second press mean something
+        different from the first.
+        """
+
+        monkeypatch.setattr(editor, "move_last_word_to_next", lambda c: None)
+        focused = []
+        view.focus = lambda index, *a, **k: focused.append(index)
+
+        view.move_word({"id": editor.captions[0].index, "direction": "next"})
+
+        assert focused == [editor.captions[0].index]
+
+
 class TestSubtitleEnter:
     """
     Enter means the same thing in both modes now: bare Enter inserts a line
