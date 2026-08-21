@@ -242,6 +242,15 @@ def create() -> None:
                                 overlay = ui.element("div").classes(
                                     "video-subtitle-overlay"
                                 )
+                                # The overlay sizes its own type so a line
+                                # of the guideline's full length still fits
+                                # the frame on one line -- the limit itself
+                                # is a setting, so the stylesheet is told
+                                # what it is rather than hard-coding it.
+                                overlay.style(
+                                    "--subtitle-char-limit: "
+                                    f"{settings.CHARACTER_LIMIT}"
+                                )
                                 overlay.set_visibility(False)
                                 transcript.set_overlay(overlay)
                                 transcript.set_overlay_enabled(

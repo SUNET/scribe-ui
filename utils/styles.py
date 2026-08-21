@@ -899,6 +899,10 @@ theme_styles = """
        ui.video nor the card wrapping it establishes one. */
     .video-frame {
         position: relative;
+        /* The overlay's type is sized against this frame's own width (cqi
+           below), so a caption's longest allowed line still fits on one
+           line however narrow the splitter leaves the video. */
+        container-type: inline-size;
     }
     .video-subtitle-overlay {
         position: absolute;
@@ -913,7 +917,16 @@ theme_styles = """
         padding: 0.35rem 0.75rem;
         background-color: rgba(0, 0, 0, 0.7);
         color: #fff;
-        font-size: 1rem;
+        /* A line the editor accepts (up to CHARACTER_LIMIT characters,
+           handed down as --subtitle-char-limit by pages/srt.py) has to fit
+           the frame without wrapping, or the overlay stops being a preview
+           of what a viewer sees -- the reader breaks a caption at the
+           guideline and the overlay breaks it again somewhere else. So the
+           type is sized against the frame rather than fixed: roughly 0.55em
+           per character for the sans in use, inside the ~85% of the frame
+           the box and its padding get, capped at 1rem so a wide video keeps
+           an ordinary subtitle rather than a blown-up one. */
+        font-size: min(1rem, calc(85cqi / (var(--subtitle-char-limit, 42) * 0.55)));
         line-height: 1.4;
         text-align: center;
         /* One child per line of the caption (see draw_overlay), so the
@@ -926,6 +939,13 @@ theme_styles = """
            the way of the seek bar or a click-to-pause anywhere else on the
            frame, even if the two ever end up overlapping regardless. */
         pointer-events: none;
+    }
+    .video-subtitle-line {
+        /* Never break a line the editor did not break: draw_overlay gives
+           each of the caption's own lines an element, and a wrap inside one
+           of them would show a viewer a break the subtitle file does not
+           have. The font-size above is what keeps this from overflowing. */
+        white-space: nowrap;
     }
 
     /* ── Document editor (transcriptions and subtitles alike) ── */

@@ -321,3 +321,27 @@ class TestVideoSubtitleOverlay:
         """
 
         assert effective(".video-subtitle-overlay")["pointer-events"] == "none"
+
+    def test_a_line_never_wraps(self):
+        """
+        draw_overlay gives each of the caption's own lines an element, so a
+        wrap inside one of them is a break the subtitle file does not have --
+        the overlay stops being a preview of what a viewer sees.
+        """
+
+        assert effective(".video-subtitle-line")["white-space"] == "nowrap"
+
+    def test_the_type_is_sized_against_the_frame(self):
+        """
+        What keeps the nowrap above from overflowing: the font shrinks with
+        the frame so a line of the guideline's full length fits, capped at
+        1rem so a wide video keeps an ordinary subtitle. The frame has to be
+        a container of its own for cqi to resolve against it.
+        """
+
+        font_size = effective(".video-subtitle-overlay")["font-size"]
+
+        assert "cqi" in font_size
+        assert "--subtitle-char-limit" in font_size
+        assert font_size.startswith("min(1rem,")
+        assert effective(".video-frame")["container-type"] == "inline-size"
