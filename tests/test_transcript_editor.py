@@ -246,8 +246,8 @@ class TestBlocks:
         block = view.blocks()[0]
 
         assert block["speaker"] == "Speaker 1"
-        assert block["start_label"] == "00:00:00 .000"
-        assert block["end_label"] == "00:00:01 .000"
+        assert block["start_label"] == "00:00:00.000"
+        assert block["end_label"] == "00:00:01.000"
 
     def test_ids_match_caption_indices(self, view, editor):
         assert [b["id"] for b in view.blocks()] == [c.index for c in editor.captions]
@@ -291,11 +291,13 @@ class TestSubtitleLineCounts:
 
         assert [c["exceeded"] for c in counts] == [True, False]
 
-    def test_too_many_lines_flags_every_line(self):
+    def test_too_many_lines_flags_no_line(self):
         """
-        A caption with more lines than the guideline allows is a problem
-        with the caption as a whole, not with any one line's length, so
-        every line is flagged -- not only whichever one happens to be long.
+        A count answers for its own line's length and nothing else. A
+        caption with more lines than the guideline allows once turned every
+        count in it red, which said those lines were too long when they
+        were not -- "Validate" is what reports the line count, and the
+        tooltip still names it.
         """
 
         editor = self.subtitle_editor()
@@ -303,7 +305,8 @@ class TestSubtitleLineCounts:
 
         counts = editor.caption_line_counts(caption)
 
-        assert [c["exceeded"] for c in counts] == [True, True, True]
+        assert [c["exceeded"] for c in counts] == [False, False, False]
+        assert "3 lines in this caption" in counts[0]["tooltip"]
 
     def test_the_tooltip_names_the_guideline(self):
         editor = self.subtitle_editor()
@@ -372,10 +375,10 @@ class TestTimeLabel:
     @pytest.mark.parametrize(
         "seconds,expected",
         [
-            (0.0, "00:00:00 .000"),
-            (1226.86, "00:20:26 .860"),
-            (3599.9999, "01:00:00 .000"),
-            (-5.0, "00:00:00 .000"),
+            (0.0, "00:00:00.000"),
+            (1226.86, "00:20:26.860"),
+            (3599.9999, "01:00:00.000"),
+            (-5.0, "00:00:00.000"),
         ],
     )
     def test_matches_the_reference_format(self, seconds, expected):
@@ -1103,7 +1106,7 @@ class TestRetime:
         view.retime({
             "id": target.index,
             "edge": "start",
-            "value": "00:00:00 .500",
+            "value": "00:00:00.500",
         })
 
         assert target.get_end_seconds() == pytest.approx(original_end)
@@ -1123,19 +1126,19 @@ class TestRetime:
         view.retime({
             "id": target.index,
             "edge": "end",
-            "value": "00:00:00 .000",
+            "value": "00:00:00.000",
         })
 
         assert target.end_time == original_end
 
     def test_an_unknown_block_is_harmless(self, view):
-        view.retime({"id": 9999, "edge": "start", "value": "00:00:01 .000"})
+        view.retime({"id": 9999, "edge": "start", "value": "00:00:01.000"})
 
     def test_an_unknown_edge_is_harmless(self, view, editor):
         target = editor.captions[0]
         before = (target.start_time, target.end_time)
 
-        view.retime({"id": target.index, "edge": "middle", "value": "00:00:01 .000"})
+        view.retime({"id": target.index, "edge": "middle", "value": "00:00:01.000"})
 
         assert (target.start_time, target.end_time) == before
 
@@ -1150,6 +1153,40 @@ class TestParseTimeLabel:
         from utils.transcript_editor import format_time_label, parse_time_label
 
         assert parse_time_label(format_time_label(92.44)) == pytest.approx(92.44)
+
+    def test_a_comma_is_accepted_as_the_decimal_point(self):
+        """
+        SRT itself writes a comma, and it is the first thing a Swedish
+        keyboard offers -- refusing it reverted the whole edit with no
+        explanation.
+        """
+
+        from utils.transcript_editor import parse_time_label
+
+        assert parse_time_label("00:00:23,340") == pytest.approx(23.34)
+
+    def test_fewer_than_three_decimals_are_accepted(self):
+        """
+        "00:00:23.4" means 23.4 seconds -- decimals, not a count of
+        milliseconds. Requiring exactly three digits threw the value away
+        instead.
+        """
+
+        from utils.transcript_editor import parse_time_label
+
+        assert parse_time_label("00:00:23.4") == pytest.approx(23.4)
+        assert parse_time_label("00:00:23.04") == pytest.approx(23.04)
+
+    def test_a_value_typed_with_a_space_still_parses(self):
+        """
+        The editor drew the milliseconds set apart ("00:00:01 .500") for a
+        long time, so a reader who types the space out of habit -- or pastes
+        a timestamp from an older screenshot -- is still understood.
+        """
+
+        from utils.transcript_editor import parse_time_label
+
+        assert parse_time_label("00:00:01 .500") == pytest.approx(1.5)
 
     def test_garbage_is_refused(self):
         from utils.transcript_editor import parse_time_label

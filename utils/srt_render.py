@@ -49,11 +49,12 @@ class RenderMixin:
         A caption's character-count guideline, one entry per line, for the
         document editor to show in the margin beside that line rather than
         as one summary under the caption. Each entry flags whether that line
-        alone has drifted past the guideline -- over CHARACTER_LIMIT, or the
-        caption has more than MAX_SUBTITLE_LINES of them, in which case every
-        line's count is flagged, not only the one that is individually long.
-        This only flags it, the same as "Validate" does; nothing is
-        truncated or auto-wrapped.
+        has gone past CHARACTER_LIMIT ("exceeded"). A count answers for its
+        own line's length and nothing else: a caption with more lines than
+        MAX_SUBTITLE_LINES used to turn every count in it red, which said
+        lines were too long when they were not -- "Validate" is what
+        reports the line count, and the tooltip still names it. This only
+        flags; nothing is truncated or auto-wrapped.
         """
 
         lines = caption.text.split("\n")
@@ -63,13 +64,13 @@ class RenderMixin:
 
         for line in lines:
             length = len(line)
-            line_too_long = length > settings.CHARACTER_LIMIT
+            exceeded = length > settings.CHARACTER_LIMIT
 
             tooltip = (
                 f"Guideline: max {settings.CHARACTER_LIMIT} characters per line, "
                 f"{settings.MAX_SUBTITLE_LINES} lines."
             )
-            if line_too_long:
+            if exceeded:
                 tooltip += f" This line is {length} characters."
             if too_many_lines:
                 tooltip += f" {len(lines)} lines in this caption."
@@ -77,7 +78,7 @@ class RenderMixin:
             counts.append(
                 {
                     "length": length,
-                    "exceeded": line_too_long or too_many_lines,
+                    "exceeded": exceeded,
                     "tooltip": tooltip,
                 }
             )

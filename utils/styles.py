@@ -29,22 +29,39 @@ theme_styles = """
     :root,
     .body--light {
         color-scheme: light;
+        /* One stack for the interface, one for figures that are read as
+           data -- timestamps, mostly. System faces throughout: nothing is
+           fetched, so nothing is left to a network the app does not
+           control, and the editor is legible before any font arrives. */
+        --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter",
+            Roboto, "Helvetica Neue", Arial, sans-serif;
+        /* Monospaced, and with a plain zero. Every other mono this machine
+           ships -- SF Mono (what ui-monospace resolves to), Menlo, Monaco,
+           Andale Mono, PT Mono -- strikes its zero through, which reads as
+           a marking on a timestamp rather than as a digit. Courier is the
+           one that does not. */
+        --font-mono: "Courier New", Courier, "Liberation Mono", monospace;
+
         --color-bg-page: #ffffff;
         --color-bg-surface: #ffffff;
-        --color-bg-surface-alt: #f5f5f5;
-        --color-bg-surface-hover: #e0e0e0;
+        --color-bg-surface-alt: #f3f4f6;
+        --color-bg-surface-hover: #e8eaed;
 
         --color-brand-primary: #082954;
         --color-brand-accent: #d3ecbe;
 
-        --color-text-primary: #000000;
+        /* Near black rather than pure black: long stretches of transcription
+           are read here, and #000 on white glares at that length. */
+        --color-text-primary: #111827;
         --color-text-secondary: #374151;
-        --color-text-tertiary: #666666;
-        --color-text-muted: #757575;
+        --color-text-tertiary: #626b7a;
+        --color-text-muted: #6b7280;
         --color-text-on-brand: #ffffff;
 
-        --color-border: #000000;
-        --color-border-subtle: #e0e0e0;
+        /* A grey rule, not a black one. Pure black borders drew every button
+           and table cell as hard as the text inside it. */
+        --color-border: #d0d5dd;
+        --color-border-subtle: #e5e7eb;
         --color-border-disabled: #bdbdbd;
 
         --color-bg-disabled: #e0e0e0;
@@ -122,7 +139,7 @@ theme_styles = """
         --color-btn-edit-border: #082954;
         --color-btn-delete-bg: transparent;
         --color-btn-delete-text: #721c24;
-        --color-btn-delete-border: #000000;
+        --color-btn-delete-border: #d0d5dd;
 
         --color-chart-bar-current: #4F46E5;
         --color-chart-bar-previous: #10B981;
@@ -141,24 +158,27 @@ theme_styles = """
     .body--dark {
         color-scheme: dark;
         --color-bg-page: #000000;
-        --color-bg-surface: #000000;
-        --color-bg-surface-alt: #1a1a1a;
-        --color-bg-surface-hover: #3a3a3a;
+        --color-bg-surface: #16181d;
+        --color-bg-surface-alt: #1e2128;
+        --color-bg-surface-hover: #2a2e36;
 
         --color-brand-primary: #5b9bd5;
         --color-brand-accent: #3d7a2e;
 
-        --color-text-primary: #ffffff;
-        --color-text-secondary: #ffffff;
-        --color-text-tertiary: #e0e0e0;
-        --color-text-muted: #e0e0e0;
+        /* Off white, and three genuinely different weights of it: muted was
+           #e0e0e0, all but indistinguishable from primary, so the character
+           counts and the gutter read as loudly as the text they annotate. */
+        --color-text-primary: #e6e8eb;
+        --color-text-secondary: #c7ccd3;
+        --color-text-tertiary: #a7aeb8;
+        --color-text-muted: #9aa1ab;
         --color-text-on-brand: #ffffff;
 
-        --color-border: #555555;
-        --color-border-subtle: #3a3a3a;
+        --color-border: #3a3f47;
+        --color-border-subtle: #2c3038;
         --color-border-disabled: #444444;
 
-        --color-bg-disabled: #333333;
+        --color-bg-disabled: #2a2e36;
 
         --color-status-ok-bg: #1b3a1b;
         --color-status-ok-border: #4caf50;
@@ -198,10 +218,10 @@ theme_styles = """
 
         --color-playing-bg: #1c3252;
 
-        --color-header-bg: #1e1e1e;
+        --color-header-bg: #16181d;
 
-        --color-help-bg-start: #1e1e1e;
-        --color-help-bg-end: #252525;
+        --color-help-bg-start: #16181d;
+        --color-help-bg-end: #1e2128;
         --color-help-accent-border: #5b9bd5;
 
         --color-shadow-light: rgba(0, 0, 0, 0.3);
@@ -341,9 +361,24 @@ theme_styles = """
         border: none !important;
     }
 
-    /* ── Page background ── */
+    /* ── Page background and type ── */
     body {
         background-color: var(--color-bg-page);
+        /* Quasar states Roboto on the body and again on several of its own
+           controls, so both have to be answered or the interface ends up
+           in two faces at once. */
+        font-family: var(--font-sans);
+    }
+    .q-btn,
+    .q-field,
+    .q-item,
+    .q-table,
+    .q-tooltip,
+    input,
+    button,
+    select,
+    textarea {
+        font-family: var(--font-sans);
     }
 
     /* ── Quasar chip ── */
@@ -441,27 +476,57 @@ theme_styles = """
         color: var(--color-text-primary) !important;
     }
 
+    /* ── Editor toolbar ── */
+    /* Stays put while the caption list scrolls under it: every one of its
+       actions applies to the document as a whole, so scrolling away from
+       them meant scrolling back up to save. */
+    .editor-toolbar {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        background-color: var(--color-bg-surface);
+        border-bottom: 1px solid var(--color-border-subtle);
+        padding: 0.5rem 0.25rem;
+    }
+    /* Actions that belong together sit together, divided by a rule rather
+       than by spacing alone -- undo/redo, then the document's own actions,
+       then the ones that only look at it. */
+    .editor-toolbar-group {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .editor-toolbar .q-separator--vertical {
+        height: 1.5rem;
+        align-self: center;
+        margin: 0 0.25rem;
+    }
+
     /* ── Editor toolbar buttons (flat, no border, subtle bg in dark mode) ── */
     .editor-btn {
         border: none !important;
     }
+    /* Sized to their own label rather than to a shared floor. A fixed
+       130px made six different actions read as one undifferentiated wall
+       of boxes, and left Save no way to stand out from Shortcuts. */
     .editor-toolbar-btn {
-        min-width: 130px !important;
+        min-width: 0 !important;
+        padding: 0 0.75rem !important;
     }
     .body--light .q-btn.editor-btn {
-        background-color: #ffffff !important;
+        background-color: var(--color-bg-surface) !important;
         border: 1px solid var(--color-border-subtle) !important;
-        color: #000000 !important;
+        color: var(--color-text-primary) !important;
     }
     .body--light .q-btn.editor-btn:hover {
         background-color: var(--color-bg-surface-alt) !important;
     }
     .body--light .q-btn.editor-btn .q-icon,
     .body--light .q-btn.editor-btn .q-btn__content {
-        color: #000000 !important;
+        color: var(--color-text-primary) !important;
     }
     .body--light .q-btn.editor-btn[disabled] {
-        background-color: #ffffff !important;
+        background-color: var(--color-bg-surface) !important;
         border: 1px solid var(--color-border-subtle) !important;
         opacity: 0.4;
     }
@@ -704,9 +769,31 @@ theme_styles = """
         max-width: 100%;
     }
 
-    /* ── Editor: splitter cards use page background ── */
-    .body--dark .q-splitter .q-card {
-        background-color: var(--color-bg-page) !important;
+    /* ── Editor panels ── */
+    /* The two halves of the editor -- the caption list and the video --
+       are the page's own content, not something floating over it, so they
+       carry neither a drop shadow nor a rule around them. Just a radius,
+       and the splitter's own handle between them. */
+    .editor-panel {
+        background-color: var(--color-bg-surface);
+        border: none !important;
+        border-radius: 12px;
+        box-shadow: none !important;
+    }
+    .body--dark .q-card.editor-panel {
+        background-color: var(--color-bg-surface) !important;
+    }
+
+    /* The handle between them: a hairline at rest, the brand colour while
+       it is being dragged or pointed at, so it reads as something that can
+       be moved rather than as a gap between two cards. */
+    .q-splitter__separator {
+        background-color: var(--color-border-subtle) !important;
+        transition: background-color 0.12s ease-in-out;
+    }
+    .q-splitter__separator:hover,
+    .q-splitter--active .q-splitter__separator {
+        background-color: var(--color-brand-primary) !important;
     }
 
     /* ── Editor: selected caption styling ── */
@@ -899,6 +986,10 @@ theme_styles = """
        ui.video nor the card wrapping it establishes one. */
     .video-frame {
         position: relative;
+        /* The frame sits inside a rounded panel now, so the picture is
+           rounded to match rather than filling square corners inside it. */
+        border-radius: 8px;
+        overflow: hidden;
         /* The overlay's type is sized against this frame's own width (cqi
            below), so a caption's longest allowed line still fits on one
            line however narrow the splitter leaves the video. */
@@ -1041,6 +1132,15 @@ theme_styles = """
         position: relative;
         border-left: 1px solid var(--color-border-subtle);
         padding-left: 1rem;
+        /* Room on the right, and rounded away from the rule, so a tinted
+           state below reads as a band around the caption rather than a
+           stripe running off the edge of the column. The left corners stay
+           square: that edge is the state rule itself. No vertical padding
+           -- the margin's character counts are lined up with the text
+           lines by line-height alone, and padding here would slide the
+           text down out from under them. */
+        padding-right: 0.75rem;
+        border-radius: 0 6px 6px 0;
         min-width: 0;
         transition: border-color 0.15s ease-in-out, background-color 0.15s ease-in-out;
     }
@@ -1065,18 +1165,52 @@ theme_styles = """
     .transcript-subtitle-mode .transcript-gutter:hover + .transcript-cell::before {
         opacity: 1;
     }
+    /* The caption being played. A 2px rule alone was easy to lose while
+       following a recording, so it carries a wash of the brand navy too --
+       a tint of the colour the rule already is, not a second colour. Mixed
+       rather than a token of its own, so it stays a whisper of whatever
+       the brand colour is. */
     .transcript-cell-active {
         border-left-color: var(--color-brand-primary);
         border-left-width: 2px;
         padding-left: calc(1rem - 1px);
+        background-color: color-mix(
+            in srgb, var(--color-brand-primary) 7%, transparent
+        );
     }
+    /* A tint the same way, rather than the status colour at full strength:
+       these sit behind body text that has to stay the easiest thing in the
+       cell to read. The rule on the left is what names the state; the wash
+       only says which caption it belongs to. */
     .transcript-cell-invalid {
         border-left-color: var(--color-status-error-border);
-        background-color: var(--color-status-error-bg);
+        background-color: color-mix(
+            in srgb, var(--color-status-error-border) 10%, transparent
+        );
     }
     .transcript-cell-highlighted {
         border-left-color: var(--color-warning-border);
-        background-color: var(--color-warning-bg);
+        background-color: color-mix(
+            in srgb, var(--color-warning-border) 14%, transparent
+        );
+    }
+    /* The same mixes over a dark page land far fainter than over a light
+       one -- the tint is being mixed into the page behind it, and there is
+       much less of it there to lift. */
+    .body--dark .transcript-cell-active {
+        background-color: color-mix(
+            in srgb, var(--color-brand-primary) 14%, transparent
+        );
+    }
+    .body--dark .transcript-cell-invalid {
+        background-color: color-mix(
+            in srgb, var(--color-status-error-border) 18%, transparent
+        );
+    }
+    .body--dark .transcript-cell-highlighted {
+        background-color: color-mix(
+            in srgb, var(--color-warning-border) 22%, transparent
+        );
     }
 
     .transcript-time {
@@ -1092,17 +1226,30 @@ theme_styles = """
     /* The caption's index -- in the same column the character counts are
        in, but its own row above them, level with the timing rather than
        the text: it names the caption itself, the same as the timing does,
-       not any one line of it. line-height matches .transcript-action's own
-       height (1.5rem) rather than the plain text's, since that is what
-       actually decides .transcript-subtitle-time's rendered height --
-       .transcript-cell-actions reserves that height even hidden -- and the
-       two rows have to agree, or the counts below drift out of line with
-       the text below. */
+       not any one line of it.
+
+       A box exactly one .transcript-action tall, with the figure centred
+       in it the same way the timing row centres its own contents -- that
+       height is what .transcript-subtitle-time actually renders at, since
+       .transcript-cell-actions reserves it even hidden. Centring rather
+       than a 1.5rem line-height on a 0.8rem figure: half-leading puts a
+       short figure at the top of a line box that tall, which read as the
+       index sitting a few pixels above the timestamp beside it. The two
+       rows still have to agree in height, or the counts below drift out of
+       line with the text. */
     .transcript-subtitle-index {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        height: 1.5rem;
         font-size: 0.8rem;
-        line-height: 1.5rem;
+        line-height: 1;
         color: var(--color-text-muted);
         opacity: 0.7;
+        /* Renumbering runs through this column as captions are split and
+           merged, so the figures keep one width rather than shifting the
+           margin as they change. */
+        font-variant-numeric: tabular-nums;
     }
 
     /* One row per line, each carrying that line's character count and
@@ -1117,14 +1264,17 @@ theme_styles = """
         align-items: baseline;
         gap: 0.35rem;
         /* Has to equal .transcript-text's own line-height (1.85 times its
-           font-size, 1rem -- the same size a transcription's own text
-           is) in absolute terms, or a row drifts away from the text line
-           it belongs to. */
-        line-height: 1.85rem;
+           font-size, 1.0625rem) in absolute terms, or a row drifts away
+           from the text line it belongs to. */
+        line-height: 1.965625rem;
     }
+    /* A plain figure in the margin -- no box around it. Tabular figures so
+       a count keeps one width as the number changes under the reader's
+       typing. */
     .transcript-count {
         color: var(--color-text-muted);
         font-size: 0.7rem;
+        font-variant-numeric: tabular-nums;
     }
     .transcript-count-exceeded {
         color: var(--color-text-danger);
@@ -1177,15 +1327,35 @@ theme_styles = """
         padding: 0;
         background: transparent;
         font: inherit;
+        /* A timestamp is read digit by digit against the one above it, so
+           it is set in figures of one width in a face meant for them.
+           "zero" 0 turns off a slashed zero wherever the face offers one
+           as a feature rather than as its only glyph -- the stack itself
+           is what rules the rest out. Semibold because Courier is a light
+           face and a timestamp is set small. */
+        font-family: var(--font-mono);
+        font-feature-settings: "zero" 0;
+        font-weight: 600;
         font-size: 0.8rem;
         line-height: 1.2;
         font-variant-numeric: tabular-nums;
         color: var(--color-brand-primary);
         cursor: text;
     }
+    /* An underline read as a link -- this is a field. Hovering gives it the
+       box it will be edited in, and focus states it outright, which is also
+       the only visible sign a reader tabbing through the captions has of
+       where they are. Padding is compensated by an equal negative margin so
+       neither state moves the timing along the row. */
     .transcript-time-input:hover,
     .transcript-time-input:focus {
-        text-decoration: underline;
+        padding: 1px 4px;
+        margin: -1px -4px;
+        border-radius: 4px;
+        background-color: var(--color-bg-surface-alt);
+    }
+    .transcript-time-input:focus {
+        box-shadow: 0 0 0 2px var(--color-brand-primary);
     }
 
     /* Split this caption at the caret, add one after it, merge it with the
@@ -1201,6 +1371,23 @@ theme_styles = """
     .transcript-cell-actions {
         display: flex;
         gap: 2px;
+        /* A tray of its own -- surface, hairline, fully rounded -- rather
+           than four loose icons fading in over the caption behind them.
+           Reserved even while hidden, the same as before: it is an
+           ordinary item on the timing row's grid, so the row does not
+           reflow as it appears. Deliberately not positioned; see the
+           timing row's own note. */
+        padding: 2px;
+        border: 1px solid var(--color-border-subtle);
+        border-radius: 999px;
+        background-color: var(--color-bg-surface);
+        /* Cancels exactly what the tray's own padding and border add (2px
+           + 1px each side), so the timing row still stands one
+           .transcript-action tall. The row's height is what the margin's
+           index is lined up against, and the counts below it follow from
+           that -- letting the tray grow the row by 6px would slide every
+           count out of line with the text line it belongs to. */
+        margin: -3px 0;
         opacity: 0;
         transition: opacity 0.12s ease-in-out;
     }
@@ -1246,7 +1433,12 @@ theme_styles = """
     /* The reading surface. Generous leading, because this is read in long
        stretches rather than scanned line by line. */
     .transcript-text {
-        font-size: 1rem;
+        /* A shade over the interface's own size. This is read in long
+           stretches and corrected word by word, so it is the one place in
+           the app that is not set at the size of a form label. Anything
+           tied to it moves with it -- .transcript-count-row's line-height
+           in the margin above all. */
+        font-size: 1.0625rem;
         line-height: 1.85;
         /* An empty block still has to be a line the caret can sit on. */
         min-height: 1.85em;
@@ -1326,12 +1518,56 @@ theme_styles = """
         min-width: 22rem;
     }
 
+    /* ── SRT editor controls under the video ── */
+    /* The switches on one row, what they mark under it -- grouped by what
+       each control affects, without a heading naming each group. */
+    .editor-settings {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        padding: 0.75rem 0 0.25rem;
+    }
     /* ── SRT editor info panel ── */
     .srt-info-panel {
         background-color: var(--color-bg-surface-alt);
+        border: 1px solid var(--color-border-subtle);
+        border-radius: 8px;
+        gap: 0.35rem;
     }
     .body--dark .srt-info-panel {
         background-color: var(--color-bg-page);
+    }
+    /* The filename. Centred over the pairs below it, and never widening the
+       panel however long it is. */
+    .srt-info-title {
+        align-self: center;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    /* Label on the left, value on the right, rather than a bolded name and
+       its value run together in one sentence: the values line up in a
+       column of their own and can be read without reading the labels
+       again each time. */
+    .srt-info-row {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 1rem;
+        width: 100%;
+        font-size: 0.875rem;
+    }
+    .srt-info-label {
+        color: var(--color-text-muted);
+    }
+    .srt-info-value {
+        color: var(--color-text-primary);
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        text-align: right;
+        min-width: 0;
+        overflow-wrap: anywhere;
     }
 
     /* ── Theme-aware text utilities ── */

@@ -44,8 +44,7 @@ from utils.srt_review import EDIT_TOOLTIP, REVIEW_TOOLTIP
 
 def format_time_label(seconds: float) -> str:
     """
-    A timestamp as the transcription editor shows it: HH:MM:SS .mmm, with the
-    milliseconds set apart so the eye can skip them when scanning.
+    A timestamp as the transcription editor shows it: HH:MM:SS.mmm.
     """
 
     total_milliseconds = max(0, int(round(seconds * 1000)))
@@ -54,10 +53,18 @@ def format_time_label(seconds: float) -> str:
     minutes, remainder = divmod(remainder, 60_000)
     secs, milliseconds = divmod(remainder, 1000)
 
-    return f"{hours:02d}:{minutes:02d}:{secs:02d} .{milliseconds:03d}"
+    return f"{hours:02d}:{minutes:02d}:{secs:02d}.{milliseconds:03d}"
 
 
-TIME_LABEL_PATTERN = re.compile(r"^\s*(\d{1,2}):(\d{2}):(\d{2})\s*\.(\d{3})\s*$")
+# What a reader may type into a timestamp. Deliberately more forgiving than
+# what the editor draws: a comma for the decimal point (which is what SRT
+# itself uses, and what a Swedish keyboard offers first), and one to three
+# decimals rather than exactly three -- "00:00:23,4" means 23.4 seconds and
+# refusing it, as this once did, reverted the whole edit with no explanation.
+# The space the editor used to draw before the decimals is still tolerated.
+TIME_LABEL_PATTERN = re.compile(
+    r"^\s*(\d{1,2}):(\d{2}):(\d{2})\s*[.,](\d{1,3})\s*$"
+)
 
 # "Nothing has been drawn yet", which None cannot stand for -- None is a real
 # value here, meaning no caption covers the moment being played. Without it the
@@ -79,7 +86,10 @@ def parse_time_label(text: str) -> Optional[float]:
     if not match:
         return None
 
-    hours, minutes, seconds, millis = (int(group) for group in match.groups())
+    hours, minutes, seconds = (int(group) for group in match.groups()[:3])
+    # Decimals, not a count of milliseconds: ".4" is four tenths of a second,
+    # so a short fraction is padded out rather than read as 4 ms.
+    millis = int(match.group(4).ljust(3, "0"))
 
     return hours * 3600 + minutes * 60 + seconds + millis / 1000
 

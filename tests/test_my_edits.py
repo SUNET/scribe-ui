@@ -401,9 +401,70 @@ class TestClientContract:
         helper = source[source.index("spaceAtTail(span, range) {"):]
         helper = helper[: helper.index("\n    },")]
 
-        assert r'/\s$/.test(span.textContent)' in helper
+        assert r"/\s$/.test(text)" in helper
         assert "span.contains(range.startContainer)" in helper
-        assert "this.offsetWithinSpan(span, range) === span.textContent.length" in helper
+        assert (
+            "this.plainText(measure.toString()).length === text.length" in helper
+        )
+
+    def test_a_line_break_at_a_words_tail_is_not_an_edit_to_that_word(self):
+        """
+        Enter starts a new line; it is not a change to the word before it,
+        exactly as a space is not. A break at the very end of a caption
+        carries a zero-width space after it (insertLineBreak plants one for
+        the browser to hang a caret on), which left the span not ending in
+        whitespace and the caret not at its last character -- so the check
+        missed it and the last word of the line came out marked. That
+        character is not content anywhere else either, so it is stripped on
+        both sides of the question here too.
+        """
+
+        source = self.source()
+        helper = source[source.index("spaceAtTail(span, range) {"):]
+        helper = helper[: helper.index("\n    },")]
+
+        assert "const text = this.plainText(span.textContent);" in helper
+        assert "this.plainText(measure.toString()).length" in helper
+
+    def test_a_new_word_is_a_sibling_not_a_nested_span(self):
+        """
+        Nested, a new word stayed part of the span it came out of. Harmless
+        while that span was an untouched transcript word -- but a second new
+        word typed after a first nests inside a span that is itself marked,
+        and the marking paints everything under it: the whole run, spaces
+        and all, came out green. One word to a span, which is the shape
+        review_runs sends down too.
+        """
+
+        source = self.source()
+        body = source[source.index("splitNewWord(span, characterOffset) {"):]
+        body = body[: body.index("\n    },")]
+
+        assert "const parent = span.parentNode;" in body
+        assert "parent.insertBefore(wrapper, span.nextSibling);" in body
+        assert "span.insertBefore(wrapper, tail);" not in body
+
+    def test_the_separator_ends_up_outside_both_words(self):
+        """
+        A space belongs to neither word, so it wears neither word's marking.
+        It sits inside the first word's span only because the browser had
+        nowhere else to put it (see spaceAtTail), and that span is marked --
+        so splitting once at the boundary left the highlight running on
+        across the gap between two edited words. Splitting again leaves the
+        separator holding nothing but whitespace, which markChanged refuses
+        to mark, and which is the shape review_runs sends down for a
+        separator anyway.
+        """
+
+        source = self.source()
+        branch = source[source.index("effectiveSpan(span, range) {"):]
+        branch = branch[: branch.index("\n    },")]
+
+        assert r"/[\s\u200B]+$/.exec(" in branch
+        assert (
+            "this.splitNewWord(span, boundary - separatorLength)" in branch
+        )
+        assert "this.splitNewWord(separator, separatorLength)" in branch
 
     def test_a_real_character_after_the_space_gets_a_span_of_its_own(self):
         """
@@ -423,7 +484,9 @@ class TestClientContract:
 
         assert "this.newWordBoundary = { span, offset:" in body
         assert "offset > boundary" in body
-        assert "this.splitNewWord(span, boundary)" in body
+        # Split at the boundary less the separator, which is moved out of
+        # the marked span in the same breath -- see the test above.
+        assert "this.splitNewWord(span, boundary - separatorLength)" in body
 
     def test_sitting_right_at_the_boundary_marks_nothing_yet(self):
         """
@@ -566,7 +629,12 @@ class TestClientContract:
 
         assert 'document.createTextNode(" ")' in head_branch
         assert "this.syntheticSpace = document.createTextNode" in head_branch
-        assert "span.appendChild(this.syntheticSpace)" in head_branch
+        # After the new word, which splitNewWord leaves as a sibling of the
+        # separator span rather than as a child of it.
+        assert (
+            "wrapper.parentNode.insertBefore(this.syntheticSpace, next)"
+            in head_branch
+        )
         assert '!/^\\s/.test(next.textContent || "")' in head_branch
 
     def test_the_synthetic_separator_is_retired_once_a_real_one_exists(self):
@@ -605,12 +673,14 @@ class TestClientContract:
         body = source[source.index("retireSyntheticSpace() {"):]
         body = body[: body.index("\n    },")]
 
-        # "Separating nothing" is everything ahead of it inside its own parent
-        # being whitespace -- the word had a span of its own, and the browser
-        # takes that span away with the last character of it.
-        assert "space.parentNode.firstChild" in body
-        assert "node !== space" in body
-        assert 'if (!/\\S/.test(before))' in body
+        # "Separating nothing" is the node right before it holding nothing
+        # but whitespace, or being gone outright -- the word had a span of
+        # its own, and the browser takes that span away with the last
+        # character of it. Reading everything ahead of it inside its parent,
+        # as this once did, now reads the rest of the caption: the word is a
+        # sibling of the space, not its parent's only content.
+        assert "const before = space.previousSibling;" in body
+        assert 'if (!before || !/\\S/.test(before.textContent || ""))' in body
         assert "space.remove();" in body
         assert "this.syntheticSpace = null;" in body
 
@@ -700,6 +770,65 @@ def declarations_for(selector: str) -> str:
     return "".join(
         body for selectors, body in css_rules() if selector in selectors
     )
+
+
+class TestTypingIntoAnEmptyCaption:
+    """
+    A caption started by "Add caption after" has no runs, so the template
+    renders a bare <br> and the first character typed lands in a text node
+    belonging to no span at all. wordAt finds nothing there to mark, and
+    set_text deliberately does not re-render the block being typed into, so
+    the server's own marking of it does not show either -- the text stayed
+    unmarked until some later render happened to arrive.
+    """
+
+    def source(self) -> str:
+        return pathlib.Path("utils/transcript_editor.js").read_text()
+
+    def test_bare_text_is_given_a_span_of_its_own(self):
+        source = self.source()
+
+        assert "wrapBareText(range) {" in source
+
+    def test_on_input_reaches_for_it_when_there_is_no_span(self):
+        """
+        Before effectiveSpan, so the wrapped span takes the ordinary path
+        from there on -- spaceAtTail and the rest all work off a span.
+        """
+
+        source = self.source()
+        body = source[source.index("onInput() {"):]
+        body = body[: body.index("\n    },\n")]
+
+        assert "if (!span && range) span = this.wrapBareText(range);" in body
+        assert body.index("wrapBareText") < body.index("this.effectiveSpan(")
+
+    def test_it_only_wraps_text_sitting_directly_in_the_block(self):
+        """
+        Anything inside a span is already something wordAt would have found,
+        and wrapping it again would nest spans for no reason.
+        """
+
+        source = self.source()
+        body = source[source.index("wrapBareText(range) {"):]
+        body = body[: body.index("\n    },\n")]
+
+        assert "node.nodeType !== Node.TEXT_NODE" in body
+        assert "node.parentElement !== block" in body
+
+    def test_it_puts_the_caret_back_where_it_was(self):
+        """
+        Moving a text node into a new parent invalidates the selection that
+        was anchored in it, and a caret collapsing to the start of the
+        contenteditable reads as the cursor jumping to the top of the page.
+        """
+
+        source = self.source()
+        body = source[source.index("wrapBareText(range) {"):]
+        body = body[: body.index("\n    },\n")]
+
+        assert "restored.setStart(node, Math.min(offset, node.textContent.length));" in body
+        assert "selection.addRange(restored);" in body
 
 
 class TestHoverMessages:
@@ -809,6 +938,18 @@ class TestUncertainWordsControl:
     def page(self) -> str:
         return pathlib.Path("pages/srt.py").read_text()
 
+    def compact(self) -> str:
+        """
+        The page's source with every space and line break taken out, for the
+        assertions about which calls the handler makes and in what order.
+        Those care about the code, not about how deeply the control is
+        nested or where a long call happens to wrap -- regrouping the panel
+        around it should not break them. The assertions about wording read
+        the source as written instead.
+        """
+
+        return re.sub(r"\s+", "", self.page())
+
     def test_off_is_one_of_the_choices(self):
         page = self.page()
 
@@ -818,10 +959,13 @@ class TestUncertainWordsControl:
         assert '"high": "High",' in page
 
     def test_off_turns_the_marking_off(self):
-        page = self.page()
+        page = self.compact()
 
-        assert 'editor.set_show_uncertain_words(choice != "off")' in page
-        assert 'app.storage.user[REVIEW_SHOW_KEY] = choice != "off"' in page
+        assert 'editor.set_show_uncertain_words(choice!="off")' in page
+        # The parentheses come and go with how the assignment wraps.
+        assert re.search(
+            r'app\.storage\.user\[REVIEW_SHOW_KEY\]=\(?choice!="off"\)?', page
+        )
 
     def test_off_is_never_stored_as_a_sensitivity(self):
         """
@@ -830,12 +974,12 @@ class TestUncertainWordsControl:
         reader left it.
         """
 
-        page = self.page()
-        handler = page[page.index("def save_sensitivity(event)"):]
-        handler = handler[: handler.index("sensitivity = ui.toggle")]
+        page = self.compact()
+        handler = page[page.index("defsave_sensitivity(event)"):]
+        handler = handler[: handler.index("sensitivity=ui.toggle")]
 
-        assert 'if choice == "off":\n                                        return' in handler
-        assert handler.index('if choice == "off"') < handler.index(
+        assert 'ifchoice=="off":return' in handler
+        assert handler.index('ifchoice=="off"') < handler.index(
             "app.storage.user[REVIEW_SENSITIVITY_KEY]"
         )
 
@@ -858,10 +1002,10 @@ class TestUncertainWordsControl:
         sensitive about without them.
         """
 
-        page = self.page()
-        block = page[page.index("if editor.has_confidence:"):]
+        page = self.compact()
+        block = page[page.index("ifeditor.has_confidence:"):]
 
-        assert block.index("sensitivity = ui.toggle") < block.index("srt-info-panel")
+        assert block.index("sensitivity=ui.toggle") < block.index("srt-info-panel")
 
 
 class TestControlTooltips:

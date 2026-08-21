@@ -49,6 +49,11 @@ def rem(value: str) -> float:
     return float(value[: -len("rem")])
 
 
+def px(value: str) -> float:
+    assert value.endswith("px"), value
+    return float(value[: -len("px")])
+
+
 def effective(selector: str) -> dict:
     """
     Properties a selector ends up with, after later rules of equal weight have
@@ -168,6 +173,23 @@ class TestCaptionActions:
     def test_revealed_on_keyboard_focus(self):
         assert effective(".transcript-cell-actions:focus-within")["opacity"] == "1"
 
+    def test_the_tray_costs_the_row_no_height(self):
+        """
+        The actions sit in a tray of their own, and its padding and border
+        are cancelled by a negative margin of the same size: the timing row
+        has to stay exactly one .transcript-action tall, since that height
+        is what the margin's index -- and so every character count under it
+        -- is lined up against.
+        """
+
+        applied = effective(".transcript-cell-actions")
+
+        padding = px(applied["padding"])
+        border = px(applied["border"].split()[0])
+        margin = px(applied["margin"].split()[0])
+
+        assert margin == -(padding + border)
+
     def test_it_is_centred_on_the_timing_row(self):
         """
         The middle column of the timing row's own three-column grid, which
@@ -253,8 +275,22 @@ class TestSubtitleMarginAlignment:
         own text lines.
         """
 
-        assert effective(".transcript-subtitle-index")["line-height"] == "1.5rem"
+        index = effective(".transcript-subtitle-index")
+
+        assert index["height"] == "1.5rem"
         assert effective(".transcript-action")["height"] == "1.5rem"
+
+    def test_the_index_is_centred_in_its_own_row(self):
+        """
+        And centred in that height rather than left to half-leading, which
+        put the figure at the top of the box and read as the index sitting
+        above the timestamp beside it.
+        """
+
+        index = effective(".transcript-subtitle-index")
+
+        assert index["display"] == "flex"
+        assert index["align-items"] == "center"
 
     def test_the_count_row_line_height_matches_the_text(self):
         """

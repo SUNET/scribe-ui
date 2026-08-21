@@ -314,7 +314,7 @@ class ExportMixin:
                                     "Include speakers", value=True
                                 )
                                 txt_idx_incl = ui.checkbox(
-                                    "Include block numbers", value=False
+                                    "Include paragraph numbers", value=False
                                 )
                                 txt_sep_type = (
                                     ui.select(
@@ -354,7 +354,7 @@ class ExportMixin:
                                     "Include speakers", value=True
                                 )
                                 rtf_idx_incl = ui.checkbox(
-                                    "Include block numbers", value=False
+                                    "Include paragraph numbers", value=False
                                 )
                                 ui.separator()
 

@@ -320,7 +320,7 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         """
         Create the undo/redo buttons panel.
         """
-        with ui.row().classes("gap-2"):
+        with ui.row().classes("editor-toolbar-group"):
             self.undo_button = (
                 ui.button("Undo", icon="undo")
                 .props("flat")
@@ -463,9 +463,9 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
 
         if self.words_per_minute_element:
             wpm = self.get_words_per_minute()
-            self.words_per_minute_element.set_content(
-                f"<b>Words per minute:</b> {wpm:.2f}"
-            )
+            # The value alone: the panel names it in a label of its own
+            # beside this one, rather than repeating the name in the value.
+            self.words_per_minute_element.set_text(f"{wpm:.2f}")
 
     def get_words_per_minute(self) -> float:
         """

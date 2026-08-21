@@ -469,11 +469,28 @@ export default {
     // words in the middle. And a caret at the tail of a span that does not
     // end in whitespace is just the ordinary case of typing at the end of a
     // word, real content and no quirk to catch.
+    // A line break typed at a word's tail is the same case and is caught the
+    // same way: it starts a new line, it is not an edit to the word before
+    // it. It arrives with a complication a space does not have, though --
+    // when the break lands at the very end of the caption, insertLineBreak
+    // plants a zero-width space after it for the browser to hang a caret on,
+    // so the span no longer *ends* in whitespace and the caret is no longer
+    // at its last character. That character is not content (plainText strips
+    // it everywhere a block's text is read), so it is stripped on both sides
+    // of the question here as well; without that, pressing Enter at the end
+    // of a caption marked the word before the break as edited.
     spaceAtTail(span, range) {
-      if (!span || !range || !/\s$/.test(span.textContent)) return false;
+      if (!span || !range) return false;
+
+      const text = this.plainText(span.textContent);
+      if (!/\s$/.test(text)) return false;
       if (!span.contains(range.startContainer)) return false;
 
-      return this.offsetWithinSpan(span, range) === span.textContent.length;
+      const measure = range.cloneRange();
+      measure.selectNodeContents(span);
+      measure.setEnd(range.startContainer, range.startOffset);
+
+      return this.plainText(measure.toString()).length === text.length;
     },
 
     // spaceAtTail alone only catches the instant the space is typed, while
@@ -526,7 +543,30 @@ export default {
             return null;
           }
 
-          const wrapper = this.splitNewWord(span, boundary);
+          // How much of what sits before the boundary is the separator
+          // itself. The zero-width space insertLineBreak plants counts as
+          // part of it: it is not content anywhere else either.
+          const separatorMatch = /[\s\u200B]+$/.exec(
+            span.textContent.slice(0, boundary)
+          );
+          const separatorLength = separatorMatch ? separatorMatch[0].length : 0;
+
+          // Split twice, not once. The separator itself has to end up
+          // outside both words: it sits in the original span only because
+          // the browser had nowhere else to put it (see spaceAtTail), and
+          // that span is marked, so a single split at the boundary left
+          // the highlight running on across the gap between two edited
+          // words. The first split moves the separator and the new word
+          // out together, the second leaves the separator holding nothing
+          // but whitespace -- which markChanged refuses to mark, and which
+          // is the same shape review_runs sends down for a separator
+          // anyway. Both splits leave the caret at the end of what they
+          // moved, which is where it already is.
+          const separator = this.splitNewWord(span, boundary - separatorLength);
+          const wrapper =
+            separator && separatorLength
+              ? this.splitNewWord(separator, separatorLength)
+              : separator;
           this.newWordBoundary = null;
           // Set here rather than left to onInput's own comparison below:
           // the space keystroke that started this already cleared
@@ -582,10 +622,12 @@ export default {
       if (headMatch && this.offsetWithinSpan(span, range) === span.textContent.length) {
         const wrapper = this.splitNewWord(span, headMatch[1].length);
         if (wrapper) {
-          const next = span.nextSibling;
+          // After the new word itself, which is the span's next sibling now
+          // rather than its last child -- see splitNewWord.
+          const next = wrapper.nextSibling;
           if (next && !/^\s/.test(next.textContent || "")) {
             this.syntheticSpace = document.createTextNode(" ");
-            span.appendChild(this.syntheticSpace);
+            wrapper.parentNode.insertBefore(this.syntheticSpace, next);
           }
           return wrapper;
         }
@@ -604,9 +646,12 @@ export default {
     // branch, which only fires when a real space is typed and so never sees
     // the word being deleted instead.
     //
-    // "Separating nothing" is everything before it inside its own parent
-    // being whitespace: the word had a span of its own (splitNewWord), and
-    // the browser takes that span away with the last character of it.
+    // "Separating nothing" is the node right before it holding nothing but
+    // whitespace, or being gone outright: the word had a span of its own
+    // (splitNewWord), and the browser takes that span away with the last
+    // character of it. The node before is the whole question now that the
+    // word is a sibling rather than a child -- everything before it inside
+    // its parent, which this used to read, is the rest of the caption.
     retireSyntheticSpace() {
       const space = this.syntheticSpace;
       if (!space) return;
@@ -618,16 +663,9 @@ export default {
         return;
       }
 
-      let before = "";
-      for (
-        let node = space.parentNode.firstChild;
-        node && node !== space;
-        node = node.nextSibling
-      ) {
-        before += node.textContent || "";
-      }
+      const before = space.previousSibling;
 
-      if (!/\S/.test(before)) {
+      if (!before || !/\S/.test(before.textContent || "")) {
         space.remove();
         this.syntheticSpace = null;
       }
@@ -657,8 +695,18 @@ export default {
       const tail = remaining < node.textContent.length ? node.splitText(remaining) : node.nextSibling;
       if (!tail) return null;
 
+      const parent = span.parentNode;
+      if (!parent) return null;
+
+      // Beside the span, not inside it. Nested, the new word stayed part of
+      // the span it came out of -- fine while that span was an untouched
+      // transcript word, but a second new word typed after a first nests
+      // inside a span that is itself marked, and the marking paints
+      // everything under it: the whole run, separators and all, came out
+      // green. Siblings keep one word to a span, which is also the shape
+      // review_runs sends down.
       const wrapper = document.createElement("span");
-      span.insertBefore(wrapper, tail);
+      parent.insertBefore(wrapper, span.nextSibling);
 
       let moving = tail;
       while (moving) {
@@ -674,6 +722,46 @@ export default {
       const selection = window.getSelection();
       selection.removeAllRanges();
       selection.addRange(range);
+
+      return wrapper;
+    },
+
+    // Text typed straight into a block, belonging to no span at all -- what
+    // a caption started by "Add caption after" is: it has no runs, so the
+    // template renders a bare <br> and the first character typed becomes a
+    // text node child of the block itself. wordAt finds no span there, so
+    // nothing was ever marked, and set_text deliberately does not re-render
+    // the block being typed into, so the server's own marking of it did not
+    // show either until some later render happened to arrive. Wrapping the
+    // text in a span of its own gives the marking something to live on, and
+    // every keystroke after this one lands inside that span and takes the
+    // ordinary path.
+    //
+    // Reaches into the DOM, like splitNewWord, and safe for the same reason:
+    // onInput marks this block dirty, so whatever shape this leaves behind is
+    // discarded and rebuilt at the next real render regardless.
+    wrapBareText(range) {
+      const node = range?.startContainer;
+      if (!node || node.nodeType !== Node.TEXT_NODE) return null;
+
+      // Only text sitting directly in the block. Anything inside a span is
+      // already something wordAt would have found.
+      const block = this.blockOf(node);
+      if (!block || node.parentElement !== block) return null;
+
+      const offset = range.startOffset;
+      const wrapper = document.createElement("span");
+
+      block.insertBefore(wrapper, node);
+      wrapper.appendChild(node);
+
+      const restored = document.createRange();
+      restored.setStart(node, Math.min(offset, node.textContent.length));
+      restored.collapse(true);
+
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(restored);
 
       return wrapper;
     },
@@ -728,6 +816,12 @@ export default {
       const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
       let span = range ? this.wordAt(range) : null;
 
+      // No span at all under the caret: text typed straight into a block
+      // that had none, which is what a caption added by "Add caption after"
+      // starts as. Give it one, then treat it like any other span --
+      // spaceAtTail and the rest all work off it from here on.
+      if (!span && range) span = this.wrapBareText(range);
+
       span = this.effectiveSpan(span, range);
 
       this.markChanged(span);
@@ -777,15 +871,18 @@ export default {
 
       return lines.map((line) => {
         const length = line.length;
-        const lineTooLong = length > this.characterLimit;
+        // The line's own length, and nothing else: the caption having too
+        // many lines is not this line being too long. See
+        // caption_line_counts, which this mirrors.
+        const exceeded = length > this.characterLimit;
 
         let tooltip =
           `Guideline: max ${this.characterLimit} characters per line, ` +
           `${this.maxSubtitleLines} lines.`;
-        if (lineTooLong) tooltip += ` This line is ${length} characters.`;
+        if (exceeded) tooltip += ` This line is ${length} characters.`;
         if (tooManyLines) tooltip += ` ${lines.length} lines in this caption.`;
 
-        return { length, exceeded: lineTooLong || tooManyLines, tooltip };
+        return { length, exceeded, tooltip };
       });
     },
 
@@ -901,6 +998,20 @@ export default {
     // Vue's own diff skips, which would leave whatever the reader typed
     // showing in an input that never actually saved it.
     retimeBlock(id, edge, event) {
+      // Leaving a timestamp without having changed it is not an edit. Every
+      // retime the server accepts takes an undo snapshot, so reporting an
+      // unchanged value -- which merely clicking into a timestamp and out of
+      // it again did -- put a step on the undo stack that undoes nothing
+      // visible, and buried the edit before it one press further down.
+      const block = this.blocks.find((candidate) => candidate.id === id);
+      const label = block
+        ? edge === "start"
+          ? block.start_label
+          : block.end_label
+        : null;
+
+      if (label !== null && event.target.value === label) return;
+
       this.dirty.add(id);
       this.$emit("retime", { id, edge, value: event.target.value });
     },
