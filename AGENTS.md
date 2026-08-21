@@ -110,6 +110,15 @@ The "Uncertain words" switch highlights words the model was least sure of; "Revi
 - **The marking must not read as an error.** No red, and no wavy underline (that means spellcheck). It uses `--color-review-*`, a violet reserved for this and used nowhere else.
 - The flagged counter comes from `flagged_word_count()` over the whole word list, and reports 0 while the switch is off. Anything that changes the switch or the sensitivity must call `update_flagged_count()`.
 
+## Following the video (`TranscriptEditor.follow_video`, `pages/srt.py`)
+
+`video.on("timeupdate", transcript.follow_video)` (`pages/srt.py`) drives two separate things from one server round trip, a linear scan of `editor.captions` for the one whose `[get_start_seconds(), get_end_seconds())` window contains the player's current time (`ui.run_javascript` reads `document.querySelector("video").currentTime` — timeupdate itself carries no position):
+
+- The editor's own active-block highlight (`TranscriptBody.set_active` → `activeId` → `.transcript-cell-active`, and the scroll that follows it) — gated on `editor.autoscroll`, the "Follow audio"/"Autoscroll" switch.
+- The subtitle overlay drawn over the video itself (`TranscriptEditor.set_overlay_label`/`_set_overlay_text`, subtitles only — `pages/srt.py` only creates and wires the label when `data_format == "srt"`, since a transcription's own blocks are a speaker's whole turn, not a short timed cue, and would cover half the frame) — **not** gated on `autoscroll`: it is a preview of what a viewer sees, wanted whether or not the reader also has the editor scrolling to follow along. Hidden (`set_visibility(False)`) between two captions or past the last one, the same as a real subtitle track would be. A plain `ui.label`, not `ui.html` — a caption's text is user content, not markup to trust — styled with `white-space: pre-line` (`.video-subtitle-overlay` in `utils/styles.py`) so a caption's own `"\n"` line breaks still render as separate lines. `.video-frame` gives the video's wrapping `div` a `position: relative` neither `ui.video` nor the card around it otherwise has, for the overlay's `position: absolute` to anchor against; `pointer-events: none` on the overlay keeps it from swallowing clicks meant for the native controls or a click-to-pause anywhere else on the frame. `bottom` is a fixed `3rem`, not a percentage of the frame's own height -- a percentage once put the overlay on top of the native control bar (a fixed height itself) on a short or wide video, hiding the seek bar underneath its own opaque background rather than sitting above it.
+
+There is no bisect index over caption time windows the way `caption_words()` has one over word midpoints (`utils/srt_review.py`) — `follow_video` re-scans the full caption list on every tick, which is fine at typical caption-list sizes and timeupdate frequency.
+
 ## Settings
 
 `utils/settings.py` `Settings` (pydantic `BaseSettings`, loaded from `.env`):

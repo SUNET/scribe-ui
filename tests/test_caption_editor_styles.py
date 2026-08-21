@@ -285,3 +285,26 @@ class TestSubtitleTextOffset:
         selectors = {selector for selectors, _ in rules() for selector in selectors}
 
         assert ".transcript-subtitle-mode .transcript-cell" not in selectors
+
+
+class TestVideoSubtitleOverlay:
+    """
+    The overlay sits above the video's own native controls, not over them --
+    a percentage offset once put it there on a short or wide video, since
+    the control bar's own height is fixed while a percentage of the frame's
+    height is not, and shrinks below it.
+    """
+
+    def test_the_offset_is_fixed_not_a_percentage(self):
+        bottom = effective(".video-subtitle-overlay")["bottom"]
+
+        assert not bottom.endswith("%")
+
+    def test_it_never_captures_a_click(self):
+        """
+        Belt and suspenders alongside the fixed offset above -- clicks (the
+        seek bar, a click-to-pause) always reach the video underneath, even
+        if the two ever end up overlapping regardless.
+        """
+
+        assert effective(".video-subtitle-overlay")["pointer-events"] == "none"

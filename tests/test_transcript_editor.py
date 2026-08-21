@@ -1347,6 +1347,115 @@ class TestEditorContract:
         assert sought == []
 
 
+async def _async_result(value):
+    return value
+
+
+class FakeBody:
+    def __init__(self):
+        self.active = []
+
+    def set_active(self, block_id):
+        self.active.append(block_id)
+
+
+class FakeOverlay:
+    def __init__(self):
+        self.text = None
+        self.visible = None
+
+    def set_text(self, text):
+        self.text = text
+
+    def set_visibility(self, visible):
+        self.visible = visible
+
+
+class TestFollowVideoOverlay:
+    """
+    follow_video draws the caption playing right now over the video, the
+    same way a real subtitle track would -- independent of whether the
+    editor's own active-block highlight (autoscroll) is also following it,
+    since a reader with that switch off still wants to see what plays.
+    """
+
+    def run(self, view):
+        import asyncio
+
+        asyncio.run(view.follow_video())
+
+    def test_the_caption_playing_now_is_drawn(self, view, editor, monkeypatch):
+        monkeypatch.setattr(
+            "utils.transcript_editor.ui.run_javascript",
+            lambda *a, **k: _async_result(1.5),
+        )
+        view.body = FakeBody()
+        overlay = FakeOverlay()
+        view.set_overlay_label(overlay)
+
+        self.run(view)
+
+        assert overlay.text == "tva."
+        assert overlay.visible is True
+
+    def test_hidden_between_captions(self, view, editor, monkeypatch):
+        """
+        No caption covers this moment -- a gap, or past the last one -- so
+        there is nothing for a real subtitle track to show either.
+        """
+
+        monkeypatch.setattr(
+            "utils.transcript_editor.ui.run_javascript",
+            lambda *a, **k: _async_result(100.0),
+        )
+        view.body = FakeBody()
+        overlay = FakeOverlay()
+        view.set_overlay_label(overlay)
+
+        self.run(view)
+
+        assert overlay.visible is False
+
+    def test_the_overlay_does_not_need_autoscroll_on(self, view, editor, monkeypatch):
+        editor.autoscroll = False
+        monkeypatch.setattr(
+            "utils.transcript_editor.ui.run_javascript",
+            lambda *a, **k: _async_result(1.5),
+        )
+        view.body = FakeBody()
+        overlay = FakeOverlay()
+        view.set_overlay_label(overlay)
+
+        self.run(view)
+
+        assert overlay.text == "tva."
+        assert view.body.active == []
+
+    def test_the_active_block_still_follows_when_autoscroll_is_on(
+        self, view, editor, monkeypatch
+    ):
+        editor.autoscroll = True
+        monkeypatch.setattr(
+            "utils.transcript_editor.ui.run_javascript",
+            lambda *a, **k: _async_result(1.5),
+        )
+        view.body = FakeBody()
+        view.set_overlay_label(FakeOverlay())
+
+        self.run(view)
+
+        assert view.body.active == [editor.captions[1].index]
+
+    def test_no_overlay_label_is_harmless(self, view, editor, monkeypatch):
+        monkeypatch.setattr(
+            "utils.transcript_editor.ui.run_javascript",
+            lambda *a, **k: _async_result(1.5),
+        )
+        view.body = FakeBody()
+
+        self.run(view)
+
+
 class TestRemoveSpeaker:
     """
     A speaker can only leave the list once nothing is attributed to it.

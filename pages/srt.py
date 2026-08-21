@@ -222,22 +222,32 @@ def create() -> None:
                         transcript.body.set_show_edits(editor.show_my_edits)
                 with splitter.after:
                     with ui.card().classes("w-full h-full"):
-                        video = ui.video(
-                            f"/video/{uuid}",
-                            controls=True,
-                            autoplay=False,
-                            loop=False,
-                        ).classes("w-full h-full")
-                        editor.set_video_player(video)
-                        video.props("preload='auto'")
+                        with ui.element("div").classes("video-frame w-full h-full"):
+                            video = ui.video(
+                                f"/video/{uuid}",
+                                controls=True,
+                                autoplay=False,
+                                loop=False,
+                            ).classes("w-full h-full")
+                            editor.set_video_player(video)
+                            video.props("preload='auto'")
 
-                        async def follow_transcript() -> None:
-                            if not editor.autoscroll:
-                                return
+                            # Subtitles only -- a transcription's own
+                            # blocks are a speaker's whole turn, not a
+                            # short timed cue, and would cover half the
+                            # video rather than read like a real subtitle.
+                            if data_format == "srt":
+                                overlay_label = ui.label("").classes(
+                                    "video-subtitle-overlay"
+                                )
+                                overlay_label.set_visibility(False)
+                                transcript.set_overlay_label(overlay_label)
 
-                            await transcript.follow_video()
-
-                        video.on("timeupdate", follow_transcript)
+                        # Always run, independent of the autoscroll switch
+                        # below -- follow_video only moves the editor's own
+                        # active block when that is on, but the overlay is
+                        # a preview of what a viewer sees, not tied to it.
+                        video.on("timeupdate", transcript.follow_video)
                         # Stays None when the result carries no confidence
                         # scores, which is what hides the review controls.
                         uncertain_switch = None

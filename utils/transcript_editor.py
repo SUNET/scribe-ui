@@ -164,6 +164,16 @@ class TranscriptEditor:
         self.editor = editor
         self.body: Optional[TranscriptBody] = None
         self.on_change: Optional[Callable] = None
+        self.overlay_label: Optional[ui.label] = None
+
+    def set_overlay_label(self, label: ui.label) -> None:
+        """
+        Where follow_video draws the caption playing right now -- a plain
+        label rather than ui.html, since a caption's own text is user
+        content, not something to trust as markup.
+        """
+
+        self.overlay_label = label
 
     # ── building ────────────────────────────────────────────────────────────
 
@@ -807,7 +817,12 @@ class TranscriptEditor:
 
     async def follow_video(self) -> None:
         """
-        Mark the block being played, so the reader can see where they are.
+        Mark the block being played, so the reader can see where they are,
+        and draw its text over the video itself -- a preview of what a
+        viewer would see, independent of whether the editor is also
+        following along (see set_active's own gate below): a reader with
+        autoscroll off still typing elsewhere still wants to see what is
+        playing.
 
         The time is read from the player rather than passed in, because
         timeupdate carries no position.
@@ -826,5 +841,21 @@ class TranscriptEditor:
 
         for caption in self.editor.captions:
             if caption.get_start_seconds() <= seconds < caption.get_end_seconds():
-                self.body.set_active(caption.index)
+                if self.editor.autoscroll:
+                    self.body.set_active(caption.index)
+                self._set_overlay_text(caption.text)
                 return
+
+        # Between two captions, or past the last one -- nothing playing
+        # right now is what a real subtitle track would also show.
+        self._set_overlay_text(None)
+
+    def _set_overlay_text(self, text: Optional[str]) -> None:
+        if self.overlay_label is None:
+            return
+
+        if text:
+            self.overlay_label.set_text(text)
+            self.overlay_label.set_visibility(True)
+        else:
+            self.overlay_label.set_visibility(False)

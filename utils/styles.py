@@ -894,6 +894,42 @@ theme_styles = """
         font-variant-numeric: tabular-nums;
     }
 
+    /* ── Video subtitle overlay ── */
+    /* The caption playing right now, drawn over the video the same way a
+       real subtitle would be -- a preview of what a viewer sees, not the
+       editor's own review marking. .video-frame gives the video a
+       positioning context of its own to sit inside, since neither
+       ui.video nor the card wrapping it establishes one. */
+    .video-frame {
+        position: relative;
+    }
+    .video-subtitle-overlay {
+        position: absolute;
+        left: 50%;
+        /* A fixed offset, not a percentage of the frame's own height --
+           the native control bar's own height is fixed too, so a percentage
+           shrinks below it on a short or wide video and the overlay ends up
+           drawn over the seek bar, hiding it rather than sitting above it. */
+        bottom: 3rem;
+        transform: translateX(-50%);
+        max-width: 90%;
+        padding: 0.35rem 0.75rem;
+        background-color: rgba(0, 0, 0, 0.7);
+        color: #fff;
+        font-size: 1rem;
+        line-height: 1.4;
+        text-align: center;
+        /* A caption's own line breaks are real "\n" characters, the same
+           as the editor's own text -- this is what turns them back into
+           visible lines rather than running the caption together. */
+        white-space: pre-line;
+        border-radius: 4px;
+        /* Belt and suspenders alongside the fixed offset above: never in
+           the way of the seek bar or a click-to-pause anywhere else on the
+           frame, even if the two ever end up overlapping regardless. */
+        pointer-events: none;
+    }
+
     /* ── Document editor (transcriptions and subtitles alike) ── */
     /* One contenteditable holds every block. A two column grid puts the
        margin beside the text, so the margin cells are real elements that can
