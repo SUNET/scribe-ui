@@ -1355,3 +1355,357 @@ class TestMarksAreSaved:
         }))
 
         assert editor.captions[0].edited_words == {1}
+
+
+class TestFindAndReplaceKeepsMarksStraight:
+    """
+    Replacing a word is the reader changing it, exactly as typing over it is,
+    and a replacement of a different length moves every mark after it along.
+
+    Both replace paths used to assign caption.text directly, so neither
+    happened: the replaced word came out unmarked, and a mark further along
+    stayed at its old position -- pointing at whatever word had moved into it.
+    That is the same "a word I never touched is marked" symptom typing once
+    produced, reached through Find and Replace instead.
+    """
+
+    def editor(self, text, edited=()):
+        editor = SRTEditor("job-uuid", "srt", "file.srt")
+
+        for name in ("refresh_display", "update_words_per_minute",
+                     "mark_as_changed", "update_beforeunload_state",
+                     "update_flagged_count"):
+            setattr(editor, name, lambda *a, **k: None)
+
+        editor.data_format = "srt"
+        editor.captions = [caption(text, edited)]
+        editor.search_term = "beta"
+        editor.case_sensitive = True
+
+        return editor
+
+    def words(self, editor):
+        target = editor.captions[0]
+        parts = target.text.split()
+
+        return sorted(parts[i] for i in target.edited_words if i < len(parts))
+
+    def test_replace_all_carries_a_later_mark_across(self, monkeypatch):
+        monkeypatch.setattr("utils.srt_search.ui.notify", lambda *a, **k: None)
+        editor = self.editor("alpha beta gamma", edited=[2])
+
+        editor.replace_all("two words")
+
+        assert editor.captions[0].text == "alpha two words gamma"
+        assert "gamma" in self.words(editor)
+
+    def test_replace_all_marks_the_replacement(self, monkeypatch):
+        monkeypatch.setattr("utils.srt_search.ui.notify", lambda *a, **k: None)
+        editor = self.editor("alpha beta gamma")
+
+        editor.replace_all("BETA")
+
+        assert self.words(editor) == ["BETA"]
+
+    def test_replace_one_carries_a_later_mark_across(self, monkeypatch):
+        monkeypatch.setattr("utils.srt_search.ui.notify", lambda *a, **k: None)
+        editor = self.editor("alpha beta gamma", edited=[2])
+        editor.selected_caption = editor.captions[0]
+
+        editor.replace_in_current_caption("two words")
+
+        assert editor.captions[0].text == "alpha two words gamma"
+        assert "gamma" in self.words(editor)
+
+    def test_replace_one_marks_the_replacement(self, monkeypatch):
+        monkeypatch.setattr("utils.srt_search.ui.notify", lambda *a, **k: None)
+        editor = self.editor("alpha beta gamma")
+        editor.selected_caption = editor.captions[0]
+
+        editor.replace_in_current_caption("BETA")
+
+        assert self.words(editor) == ["BETA"]
+
+    def test_a_replacement_is_still_one_undo_step(self, monkeypatch):
+        """
+        Retagging is done inline rather than through update_caption_text,
+        which would take a second snapshot on top of the one already saved --
+        Replace All across many captions has to stay a single undo.
+        """
+
+        monkeypatch.setattr("utils.srt_search.ui.notify", lambda *a, **k: None)
+        editor = self.editor("alpha beta gamma")
+        editor.captions.append(caption("beta again"))
+
+        editor.replace_all("BETA")
+
+        assert len(editor.undo_redo_manager.undo_stack) == 1
+
+
+class TestFlaggedCountFollowsHistory:
+    """
+    Undo and redo move the text, so which words are flagged moves with it.
+    The counter is not recomputed on read -- update_flagged_count has to be
+    called, the same as editing does -- so without this the number left over
+    from before the undo stays on screen.
+    """
+
+    def editor(self):
+        editor = SRTEditor("job-uuid", "srt", "file.srt")
+
+        for name in ("refresh_display", "update_words_per_minute",
+                     "mark_as_changed", "update_beforeunload_state"):
+            setattr(editor, name, lambda *a, **k: None)
+
+        editor.data_format = "srt"
+        editor.load_words(PAYLOAD)
+        editor.captions = [caption()]
+        editor.show_uncertain_words = True
+
+        return editor
+
+    def test_undo_refreshes_the_counter(self, monkeypatch):
+        monkeypatch.setattr("utils.srt.ui.notify", lambda *a, **k: None)
+        editor = self.editor()
+        calls = []
+        editor.update_flagged_count = lambda *a, **k: calls.append(1)
+
+        editor.update_caption_text(editor.captions[0], "Hej XX dig idag")
+        before = len(calls)
+        editor.undo()
+
+        assert len(calls) > before
+
+    def test_redo_refreshes_it_too(self, monkeypatch):
+        monkeypatch.setattr("utils.srt.ui.notify", lambda *a, **k: None)
+        editor = self.editor()
+        editor.update_caption_text(editor.captions[0], "Hej XX dig idag")
+        editor.undo()
+
+        calls = []
+        editor.update_flagged_count = lambda *a, **k: calls.append(1)
+        editor.redo()
+
+        assert calls
+
+    def test_the_count_itself_is_right_either_way(self, monkeypatch):
+        """
+        Guards the guard: a counter refreshed to the wrong number would still
+        pass the two above.
+        """
+
+        monkeypatch.setattr("utils.srt.ui.notify", lambda *a, **k: None)
+        editor = self.editor()
+        editor.update_flagged_count = lambda *a, **k: None
+
+        assert editor.flagged_word_count() == 1
+
+        editor.update_caption_text(editor.captions[0], "Hej XX dig idag")
+        assert editor.flagged_word_count() == 0
+
+        editor.undo()
+        assert editor.flagged_word_count() == 1
+
+
+class TestMarksAcrossSubtitleSplitAndMerge:
+    """
+    Splitting and merging are structural: they move words between captions
+    without changing any of them, so marks travel with the words they belong
+    to and no new mark is ever invented. Subtitles only -- that is where the
+    split/merge actions live.
+    """
+
+    def editor(self, texts, marks=None):
+        editor = SRTEditor("job-uuid", "srt", "file.srt")
+
+        for name in ("refresh_display", "update_words_per_minute",
+                     "mark_as_changed", "update_beforeunload_state",
+                     "update_flagged_count"):
+            setattr(editor, name, lambda *a, **k: None)
+
+        editor.data_format = "srt"
+        editor.captions = [
+            SRTCaption(i + 1, f"00:00:0{i * 2},000", f"00:00:0{i * 2 + 2},000", t)
+            for i, t in enumerate(texts)
+        ]
+        for i, m in (marks or {}).items():
+            editor.captions[i].edited_words = set(m)
+
+        return editor
+
+    def marked(self, caption):
+        words = caption.text.split()
+
+        return [words[i] for i in sorted(caption.edited_words) if i < len(words)]
+
+    def test_split_sends_each_mark_with_its_own_word(self, monkeypatch):
+        monkeypatch.setattr("utils.srt.ui.notify", lambda *a, **k: None)
+        editor = self.editor(["aa bb cc dd"], {0: [0, 3]})
+
+        editor.split_caption(editor.captions[0], cursor_position=len("aa bb"))
+
+        assert self.marked(editor.captions[0]) == ["aa"]
+        assert self.marked(editor.captions[1]) == ["dd"]
+
+    def test_split_invents_no_marks(self, monkeypatch):
+        monkeypatch.setattr("utils.srt.ui.notify", lambda *a, **k: None)
+        editor = self.editor(["aa bb cc dd"])
+
+        editor.split_caption(editor.captions[0], cursor_position=len("aa bb"))
+
+        assert all(not c.edited_words for c in editor.captions)
+
+    def test_merge_moves_the_second_half_along(self, monkeypatch):
+        monkeypatch.setattr("utils.srt.ui.notify", lambda *a, **k: None)
+        editor = self.editor(["aa bb", "cc dd"], {0: [1], 1: [0]})
+
+        editor.merge_with_next(editor.captions[0])
+
+        assert editor.captions[0].text == "aa bb\ncc dd"
+        assert self.marked(editor.captions[0]) == ["bb", "cc"]
+
+    def test_merge_invents_no_marks(self, monkeypatch):
+        monkeypatch.setattr("utils.srt.ui.notify", lambda *a, **k: None)
+        editor = self.editor(["aa bb", "cc dd"])
+
+        editor.merge_with_next(editor.captions[0])
+
+        assert not editor.captions[0].edited_words
+
+    def test_split_then_merge_puts_every_mark_back(self, monkeypatch):
+        """
+        The round trip is what a reader doing and undoing by hand sees.
+        """
+
+        monkeypatch.setattr("utils.srt.ui.notify", lambda *a, **k: None)
+        editor = self.editor(["aa bb cc dd"], {0: [0, 3]})
+
+        editor.split_caption(editor.captions[0], cursor_position=len("aa bb"))
+        editor.merge_with_next(editor.captions[0])
+
+        assert self.marked(editor.captions[0]) == ["aa", "dd"]
+
+    def test_merging_an_empty_caption_does_not_shift_marks(self, monkeypatch):
+        """
+        An empty first half contributes no words, so the second half's marks
+        move along by nothing -- and the join adds no blank line to count.
+        """
+
+        monkeypatch.setattr("utils.srt.ui.notify", lambda *a, **k: None)
+        editor = self.editor(["", "cc dd"], {1: [1]})
+
+        editor.merge_with_next(editor.captions[0])
+
+        assert editor.captions[0].text == "cc dd"
+        assert self.marked(editor.captions[0]) == ["dd"]
+
+
+class TestMarksAcrossTranscriptionLinesAndBlocks:
+    """
+    A line break rearranges a block without changing a word in it, so it must
+    leave every mark exactly where it was -- adding one would be the editor
+    claiming the reader changed a word they only moved to the next line.
+    Starting a new block is the same. Transcriptions, where those live.
+    """
+
+    def editor(self, texts, marks=None):
+        from utils.transcript_editor import TranscriptEditor
+
+        editor = SRTEditor("job-uuid", "txt", "file.txt")
+
+        for name in ("refresh_display", "update_words_per_minute",
+                     "mark_as_changed", "update_beforeunload_state",
+                     "update_flagged_count"):
+            setattr(editor, name, lambda *a, **k: None)
+
+        editor.data_format = "txt"
+        editor.captions = [
+            SRTCaption(i + 1, f"00:00:0{i * 2},000", f"00:00:0{i * 2 + 2},000",
+                       t, speaker="Talare 1")
+            for i, t in enumerate(texts)
+        ]
+        editor.speakers = {"Talare 1"}
+        for i, m in (marks or {}).items():
+            editor.captions[i].edited_words = set(m)
+
+        view = TranscriptEditor(editor)
+        view.refresh = lambda *a, **k: None
+        view.changed = lambda *a, **k: None
+        view.focus = lambda *a, **k: None
+
+        return editor, view
+
+    def marked(self, caption):
+        words = caption.text.split()
+
+        return [words[i] for i in sorted(caption.edited_words) if i < len(words)]
+
+    def test_a_line_break_at_a_word_boundary_marks_nothing(self):
+        """
+        The reported shape of this bug class: a word going untouched must not
+        come out green because the line under it moved.
+        """
+
+        editor, view = self.editor(["aa bb cc dd"], {0: [0, 3]})
+
+        view.set_text({"id": 1, "text": "aa bb\ncc dd"})
+
+        assert self.marked(editor.captions[0]) == ["aa", "dd"]
+
+    def test_a_line_break_leaves_an_unmarked_block_unmarked(self):
+        editor, view = self.editor(["aa bb cc dd"])
+
+        view.set_text({"id": 1, "text": "aa bb\ncc dd"})
+
+        assert not editor.captions[0].edited_words
+
+    def test_a_break_through_a_word_marks_the_halves(self):
+        """
+        Cutting a word in two does change it, so both halves are the reader's
+        own -- unlike a break placed between words.
+        """
+
+        editor, view = self.editor(["aa bb cc dd"])
+
+        view.set_text({"id": 1, "text": "aa bb c\nc dd"})
+
+        assert self.marked(editor.captions[0]) == ["c", "c"]
+
+    def test_a_new_block_at_the_end_starts_unmarked(self):
+        editor, view = self.editor(["aa bb cc"], {0: [2]})
+
+        view.split({"id": 1, "offset": len("aa bb cc")})
+
+        assert self.marked(editor.captions[0]) == ["cc"]
+        assert editor.captions[1].text == ""
+        assert not editor.captions[1].edited_words
+
+    def test_splitting_a_block_sends_marks_to_the_right_half(self):
+        editor, view = self.editor(["aa bb cc dd"], {0: [0, 3]})
+
+        view.split({"id": 1, "offset": len("aa bb")})
+
+        assert self.marked(editor.captions[0]) == ["aa"]
+        assert self.marked(editor.captions[1]) == ["dd"]
+
+    def test_adding_a_block_then_merging_it_back_changes_nothing(self):
+        """
+        Backspace straight after "Add block after" has to leave the neighbour
+        exactly as it was -- no shifted marks, and no blank line joined on.
+        """
+
+        editor, view = self.editor(["aa bb"], {0: [1]})
+
+        view.add_after({"id": 1})
+        view.merge({"id": 2, "direction": "previous"})
+
+        assert editor.captions[0].text == "aa bb"
+        assert self.marked(editor.captions[0]) == ["bb"]
+
+    def test_merging_two_blocks_moves_the_second_half_along(self):
+        editor, view = self.editor(["aa bb", "cc dd"], {0: [1], 1: [0]})
+
+        view.merge({"id": 1, "direction": "next"})
+
+        assert editor.captions[0].text == "aa bb\ncc dd"
+        assert self.marked(editor.captions[0]) == ["bb", "cc"]

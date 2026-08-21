@@ -632,6 +632,10 @@ class TranscriptEditor:
             ui.notify(f'"{name}" already exists', type="warning")
             return
 
+        # A history entry of its own. The speaker list rides the undo snapshot
+        # (see UndoRedoManager), so without one this change is not undoable
+        # itself *and* the next unrelated undo silently takes it back.
+        self.editor.save_state_for_undo()
         self.editor.speakers.add(name)
         self.editor.mark_as_changed()
         self.refresh()
@@ -760,6 +764,8 @@ class TranscriptEditor:
         if self.speaker_in_use(name):
             return False
 
+        # Saved for the same reason add_speaker is -- see there.
+        self.editor.save_state_for_undo()
         self.editor.speakers.discard(name)
         self.editor.mark_as_changed()
 

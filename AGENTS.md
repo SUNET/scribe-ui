@@ -116,7 +116,11 @@ The "Uncertain words" switch highlights words the model was least sure of; "Revi
 
 `EditorState.speakers` is `None` for a state saved without one, and `SRTEditor.restore_speakers()` treats that as "this state has nothing to say about the speakers" — it leaves the live list alone rather than emptying it. The set is mutated in place rather than rebound, because the speaker menu and `TranscriptEditor.refresh()` both read it straight off the editor.
 
-`undo()`/`redo()` return the `EditorState`, not a bare caption list.
+`undo()`/`redo()` return the `EditorState`, not a bare caption list, and both call `update_flagged_count()` — the text moving is exactly what changes which words are flagged, and that counter is pushed rather than recomputed on read.
+
+Because the speaker list rides the snapshot, anything that changes it needs a history entry of its own: `add_speaker()` and `remove_speaker()` both call `save_state_for_undo()`, without which they were not undoable *and* the next unrelated undo silently took them back.
+
+Find and Replace (`replace_in_current_caption`, `replace_all` in `utils/srt_search.py`) retags edit marks inline via `retag_edits()` rather than going through `update_caption_text()`, which would take a second snapshot on top of the one already saved — Replace All across many captions has to stay one undo step. Assigning `caption.text` directly, as both once did, skipped retagging altogether: the replaced word came out unmarked, and a replacement of a different length left every mark after it pointing at whatever word had shifted into its position.
 
 ## Following the video (`TranscriptEditor.follow_video`, `pages/srt.py`)
 

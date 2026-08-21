@@ -265,6 +265,8 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
             self.selected_caption = None
             self.renumber_captions()
             self.update_words_per_minute()
+            # The text just moved, so which words are flagged moved with it.
+            self.update_flagged_count()
             self.refresh_display(force_full_refresh=True)
             self._update_undo_redo_buttons()
             # Mark as having unsaved changes (undo is still a change from saved state)
@@ -284,6 +286,8 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
             self.selected_caption = None
             self.renumber_captions()
             self.update_words_per_minute()
+            # The text just moved, so which words are flagged moved with it.
+            self.update_flagged_count()
             self.refresh_display(force_full_refresh=True)
             self._update_undo_redo_buttons()
             # Mark as having unsaved changes

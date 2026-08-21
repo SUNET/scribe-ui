@@ -1712,6 +1712,38 @@ class TestSpeakerListSurvivesUndo:
 
         assert "Bob" not in editor.speakers
 
+    def test_adding_a_speaker_is_its_own_undo_step(self, view, editor):
+        """
+        The list rides the undo snapshot, so without a history entry of its
+        own this change is not undoable *and* the next unrelated undo takes
+        it back silently.
+        """
+
+        editor.update_caption_text(editor.captions[0], "changed text")
+        view.add_speaker("Brand New")
+
+        editor.undo()
+
+        assert "Brand New" not in editor.speakers
+        assert editor.captions[0].text == "changed text"
+
+    def test_dropping_an_unused_speaker_is_its_own_undo_step(self, view, editor):
+        editor.speakers.add("Unused One")
+        editor.update_caption_text(editor.captions[0], "changed text")
+        view.remove_speaker("Unused One")
+
+        editor.undo()
+
+        assert "Unused One" in editor.speakers
+        assert editor.captions[0].text == "changed text"
+
+    def test_redo_puts_an_added_speaker_back(self, view, editor):
+        view.add_speaker("Brand New")
+        editor.undo()
+        editor.redo()
+
+        assert "Brand New" in editor.speakers
+
     def test_a_state_saved_without_speakers_leaves_the_list_alone(
         self, view, editor
     ):
