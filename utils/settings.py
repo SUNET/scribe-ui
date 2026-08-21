@@ -58,6 +58,11 @@ class Settings(BaseSettings):
     # auto-wrapped.
     MAX_SUBTITLE_LINES: int = 2
 
+    # Shortest a caption should be on screen, in seconds. A shorter one is
+    # reported by "Validate" as a warning -- it is readable text in a
+    # perfectly valid file, just gone before a viewer can read it.
+    MIN_CAPTION_SECONDS: float = 0.8
+
     # Review sensitivity: how far up the confidence range to flag words for
     # review. A word is flagged when its score falls below the threshold for
     # the selected sensitivity, so raising sensitivity flags strictly more.

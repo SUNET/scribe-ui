@@ -106,127 +106,140 @@ class RenderMixin:
         self.update_flagged_count()
 
 
-    def validate_captions(self):
+    def collect_validation_issues(self) -> list:
         """
-        Validate captions for overlapping times, empty text, and character limits.
+        Every issue in the caption list, one entry per caption that has any.
+
+        Grouped by caption rather than accumulated in check order, so a
+        caption with four problems is one thing to look at rather than four
+        lines scattered through the report, and separated into errors and
+        warnings: an empty caption or one ending before it starts is broken,
+        while a line over the guideline or a caption gone in half a second is
+        readable text that a viewer will struggle with. Both are worth
+        reporting; only one of them means the file is wrong.
+
+        Each entry is {"caption", "errors", "warnings"}, ordered by the
+        caption's own position in the list. `is_valid` is set here as it
+        always was, so the editor's own red rules follow from the same pass.
         """
-        # Track which captions changed validity
-        changed_indices = set()
 
-        # Reset all captions to valid first
+        issues: dict = {}
+
+        def report(caption, message: str, error: bool) -> None:
+            entry = issues.get(caption.index)
+
+            if entry is None:
+                entry = {"caption": caption, "errors": [], "warnings": []}
+                issues[caption.index] = entry
+
+            entry["errors" if error else "warnings"].append(message)
+            caption.is_valid = False
+
         for caption in self.captions:
-            if not caption.is_valid:
-                changed_indices.add(caption.index)
-            caption.is_valid = True
-
-        errors = []
-        seen_times = set()
-        start_times = {}
-        errorenous_captions = []
-
-        for caption in self.captions:
-            # Check for empty text
             if not caption.text.strip():
-                errors.append(f"Caption #{caption.index} has no text.")
-                caption.is_valid = False
-                errorenous_captions.append(caption)
-                changed_indices.add(caption.index)
+                report(caption, "No text.", error=True)
 
-            # Check character limit per line and line count (only for SRT format)
+            if caption.get_end_seconds() < caption.get_start_seconds():
+                report(caption, "Ends before it starts.", error=True)
+
+            # Subtitle guidelines. A transcription's blocks are a speaker's
+            # whole turn, with no length to keep to and no viewer reading
+            # them off a screen.
             if self.data_format == "srt":
                 lines = caption.text.split("\n")
 
-                for line in lines:
+                for number, line in enumerate(lines, start=1):
                     if len(line) > settings.CHARACTER_LIMIT:
-                        errors.append(
-                            f"Caption #{caption.index} has a line with {len(line)} characters (max {settings.CHARACTER_LIMIT})."
+                        report(
+                            caption,
+                            f"Line {number} is {len(line)} characters "
+                            f"(max {settings.CHARACTER_LIMIT}).",
+                            error=False,
                         )
-                        caption.is_valid = False
-                        if caption not in errorenous_captions:
-                            errorenous_captions.append(caption)
-                        changed_indices.add(caption.index)
-                        break
 
                 if len(lines) > settings.MAX_SUBTITLE_LINES:
-                    errors.append(
-                        f"Caption #{caption.index} has {len(lines)} lines (max {settings.MAX_SUBTITLE_LINES})."
+                    report(
+                        caption,
+                        f"{len(lines)} lines "
+                        f"(max {settings.MAX_SUBTITLE_LINES}).",
+                        error=False,
                     )
-                    caption.is_valid = False
-                    if caption not in errorenous_captions:
-                        errorenous_captions.append(caption)
-                    changed_indices.add(caption.index)
 
-            if (caption.start_time, caption.end_time) in seen_times:
-                errors.append(f"Caption #{caption.index} has duplicate timestamp.")
-                caption.is_valid = False
-                if caption not in errorenous_captions:
-                    errorenous_captions.append(caption)
-                changed_indices.add(caption.index)
+                seconds = caption.get_end_seconds() - caption.get_start_seconds()
 
-            seen_times.add((caption.start_time, caption.end_time))
+                # Only worth saying about a caption that has a duration at
+                # all -- one ending before it starts is already reported as
+                # the error it is, and does not need a second line saying it
+                # is also short.
+                if 0 <= seconds < settings.MIN_CAPTION_SECONDS:
+                    report(
+                        caption,
+                        f"On screen for {seconds:.2f}s "
+                        f"(min {settings.MIN_CAPTION_SECONDS}s).",
+                        error=False,
+                    )
 
-            if caption.start_time in start_times:
-                start_times[caption.start_time].append(caption.index)
-            else:
-                start_times[caption.start_time] = [caption.index]
+        # Timing against the neighbours. Two captions sharing a start time
+        # are reported once, as the duplicate they are -- the old third
+        # check ("multiple captions start at the same time") said the same
+        # thing again in different words, so one pair of captions could be
+        # reported three times over.
+        seen_times = set()
 
-            if caption.get_end_seconds() < caption.get_start_seconds():
-                caption.is_valid = False
-                if caption not in errorenous_captions:
-                    errorenous_captions.append(caption)
-                changed_indices.add(caption.index)
-                errors.append(
-                    f"Caption #{caption.index} has end time before start time."
-                )
-
-        # Check for overlapping times
-        for i in range(len(self.captions) - 1):
-            current = self.captions[i]
-            next_caption = self.captions[i + 1]
-
-            if current.get_end_seconds() > next_caption.get_start_seconds():
-                current.is_valid = False
-                next_caption.is_valid = False
-                if current not in errorenous_captions:
-                    errorenous_captions.append(current)
-                if next_caption not in errorenous_captions:
-                    errorenous_captions.append(next_caption)
-                changed_indices.add(current.index)
-                changed_indices.add(next_caption.index)
-                errors.append(
-                    f"Caption #{current.index} overlaps with caption #{next_caption.index}."
-                )
-
-        # Find start times with multiple captions
-        for start_time, indices in start_times.items():
-            if len(indices) > 1:
-                errors.append(
-                    f"Multiple captions start at the same time: {', '.join(map(str, indices))}."
-                )
-
-                for cap in self.captions:
-                    if cap.index in indices:
-                        if cap not in errorenous_captions:
-                            errorenous_captions.append(cap)
-                        cap.is_valid = False
-                        changed_indices.add(cap.index)
-
-        # Find blocks which are shorter than 0.8 seconds
         for caption in self.captions:
-            caption_length = caption.get_end_seconds() - caption.get_start_seconds()
-            if caption_length < 0.8:
-                errors.append(
-                    f"Caption #{caption.index} is very short ({caption_length:.2f} seconds)."
+            times = (caption.start_time, caption.end_time)
+
+            if times in seen_times:
+                report(caption, "Same timing as an earlier caption.", error=True)
+
+            seen_times.add(times)
+
+        for current, following in zip(self.captions, self.captions[1:]):
+            if current.get_end_seconds() > following.get_start_seconds():
+                report(
+                    current,
+                    f"Overlaps caption #{following.index}.",
+                    error=True,
                 )
-                if caption not in errorenous_captions:
-                    errorenous_captions.append(caption)
-                caption.is_valid = False
-                changed_indices.add(caption.index)
+                report(
+                    following,
+                    f"Overlaps caption #{current.index}.",
+                    error=True,
+                )
+
+        return [issues[index] for index in sorted(issues)]
+
+    def validate_captions(self):
+        """
+        Check the captions and report what came back, caption by caption.
+        """
+
+        changed_indices = {
+            caption.index for caption in self.captions if not caption.is_valid
+        }
+
+        for caption in self.captions:
+            caption.is_valid = True
+
+        issues = self.collect_validation_issues()
+        changed_indices |= {entry["caption"].index for entry in issues}
 
         # Refresh display to show validation state changes - only update changed captions
         self.refresh_display(
             specific_indices=changed_indices if changed_indices else None
         )
+
+        self.show_validation_report(issues)
+
+    def show_validation_report(self, issues: list) -> None:
+        """
+        The report itself. Every caption listed is a row that jumps to it --
+        finding "#47" by scrolling for it is the one thing a reader has to do
+        with this report, so the report does it.
+        """
+
+        error_count = sum(1 for entry in issues if entry["errors"])
+        warning_count = len(issues) - error_count
 
         with ui.dialog() as dialog:
             with ui.card().classes("p-6").style(
@@ -241,31 +254,26 @@ class RenderMixin:
 
                 ui.separator().classes("mb-4")
 
-                if errors:
-                    # Error summary
-                    with ui.card().classes("border-l-4 p-4 mb-4").style(
-                        "background-color: var(--color-status-error-bg); border-left-color: var(--color-status-error-border);"
+                if issues:
+                    with ui.card().classes("border-l-4 p-4 mb-4 w-full").style(
+                        "background-color: var(--color-status-error-bg); "
+                        "border-left-color: var(--color-status-error-border);"
                     ):
-                        with ui.row().classes("items-center gap-2 mb-2"):
+                        with ui.row().classes("items-center gap-2"):
                             ui.icon("error", size="md").style(
                                 "color: var(--color-text-danger);"
                             )
                             ui.label(
-                                f"{len(set(errorenous_captions))} caption(s) with issues found"
+                                self.validation_summary(error_count, warning_count)
                             ).classes("text-h6 font-semibold")
 
-                    # Error list
                     with ui.column().classes("w-full gap-2 max-h-96 overflow-y-auto"):
-                        for error in errors:
-                            with ui.row().classes("items-start gap-2"):
-                                ui.icon("warning", size="sm").style(
-                                    "color: var(--color-text-danger); margin-top: 4px;"
-                                )
-                                ui.label(error).classes("text-body2")
+                        for entry in issues:
+                            self.validation_row(entry, dialog)
                 else:
-                    # Success message
-                    with ui.card().classes("border-l-4 p-4").style(
-                        "background-color: var(--color-status-ok-bg); border-left-color: var(--color-status-ok-border);"
+                    with ui.card().classes("border-l-4 p-4 w-full").style(
+                        "background-color: var(--color-status-ok-bg); "
+                        "border-left-color: var(--color-status-ok-border);"
                     ):
                         with ui.row().classes("items-center gap-3"):
                             ui.icon("check_circle", size="lg").style(
@@ -276,8 +284,17 @@ class RenderMixin:
                                     "text-h6 font-semibold"
                                 )
                                 ui.label(
-                                    f"{len(self.captions)} caption(s) checked"
+                                    f"{self.caption_count(len(self.captions))} checked"
                                 ).classes("text-body2 text-theme-secondary")
+
+                # What was checked, so the report can be read without going
+                # looking for the numbers behind it.
+                if self.data_format == "srt":
+                    ui.label(
+                        f"Guidelines: max {settings.CHARACTER_LIMIT} characters "
+                        f"per line, max {settings.MAX_SUBTITLE_LINES} lines, "
+                        f"at least {settings.MIN_CAPTION_SECONDS}s on screen."
+                    ).classes("text-caption text-theme-muted mt-4")
 
                 # Footer
                 with ui.row().classes("w-full justify-end mt-4").style(
@@ -287,6 +304,57 @@ class RenderMixin:
 
             dialog.open()
 
+    @staticmethod
+    def caption_count(count: int) -> str:
+        return f"{count} caption" if count == 1 else f"{count} captions"
+
+    def validation_summary(self, error_count: int, warning_count: int) -> str:
+        """
+        What the report found, counted by kind rather than as one total: an
+        error means the file is wrong, a warning means a viewer will
+        struggle, and a reader deciding what to do next needs them apart.
+        """
+
+        parts = []
+
+        if error_count:
+            parts.append(f"{self.caption_count(error_count)} with errors")
+        if warning_count:
+            parts.append(f"{self.caption_count(warning_count)} with warnings")
+
+        return ", ".join(parts)
+
+    def validation_row(self, entry: dict, dialog) -> None:
+        """
+        One caption and everything found in it, as a row that jumps to it.
+        """
+
+        caption = entry["caption"]
+        errors = entry["errors"]
+
+        def jump() -> None:
+            dialog.close()
+            self.select_caption(caption)
+
+        with ui.row().classes(
+            "items-start gap-2 w-full validation-issue"
+        ).on("click", jump):
+            colour = (
+                "var(--color-text-danger)"
+                if errors
+                else "var(--color-severity-maint-icon)"
+            )
+            ui.icon("error" if errors else "warning", size="sm").style(
+                f"color: {colour}; margin-top: 2px;"
+            )
+
+            with ui.column().classes("gap-0"):
+                ui.label(f"Caption #{caption.index}").classes(
+                    "text-body2 font-semibold"
+                )
+
+                for message in errors + entry["warnings"]:
+                    ui.label(message).classes("text-body2 text-theme-secondary")
 
     def show_keyboard_shortcuts(self, open_window: Optional[bool] = False) -> None:
         """

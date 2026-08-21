@@ -1518,6 +1518,19 @@ theme_styles = """
         min-width: 22rem;
     }
 
+    /* ── Validation report ── */
+    /* Every caption in the report is a row that jumps to it, so it says as
+       much before it is clicked. */
+    .validation-issue {
+        cursor: pointer;
+        padding: 0.35rem 0.5rem;
+        border-radius: 6px;
+        transition: background-color 0.12s ease-in-out;
+    }
+    .validation-issue:hover {
+        background-color: var(--color-bg-surface-alt);
+    }
+
     /* ── SRT editor controls under the video ── */
     /* The switches on one row, what they mark under it -- grouped by what
        each control affects, without a heading naming each group. */
