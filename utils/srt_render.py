@@ -306,7 +306,7 @@ class RenderMixin:
                 (
                     [
                         ("New line in the caption", "Enter"),
-                        ("Split caption at cursor", "Ctrl/⌘ + Enter"),
+                        ("Split", "Ctrl/⌘ + Enter"),
                         ("Move first word to previous caption", "Ctrl/⌘ + ↑"),
                         ("Move last word to next caption", "Ctrl/⌘ + ↓"),
                         ("Merge with next caption", "Ctrl + M"),
@@ -315,7 +315,7 @@ class RenderMixin:
                         ("Validate captions", "Ctrl + Shift + V"),
                         ("Join with the caption above", "Backspace at the start"),
                         ("Join with the caption below", "Delete at the end"),
-                        ("Split caption at cursor (mouse)", "Click its split icon"),
+                        ("Split (mouse)", "Click its split icon"),
                         ("Merge with the caption below (mouse)", "Click its merge icon"),
                         ("Add a caption after this one", "Click its + icon"),
                         ("Delete a caption", "Click its trash icon"),

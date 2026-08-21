@@ -109,7 +109,7 @@ export default {
               ><div
                   class="transcript-action transcript-action-split"
                   @click.stop="splitAt(block.id)"
-                ><q-icon name="call_split" size="16px" /><q-tooltip>Split caption at cursor</q-tooltip></div><div
+                ><q-icon name="call_split" size="16px" /><q-tooltip>Split</q-tooltip></div><div
                   class="transcript-action transcript-action-merge"
                   @click.stop="mergeWithNext(block.id)"
                 ><q-icon name="merge_type" size="16px" /><q-tooltip>Merge with next caption</q-tooltip></div><div
