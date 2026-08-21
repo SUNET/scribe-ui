@@ -1242,7 +1242,9 @@ theme_styles = """
         align-items: center;
         justify-content: flex-end;
         height: 1.5rem;
-        font-size: 0.8rem;
+        /* 0.8rem plus a pixel, the same as the timestamp it sits level
+           with -- the two are read together and stay the same size. */
+        font-size: 0.8625rem;
         line-height: 1;
         color: var(--color-text-muted);
         opacity: 0.7;
@@ -1336,7 +1338,7 @@ theme_styles = """
         font-family: var(--font-mono);
         font-feature-settings: "zero" 0;
         font-weight: 600;
-        font-size: 0.8rem;
+        font-size: 0.8625rem;
         line-height: 1.2;
         font-variant-numeric: tabular-nums;
         color: var(--color-brand-primary);
