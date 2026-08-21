@@ -488,6 +488,12 @@ theme_styles = """
         border-bottom: 1px solid var(--color-border-subtle);
         padding: 0.5rem 0.25rem;
     }
+    /* On the page's own black, with nothing dividing it from the editor
+       below -- the same as the panels themselves. */
+    .body--dark .editor-toolbar {
+        background-color: var(--color-bg-page);
+        border-bottom: none;
+    }
     /* Actions that belong together sit together, divided by a rule rather
        than by spacing alone -- undo/redo, then the document's own actions,
        then the ones that only look at it. */
@@ -530,21 +536,24 @@ theme_styles = """
         border: 1px solid var(--color-border-subtle) !important;
         opacity: 0.4;
     }
+    /* Dark mode: the same black the editor panels sit on, drawn white, and
+       nothing framing it -- the global .q-btn--flat rule gives every flat
+       button a border, so it is turned off here explicitly. */
     .body--dark .q-btn.editor-btn {
         background-color: var(--color-bg-page) !important;
-        border: 1px solid var(--color-border-subtle) !important;
-        color: var(--color-text-primary) !important;
+        border: none !important;
+        color: #ffffff !important;
     }
     .body--dark .q-btn.editor-btn:hover {
         background-color: var(--color-bg-surface-alt) !important;
     }
     .body--dark .q-btn.editor-btn .q-icon,
     .body--dark .q-btn.editor-btn .q-btn__content {
-        color: var(--color-text-primary) !important;
+        color: #ffffff !important;
     }
     .body--dark .q-btn.editor-btn[disabled] {
         background-color: var(--color-bg-page) !important;
-        border: 1px solid var(--color-border-subtle) !important;
+        border: none !important;
         opacity: 0.4;
     }
 
@@ -780,8 +789,12 @@ theme_styles = """
         border-radius: 12px;
         box-shadow: none !important;
     }
+    /* Dark mode puts the editor on the page's own black, not on the
+       lifted surface the rest of the app uses -- nothing framing it, so
+       the text is all there is to look at. */
     .body--dark .q-card.editor-panel {
-        background-color: var(--color-bg-surface) !important;
+        background-color: var(--color-bg-page) !important;
+        border: none !important;
     }
 
     /* The handle between them: a hairline at rest, the brand colour while
