@@ -908,6 +908,26 @@ class TestTiming:
         assert "this.dirty.add(id)" in body
         assert "$emit(\"retime\"" in body
 
+    def test_the_actions_ride_the_timing_row(self):
+        """
+        The four caption actions act on this specific caption, the same as
+        the timing itself, so they ride the row it sits on rather than
+        sitting beside the text below.
+        """
+
+        source = self.source()
+        time_row = source[source.index('class="transcript-subtitle-time"'):]
+        time_row = time_row[: time_row.index("</div></div><div")]
+
+        assert "transcript-cell-actions" in time_row
+        assert "transcript-action-split" in time_row
+        assert "transcript-action-merge" in time_row
+        assert "transcript-action-add" in time_row
+        assert "transcript-action-delete" in time_row
+        assert "transcript-action-merge" in time_row
+        assert "transcript-action-add" in time_row
+        assert "transcript-action-delete" in time_row
+
 
 class TestRetime:
     """

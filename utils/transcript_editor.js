@@ -46,7 +46,10 @@ export default {
           class="transcript-gutter"
           contenteditable="false"
           :data-id="block.id"
-        ><div
+        ><span
+            v-if="subtitleMode"
+            class="transcript-subtitle-index"
+          >#{{ block.id }}</span><div
             v-if="subtitleMode"
             class="transcript-subtitle-counts"
           ><span
@@ -54,9 +57,6 @@ export default {
               :key="i"
               class="transcript-count-row"
             ><span
-                v-if="i === 0"
-                class="transcript-subtitle-index"
-              >#{{ block.id }}</span><span
                 class="transcript-count"
                 :class="{ 'transcript-count-exceeded': count.exceeded }"
                 :title="count.tooltip"
@@ -104,31 +104,28 @@ export default {
                 @click.stop
                 @keydown="onTimeInputKeydown($event)"
                 @blur="retimeBlock(block.id, 'end', $event)"
-              /></div><div
+              /><div
+                class="transcript-cell-actions"
+              ><div
+                  class="transcript-action transcript-action-split"
+                  @click.stop="splitAt(block.id)"
+                ><q-icon name="call_split" size="16px" /><q-tooltip>Split caption at cursor</q-tooltip></div><div
+                  class="transcript-action transcript-action-merge"
+                  @click.stop="mergeWithNext(block.id)"
+                ><q-icon name="merge_type" size="16px" /><q-tooltip>Merge with next caption</q-tooltip></div><div
+                  class="transcript-action transcript-action-add"
+                  @click.stop="$emit('addblock', { id: block.id })"
+                ><q-icon name="add" size="16px" /><q-tooltip>Add caption after</q-tooltip></div><div
+                  class="transcript-action transcript-action-delete"
+                  @click.stop="$emit('deleteblock', { id: block.id })"
+                ><q-icon name="delete_outline" size="16px" /><q-tooltip>Delete caption</q-tooltip></div></div></div><div
               class="transcript-text"
               :data-id="block.id"
             ><span v-for="(run, i) in block.runs" :key="i" :class="run.flag ? 'review-word' : (run.edit ? 'edit-word' : null)" :data-review="run.flag ? reviewLabel : null" :data-edit="editLabel" :data-s="run.s" :data-e="run.e">{{ run.t }}</span><br v-if="!block.runs || block.runs.length === 0"></div></div><div
             v-else
             class="transcript-text"
             :data-id="block.id"
-          ><span v-for="(run, i) in block.runs" :key="i" :class="run.flag ? 'review-word' : (run.edit ? 'edit-word' : null)" :data-review="run.flag ? reviewLabel : null" :data-edit="editLabel" :data-s="run.s" :data-e="run.e">{{ run.t }}</span><br v-if="!block.runs || block.runs.length === 0"></div><div
-            v-if="subtitleMode"
-            class="transcript-cell-actions"
-            contenteditable="false"
-            :data-id="block.id"
-          ><div
-              class="transcript-action transcript-action-split"
-              @click.stop="splitAt(block.id)"
-            ><q-icon name="call_split" size="16px" /><q-tooltip>Split caption at cursor</q-tooltip></div><div
-              class="transcript-action transcript-action-merge"
-              @click.stop="mergeWithNext(block.id)"
-            ><q-icon name="merge_type" size="16px" /><q-tooltip>Merge with next caption</q-tooltip></div><div
-              class="transcript-action transcript-action-add"
-              @click.stop="$emit('addblock', { id: block.id })"
-            ><q-icon name="add" size="16px" /><q-tooltip>Add caption after</q-tooltip></div><div
-              class="transcript-action transcript-action-delete"
-              @click.stop="$emit('deleteblock', { id: block.id })"
-            ><q-icon name="delete_outline" size="16px" /><q-tooltip>Delete caption</q-tooltip></div></div></div></template></div>
+          ><span v-for="(run, i) in block.runs" :key="i" :class="run.flag ? 'review-word' : (run.edit ? 'edit-word' : null)" :data-review="run.flag ? reviewLabel : null" :data-edit="editLabel" :data-s="run.s" :data-e="run.e">{{ run.t }}</span><br v-if="!block.runs || block.runs.length === 0"></div></div></template></div>
 
       <!-- Outside the contenteditable, or it would become editable content.
            Positioned against this component's own root rather than the

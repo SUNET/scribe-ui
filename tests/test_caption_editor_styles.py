@@ -141,10 +141,9 @@ class TestTranscriptCellStates:
 class TestCaptionActions:
     """
     Split, merge, add and delete (subtitles only) stay out of the way until
-    the block they belong to is hovered or focused, so a long list of cues
-    is not lined with icons -- and when they do appear, they ride the same
-    hover-reveal separator a caption's boundary is already drawn with (see
-    TestCaptionSeparator), rather than sitting beside the text as a fifth
+    the caption they belong to is hovered or focused, so a long list of
+    cues is not lined with icons -- they ride the timing row, centred in
+    its own leftover space, rather than sitting beside the text as a fifth
     thing to read there.
     """
 
@@ -158,10 +157,8 @@ class TestCaptionActions:
 
     def test_revealed_on_hovering_the_margin_too(self):
         """
-        The separator itself has this same second trigger -- the margin
-        (its timing) belongs to the same caption as the cell right before
-        it, so hovering either one reveals both the line and the actions
-        riding it.
+        Hovering the margin (its timing) belongs to the same caption as the
+        cell right before it, so hovering either one reveals the actions.
         """
 
         assert effective(
@@ -171,35 +168,19 @@ class TestCaptionActions:
     def test_revealed_on_keyboard_focus(self):
         assert effective(".transcript-cell-actions:focus-within")["opacity"] == "1"
 
-    def test_it_sits_on_the_separator_not_beside_the_text(self):
+    def test_it_is_centred_on_the_timing_row(self):
         """
-        Absolutely positioned at the same bottom offset the separator's own
-        border-bottom sits at (see TestCaptionSeparator), centred on that
-        line both ways by translate(-50%, 50%) -- not a flex sibling of the
-        text any more, which is what let it sit beside the text in the
-        first place.
+        An ordinary flex item on .transcript-subtitle-time now, centred in
+        the row's own leftover space with equal auto margins either side --
+        not absolutely positioned over anything, so hidden still reserves
+        its own width and the row does not reflow as the icons fade in and
+        out.
         """
 
         applied = effective(".transcript-cell-actions")
 
-        assert applied["position"] == "absolute"
-        assert applied["left"] == "50%"
-        assert applied["bottom"] == effective(
-            ".transcript-subtitle-mode .transcript-cell::before"
-        )["bottom"]
-        assert applied["transform"] == "translate(-50%, 50%)"
-
-    def test_each_icon_has_a_solid_background(self):
-        """
-        The separator passes directly behind these -- without a solid
-        background of its own, the line would show through the gaps an
-        icon's shape leaves inside its circle.
-        """
-
-        assert (
-            effective(".transcript-action")["background-color"]
-            == "var(--color-bg-page)"
-        )
+        assert applied["margin"] == "0 auto"
+        assert "position" not in applied
 
 
 class TestCaptionSeparator:
@@ -238,17 +219,29 @@ class TestSubtitleTimingInputWidth:
 
 class TestSubtitleMarginAlignment:
     """
-    The margin skips the timing row the same way the base rule skips a
-    speaker past the timestamp (see .transcript-gutter's own padding-top),
-    rather than heading the timing with an index of matched height -- so a
-    count lines up with its text line only because each row's own
-    line-height takes up exactly the space one text line does.
+    The margin is a column, the index heading it at the same height as the
+    timing row rather than skipped past the way the base rule skips a
+    speaker past the timestamp -- so a count lines up with its text line
+    only because the index row and each count row's own line-height
+    together take up exactly the space the timing row and one text line do.
     """
 
-    def test_the_margin_skips_the_timing_row(self):
+    def test_the_margin_is_a_column(self):
         assert effective(".transcript-subtitle-mode .transcript-gutter")[
-            "padding-top"
-        ] != "0"
+            "flex-direction"
+        ] == "column"
+
+    def test_the_index_row_matches_the_actions_height(self):
+        """
+        .transcript-cell-actions reserves 1.5rem of height in the timing
+        row even hidden, which decides that row's actual rendered height --
+        not the shorter plain text sitting beside it. The index has to
+        match that, or the counts beneath it drift out from under their
+        own text lines.
+        """
+
+        assert effective(".transcript-subtitle-index")["line-height"] == "1.5rem"
+        assert effective(".transcript-action")["height"] == "1.5rem"
 
     def test_the_count_row_line_height_matches_the_text(self):
         """
@@ -284,10 +277,9 @@ class TestSubtitleTextOffset:
     def test_the_cell_padding_is_not_overridden(self):
         """
         There is no ".transcript-subtitle-mode .transcript-cell" rule at
-        all any more -- the actions that once needed it to lay out beside
-        the text now ride the separator instead (see TestCaptionActions),
-        so subtitleMode has nothing left to say about the cell's own
-        layout, padding-left included.
+        all -- the actions and the index both ride the timing row instead
+        (see TestCaptionActions), so subtitleMode has nothing left to say
+        about the cell's own layout, padding-left included.
         """
 
         selectors = {selector for selectors, _ in rules() for selector in selectors}

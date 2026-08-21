@@ -947,15 +947,22 @@ theme_styles = """
         user-select: none;
         white-space: nowrap;
     }
-    /* A subtitle's margin skips its own timing row the same way the base
-       rule above skips a speaker past the timestamp -- the index is not a
-       heading level with the timing, it rides on the first line's count, so
-       there is nothing in the margin to line up with the timing row at all.
-       Tuned against .transcript-subtitle-time's own height, which differs
-       from the base rule's .transcript-time. */
+    /* A subtitle's margin is a column instead of the base rule's row: the
+       index on its own top line, the per-line counts stacked below it. No
+       padding-top skipping down to the text the way the base rule does for
+       a speaker -- the index takes that row instead, so there is something
+       in the margin to line up with the timing row after all, just not the
+       counts. */
     .transcript-subtitle-mode .transcript-gutter {
+        flex-direction: column;
         align-items: flex-end;
-        padding-top: 2.2rem;
+        /* The base rule's own padding-top is what skips a speaker past the
+           timestamp -- the index sits there instead here, so it has to be
+           reset back to 0 rather than inherited unchanged. */
+        padding-top: 0;
+        /* Matches .transcript-subtitle-time's own margin-bottom, so the
+           counts below land aligned with the text below in the cell. */
+        gap: 0.6rem;
     }
     .transcript-speaker {
         cursor: pointer;
@@ -1028,19 +1035,24 @@ theme_styles = """
         color: var(--color-text-muted);
     }
 
-    /* The caption's index, read the same way the speaker name is in a
-       transcription -- riding on the first line rather than heading the
-       block -- so it sits inline with that line's own count instead of
-       above the column. */
+    /* The caption's index -- in the same column the character counts are
+       in, but its own row above them, level with the timing rather than
+       the text: it names the caption itself, the same as the timing does,
+       not any one line of it. line-height matches .transcript-action's own
+       height (1.5rem) rather than the plain text's, since that is what
+       actually decides .transcript-subtitle-time's rendered height --
+       .transcript-cell-actions reserves that height even hidden -- and the
+       two rows have to agree, or the counts below drift out of line with
+       the text below. */
     .transcript-subtitle-index {
         font-size: 0.8rem;
+        line-height: 1.5rem;
         color: var(--color-text-muted);
         opacity: 0.7;
     }
 
     /* One row per line, each carrying that line's character count and
-       lined up with the text line it belongs to; the first row also
-       carries the index. */
+       lined up with the text line it belongs to. */
     .transcript-subtitle-counts {
         display: flex;
         flex-direction: column;
@@ -1067,11 +1079,9 @@ theme_styles = """
     /* padding-left is left at the base rule's own 1rem (and
        .transcript-cell-active's calc(1rem - 1px) needs no override to
        match), so the divider sits the same distance from the text a
-       transcription's does. The actions used to sit beside the text here
-       too, which is why this was a flex row -- now that they ride the
-       separator instead (.transcript-cell-actions below), the timing and
-       text are the cell's only content and need nothing beyond the plain
-       block layout the base rule already gives it. */
+       transcription's does -- the timing row and text are the cell's only
+       content and need nothing beyond the plain block layout the base
+       rule already gives it. */
     /* The timing sits over the caption it belongs to, not over the margin's
        character counts, so it is a heading inside the cell rather than
        something the margin carries -- the margin has no heading of its own
@@ -1080,6 +1090,8 @@ theme_styles = """
         display: flex;
         flex-direction: column;
     }
+    /* The timing and the four caption actions sit on one row -- both act
+       on this specific caption, not the block of text below it. */
     .transcript-subtitle-time {
         display: flex;
         align-items: baseline;
@@ -1112,24 +1124,22 @@ theme_styles = """
     }
 
     /* Split this caption at the caret, add one after it, merge it with the
-       next, or delete it outright -- subtitles only. Ride the hover-reveal
-       separator itself (.transcript-subtitle-mode .transcript-cell::before
-       above) rather than sitting beside the text: both are the same idea,
-       a caption boundary the reader only needs once they are near it, so
-       they appear and fade together. bottom matches the separator's own,
-       and translate(-50%, 50%) centres the icons on that line, left and
-       right at once, the same way align-items: baseline centres a shorter
-       box on a taller one -- half of this box's own size, each axis, is
-       what "the middle of a line positioned by its near edge" comes out to.
-       Taken out of the cell's flex row (an absolute position does that on
-       its own) so the text beside it no longer shares width with a sibling
-       that is not actually part of the row's own reading anymore. */
+       next, or delete it outright -- subtitles only. Quiet until the
+       caption is hovered or a reader tabs into one of the icons, so a long
+       list of captions is not lined with icons -- an ordinary flex item on
+       the timing row rather than a floating overlay, so hidden still
+       reserves its own width instead of the row reflowing under it as it
+       fades in and out. Centred in the row's own leftover space (after the
+       timing) with margin: 0 auto -- equal auto margins on a flex item
+       split whatever space its siblings left between them, which is what
+       centres it there rather than against the row's near or far edge.
+       align-self: center rather than the row's own baseline, which would
+       otherwise snap this taller box's own baseline (its last icon's) to
+       the timing text's, pushing it noticeably below the row's middle. */
     .transcript-cell-actions {
         display: flex;
-        position: absolute;
-        left: 50%;
-        bottom: -0.625rem;
-        transform: translate(-50%, 50%);
+        align-self: center;
+        margin: 0 auto;
         gap: 2px;
         opacity: 0;
         transition: opacity 0.12s ease-in-out;
@@ -1139,12 +1149,6 @@ theme_styles = """
     .transcript-cell-actions:focus-within {
         opacity: 1;
     }
-    /* A solid background rather than the transparent one an icon this size
-       would otherwise get, since the separator passes directly behind these
-       -- without one the line would show through the gaps an icon's own
-       shape leaves inside its circle, breaking rather than reading as part
-       of the line. --color-bg-page rather than -surface: this sits directly
-       on the page, not on a raised surface. */
     .transcript-action {
         display: flex;
         align-items: center;
@@ -1152,7 +1156,6 @@ theme_styles = """
         width: 1.5rem;
         height: 1.5rem;
         border-radius: 50%;
-        background-color: var(--color-bg-page);
         color: var(--color-text-muted);
         cursor: pointer;
         transition: color 0.12s ease-in-out, background-color 0.12s ease-in-out;
