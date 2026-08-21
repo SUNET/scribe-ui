@@ -60,6 +60,7 @@ REVIEW_SHOW_KEY = "srt_show_uncertain_words"
 REVIEW_SENSITIVITY_KEY = "srt_review_sensitivity"
 EDITS_SHOW_KEY = "srt_show_my_edits"
 AUTOSCROLL_KEY = "srt_autoscroll"
+OVERLAY_SHOW_KEY = "srt_show_subtitle_overlay"
 
 
 
@@ -361,7 +362,9 @@ class ReviewMixin:
         )
 
 
-    def restore_review_state(self, show, sensitivity, edits=False) -> None:
+    def restore_review_state(
+        self, show, sensitivity, edits=False, overlay=True
+    ) -> None:
         """
         Apply persisted review preferences before the first render.
 
@@ -369,10 +372,14 @@ class ReviewMixin:
         list that does not exist yet. A sensitivity that is not recognised is
         ignored, so a value left behind by an older version of the editor
         falls back to the default instead of flagging nothing.
+
+        overlay defaults to True, unlike the markings: nothing stored yet
+        means a reader who has never touched the switch gets it on.
         """
 
         self.show_uncertain_words = bool(show)
         self.show_my_edits = bool(edits)
+        self.show_subtitle_overlay = bool(overlay)
 
         if sensitivity in REVIEW_SENSITIVITIES:
             self.review_sensitivity = sensitivity

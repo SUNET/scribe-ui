@@ -59,6 +59,12 @@ def format_time_label(seconds: float) -> str:
 
 TIME_LABEL_PATTERN = re.compile(r"^\s*(\d{1,2}):(\d{2}):(\d{2})\s*\.(\d{3})\s*$")
 
+# "Nothing has been drawn yet", which None cannot stand for -- None is a real
+# value here, meaning no caption covers the moment being played. Without it the
+# first tick that lands between two captions matches the starting value and
+# short-circuits before the overlay is ever told to hide.
+UNDRAWN = object()
+
 
 def parse_time_label(text: str) -> Optional[float]:
     """
@@ -164,16 +170,35 @@ class TranscriptEditor:
         self.editor = editor
         self.body: Optional[TranscriptBody] = None
         self.on_change: Optional[Callable] = None
-        self.overlay_label: Optional[ui.label] = None
+        self.overlay: Optional[ui.element] = None
+        self.overlay_enabled = True
+        # The caption the video is currently on, remembered so the overlay can
+        # be redrawn without one -- turning it back on while paused has no
+        # timeupdate coming to rebuild it from.
+        self.overlay_text = UNDRAWN
+        # Where the player last reported itself to be, so the overlay's own
+        # caption can be worked out again after an edit -- see refresh_overlay.
+        self.overlay_seconds: Optional[float] = None
 
-    def set_overlay_label(self, label: ui.label) -> None:
+    def set_overlay(self, container: ui.element) -> None:
         """
-        Where follow_video draws the caption playing right now -- a plain
-        label rather than ui.html, since a caption's own text is user
-        content, not something to trust as markup.
+        Where follow_video draws the caption playing right now.
+
+        A container rather than one label: a caption's own line breaks are
+        part of it, and the overlay shows the same lines the editor does by
+        giving each one its own element -- see draw_overlay.
         """
 
-        self.overlay_label = label
+        self.overlay = container
+
+    def set_overlay_enabled(self, enabled: bool) -> None:
+        """
+        Turn the overlay on or off, taking effect at once rather than at the
+        next timeupdate -- the video may well be paused while this is toggled.
+        """
+
+        self.overlay_enabled = bool(enabled)
+        self.draw_overlay()
 
     # ── building ────────────────────────────────────────────────────────────
 
@@ -261,6 +286,9 @@ class TranscriptEditor:
             [name for name in sorted(self.editor.speakers)
              if not self.speaker_in_use(name)],
         )
+        # A split, merge, delete, retime or undo can change which caption
+        # covers the moment being played, or what that caption now says.
+        self.refresh_overlay()
 
     # ── lookup ──────────────────────────────────────────────────────────────
 
@@ -542,6 +570,11 @@ class TranscriptEditor:
         return word["s"] if self.editor.word_is_timed(word) else None
 
     def changed(self) -> None:
+        # Typing is reported without a re-render (set_text leaves the block
+        # the caret is in alone), so this is the only chance the overlay gets
+        # to follow an edit to the caption it is showing.
+        self.refresh_overlay()
+
         if self.on_change:
             self.on_change()
 
@@ -839,23 +872,92 @@ class TranscriptEditor:
         if not isinstance(seconds, (int, float)):
             return
 
+        # Kept so the overlay can be worked out again without the player --
+        # see refresh_overlay, which is what an edit goes through.
+        self.overlay_seconds = seconds
+
+        playing = self.caption_at(seconds)
+
+        if playing is not None and self.editor.autoscroll:
+            self.body.set_active(playing.index)
+
+        # None between two captions, or past the last one -- nothing playing
+        # right now is what a real subtitle track would also show.
+        self._set_overlay_text(None if playing is None else playing.text)
+
+    def caption_at(self, seconds: float) -> Optional[SRTCaption]:
+        """
+        The caption covering a moment, or None if none does.
+        """
+
         for caption in self.editor.captions:
             if caption.get_start_seconds() <= seconds < caption.get_end_seconds():
-                if self.editor.autoscroll:
-                    self.body.set_active(caption.index)
-                self._set_overlay_text(caption.text)
-                return
+                return caption
 
-        # Between two captions, or past the last one -- nothing playing
-        # right now is what a real subtitle track would also show.
-        self._set_overlay_text(None)
+        return None
 
-    def _set_overlay_text(self, text: Optional[str]) -> None:
-        if self.overlay_label is None:
+    def refresh_overlay(self) -> None:
+        """
+        Work the overlay's caption out again and redraw if it has moved on.
+
+        Editing the caption being shown has to take the overlay with it: the
+        reader is very often paused while editing, and timeupdate -- the only
+        other thing that ever redraws it -- does not fire then.
+
+        Re-derived from the time the player was last reported at rather than
+        held as a reference to the caption itself, so a split, merge, delete
+        or undo swapping the caption objects out from under it cannot leave
+        this pointing at one that is no longer in the list.
+        """
+
+        if self.overlay_seconds is None:
             return
 
-        if text:
-            self.overlay_label.set_text(text)
-            self.overlay_label.set_visibility(True)
-        else:
-            self.overlay_label.set_visibility(False)
+        playing = self.caption_at(self.overlay_seconds)
+        self._set_overlay_text(None if playing is None else playing.text)
+
+    def _set_overlay_text(self, text: Optional[str]) -> None:
+        """
+        Remember the caption the video is on, and redraw if it changed.
+
+        timeupdate fires several times a second and mostly lands on the same
+        caption, so the DOM is only rebuilt when the text actually moves on.
+        """
+
+        if text == self.overlay_text:
+            return
+
+        self.overlay_text = text
+        self.draw_overlay()
+
+    def draw_overlay(self) -> None:
+        """
+        Draw the remembered caption, one element per line.
+
+        Split on the caption's own line breaks rather than left to CSS, so
+        the overlay shows exactly the lines the editor does -- the same
+        split caption_line_counts uses for the character guideline. Each
+        line is a ui.label, so the text stays text: a caption is user
+        content and never becomes markup.
+        """
+
+        if self.overlay is None:
+            return
+
+        text = self.overlay_text if self.overlay_enabled else None
+        if text is UNDRAWN:
+            text = None
+
+        self.overlay.clear()
+
+        if not text:
+            self.overlay.set_visibility(False)
+            return
+
+        with self.overlay:
+            for line in text.split("\n"):
+                # A blank line still has to take up a line's height, or the
+                # lines below it move up and stop matching the editor.
+                ui.label(line or " ").classes("video-subtitle-line")
+
+        self.overlay.set_visibility(True)

@@ -919,9 +919,10 @@ theme_styles = """
         font-size: 1rem;
         line-height: 1.4;
         text-align: center;
-        /* A caption's own line breaks are real "\n" characters, the same
-           as the editor's own text -- this is what turns them back into
-           visible lines rather than running the caption together. */
+        /* One child per line of the caption (see draw_overlay), so the
+           overlay breaks exactly where the caption does rather than
+           wherever the width happens to run out. pre-line stays as a
+           backstop for a line that still arrives carrying its own "\n". */
         white-space: pre-line;
         border-radius: 4px;
         /* Belt and suspenders alongside the fixed offset above: never in
@@ -1127,11 +1128,22 @@ theme_styles = """
         flex-direction: column;
     }
     /* The timing and the four caption actions sit on one row -- both act
-       on this specific caption, not the block of text below it. */
+       on this specific caption, not the block of text below it.
+
+       A grid rather than a flex row so the actions land on the row's true
+       centre: the timing takes the first column, the actions the middle
+       one, and the third is left empty purely to balance the first. Equal
+       auto margins on a flex item would only centre them in whatever space
+       the timing left over, which put them noticeably right of centre. */
     .transcript-subtitle-time {
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
+        align-items: center;
+        margin-bottom: 0.6rem;
+    }
+    .transcript-subtitle-timing {
         display: flex;
         align-items: baseline;
-        margin-bottom: 0.6rem;
     }
     /* Edited directly, in place, rather than through a dialog: a plain
        input styled to read as the same clickable-looking label it replaces,
@@ -1165,17 +1177,12 @@ theme_styles = """
        list of captions is not lined with icons -- an ordinary flex item on
        the timing row rather than a floating overlay, so hidden still
        reserves its own width instead of the row reflowing under it as it
-       fades in and out. Centred in the row's own leftover space (after the
-       timing) with margin: 0 auto -- equal auto margins on a flex item
-       split whatever space its siblings left between them, which is what
-       centres it there rather than against the row's near or far edge.
-       align-self: center rather than the row's own baseline, which would
-       otherwise snap this taller box's own baseline (its last icon's) to
-       the timing text's, pushing it noticeably below the row's middle. */
+       fades in and out. Sits in the middle column of the timing row's own
+       grid (see .transcript-subtitle-time), which is what puts it on the
+       row's true centre rather than the centre of whatever space the
+       timing left over. */
     .transcript-cell-actions {
         display: flex;
-        align-self: center;
-        margin: 0 auto;
         gap: 2px;
         opacity: 0;
         transition: opacity 0.12s ease-in-out;

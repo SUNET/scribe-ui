@@ -589,6 +589,60 @@ class TestClientContract:
         assert "this.syntheticSpace.remove();" in space_branch
         assert "this.syntheticSpace = null;" in space_branch
 
+    def test_the_synthetic_separator_is_retired_when_its_word_is_deleted(self):
+        """
+        The synthetic space only earns its place while there is a new word in
+        front of it to hold apart from the next one. Backspacing that word
+        away again leaves it separating nothing, and left in the DOM it is
+        read straight back out as part of the caption -- a stray double space
+        the reader never typed, flushed as a real undo-able state, and in
+        subtitleMode counted against the character guideline too. spaceAtTail's
+        own retirement path cannot catch this: it only fires when a real space
+        is typed, never when the word is deleted instead.
+        """
+
+        source = self.source()
+        body = source[source.index("retireSyntheticSpace() {"):]
+        body = body[: body.index("\n    },")]
+
+        # "Separating nothing" is everything ahead of it inside its own parent
+        # being whitespace -- the word had a span of its own, and the browser
+        # takes that span away with the last character of it.
+        assert "space.parentNode.firstChild" in body
+        assert "node !== space" in body
+        assert 'if (!/\\S/.test(before))' in body
+        assert "space.remove();" in body
+        assert "this.syntheticSpace = null;" in body
+
+    def test_the_retirement_runs_before_the_edit_is_measured(self):
+        """
+        Ahead of caret() and the text read for the flush, so a space that has
+        stopped separating anything is already gone by the time either sees
+        the block -- retired afterwards, the stale space would still be in the
+        text that gets sent.
+        """
+
+        source = self.source()
+        body = source[source.index("onInput() {"):]
+        body = body[: body.index("\n    },")]
+
+        assert body.index("this.retireSyntheticSpace()") < body.index("this.caret()")
+
+    def test_a_space_already_gone_just_clears_the_reference(self):
+        """
+        A Backspace reaching the space itself, or a render rebuilding the
+        block around it, detaches the node -- nothing to remove then, but the
+        reference must not be left pointing at it.
+        """
+
+        source = self.source()
+        body = source[source.index("retireSyntheticSpace() {"):]
+        body = body[: body.index("\n    },")]
+
+        detached = body[body.index("if (!space.parentNode)"):]
+
+        assert "this.syntheticSpace = null;" in detached
+
     def test_the_template_renders_the_edit_marking(self):
         source = self.source()
 

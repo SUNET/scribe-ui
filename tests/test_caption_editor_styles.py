@@ -142,9 +142,9 @@ class TestCaptionActions:
     """
     Split, merge, add and delete (subtitles only) stay out of the way until
     the caption they belong to is hovered or focused, so a long list of
-    cues is not lined with icons -- they ride the timing row, centred in
-    its own leftover space, rather than sitting beside the text as a fifth
-    thing to read there.
+    cues is not lined with icons -- they ride the timing row, on its true
+    centre, rather than sitting beside the text as a fifth thing to read
+    there.
     """
 
     def test_hidden_by_default(self):
@@ -170,17 +170,30 @@ class TestCaptionActions:
 
     def test_it_is_centred_on_the_timing_row(self):
         """
-        An ordinary flex item on .transcript-subtitle-time now, centred in
-        the row's own leftover space with equal auto margins either side --
-        not absolutely positioned over anything, so hidden still reserves
-        its own width and the row does not reflow as the icons fade in and
-        out.
+        The middle column of the timing row's own three-column grid, which
+        is what puts it on the row's true centre. Equal auto margins on a
+        flex item only centred it in whatever space the timing left over,
+        which sat noticeably right of centre.
+
+        Still in flow, not absolutely positioned, so hidden it reserves its
+        own width and height and the row does not reflow as the icons fade
+        in and out.
         """
 
-        applied = effective(".transcript-cell-actions")
+        row = effective(".transcript-subtitle-time")
 
-        assert applied["margin"] == "0 auto"
-        assert "position" not in applied
+        assert row["display"] == "grid"
+        assert row["grid-template-columns"] == "1fr auto 1fr"
+        assert "position" not in effective(".transcript-cell-actions")
+
+    def test_the_timing_keeps_the_first_column_to_itself(self):
+        """
+        Wrapped so the row has exactly three grid children -- left loose,
+        the two inputs and the dash would each take a column of their own
+        and the actions would land wherever that left them.
+        """
+
+        assert effective(".transcript-subtitle-timing")["display"] == "flex"
 
 
 class TestCaptionSeparator:

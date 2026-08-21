@@ -31,6 +31,7 @@ from utils.srt_review import (
     DEFAULT_REVIEW_SENSITIVITY,
     EDIT_TOOLTIP,
     EDITS_SHOW_KEY,
+    OVERLAY_SHOW_KEY,
     REVIEW_SENSITIVITIES,
     REVIEW_SENSITIVITY_KEY,
     REVIEW_SHOW_KEY,
@@ -49,6 +50,7 @@ __all__ = [
     "DEFAULT_REVIEW_SENSITIVITY",
     "EDITS_SHOW_KEY",
     "EDIT_TOOLTIP",
+    "OVERLAY_SHOW_KEY",
     "REVIEW_SENSITIVITIES",
     "REVIEW_SENSITIVITY_KEY",
     "REVIEW_SHOW_KEY",
@@ -99,6 +101,10 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         self.has_confidence = False
         self.show_uncertain_words = False
         self.show_my_edits = False
+        # The caption playing right now, drawn over the video (subtitles
+        # only). On by default, unlike the review markings: it shows what a
+        # viewer would see rather than adding anything to read.
+        self.show_subtitle_overlay = True
         self.review_sensitivity = DEFAULT_REVIEW_SENSITIVITY
         self.flagged_count_element = None
 
@@ -226,19 +232,36 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         Save the current state before making changes.
         """
 
-        self.undo_redo_manager.save_state(self.captions)
+        self.undo_redo_manager.save_state(self.captions, self.speakers)
         self._update_undo_redo_buttons()
         # Mark as having unsaved changes
         self.mark_as_changed()
         self.update_beforeunload_state()
 
+    def restore_speakers(self, speakers) -> None:
+        """
+        Put the speaker list back as a restored state recorded it.
+
+        Mutated in place rather than rebound: the list is read straight off
+        the editor by the speaker menu and by refresh(), and a state saved
+        before speakers were tracked carries None, which leaves the current
+        list alone rather than emptying it.
+        """
+
+        if speakers is None:
+            return
+
+        self.speakers.clear()
+        self.speakers.update(speakers)
+
     def undo(self) -> None:
         """
         Undo the last action.
         """
-        previous_state = self.undo_redo_manager.undo(self.captions)
+        previous_state = self.undo_redo_manager.undo(self.captions, self.speakers)
         if previous_state is not None:
-            self.captions = previous_state
+            self.captions = previous_state.captions
+            self.restore_speakers(previous_state.speakers)
             self.selected_caption = None
             self.renumber_captions()
             self.update_words_per_minute()
@@ -254,9 +277,10 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         """
         Redo the last undone action.
         """
-        next_state = self.undo_redo_manager.redo(self.captions)
+        next_state = self.undo_redo_manager.redo(self.captions, self.speakers)
         if next_state is not None:
-            self.captions = next_state
+            self.captions = next_state.captions
+            self.restore_speakers(next_state.speakers)
             self.selected_caption = None
             self.renumber_captions()
             self.update_words_per_minute()

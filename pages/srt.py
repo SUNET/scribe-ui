@@ -30,6 +30,7 @@ from utils.srt import (
     AUTOSCROLL_KEY,
     DEFAULT_REVIEW_SENSITIVITY,
     EDITS_SHOW_KEY,
+    OVERLAY_SHOW_KEY,
     REVIEW_SENSITIVITY_KEY,
     REVIEW_SHOW_KEY,
     SRTEditor,
@@ -169,6 +170,7 @@ def create() -> None:
             app.storage.user.get(REVIEW_SHOW_KEY, False),
             app.storage.user.get(REVIEW_SENSITIVITY_KEY, DEFAULT_REVIEW_SENSITIVITY),
             app.storage.user.get(EDITS_SHOW_KEY, False),
+            app.storage.user.get(OVERLAY_SHOW_KEY, True),
         )
         editor.set_autoscroll(app.storage.user.get(AUTOSCROLL_KEY, False))
         editor.set_highlight_word(editor.autoscroll)
@@ -237,11 +239,14 @@ def create() -> None:
                             # short timed cue, and would cover half the
                             # video rather than read like a real subtitle.
                             if data_format == "srt":
-                                overlay_label = ui.label("").classes(
+                                overlay = ui.element("div").classes(
                                     "video-subtitle-overlay"
                                 )
-                                overlay_label.set_visibility(False)
-                                transcript.set_overlay_label(overlay_label)
+                                overlay.set_visibility(False)
+                                transcript.set_overlay(overlay)
+                                transcript.set_overlay_enabled(
+                                    editor.show_subtitle_overlay
+                                )
 
                         # Always run, independent of the autoscroll switch
                         # below -- follow_video only moves the editor's own
@@ -279,6 +284,26 @@ def create() -> None:
                                     ui.tooltip(
                                         "Scroll to the block being played and "
                                         "highlight each word as it is spoken"
+                                    )
+
+                            # Subtitles only, the same as the overlay itself.
+                            if data_format == "srt":
+
+                                def save_show_overlay(event) -> None:
+                                    value = bool(event.sender.value)
+                                    editor.show_subtitle_overlay = value
+                                    app.storage.user[OVERLAY_SHOW_KEY] = value
+                                    transcript.set_overlay_enabled(value)
+
+                                overlay_switch = ui.switch(
+                                    "Subtitle overlay",
+                                    value=editor.show_subtitle_overlay,
+                                )
+                                overlay_switch.on("click", save_show_overlay)
+                                with overlay_switch:
+                                    ui.tooltip(
+                                        "Show the caption being played over "
+                                        "the video, as a viewer would see it"
                                     )
 
                             # Only offered when the result carries confidence

@@ -1360,15 +1360,31 @@ class FakeBody:
 
 
 class FakeOverlay:
+    """
+    Stands in for the overlay container. draw_overlay clears it and adds one
+    label per line of the caption, so what this captures is the lines
+    themselves rather than one blob of text.
+    """
+
     def __init__(self):
-        self.text = None
+        self.lines = []
         self.visible = None
 
-    def set_text(self, text):
-        self.text = text
+    def clear(self):
+        self.lines = []
 
     def set_visibility(self, visible):
         self.visible = visible
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    @property
+    def text(self):
+        return "\n".join(self.lines) if self.lines else None
 
 
 class TestFollowVideoOverlay:
@@ -1379,52 +1395,102 @@ class TestFollowVideoOverlay:
     since a reader with that switch off still wants to see what plays.
     """
 
+    @pytest.fixture
+    def overlay(self, view, monkeypatch):
+        """
+        An overlay container wired to the view, with ui.label redirected into
+        it -- draw_overlay builds real labels, which need a page context this
+        test has no use for.
+        """
+
+        container = FakeOverlay()
+
+        class Line:
+            def __init__(self, text):
+                container.lines.append(text)
+
+            def classes(self, *a, **k):
+                return self
+
+        monkeypatch.setattr("utils.transcript_editor.ui.label", Line)
+        view.set_overlay(container)
+
+        return container
+
+    def at(self, monkeypatch, seconds):
+        monkeypatch.setattr(
+            "utils.transcript_editor.ui.run_javascript",
+            lambda *a, **k: _async_result(seconds),
+        )
+
     def run(self, view):
         import asyncio
 
         asyncio.run(view.follow_video())
 
-    def test_the_caption_playing_now_is_drawn(self, view, editor, monkeypatch):
-        monkeypatch.setattr(
-            "utils.transcript_editor.ui.run_javascript",
-            lambda *a, **k: _async_result(1.5),
-        )
+    def test_the_caption_playing_now_is_drawn(
+        self, view, editor, overlay, monkeypatch
+    ):
+        self.at(monkeypatch, 1.5)
         view.body = FakeBody()
-        overlay = FakeOverlay()
-        view.set_overlay_label(overlay)
 
         self.run(view)
 
         assert overlay.text == "tva."
         assert overlay.visible is True
 
-    def test_hidden_between_captions(self, view, editor, monkeypatch):
+    def test_each_line_of_the_caption_gets_its_own_element(
+        self, view, editor, overlay, monkeypatch
+    ):
+        """
+        A caption's own line breaks are part of it, so the overlay shows the
+        same lines the editor does rather than one run-together line -- split
+        here rather than left to CSS white-space.
+        """
+
+        editor.captions[1].text = "first line\nsecond line"
+        self.at(monkeypatch, 1.5)
+        view.body = FakeBody()
+
+        self.run(view)
+
+        assert overlay.lines == ["first line", "second line"]
+
+    def test_a_blank_line_still_takes_up_a_line(
+        self, view, editor, overlay, monkeypatch
+    ):
+        """
+        Dropped instead, the lines below it move up and stop matching the
+        editor's own.
+        """
+
+        editor.captions[1].text = "top\n\nbottom"
+        self.at(monkeypatch, 1.5)
+        view.body = FakeBody()
+
+        self.run(view)
+
+        assert len(overlay.lines) == 3
+
+    def test_hidden_between_captions(self, view, editor, overlay, monkeypatch):
         """
         No caption covers this moment -- a gap, or past the last one -- so
         there is nothing for a real subtitle track to show either.
         """
 
-        monkeypatch.setattr(
-            "utils.transcript_editor.ui.run_javascript",
-            lambda *a, **k: _async_result(100.0),
-        )
+        self.at(monkeypatch, 100.0)
         view.body = FakeBody()
-        overlay = FakeOverlay()
-        view.set_overlay_label(overlay)
 
         self.run(view)
 
         assert overlay.visible is False
 
-    def test_the_overlay_does_not_need_autoscroll_on(self, view, editor, monkeypatch):
+    def test_the_overlay_does_not_need_autoscroll_on(
+        self, view, editor, overlay, monkeypatch
+    ):
         editor.autoscroll = False
-        monkeypatch.setattr(
-            "utils.transcript_editor.ui.run_javascript",
-            lambda *a, **k: _async_result(1.5),
-        )
+        self.at(monkeypatch, 1.5)
         view.body = FakeBody()
-        overlay = FakeOverlay()
-        view.set_overlay_label(overlay)
 
         self.run(view)
 
@@ -1432,28 +1498,234 @@ class TestFollowVideoOverlay:
         assert view.body.active == []
 
     def test_the_active_block_still_follows_when_autoscroll_is_on(
-        self, view, editor, monkeypatch
+        self, view, editor, overlay, monkeypatch
     ):
         editor.autoscroll = True
-        monkeypatch.setattr(
-            "utils.transcript_editor.ui.run_javascript",
-            lambda *a, **k: _async_result(1.5),
-        )
+        self.at(monkeypatch, 1.5)
         view.body = FakeBody()
-        view.set_overlay_label(FakeOverlay())
 
         self.run(view)
 
         assert view.body.active == [editor.captions[1].index]
 
-    def test_no_overlay_label_is_harmless(self, view, editor, monkeypatch):
-        monkeypatch.setattr(
-            "utils.transcript_editor.ui.run_javascript",
-            lambda *a, **k: _async_result(1.5),
-        )
+    def test_no_overlay_container_is_harmless(self, view, editor, monkeypatch):
+        self.at(monkeypatch, 1.5)
         view.body = FakeBody()
 
         self.run(view)
+
+    def test_the_switch_turns_it_off(self, view, editor, overlay, monkeypatch):
+        """
+        Off hides whatever is showing at once rather than at the next
+        timeupdate -- the video is very often paused while this is toggled.
+        """
+
+        self.at(monkeypatch, 1.5)
+        view.body = FakeBody()
+        self.run(view)
+        assert overlay.visible is True
+
+        view.set_overlay_enabled(False)
+
+        assert overlay.visible is False
+        assert overlay.lines == []
+
+    def test_the_switch_turns_it_back_on_while_paused(
+        self, view, editor, overlay, monkeypatch
+    ):
+        """
+        Nothing redraws it but this -- a paused video sends no timeupdate --
+        so the caption it was last on has to be remembered.
+        """
+
+        self.at(monkeypatch, 1.5)
+        view.body = FakeBody()
+        self.run(view)
+        view.set_overlay_enabled(False)
+
+        view.set_overlay_enabled(True)
+
+        assert overlay.visible is True
+        assert overlay.text == "tva."
+
+    def test_editing_the_caption_being_shown_moves_the_overlay(
+        self, view, editor, overlay, monkeypatch
+    ):
+        """
+        The reader is very often paused while editing, and timeupdate -- the
+        only other thing that redraws the overlay -- does not fire then, so
+        the overlay would otherwise keep showing the text as it was before
+        the edit.
+        """
+
+        self.at(monkeypatch, 1.5)
+        view.body = FakeBody()
+        self.run(view)
+        assert overlay.text == "tva."
+
+        editor.captions[1].text = "edited text"
+        view.changed()
+
+        assert overlay.text == "edited text"
+
+    def test_editing_a_different_caption_leaves_it_alone(
+        self, view, editor, overlay, monkeypatch
+    ):
+        self.at(monkeypatch, 1.5)
+        view.body = FakeBody()
+        self.run(view)
+
+        editor.captions[3].text = "somewhere else"
+        view.changed()
+
+        assert overlay.text == "tva."
+
+    def test_a_structural_change_redraws_it_too(
+        self, view, editor, overlay, monkeypatch
+    ):
+        """
+        refresh() covers what changed() does not -- a split, merge, delete,
+        retime or undo can change which caption covers the moment being
+        played, not just what that caption says.
+        """
+
+        self.at(monkeypatch, 1.5)
+        view.body = FakeBody()
+        self.run(view)
+
+        # The caption covering 1.5s is deleted, so its neighbour's window is
+        # what now covers that moment.
+        editor.captions[1].start_time = editor.seconds_to_timestamp(0.0)
+        editor.captions[1].text = "grew backwards"
+        del editor.captions[0]
+        view.body.set_blocks = lambda *a, **k: None
+        view.body.set_speakers = lambda *a, **k: None
+        view.refresh()
+
+        assert overlay.text == "grew backwards"
+
+    def test_nothing_redraws_before_the_video_has_reported_a_time(
+        self, view, editor, overlay
+    ):
+        """
+        refresh_overlay has no time to work a caption out from until the
+        first timeupdate, and must not guess at one.
+        """
+
+        editor.captions[1].text = "edited before playing"
+        view.changed()
+
+        assert overlay.visible is None
+
+    def test_it_is_not_redrawn_while_the_caption_has_not_changed(
+        self, view, editor, overlay, monkeypatch
+    ):
+        """
+        timeupdate fires several times a second and mostly lands on the same
+        caption; rebuilding the DOM each time would be pure churn.
+        """
+
+        self.at(monkeypatch, 1.5)
+        view.body = FakeBody()
+        self.run(view)
+
+        overlay.visible = None
+        self.run(view)
+
+        assert overlay.visible is None
+
+
+class TestSpeakerListSurvivesUndo:
+    """
+    Renaming or assigning a speaker changes two things -- the captions, and
+    the editor's own speaker list -- and undo has to take both back. It once
+    took only the captions, which left a block naming a speaker the list no
+    longer held: the menu highlighted nothing as current, the old name could
+    not be renamed back (prompt_rename refuses a name not in the list), and
+    the new one lingered as unused forever.
+    """
+
+    @pytest.fixture
+    def editor(self, monkeypatch):
+        """
+        A real undo stack, unlike the shared fixture -- that one stubs
+        save_state_for_undo out, so nothing would ever be recorded to undo.
+        Only the parts that reach the browser are stubbed here.
+        """
+
+        editor = SRTEditor("job-uuid", "txt", "file.txt")
+
+        for name in ("refresh_display", "update_words_per_minute",
+                     "mark_as_changed", "update_beforeunload_state",
+                     "update_flagged_count"):
+            setattr(editor, name, lambda *a, **k: None)
+
+        editor.data_format = "txt"
+        editor.captions = [
+            SRTCaption(
+                i + 1,
+                editor.seconds_to_timestamp(s["start"]),
+                editor.seconds_to_timestamp(s["end"]),
+                s["text"],
+                speaker=s["speaker"],
+            )
+            for i, s in enumerate(SEGMENTS)
+        ]
+        editor.speakers = {s["speaker"] for s in SEGMENTS}
+
+        return editor
+
+    @pytest.fixture
+    def view(self, editor, monkeypatch):
+        monkeypatch.setattr(
+            "utils.transcript_editor.ui.notify", lambda *a, **k: None
+        )
+        view = TranscriptEditor(editor)
+        view.refresh = lambda *a, **k: None
+        view.changed = lambda *a, **k: None
+
+        return view
+
+    def test_renaming_and_undoing_leaves_the_two_agreeing(self, view, editor):
+        view.rename_speaker("Speaker 1", "Alice")
+        editor.undo()
+
+        assert editor.speakers == {"Speaker 1", "Speaker 2", "Speaker 3"}
+        assert {caption.speaker for caption in editor.captions} <= editor.speakers
+
+    def test_redo_puts_the_rename_back_on_both(self, view, editor):
+        view.rename_speaker("Speaker 1", "Alice")
+        editor.undo()
+        editor.redo()
+
+        assert "Alice" in editor.speakers
+        assert "Speaker 1" not in editor.speakers
+        assert editor.captions[0].speaker == "Alice"
+
+    def test_assigning_a_new_speaker_and_undoing_drops_it(self, view, editor):
+        """
+        Left behind it shows up as an unused speaker nobody ever added.
+        """
+
+        view.assign_speaker({"id": editor.captions[0].index, "speaker": "Bob"})
+        editor.undo()
+
+        assert "Bob" not in editor.speakers
+
+    def test_a_state_saved_without_speakers_leaves_the_list_alone(
+        self, view, editor
+    ):
+        """
+        restore_speakers takes None as "this state has nothing to say about
+        the speakers" rather than as an empty list to apply.
+        """
+
+        before = set(editor.speakers)
+        editor.undo_redo_manager.save_state(editor.captions)
+        editor.captions[0].text = "changed"
+        editor.undo()
+
+        assert editor.speakers == before
 
 
 class TestRemoveSpeaker:

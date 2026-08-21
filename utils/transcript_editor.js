@@ -92,19 +92,19 @@ export default {
               class="transcript-subtitle-time"
               contenteditable="false"
               :data-id="block.id"
-            ><input
-                class="transcript-time-input"
-                :value="block.start_label"
-                @click.stop
-                @keydown="onTimeInputKeydown($event)"
-                @blur="retimeBlock(block.id, 'start', $event)"
-              /><span class="transcript-dash">-</span><input
-                class="transcript-time-input"
-                :value="block.end_label"
-                @click.stop
-                @keydown="onTimeInputKeydown($event)"
-                @blur="retimeBlock(block.id, 'end', $event)"
-              /><div
+            ><div class="transcript-subtitle-timing"><input
+                  class="transcript-time-input"
+                  :value="block.start_label"
+                  @click.stop
+                  @keydown="onTimeInputKeydown($event)"
+                  @blur="retimeBlock(block.id, 'start', $event)"
+                /><span class="transcript-dash">-</span><input
+                  class="transcript-time-input"
+                  :value="block.end_label"
+                  @click.stop
+                  @keydown="onTimeInputKeydown($event)"
+                  @blur="retimeBlock(block.id, 'end', $event)"
+                /></div><div
                 class="transcript-cell-actions"
               ><div
                   class="transcript-action transcript-action-split"
@@ -594,6 +594,45 @@ export default {
       return span;
     },
 
+    // The synthetic space above stands in for a separator the reader has not
+    // typed yet, and only earns its place while there is a new word in front
+    // of it to hold apart from the next one. Backspacing that word away again
+    // leaves it separating nothing -- and, left in the DOM, it is read back
+    // out as part of the caption and flushed as text the reader never typed
+    // (a stray double space, which in subtitleMode also counts against the
+    // character guideline). Retired here rather than in spaceAtTail's own
+    // branch, which only fires when a real space is typed and so never sees
+    // the word being deleted instead.
+    //
+    // "Separating nothing" is everything before it inside its own parent
+    // being whitespace: the word had a span of its own (splitNewWord), and
+    // the browser takes that span away with the last character of it.
+    retireSyntheticSpace() {
+      const space = this.syntheticSpace;
+      if (!space) return;
+
+      if (!space.parentNode) {
+        // Already gone -- a Backspace reaching it, or a render rebuilding
+        // the block around it.
+        this.syntheticSpace = null;
+        return;
+      }
+
+      let before = "";
+      for (
+        let node = space.parentNode.firstChild;
+        node && node !== space;
+        node = node.nextSibling
+      ) {
+        before += node.textContent || "";
+      }
+
+      if (!/\S/.test(before)) {
+        space.remove();
+        this.syntheticSpace = null;
+      }
+    },
+
     // Moves everything from characterOffset onward, within span, into a new
     // sibling span of its own -- left holding the caret, since that is
     // always at its end (see effectiveSpan, the only caller: this only ever
@@ -677,6 +716,11 @@ export default {
     // review highlighting from them, and doing that per keystroke would fight
     // the caret.
     onInput() {
+      // Before the caret and the text are read below, so a space that has
+      // stopped separating anything is gone by the time either is measured
+      // and never reaches the flush.
+      this.retireSyntheticSpace();
+
       const at = this.caret();
       if (!at) return;
 

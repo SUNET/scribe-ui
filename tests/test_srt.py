@@ -292,7 +292,7 @@ class TestUndoRedoManager:
         
         assert len(manager.undo_stack) == 1
         assert len(manager.redo_stack) == 0
-        assert len(manager.undo_stack[0]) == 2
+        assert len(manager.undo_stack[0].captions) == 2
 
     def test_save_state_clears_redo(self):
         """
@@ -327,7 +327,7 @@ class TestUndoRedoManager:
         captions[0].text = "Modified"
         
         # Saved state should be unchanged
-        assert manager.undo_stack[0][0].text == "First caption"
+        assert manager.undo_stack[0].captions[0].text == "First caption"
 
     def test_save_state_max_history_limit(self):
         """
@@ -345,7 +345,7 @@ class TestUndoRedoManager:
         
         assert len(manager.undo_stack) == 3
         # First state should be removed
-        assert manager.undo_stack[0][0].text == "Caption 1"
+        assert manager.undo_stack[0].captions[0].text == "Caption 1"
 
     def test_undo(self):
         """
@@ -367,7 +367,7 @@ class TestUndoRedoManager:
         result = manager.undo(captions_v2)
         
         assert result is not None
-        assert result[0].text == "Version 1"
+        assert result.captions[0].text == "Version 1"
         assert len(manager.undo_stack) == 0
         assert len(manager.redo_stack) == 1
 
@@ -408,7 +408,7 @@ class TestUndoRedoManager:
         result = manager.redo(captions_v1)
         
         assert result is not None
-        assert result[0].text == "Version 2"
+        assert result.captions[0].text == "Version 2"
         assert len(manager.redo_stack) == 0
         assert len(manager.undo_stack) == 1
 
@@ -500,15 +500,73 @@ class TestUndoRedoManager:
         
         # Undo twice
         result = manager.undo(captions_v3)
-        assert result[0].text == "Version 2"
+        assert result.captions[0].text == "Version 2"
         
-        result = manager.undo(result)
-        assert result[0].text == "Version 1"
+        result = manager.undo(result.captions)
+        assert result.captions[0].text == "Version 1"
         
         # Redo once
-        result = manager.redo(result)
-        assert result[0].text == "Version 2"
+        result = manager.redo(result.captions)
+        assert result.captions[0].text == "Version 2"
         
         # Redo again
-        result = manager.redo(result)
-        assert result[0].text == "Version 3"
+        result = manager.redo(result.captions)
+        assert result.captions[0].text == "Version 3"
+
+
+class TestSpeakersTravelWithHistory:
+    """
+    A state is both halves: the captions, and the speaker list they name.
+
+    The list cannot be recomputed from the captions on the way back -- a
+    speaker can legitimately exist with no block using it ("Add new", or every
+    block reassigned away) -- so it has to be snapshotted alongside. Restoring
+    only the captions left a block naming a speaker the list had never heard
+    of, and the rename menu then refused to act on that name at all.
+    """
+
+    def captions(self, speaker):
+        return [SRTCaption(1, "00:00:00,000", "00:00:02,000", "text", speaker)]
+
+    def test_the_speaker_list_is_restored_with_the_captions(self):
+        manager = UndoRedoManager()
+
+        manager.save_state(self.captions("Speaker 1"), {"Speaker 1", "Speaker 2"})
+        result = manager.undo(self.captions("Alice"), {"Alice", "Speaker 2"})
+
+        assert result.speakers == {"Speaker 1", "Speaker 2"}
+
+    def test_redo_carries_it_back_the_other_way(self):
+        manager = UndoRedoManager()
+
+        manager.save_state(self.captions("Speaker 1"), {"Speaker 1"})
+        manager.undo(self.captions("Alice"), {"Alice"})
+        result = manager.redo(self.captions("Speaker 1"), {"Speaker 1"})
+
+        assert result.speakers == {"Alice"}
+
+    def test_the_snapshot_is_a_copy(self):
+        """
+        Shared, a later edit to the live set would reach back into a state
+        already on the stack -- the same reason the captions are copied.
+        """
+
+        manager = UndoRedoManager()
+        speakers = {"Speaker 1"}
+
+        manager.save_state(self.captions("Speaker 1"), speakers)
+        speakers.add("Added later")
+
+        assert manager.undo_stack[0].speakers == {"Speaker 1"}
+
+    def test_a_state_saved_without_speakers_carries_none(self):
+        """
+        Left as None rather than an empty set, so restoring it leaves whatever
+        the editor already has alone instead of emptying the list.
+        """
+
+        manager = UndoRedoManager()
+
+        manager.save_state(self.captions("Speaker 1"))
+
+        assert manager.undo_stack[0].speakers is None
