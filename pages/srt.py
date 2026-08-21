@@ -253,10 +253,6 @@ def create() -> None:
                         # active block when that is on, but the overlay is
                         # a preview of what a viewer sees, not tied to it.
                         video.on("timeupdate", transcript.follow_video)
-                        # Stays None when the result carries no confidence
-                        # scores, which is what hides the review controls.
-                        uncertain_switch = None
-
                         with ui.row().classes("items-center gap-4"):
 
                             def save_follow(event) -> None:
@@ -282,8 +278,8 @@ def create() -> None:
                             if following_words:
                                 with follow:
                                     ui.tooltip(
-                                        "Scroll to the block being played and "
-                                        "highlight each word as it is spoken"
+                                        "Follow playback and highlight the "
+                                        "current word."
                                     )
 
                             # Subtitles only, the same as the overlay itself.
@@ -302,27 +298,8 @@ def create() -> None:
                                 overlay_switch.on("click", save_show_overlay)
                                 with overlay_switch:
                                     ui.tooltip(
-                                        "Show the caption being played over "
-                                        "the video, as a viewer would see it"
-                                    )
-
-                            # Only offered when the result carries confidence
-                            # scores; older jobs have none to show.
-                            if editor.has_confidence:
-
-                                def save_show_uncertain(event) -> None:
-                                    value = bool(event.sender.value)
-                                    editor.set_show_uncertain_words(value)
-                                    app.storage.user[REVIEW_SHOW_KEY] = value
-
-                                uncertain_switch = ui.switch(
-                                    "Uncertain words",
-                                    value=editor.show_uncertain_words,
-                                ).classes("review-switch")
-                                uncertain_switch.on("click", save_show_uncertain)
-                                with uncertain_switch:
-                                    ui.tooltip(
-                                        "Highlight words that may need review"
+                                        "Show captions as an overlay on the "
+                                        "video."
                                     )
 
                             # Offered wherever there are transcribed words to
@@ -346,16 +323,32 @@ def create() -> None:
                                         "Highlight words you have added or changed"
                                     )
 
-                        if uncertain_switch is not None:
-                            # Sensitivity only means anything while the
-                            # highlighting is on, so it travels with it.
-                            with ui.row().classes(
-                                "items-center gap-2"
-                            ) as sensitivity_row:
-                                ui.label("Sensitivity:").classes("text-sm")
+                        # One control rather than a switch plus a level:
+                        # "off" is just the lowest setting of the same thing,
+                        # and splitting them meant two places to look to find
+                        # out whether anything was being flagged at all.
+                        # Only offered when the result carries confidence
+                        # scores; older jobs have none to show.
+                        if editor.has_confidence:
+                            with ui.row().classes("items-center gap-2"):
+                                ui.label("Uncertain words:").classes("text-sm")
 
                                 def save_sensitivity(event) -> None:
-                                    editor.set_review_sensitivity(event.sender.value)
+                                    choice = event.sender.value
+
+                                    # "off" is not one of the editor's own
+                                    # sensitivities -- it is the marking
+                                    # turned off, with whatever level was
+                                    # last chosen left untouched underneath
+                                    # so that coming back lands where the
+                                    # reader left it.
+                                    editor.set_show_uncertain_words(choice != "off")
+                                    app.storage.user[REVIEW_SHOW_KEY] = choice != "off"
+
+                                    if choice == "off":
+                                        return
+
+                                    editor.set_review_sensitivity(choice)
                                     # Persist what the editor accepted, so an
                                     # unrecognised value cannot be stored.
                                     app.storage.user[REVIEW_SENSITIVITY_KEY] = (
@@ -364,11 +357,16 @@ def create() -> None:
 
                                 sensitivity = ui.toggle(
                                     {
+                                        "off": "Off",
                                         "low": "Low",
                                         "medium": "Medium",
                                         "high": "High",
                                     },
-                                    value=editor.review_sensitivity,
+                                    value=(
+                                        editor.review_sensitivity
+                                        if editor.show_uncertain_words
+                                        else "off"
+                                    ),
                                 ).props(
                                     "dense unelevated no-caps "
                                     "toggle-color=review-accent "
@@ -377,8 +375,8 @@ def create() -> None:
                                 sensitivity.on("update:model-value", save_sensitivity)
                                 with sensitivity:
                                     ui.tooltip(
-                                        "How much of the transcription to flag "
-                                        "for review"
+                                        "Higher levels also highlight words "
+                                        "the model is more certain about."
                                     )
 
                                 flagged = ui.label().classes(
@@ -386,9 +384,6 @@ def create() -> None:
                                 )
                                 editor.set_flagged_count_element(flagged)
 
-                            sensitivity_row.bind_visibility_from(
-                                uncertain_switch, "value"
-                            )
                         with ui.column().classes("srt-info-panel p-4 w-full"):
                             ui.label(filename).classes("text-h6").style(
                                 "align-self: center;"

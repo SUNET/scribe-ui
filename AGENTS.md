@@ -104,7 +104,9 @@ This app holds session tokens, user PII, and an encryption password that gates b
 
 ### Words flagged for review
 
-The "Uncertain words" switch highlights words the model was least sure of; "Review sensitivity" (low/medium/high, default low) picks how far up the confidence range to flag, via `REVIEW_SENSITIVITY_*` in settings. Raising sensitivity must only ever flag more.
+One control, **Off / Low / Medium / High**, highlights words the model was least sure of and picks how far up the confidence range to flag, via `REVIEW_SENSITIVITY_*` in settings. Raising the level must only ever flag more.
+
+There was a separate "Uncertain words" switch alongside a Low/Medium/High selector; "off" is simply the lowest setting of the same thing, and splitting them meant two places to look to find out whether anything was being flagged at all. The model underneath is unchanged — `show_uncertain_words` (bool) plus `review_sensitivity` — and the control writes both: "off" sets the flag false and **leaves the stored level alone**, so coming back lands where the reader left it, and `REVIEW_SENSITIVITY_KEY` is never written the string `"off"` (it is not one of `REVIEW_SENSITIVITIES`, so `set_review_sensitivity` would reject it anyway). The selector is the only review-coloured control now, so `.q-toggle.review-switch` is gone and only `.bg-review-accent` carries `--color-review-accent`.
 
 - **Every flagged word is marked identically** — one class, one shared tooltip. The score is not a calibrated probability, so it cannot support grading flagged words against each other, and the raw number is never shown anywhere.
 - **The marking must not read as an error.** No red, and no wavy underline (that means spellcheck). It uses `--color-review-*`, a violet reserved for this and used nowhere else.

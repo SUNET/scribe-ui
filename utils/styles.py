@@ -882,9 +882,6 @@ theme_styles = """
        and the thumb of a switch that is on in currentColor, so setting the
        colour is all it takes. The class goes on the switch itself, which puts
        it ahead of Quasar's own light and dark rules for the same element. */
-    .q-toggle.review-switch .q-toggle__inner--truthy {
-        color: var(--color-review-accent);
-    }
     .q-toggle.edits-switch .q-toggle__inner--truthy {
         color: var(--color-edit-accent);
     }

@@ -757,18 +757,27 @@ class TestSwitchColours:
         return theme_styles
 
 
-    def test_the_switches_are_named_in_the_page(self):
+    def test_the_switch_is_named_in_the_page(self):
         page = pathlib.Path("pages/srt.py").read_text()
 
-        assert '"Uncertain words",' in page
-        assert 'classes("review-switch")' in page
         assert '"My edits",' in page
         assert 'classes("edits-switch")' in page
+
+    def test_uncertain_words_has_no_switch_of_its_own(self):
+        """
+        It is one Off/Low/Medium/High control now: "off" is the lowest
+        setting of the same thing, and splitting them meant two places to
+        look to find out whether anything was being flagged at all.
+        """
+
+        page = pathlib.Path("pages/srt.py").read_text()
+
+        assert 'ui.switch(\n                                    "Uncertain words"' not in page
+        assert 'classes("review-switch")' not in page
 
     @pytest.mark.parametrize(
         "switch, token",
         [
-            ("review-switch", "--color-review-accent"),
             ("edits-switch", "--color-edit-accent"),
         ],
     )
@@ -787,8 +796,94 @@ class TestSwitchColours:
         two classes. The switch class has to be on the switch itself to win.
         """
 
-        assert ".q-toggle.review-switch .q-toggle__inner--truthy" in self.styles()
         assert ".q-toggle.edits-switch .q-toggle__inner--truthy" in self.styles()
+
+
+class TestUncertainWordsControl:
+    """
+    One Off/Low/Medium/High control rather than a switch plus a level.
+    "Off" is the lowest setting of the same thing, and splitting them meant
+    two places to look to find out whether anything was being flagged.
+    """
+
+    def page(self) -> str:
+        return pathlib.Path("pages/srt.py").read_text()
+
+    def test_off_is_one_of_the_choices(self):
+        page = self.page()
+
+        assert '"off": "Off",' in page
+        assert '"low": "Low",' in page
+        assert '"medium": "Medium",' in page
+        assert '"high": "High",' in page
+
+    def test_off_turns_the_marking_off(self):
+        page = self.page()
+
+        assert 'editor.set_show_uncertain_words(choice != "off")' in page
+        assert 'app.storage.user[REVIEW_SHOW_KEY] = choice != "off"' in page
+
+    def test_off_is_never_stored_as_a_sensitivity(self):
+        """
+        It is not one of the editor's own sensitivities, and the level last
+        chosen is left untouched underneath so coming back lands where the
+        reader left it.
+        """
+
+        page = self.page()
+        handler = page[page.index("def save_sensitivity(event)"):]
+        handler = handler[: handler.index("sensitivity = ui.toggle")]
+
+        assert 'if choice == "off":\n                                        return' in handler
+        assert handler.index('if choice == "off"') < handler.index(
+            "app.storage.user[REVIEW_SENSITIVITY_KEY]"
+        )
+
+    def test_it_opens_on_off_when_the_marking_is_off(self):
+        page = self.page()
+
+        assert "editor.review_sensitivity" in page
+        assert "if editor.show_uncertain_words" in page
+        assert 'else "off"' in page
+
+    def test_the_tooltip_says_what_the_levels_do(self):
+        page = self.page()
+
+        assert "Higher levels also highlight words " in page
+        assert "the model is more certain about." in page
+
+    def test_it_is_still_only_offered_with_confidence_scores(self):
+        """
+        Older jobs carry none, and there is nothing to be more or less
+        sensitive about without them.
+        """
+
+        page = self.page()
+        block = page[page.index("if editor.has_confidence:"):]
+
+        assert block.index("sensitivity = ui.toggle") < block.index("srt-info-panel")
+
+
+class TestControlTooltips:
+    """
+    The wording of the controls beside the video, kept here so a reworded
+    tooltip is a deliberate change rather than a silent one.
+    """
+
+    def page(self) -> str:
+        return pathlib.Path("pages/srt.py").read_text()
+
+    def test_follow_audio(self):
+        page = self.page()
+
+        assert "Follow playback and highlight the " in page
+        assert "current word." in page
+
+    def test_the_subtitle_overlay(self):
+        page = self.page()
+
+        assert "Show captions as an overlay on the " in page
+        assert "video." in page
 
 
 class TestSensitivitySelector:
@@ -853,14 +948,12 @@ class TestSensitivitySelector:
         # Quasar's own palette classes are !important, so ours has to be too.
         assert "!important" in body
 
-    def test_it_is_the_same_colour_as_the_switch(self):
+    def test_it_is_the_review_colour(self):
         """
-        Both read the one custom property, so they cannot drift apart.
+        The selector is the only review control now, so it carries that
+        marking's colour on its own.
         """
 
-        switch = declarations_for(".q-toggle.review-switch .q-toggle__inner--truthy")
-
-        assert "var(--color-review-accent)" in switch
         assert "var(--color-review-accent)" in declarations_for(".bg-review-accent")
 
     def test_the_text_on_it_is_defined_for_both_themes(self):
