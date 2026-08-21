@@ -725,6 +725,31 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
 
         return start_seconds + duration / 2
 
+    @staticmethod
+    def split_point(text: str) -> int:
+        """
+        Where to halve a caption that has no caret to break at.
+
+        The nearest gap between words to the middle, looking both ways. It
+        used to only look backwards and fall back to the bare middle when it
+        found nothing, which cut straight through the first word of a caption
+        that had no space before its midpoint -- "internationalization
+        matters" came out as "internationali" and "zation matters".
+
+        A caption of one long word has no gap to find, and there the middle is
+        all there is; every real caption has one.
+        """
+
+        middle = len(text) // 2
+        gaps = [index for index, character in enumerate(text) if character.isspace()]
+
+        if not gaps:
+            return middle
+
+        # Ties go to the earlier gap, so the same text always breaks the same
+        # way rather than depending on which side was searched first.
+        return min(gaps, key=lambda index: (abs(index - middle), index))
+
     def split_caption(
         self,
         caption: SRTCaption,
@@ -785,14 +810,8 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
             text_lines = caption.text.split("\n")
 
             if len(text_lines) == 1:
-                # Split single line in half
                 text = caption.text
-                mid_point = len(text) // 2
-                # Find nearest space to split at
-                while mid_point > 0 and text[mid_point] != " ":
-                    mid_point -= 1
-                if mid_point == 0:
-                    mid_point = len(text) // 2
+                mid_point = self.split_point(text)
 
                 first_part = text[:mid_point].strip()
                 second_part = text[mid_point:].strip()

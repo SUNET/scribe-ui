@@ -870,17 +870,14 @@ export default {
     // offset it can act on.
     splitAt(id) {
       const at = this.caret();
-      let offset;
 
-      if (at && at.id === id) {
-        offset = at.offset;
-      } else {
-        const text = this.plainText(
-          this.$refs.body?.querySelector(`.transcript-text[data-id="${id}"]`)
-            ?.textContent
-        );
-        offset = text ? Math.floor(text.length / 2) : 0;
-      }
+      // No offset at all when the caret is somewhere else: the server halves
+      // the caption then, breaking it between two words. Sending the middle
+      // of the text as though it were a caret -- which this used to do --
+      // made a made-up position indistinguishable from one the reader chose,
+      // and a chosen one is honoured to the character, so the break landed
+      // inside whatever word the middle happened to fall in.
+      const offset = at && at.id === id ? at.offset : null;
 
       this.flush();
       this.$emit("splitblock", { id, offset });

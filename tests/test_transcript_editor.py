@@ -1159,13 +1159,60 @@ class TestParseTimeLabel:
         assert parse_time_label(None) is None
 
 
+class TestSplitWithNoOffset:
+    """
+    The server half of the same fix: no offset means no caret, so the
+    caption is halved rather than cut at a position nobody chose.
+    """
+
+    def test_no_offset_halves_the_caption(self, view, editor, monkeypatch):
+        monkeypatch.setattr("utils.srt.ui.notify", lambda *a, **k: None)
+        editor.captions[0].text = "internationalization matters"
+        view.focus = lambda *a, **k: None
+
+        view.split({"id": editor.captions[0].index, "offset": None})
+
+        assert editor.captions[0].text == "internationalization"
+        assert editor.captions[1].text == "matters"
+
+    def test_an_offset_of_zero_is_not_mistaken_for_no_offset(self, view, editor):
+        """
+        0 is falsy but is a real caret position -- at the very start, where
+        there is nothing on one side and the split is refused.
+        """
+
+        before = len(editor.captions)
+        view.focus = lambda *a, **k: None
+
+        view.split({"id": editor.captions[0].index, "offset": 0})
+
+        assert len(editor.captions) == before
+
+    def test_a_non_numeric_offset_is_still_ignored(self, view, editor):
+        before = len(editor.captions)
+
+        view.split({"id": editor.captions[0].index, "offset": "middle"})
+
+        assert len(editor.captions) == before
+
+    def test_the_new_second_block_is_focused(self, view, editor, monkeypatch):
+        monkeypatch.setattr("utils.srt.ui.notify", lambda *a, **k: None)
+        editor.captions[0].text = "one two three four"
+        focused = []
+        view.focus = lambda index, *a, **k: focused.append(index)
+
+        view.split({"id": editor.captions[0].index, "offset": None})
+
+        assert focused == [editor.captions[1].index]
+
+
 class TestSplitButton:
     """
     The split icon in a caption's own action row, alongside add and delete --
     the mouse equivalent of Ctrl/Cmd+Enter. A click carries no cursor
     position of its own, so it prefers the caret when it is already in this
-    caption, and otherwise falls back to the middle of the text, matching
-    split_caption's own fallback for a caret-less split.
+    caption, and otherwise sends none at all and lets the server halve the
+    caption between two words.
     """
 
     def source(self) -> str:
@@ -1186,10 +1233,21 @@ class TestSplitButton:
         body = self.split_at_body()
 
         assert "at.id === id" in body
-        assert "offset = at.offset" in body
+        assert "at.offset" in body
 
-    def test_it_falls_back_to_the_middle_of_the_text(self):
-        assert "Math.floor(text.length / 2)" in self.split_at_body()
+    def test_it_sends_no_offset_when_the_caret_is_elsewhere(self):
+        """
+        It used to send the middle of the text as though it were a caret,
+        which made a made-up position indistinguishable from one the reader
+        chose -- and a chosen one is honoured to the character, so the break
+        landed inside whatever word the middle fell in. With no offset the
+        server halves the caption instead, between two words.
+        """
+
+        body = self.split_at_body()
+
+        assert "at && at.id === id ? at.offset : null" in body
+        assert "Math.floor(text.length / 2)" not in body
 
     def test_it_flushes_before_splitting(self):
         """

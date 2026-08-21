@@ -637,3 +637,104 @@ class TestValidateShortcut:
         self.press(editor, "v", ctrl=True)
 
         assert called == []
+
+
+class TestSplitWithoutACaret:
+    """
+    A split with no caret halves the caption, and the break has to fall
+    between two words. It used to search backwards only and give up on the
+    bare middle when it found nothing, which cut through the first word of
+    any caption with no space before its midpoint.
+    """
+
+    def editor(self, text):
+        editor = SRTEditor("job-uuid", "srt", "file.srt")
+
+        for name in ("refresh_display", "update_words_per_minute",
+                     "mark_as_changed", "update_beforeunload_state",
+                     "update_flagged_count"):
+            setattr(editor, name, lambda *a, **k: None)
+
+        editor.data_format = "srt"
+        editor.captions = [
+            SRTCaption(1, "00:00:00,000", "00:00:04,000", text)
+        ]
+
+        return editor
+
+    def halves(self, text, monkeypatch):
+        monkeypatch.setattr("utils.srt.ui.notify", lambda *a, **k: None)
+        editor = self.editor(text)
+        editor.split_caption(editor.captions[0])
+
+        return [caption.text for caption in editor.captions]
+
+    def test_it_breaks_between_words(self, monkeypatch):
+        assert self.halves("Hello there wonderful world", monkeypatch) == [
+            "Hello there",
+            "wonderful world",
+        ]
+
+    def test_a_long_first_word_is_not_cut_through(self, monkeypatch):
+        """
+        The reported bug: nothing to find searching backwards from the
+        middle, and it settled for the middle itself.
+        """
+
+        assert self.halves("internationalization matters", monkeypatch) == [
+            "internationalization",
+            "matters",
+        ]
+
+    def test_it_takes_the_nearest_gap_either_way(self, monkeypatch):
+        assert self.halves("a verylongsingleword here", monkeypatch) == [
+            "a verylongsingleword",
+            "here",
+        ]
+
+    def test_no_word_survives_the_split(self, monkeypatch):
+        """
+        Whatever the text, every word in it has to come out whole on one
+        side or the other.
+        """
+
+        for text in [
+            "Hello there wonderful world",
+            "internationalization matters",
+            "a verylongsingleword here",
+            "one two three four five six seven",
+            "Kort text har",
+        ]:
+            first, second = self.halves(text, monkeypatch)
+
+            assert first.split() + second.split() == text.split(), text
+
+    def test_a_single_word_has_no_gap_to_find(self):
+        """
+        Nothing better is available there, and every real caption has a gap.
+        """
+
+        assert SRTEditor.split_point("onlyoneword") == len("onlyoneword") // 2
+
+    def test_the_same_text_always_breaks_the_same_way(self):
+        """
+        Ties go to the earlier gap rather than to whichever side happened to
+        be searched first.
+        """
+
+        text = "aa bb cc"
+
+        assert SRTEditor.split_point(text) == SRTEditor.split_point(text)
+        assert text[SRTEditor.split_point(text)].isspace()
+
+    def test_a_caret_split_is_still_honoured_exactly(self, monkeypatch):
+        """
+        A position the reader chose means what it says, mid-word or not --
+        only the made-up ones get snapped.
+        """
+
+        monkeypatch.setattr("utils.srt.ui.notify", lambda *a, **k: None)
+        editor = self.editor("Hello there wonderful world")
+        editor.split_caption(editor.captions[0], cursor_position=13)
+
+        assert [c.text for c in editor.captions] == ["Hello there w", "onderful world"]

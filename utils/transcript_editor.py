@@ -340,7 +340,8 @@ class TranscriptEditor:
 
     def split(self, args) -> None:
         """
-        Break a block where the caret was.
+        Break a block where the caret was, or halve it when there was no
+        caret in it to break at -- see the offset check below.
 
         At the end of a block there is nothing to divide, so a new empty block
         is started instead -- the same thing Enter does at the end of a
@@ -359,7 +360,29 @@ class TranscriptEditor:
         caption = self.caption(self.block_id(args))
         offset = args.get("offset") if isinstance(args, dict) else None
 
-        if caption is None or not isinstance(offset, (int, float)):
+        if caption is None:
+            return
+
+        before = len(self.editor.captions)
+        list_position = self.editor.captions.index(caption)
+
+        # The split icon clicked while the caret is somewhere else entirely:
+        # there is no position the reader chose, so halve the caption rather
+        # than inventing one. splitAt used to send the middle of the text as
+        # if it were a caret, and a caret is honoured to the character --
+        # which cut straight through whatever word the middle landed in.
+        # split_caption's own halving keeps the break between words.
+        if offset is None:
+            self.editor.split_caption(caption)
+            self.refresh()
+            self.changed()
+
+            if len(self.editor.captions) > before:
+                self.focus(self.editor.captions[list_position + 1].index)
+
+            return
+
+        if not isinstance(offset, (int, float)):
             return
 
         position = max(0, min(int(offset), len(caption.text)))
@@ -368,9 +391,6 @@ class TranscriptEditor:
             added = self.insert_block_after(caption)
             self.focus(added.index)
             return
-
-        before = len(self.editor.captions)
-        list_position = self.editor.captions.index(caption)
 
         self.editor.split_caption(caption, cursor_position=position)
         self.refresh()
