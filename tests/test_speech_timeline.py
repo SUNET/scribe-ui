@@ -228,7 +228,17 @@ class TestItExplainsItself:
 
         assert "speech" in body and "silence" in body
         assert "caption #" in body
-        assert "this.clock(seconds)" in body
+        # To a tenth: at twenty seconds across the strip a whole second
+        # covers around fifty pixels, and the readout said the same thing
+        # across all of them.
+        assert "this.moment(seconds)" in body
+
+    def test_the_moment_is_reported_to_a_tenth(self):
+        source = self.source()
+        body = source[source.index("moment(seconds) {"):]
+        body = body[: body.index("\n    },")]
+
+        assert "toFixed(1)" in body
 
     def test_the_readout_never_takes_a_click(self):
         """
@@ -598,9 +608,15 @@ class TestWiring:
     def page(self) -> str:
         return pathlib.Path("pages/srt.py").read_text()
 
-    def test_it_is_gated_on_word_timings(self):
+    def test_it_is_gated_on_word_timings_and_subtitles(self):
+        """
+        Nothing to draw without timings -- and nothing to time in a
+        transcription, whose blocks are a speaker's whole turn rather than a
+        short cue. The subtitle overlay is gated the same way.
+        """
+
         page = pathlib.Path("pages/srt.py").read_text()
-        gate = page[page.index("if editor.words:\n                            timeline"):]
+        gate = page[page.index('if data_format == "srt" and editor.words:'):]
 
         assert "SpeechTimeline()" in gate[:200]
 

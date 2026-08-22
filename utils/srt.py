@@ -32,6 +32,7 @@ from utils.srt_review import (
     EDIT_TOOLTIP,
     EDITS_SHOW_KEY,
     OVERLAY_SHOW_KEY,
+    TIMELINE_SHOW_KEY,
     REVIEW_SENSITIVITIES,
     REVIEW_SENSITIVITY_KEY,
     REVIEW_SHOW_KEY,
@@ -51,6 +52,7 @@ __all__ = [
     "EDITS_SHOW_KEY",
     "EDIT_TOOLTIP",
     "OVERLAY_SHOW_KEY",
+    "TIMELINE_SHOW_KEY",
     "REVIEW_SENSITIVITIES",
     "REVIEW_SENSITIVITY_KEY",
     "REVIEW_SHOW_KEY",
@@ -103,6 +105,10 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         self.has_confidence = False
         self.show_uncertain_words = False
         self.show_my_edits = False
+        # The strip under the video. On by default, the same as the overlay
+        # and for the same reason: it shows what is already there rather
+        # than adding anything to read.
+        self.show_timeline = True
         # The caption playing right now, drawn over the video (subtitles
         # only). On by default, unlike the review markings: it shows what a
         # viewer would see rather than adding anything to read.
@@ -706,10 +712,20 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
     def renumber_captions(self) -> None:
         """
         Renumber all captions sequentially.
+
+        Refreshes the status line with them: this runs after parsing and
+        after every structural edit, so it is the one place that always
+        knows the count has just changed. Without it the line reported the
+        editor as empty for the whole session -- the page registers its
+        figures while building the toolbar, which is before the captions
+        have been parsed at all, and nothing else redrew them until the
+        first edit.
         """
 
         for i, caption in enumerate(self.captions, 1):
             caption.index = i
+
+        self.update_status()
 
     def format_time_display(self, timestamp: str) -> str:
         """

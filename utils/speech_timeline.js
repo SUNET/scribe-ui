@@ -305,7 +305,7 @@ export default {
       this.hovered = found ? found.caption.id : -1;
 
       this.readout =
-        `${this.clock(seconds)} · ${speaking ? "speech" : "silence"}` +
+        `${this.moment(seconds)} · ${speaking ? "speech" : "silence"}` +
         (found ? ` · caption #${found.caption.id}` : "");
 
       const box = this.$refs.root.getBoundingClientRect();
@@ -460,6 +460,20 @@ export default {
       return `${String(minutes).padStart(2, "0")}:${rest.toFixed(3).padStart(6, "0")}`;
     },
 
+    // A moment being pointed at, to a tenth. Twenty seconds across the
+    // strip is around a fiftieth of a second per pixel, so a whole second
+    // covers fifty of them: the readout said the same thing for a stretch
+    // wide enough to hold a short word.
+    moment(seconds) {
+      const whole = Math.max(0, seconds);
+      const minutes = Math.floor(whole / 60);
+      const rest = whole - minutes * 60;
+
+      return `${minutes}:${rest.toFixed(1).padStart(4, "0")}`;
+    },
+
+    // Whole seconds, for the stretch of recording on screen -- a tenth of a
+    // second says nothing about a twenty-second window.
     clock(seconds) {
       const whole = Math.max(0, Math.floor(seconds));
       const minutes = Math.floor(whole / 60);

@@ -15,6 +15,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pathlib
+
 from utils.srt import SRTCaption, SRTEditor, UndoRedoManager
 
 
@@ -740,6 +742,53 @@ class TestSplitWithoutACaret:
         assert [c.text for c in editor.captions] == ["Hello there w", "onderful world"]
 
 
+class TestSpacePlaysAndPauses:
+    """
+    Space plays and pauses the recording unless something is being typed
+    into. Handled in the page's own head script rather than through the
+    keyboard handler: the player answers with no round trip, and whether the
+    reader is typing is a question only the browser can answer.
+    """
+
+    def page(self) -> str:
+        import pathlib
+
+        return pathlib.Path("pages/srt.py").read_text()
+
+    def test_it_asks_what_has_focus(self):
+        page = self.page()
+
+        assert "active.isContentEditable" in page
+        assert "'INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'" in page
+
+    def test_a_focused_button_keeps_its_own_space(self):
+        """
+        Space activates a focused button; taking that would break every
+        dialog on the page.
+        """
+
+        page = self.page()
+        handler = page[page.index("if (e.key === ' '"):]
+        handler = handler[: handler.index("// Handle Escape")]
+
+        assert "BUTTON" in handler
+
+    def test_it_toggles_the_player_directly(self):
+        page = self.page()
+
+        assert "video.paused ? video.play() : video.pause();" in page
+
+    def test_the_modified_shortcut_is_still_there(self):
+        """
+        Ctrl+Space reaches the editor's own handler, which is what a reader
+        with the caret in a caption uses -- a bare space there is a space.
+        """
+
+        source = pathlib.Path("utils/srt.py").read_text()
+
+        assert "Play/pause video, Ctrl+Space" in source
+
+
 class TestStatusLine:
     """
     The foot of the editor: how many captions there are, how far the last
@@ -791,6 +840,28 @@ class TestStatusLine:
 
     def test_a_short_one_does_not(self):
         assert SRTEditor.format_duration(65) == "1:05"
+
+    def test_parsing_fills_it_in(self):
+        """
+        The page registers its figures while building the toolbar, which is
+        before the captions have been parsed -- so the line reported an
+        empty editor for the whole session until the first edit. Parsing
+        renumbers the captions, and renumbering redraws the line.
+        """
+
+        editor = self.editor()
+        labels = self.figures(editor)
+
+        assert labels["captions"].text == "0 captions"
+
+        editor.parse_srt(
+            "1\n00:00:00,000 --> 00:00:02,000\nHej pa dig\n\n"
+            "2\n00:00:02,000 --> 00:00:06,000\nHej igen\n"
+        )
+
+        assert labels["captions"].text == "2 captions"
+        assert labels["duration"].text == "0:06"
+        assert labels["wpm"].text != "0 wpm"
 
     def test_it_follows_an_edit(self):
         """

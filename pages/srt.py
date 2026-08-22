@@ -33,6 +33,7 @@ from utils.srt import (
     REVIEW_SENSITIVITY_KEY,
     REVIEW_SHOW_KEY,
     SRTEditor,
+    TIMELINE_SHOW_KEY,
 )
 from utils.speech_timeline import SpeechTimeline
 from utils.transcript_editor import TranscriptEditor
@@ -97,6 +98,31 @@ def create() -> None:
             // Block Ctrl + e / Cmd + e for search
             if ((e.metaKey || e.ctrlKey) && ! e.shiftKey && e.key.toLowerCase() === 'e') {
                 e.preventDefault();
+            }
+
+            // Space plays and pauses, unless something is being typed into.
+            // Handled here rather than through the page's keyboard handler
+            // so that the player answers immediately, with no round trip --
+            // and so the check for "is the reader typing" can be made
+            // against the real focus, which only the browser knows.
+            //
+            // A button keeps its own space: a focused button is activated by
+            // it, and taking that would break every dialog on the page.
+            if (e.key === ' ' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+                const active = document.activeElement;
+                const typing = active && (
+                    active.isContentEditable
+                    || ['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'].includes(active.tagName)
+                );
+
+                if (!typing) {
+                    const video = document.querySelector('video');
+
+                    if (video) {
+                        e.preventDefault();
+                        video.paused ? video.play() : video.pause();
+                    }
+                }
             }
 
             // Handle Escape key globally (even when video player has focus)
@@ -171,6 +197,7 @@ def create() -> None:
             app.storage.user.get(REVIEW_SENSITIVITY_KEY, DEFAULT_REVIEW_SENSITIVITY),
             app.storage.user.get(EDITS_SHOW_KEY, False),
             app.storage.user.get(OVERLAY_SHOW_KEY, True),
+            app.storage.user.get(TIMELINE_SHOW_KEY, True),
         )
         editor.set_autoscroll(app.storage.user.get(AUTOSCROLL_KEY, False))
         editor.set_highlight_word(editor.autoscroll)
@@ -183,13 +210,6 @@ def create() -> None:
             "editor-toolbar justify-between w-full gap-2 items-center"
         ):
             with ui.row().classes("editor-toolbar-group"):
-                with ui.label(filename).classes("editor-title"):
-                    # Ellipsised to keep the toolbar its own width, so the
-                    # whole name needs somewhere to live.
-                    ui.tooltip(filename)
-
-                ui.separator().props("vertical")
-
                 editor.create_undo_redo_panel()
 
                 ui.separator().props("vertical")
@@ -220,37 +240,20 @@ def create() -> None:
                             )
                     editor.show_keyboard_shortcuts()
 
-            with ui.button("Close editor", icon="close").props(
-                "flat"
-            ).classes("editor-btn editor-toolbar-btn") as close_button:
-                close_button.on("click", lambda: editor.close_editor("/home"))
+                ui.separator().props("vertical")
 
-        # One document editor for both formats now; subtitleMode (set in
-        # TranscriptEditor.build) is what tells it to drop the speaker margin
-        # for a length guideline and a per-caption delete action.
-        transcript = TranscriptEditor(editor)
+                with ui.row().classes("editor-toolbar-group editor-toolbar-about"):
+                    with ui.label(filename).classes("editor-title"):
+                        # Ellipsised to keep the toolbar its own width, so
+                        # the whole name needs somewhere to live.
+                        ui.tooltip(filename)
 
-        with ui.splitter(value=60).classes("w-full h-full") as splitter:
-            with splitter.before:
-                with ui.card().classes("editor-panel w-full h-full"):
-                    with ui.scroll_area().style("height: calc(90vh - 100px);"):
-                        if data_format == "srt":
-                            editor.parse_srt(data["result"])
-                        else:
-                            editor.parse_txt(data["result"])
-
-                        transcript.build()
-                        # Apply the restored autoscroll preference to the new
-                        # editor, not just to later clicks.
-                        transcript.set_follow(editor.autoscroll)
-                        transcript.body.set_highlight_word(editor.highlight_word)
-                        transcript.body.set_show_edits(editor.show_my_edits)
-
-                    # The foot of the editor, outside the scrolling text:
-                    # how much there is of it, how far it runs, and how fast
-                    # it reads -- the last two of which move as the reader
-                    # edits, which is why they live here rather than in a
-                    # static panel of file details.
+                    # What is in what is open: how many captions there
+                    # are, how far they run and how fast they read -- all
+                    # but the language moving as the reader edits, which
+                    # is why they are here rather than in a static panel
+                    # of file details. Beside the name, in the toolbar,
+                    # which is the one part of the page that stays put.
                     #
                     # A label per figure rather than one line of text, so
                     # each can say what it means on hover: a row of bare
@@ -295,6 +298,33 @@ def create() -> None:
                             ui.tooltip("The language the recording was transcribed in.")
 
                         editor.set_status_elements(**figures)
+
+            with ui.button("Close editor", icon="close").props(
+                "flat"
+            ).classes("editor-btn editor-toolbar-btn") as close_button:
+                close_button.on("click", lambda: editor.close_editor("/home"))
+
+        # One document editor for both formats now; subtitleMode (set in
+        # TranscriptEditor.build) is what tells it to drop the speaker margin
+        # for a length guideline and a per-caption delete action.
+        transcript = TranscriptEditor(editor)
+
+        with ui.splitter(value=60).classes("w-full h-full") as splitter:
+            with splitter.before:
+                with ui.card().classes("editor-panel w-full h-full"):
+                    with ui.scroll_area().style("height: calc(90vh - 100px);"):
+                        if data_format == "srt":
+                            editor.parse_srt(data["result"])
+                        else:
+                            editor.parse_txt(data["result"])
+
+                        transcript.build()
+                        # Apply the restored autoscroll preference to the new
+                        # editor, not just to later clicks.
+                        transcript.set_follow(editor.autoscroll)
+                        transcript.body.set_highlight_word(editor.highlight_word)
+                        transcript.body.set_show_edits(editor.show_my_edits)
+
                 with splitter.after:
                     with ui.card().classes("editor-panel w-full h-full"):
                         with ui.element("div").classes("video-frame w-full h-full"):
@@ -334,15 +364,27 @@ def create() -> None:
                         # word timings rather than from the audio, so it
                         # costs no decoding and no second download of the
                         # recording. Nothing to draw without them.
-                        if editor.words:
+                        #
+                        # Subtitles only, the same as the overlay: this is a
+                        # tool for timing short cues against speech, and a
+                        # transcription's blocks are a speaker's whole turn
+                        # -- there is no cue timing to do there, and the
+                        # brackets would be minutes wide.
+                        timeline = None
+
+                        if data_format == "srt" and editor.words:
                             timeline = SpeechTimeline().classes("w-full")
                             transcript.set_timeline(timeline)
+                            # Restored before the first paint, so a reader
+                            # who turned it off does not see it flash past.
+                            timeline.set_visibility(editor.show_timeline)
 
                         # Always run, independent of the autoscroll switch
                         # below -- follow_video only moves the editor's own
                         # active block when that is on, but the overlay is
                         # a preview of what a viewer sees, not tied to it.
                         video.on("timeupdate", transcript.follow_video)
+
                         # The controls under the video are grouped by what
                         # each one affects -- following the recording, and
                         # what the editor marks in the text -- rather than
@@ -400,6 +442,28 @@ def create() -> None:
                                         ui.tooltip(
                                             "Show captions as an overlay on the "
                                             "video."
+                                        )
+
+                                # Only when there is a strip to hide: it is
+                                # drawn from word timings, and subtitles
+                                # only.
+                                if timeline is not None:
+
+                                    def save_show_timeline(event) -> None:
+                                        value = bool(event.sender.value)
+                                        editor.show_timeline = value
+                                        app.storage.user[TIMELINE_SHOW_KEY] = value
+                                        timeline.set_visibility(value)
+
+                                    timeline_switch = ui.switch(
+                                        "Timeline",
+                                        value=editor.show_timeline,
+                                    ).props("dense").classes("editor-switch")
+                                    timeline_switch.on("click", save_show_timeline)
+                                    with timeline_switch:
+                                        ui.tooltip(
+                                            "Show the caption timeline under "
+                                            "the video."
                                         )
 
                                 # Offered wherever there are transcribed

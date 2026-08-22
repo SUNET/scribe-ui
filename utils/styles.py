@@ -512,6 +512,16 @@ theme_styles = """
        being edited, which is a title, not a detail to be looked up at the
        bottom of a panel. Capped and ellipsised -- a filename can be long
        enough to push everything else off the row. */
+    /* The name of what is open and the figures describing it, at the far
+       end of the toolbar's own row: they say what is being worked on, which
+       is not an action and does not belong among the buttons. Allowed to
+       shrink -- the buttons keep their width and this gives ground first. */
+    .editor-toolbar-about {
+        min-width: 0;
+        flex-shrink: 1;
+        gap: 0.5rem;
+    }
+
     .editor-title {
         max-width: 18rem;
         overflow: hidden;
@@ -521,12 +531,13 @@ theme_styles = """
         color: var(--color-text-primary);
     }
 
-    /* The foot of the editor. Everything in it is a measurement of the
-       work, and the last of them moves as the reader edits. */
+    /* In the toolbar now, beside the name of what is open. Everything in it
+       is a measurement of the work, and all but the language move as the
+       reader edits. No rule and no margin: it is one item on a row of
+       them, not a band of its own. */
     .editor-status {
         gap: 0.5rem;
-        padding: 0.5rem 0.25rem 0;
-        border-top: 1px solid var(--color-border-subtle);
+        width: auto;
         font-size: 0.8125rem;
         /* Secondary, not muted: it is small and set below the fold of the
            editor, and muted grey on white left it needing a second look to
@@ -1643,7 +1654,9 @@ theme_styles = """
            grey brackets, with the one being played or edited in the same
            blue. The two are never in the same row and a bracket is not a
            bar, so sharing a colour does not blur them together. */
-        --timeline-ground: var(--color-border-subtle);
+        /* Silence: a shade darker than a hairline border, or the stretches
+           between speech read as nothing being drawn there at all. */
+        --timeline-ground: var(--color-border);
         --timeline-speech: var(--color-brand-primary);
         --timeline-caption: var(--color-text-tertiary);
         --timeline-caption-playing: var(--color-brand-primary);
@@ -1745,7 +1758,7 @@ theme_styles = """
     .speech-timeline-swatch-silence {
         width: 0.85rem;
         height: 2px;
-        background-color: var(--color-border-subtle);
+        background-color: var(--color-border);
     }
     /* Drawn as the bracket it is on the strip, not as a block: which end
        of a caption a boundary belongs to is the whole point of the shape. */
