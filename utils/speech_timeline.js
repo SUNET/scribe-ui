@@ -611,15 +611,22 @@ export default {
         context.fillRect(right - arm, bandTop + bandHeight - stem, arm, stem);
 
         // Its number, so the same caption can be found in the text editor.
-        // Only when there is room for it: a very short caption at this
-        // scale has none, and a number spilling over its neighbour is
-        // worse than no number.
+        // Inside the brackets rather than above them, and in the text
+        // colour rather than the bracket's own -- drawn in a bracket grey
+        // over a strip this busy it was there without being readable.
+        //
+        // Only when there is room between the two brackets: a very short
+        // caption at this scale has none, and a number spilling over its
+        // neighbour is worse than no number.
         const label = `#${caption.id}`;
-        context.font = "600 11px system-ui, sans-serif";
+        context.font = "700 12px system-ui, sans-serif";
+        context.textBaseline = "middle";
 
-        if (context.measureText(label).width + 6 < right - left) {
-          context.fillStyle = colour;
-          context.fillText(label, left + 4, bandTop - 3);
+        const room = right - left - arm * 2 - 4;
+
+        if (context.measureText(label).width < room) {
+          context.fillStyle = this.colour("--timeline-label", "#111827");
+          context.fillText(label, left + arm + 2, bandTop + bandHeight / 2);
         }
       }
 

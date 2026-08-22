@@ -1648,6 +1648,9 @@ theme_styles = """
         --timeline-caption: var(--color-text-tertiary);
         --timeline-caption-playing: var(--color-brand-primary);
         --timeline-caption-current: var(--color-brand-primary);
+        /* The caption numbers. The text colour, not the bracket's own: in a
+           bracket grey they were on the strip without being readable. */
+        --timeline-label: var(--color-text-primary);
         --timeline-void: var(--color-bg-surface-hover);
         --timeline-playhead: var(--color-text-danger);
         position: relative;

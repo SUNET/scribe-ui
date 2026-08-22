@@ -491,9 +491,19 @@ class TestCaptionsAreBrackets:
         source = self.source()
 
         assert "const label = `#${caption.id}`;" in source
-        assert "context.measureText(label).width + 6 < right - left" in source, (
-            "and only when there is room for it"
+        assert "context.measureText(label).width < room" in source, (
+            "and only when there is room for it between the brackets"
         )
+
+    def test_the_number_is_readable_against_the_strip(self):
+        """
+        Drawn in the bracket's own grey it was there without being legible.
+        """
+
+        source = self.source()
+
+        assert '--timeline-label' in source
+        assert "700 12px" in source
 
 
 class TestClickingACaption:
