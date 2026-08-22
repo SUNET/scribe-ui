@@ -23,7 +23,8 @@
 // are, and where each caption sits against them -- which is what the reader
 // is looking for when timing subtitles. What it cannot show is loudness.
 //
-// Two things it does beyond drawing. It shows a minute at a time (WINDOW),
+// Two things it does beyond drawing. It shows twenty seconds at a time
+// (WINDOW),
 // because an hour across a pane this wide is roughly a minute per pixel and
 // no caption edge can be seen there, let alone aimed at; the view follows
 // the playhead through the recording. And a caption can be dragged -- by an
@@ -47,8 +48,9 @@ const SNAP = 8;
 
 // Seconds across the strip. Fixed rather than offered as a choice: this is
 // the scale at which a caption edge can be seen and aimed at, and a strip
-// whose scale changes underfoot is harder to read, not easier.
-const WINDOW = 60;
+// whose scale changes underfoot is harder to read, not easier. Within the
+// 10-30s the issue asks for (SUNET/scribe-ui#126).
+const WINDOW = 20;
 
 export default {
   template: `
@@ -179,7 +181,7 @@ export default {
     if (this.observer) this.observer.disconnect();
   },
   computed: {
-    // Which minute of the recording is on the strip: one stretch of speech
+    // Which part of the recording is on the strip: one stretch of speech
     // looks much like another, and the strip says nothing about where in
     // the recording it is otherwise.
     range() {
@@ -207,7 +209,7 @@ export default {
       return found ? found.id : -1;
     },
     rangeTitle() {
-      return "The minute of the recording on the strip. It follows the playhead.";
+      return "The part of the recording on the strip. It follows the playhead.";
     },
   },
   methods: {
@@ -222,11 +224,11 @@ export default {
       return Math.max(known, this.duration, 0);
     },
 
-    // Seconds across the strip. A minute, always: an hour across a pane
-    // this wide is roughly a minute per pixel, where no caption edge can be
-    // seen let alone aimed at, and a scale that changes underfoot makes the
-    // strip harder to read rather than easier. A recording shorter than the
-    // window simply shows all of itself.
+    // Seconds across the strip. Twenty, always: an hour across a pane this
+    // wide is roughly a minute per pixel, where no caption edge can be seen
+    // let alone aimed at, and a scale that changes underfoot makes the strip
+    // harder to read rather than easier. A recording shorter than the window
+    // simply shows all of itself.
     visible() {
       return Math.min(WINDOW, this.span()) || this.span();
     },

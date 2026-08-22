@@ -250,7 +250,7 @@ class TestItExplainsItself:
 
 class TestZoom:
     """
-    A minute across the strip, always. An hour across a pane this wide is
+    Twenty seconds across the strip, always. An hour across a pane this wide is
     roughly a minute per pixel, where no caption edge can be seen let alone
     aimed at -- and a scale that changes underfoot makes the strip harder to
     read, not easier, so it is not offered as a choice.
@@ -259,8 +259,12 @@ class TestZoom:
     def source(self) -> str:
         return pathlib.Path("utils/speech_timeline.js").read_text()
 
-    def test_the_window_is_a_minute(self):
-        assert "const WINDOW = 60;" in self.source()
+    def test_the_window_is_twenty_seconds(self):
+        """
+        Within the 10-30s SUNET/scribe-ui#126 asks for.
+        """
+
+        assert "const WINDOW = 20;" in self.source()
 
     def test_it_is_not_a_control(self):
         source = self.source()
