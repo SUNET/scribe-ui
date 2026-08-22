@@ -363,6 +363,77 @@ def create() -> None:
                                 )
                                 overlay.set_visibility(False)
                                 transcript.set_overlay(overlay)
+
+                                # The overlay clears the player's own control
+                                # bar while that bar is up, and drops to the
+                                # bottom of the frame -- where a viewer would
+                                # actually see it -- once it goes away.
+                                #
+                                # A browser offers no signal for that, so the
+                                # same rules it draws the bar by are followed
+                                # here: controls are up while the recording
+                                # is paused, and while the pointer has moved
+                                # over the frame within the last few seconds.
+                                ui.add_head_html(
+                                    """
+                                    <script>
+                                    (function () {
+                                      const HIDE_AFTER = 2600;
+
+                                      function wire() {
+                                        const frame =
+                                          document.querySelector(".video-frame");
+                                        const video =
+                                          frame && frame.querySelector("video");
+
+                                        if (!video) return false;
+
+                                        let idle = null;
+
+                                        const show = () => {
+                                          frame.classList.add(
+                                            "video-controls-visible"
+                                          );
+                                        };
+                                        const hide = () => {
+                                          if (video.paused) return;
+                                          frame.classList.remove(
+                                            "video-controls-visible"
+                                          );
+                                        };
+
+                                        const stir = () => {
+                                          show();
+                                          clearTimeout(idle);
+                                          idle = setTimeout(hide, HIDE_AFTER);
+                                        };
+
+                                        frame.addEventListener("mousemove", stir);
+                                        frame.addEventListener("mouseleave", hide);
+                                        video.addEventListener("pause", show);
+                                        video.addEventListener("play", stir);
+
+                                        // Paused when the page opens, so the
+                                        // bar is up.
+                                        show();
+
+                                        return true;
+                                      }
+
+                                      if (!wire()) {
+                                        // The player is drawn after this
+                                        // script arrives.
+                                        const waiting = setInterval(() => {
+                                          if (wire()) clearInterval(waiting);
+                                        }, 200);
+                                        setTimeout(
+                                          () => clearInterval(waiting), 10000
+                                        );
+                                      }
+                                    })();
+                                    </script>
+                                    """
+                                )
                                 transcript.set_overlay_enabled(
                                     editor.show_subtitle_overlay
                                 )

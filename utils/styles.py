@@ -1088,11 +1088,11 @@ theme_styles = """
     .video-subtitle-overlay {
         position: absolute;
         left: 50%;
-        /* A fixed offset, not a percentage of the frame's own height --
-           the native control bar's own height is fixed too, so a percentage
-           shrinks below it on a short or wide video and the overlay ends up
-           drawn over the seek bar, hiding it rather than sitting above it. */
-        bottom: 3rem;
+        /* Where a viewer would see it: at the bottom of the frame. It only
+           moves up when the player's own control bar is up (see below), so
+           the rest of the time the preview is where the real thing is. */
+        bottom: 1rem;
+        transition: bottom 0.15s ease-in-out;
         transform: translateX(-50%);
         max-width: 90%;
         padding: 0.35rem 0.75rem;
@@ -1121,6 +1121,17 @@ theme_styles = """
            frame, even if the two ever end up overlapping regardless. */
         pointer-events: none;
     }
+    /* Clear of the control bar while that bar is up. A fixed offset, not a
+       percentage of the frame's own height -- the bar's height is fixed too,
+       so a percentage shrinks below it on a short or wide video and the
+       overlay ends up drawn over the seek bar, hiding it rather than sitting
+       above it. The class is put on the frame by pages/srt.py, which follows
+       the same rules the browser draws the bar by: up while paused, and
+       while the pointer has moved over the frame in the last few seconds. */
+    .video-controls-visible .video-subtitle-overlay {
+        bottom: 3rem;
+    }
+
     .video-subtitle-line {
         /* Never break a line the editor did not break: draw_overlay gives
            each of the caption's own lines an element, and a wrap inside one

@@ -376,6 +376,22 @@ class TestVideoSubtitleOverlay:
     height is not, and shrinks below it.
     """
 
+    def test_it_sits_at_the_foot_of_the_frame(self):
+        """
+        Where a viewer would see it. It only moves up while the player's own
+        control bar is up, so the rest of the time the preview is where the
+        real thing is.
+        """
+
+        assert rem(effective(".video-subtitle-overlay")["bottom"]) == 1
+
+    def test_it_clears_the_control_bar_while_that_is_up(self):
+        raised = effective(".video-controls-visible .video-subtitle-overlay")
+
+        assert rem(raised["bottom"]) > rem(
+            effective(".video-subtitle-overlay")["bottom"]
+        )
+
     def test_the_offset_is_fixed_not_a_percentage(self):
         bottom = effective(".video-subtitle-overlay")["bottom"]
 

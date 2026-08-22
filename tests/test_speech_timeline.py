@@ -599,6 +599,50 @@ class TestRetimeSpan:
         assert 'timeline.on("retimespan"' in source
 
 
+class TestTheOverlayFollowsTheControlBar:
+    """
+    A browser offers no signal for whether the player's own control bar is
+    up, so the page follows the same rules the browser draws it by: up while
+    the recording is paused, and while the pointer has moved over the frame
+    within the last few seconds.
+    """
+
+    def page(self) -> str:
+        return pathlib.Path("pages/srt.py").read_text()
+
+    def test_pausing_puts_the_bar_up(self):
+        page = self.page()
+
+        assert 'video.addEventListener("pause", show)' in page
+
+    def test_the_pointer_keeps_it_up_for_a_while(self):
+        page = self.page()
+
+        assert 'frame.addEventListener("mousemove", stir)' in page
+        assert "idle = setTimeout(hide, HIDE_AFTER)" in page
+
+    def test_it_never_hides_the_bar_while_paused(self):
+        """
+        The browser does not either, however long the pointer sits still.
+        """
+
+        page = self.page()
+        hide = page[page.index("const hide = () => {"):]
+        hide = hide[: hide.index("};")]
+
+        assert "if (video.paused) return;" in hide
+
+    def test_it_waits_for_the_player_to_exist(self):
+        """
+        The script arrives before NiceGUI has drawn the video element.
+        """
+
+        page = self.page()
+
+        assert "setInterval" in page
+        assert "clearInterval(waiting)" in page
+
+
 class TestWiring:
     """
     The strip is only offered where there is word data to draw it from, and
