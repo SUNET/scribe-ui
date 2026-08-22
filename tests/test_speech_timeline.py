@@ -351,18 +351,61 @@ class TestDraggingACaption:
         assert "end - 0.05" in body
         assert "start + 0.05" in body
 
-    def test_it_snaps_to_speech(self):
+    def test_it_snaps_to_the_neighbouring_captions_first(self):
         """
-        Subtitles are cut against speech, not against arbitrary tenths of a
-        second, and hitting a word boundary by hand at this scale is luck.
+        Two cues meeting exactly is something a reader means. A cue landing
+        a hundredth of a second from its neighbour -- a gap no viewer can
+        perceive, but a gap in the file -- never is. So caption edges are
+        tried first, and from further away than anything else.
         """
 
         source = self.source()
-        body = source[source.index("snap(seconds) {"):]
+        body = source[source.index("snap(seconds, movingId) {"):]
         body = body[: body.index("\n    },")]
 
-        assert "for (const [start, end] of this.runs)" in body
-        assert "SNAP" in source
+        assert body.index("CAPTION_SNAP") < body.index("SNAP / perSecond")
+        assert "caption.id !== movingId" in body, "never to its own edges"
+
+    def test_a_caption_reaches_further_than_speech(self):
+        source = self.source()
+        caption_reach = int(
+            source[source.index("const CAPTION_SNAP = "):].split("=")[1].split(";")[0]
+        )
+        speech_reach = int(
+            source[source.index("const SNAP = "):].split("=")[1].split(";")[0]
+        )
+
+        assert caption_reach > speech_reach
+
+    def test_it_still_snaps_to_speech_when_no_caption_is_near(self):
+        """
+        Where a cut belongs when it is not against another cue.
+        """
+
+        source = self.source()
+        body = source[source.index("snap(seconds, movingId) {"):]
+        body = body[: body.index("\n    },")]
+
+        assert "this.runs.flat()" in body
+
+    def test_it_lands_where_the_pointer_is_when_nothing_is_near(self):
+        source = self.source()
+        body = source[source.index("snap(seconds, movingId) {"):]
+        body = body[: body.index("\n    },")]
+
+        assert "speechEdge === null ? seconds : speechEdge" in body
+
+    def test_every_drag_says_which_caption_is_moving(self):
+        """
+        Or a caption would snap to the edge it is being dragged away from.
+        """
+
+        source = self.source()
+        moves = source[source.index("onDragMove(event) {"):]
+        moves = moves[: moves.index("\n    },")]
+
+        assert moves.count("this.snap(") == 3
+        assert moves.count("this.drag.id)") == 3
 
     def test_both_ends_travel_in_one_event(self):
         """

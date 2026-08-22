@@ -46,6 +46,12 @@ const EDGE_GRIP = 6;
 // scale is luck.
 const SNAP = 8;
 
+// The same, for the edge of another caption -- with a wider reach, and taken
+// first when both are in range. Two cues meeting exactly is a thing a reader
+// means; a cue landing a hundredth of a second short of its neighbour, so
+// that a gap no viewer can perceive sits between them, never is.
+const CAPTION_SNAP = 14;
+
 // Seconds across the strip. Fixed rather than offered as a choice: this is
 // the scale at which a caption edge can be seen and aimed at, and a strip
 // whose scale changes underfoot is harder to read, not easier. Within the
@@ -358,12 +364,15 @@ export default {
       if (this.drag.edge === "start") {
         // Never past its own end: a caption that ends before it starts is
         // refused by the server anyway, so it is not offered here.
-        start = Math.min(this.snap(start + moved), end - 0.05);
+        start = Math.min(this.snap(start + moved, this.drag.id), end - 0.05);
       } else if (this.drag.edge === "end") {
-        end = Math.max(this.snap(end + moved), start + 0.05);
+        end = Math.max(this.snap(end + moved, this.drag.id), start + 0.05);
       } else {
         const length = end - start;
-        start = Math.max(0, Math.min(span - length, this.snap(start + moved)));
+        start = Math.max(
+          0,
+          Math.min(span - length, this.snap(start + moved, this.drag.id))
+        );
         end = start + length;
       }
 
@@ -428,26 +437,52 @@ export default {
       this.video.currentTime = Math.max(0, Math.min(this.span(), seconds));
     },
 
-    // The nearest edge of a run of speech, when one is close enough to be
-    // what was meant. Subtitles are cut against speech, not against
-    // arbitrary tenths of a second.
-    snap(seconds) {
-      const reach = SNAP / (this.pixelsPerSecond() || 1);
-      let best = seconds;
+    // Where a dragged edge actually lands.
+    //
+    // The edges of the other captions first, and from further away than
+    // anything else: two cues meeting exactly is something a reader means,
+    // and a cue landing a hundredth of a second from its neighbour -- a gap
+    // no viewer can perceive, but a gap in the file -- never is. Only if no
+    // caption is in reach does it fall back to the edges of a run of
+    // speech, which is where a cut belongs when it is not against another
+    // cue. Failing both, the position the pointer is actually at.
+    snap(seconds, movingId) {
+      const perSecond = this.pixelsPerSecond() || 1;
+
+      const captionEdge = this.nearest(
+        seconds,
+        this.captions
+          .filter((caption) => caption.id !== movingId)
+          .flatMap((caption) => [caption.start, caption.end]),
+        CAPTION_SNAP / perSecond
+      );
+
+      if (captionEdge !== null) return Math.max(0, captionEdge);
+
+      const speechEdge = this.nearest(
+        seconds,
+        this.runs.flat(),
+        SNAP / perSecond
+      );
+
+      return Math.max(0, speechEdge === null ? seconds : speechEdge);
+    },
+
+    // The closest of a set of times, if any of them is within reach.
+    nearest(seconds, candidates, reach) {
+      let best = null;
       let distance = reach;
 
-      for (const [start, end] of this.runs) {
-        for (const edge of [start, end]) {
-          const away = Math.abs(edge - seconds);
+      for (const candidate of candidates) {
+        const away = Math.abs(candidate - seconds);
 
-          if (away < distance) {
-            best = edge;
-            distance = away;
-          }
+        if (away < distance) {
+          best = candidate;
+          distance = away;
         }
       }
 
-      return Math.max(0, best);
+      return best;
     },
 
     // The same shape the timecode fields in the text editor use, so a drag
