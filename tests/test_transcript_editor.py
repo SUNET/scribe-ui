@@ -997,6 +997,55 @@ class TestLiveLineCounts:
         assert "maxSubtitleLines: { type: Number, default: 2 }" in source
 
 
+class TestCaretBlockTracking:
+    """
+    Which caption the caret is in, tracked only so the editor can show it --
+    separate from activeId, which is the caption being played.
+    """
+
+    def source(self) -> str:
+        import pathlib
+
+        return pathlib.Path("utils/transcript_editor.js").read_text()
+
+    def test_the_cell_marks_itself(self):
+        source = self.source()
+
+        assert "'transcript-cell-editing': block.id === caretId" in source
+
+    def test_the_caret_is_re_read_rather_than_tracked(self):
+        """
+        The caret moves for reasons nothing in the component hears about --
+        an arrow key, a click, a drag -- so it is read from the selection
+        rather than followed through every edit.
+        """
+
+        source = self.source()
+        body = source[source.index("updateCaretBlock() {"):]
+        body = body[: body.index("\n    },")]
+
+        assert "const at = this.caret();" in body
+        assert "this.caretId = at ? at.id : null;" in body
+
+    def test_arrow_keys_move_it_too(self):
+        source = self.source()
+
+        assert '@keyup="updateCaretBlock"' in source
+
+    def test_leaving_the_editor_clears_it(self):
+        """
+        Nothing is being edited once the caret is gone, and the pending edit
+        still has to be sent -- which is what @blur did before this.
+        """
+
+        source = self.source()
+        body = source[source.index("onBlur() {"):]
+        body = body[: body.index("\n    },")]
+
+        assert "this.flush();" in body
+        assert "this.caretId = null;" in body
+
+
 class TestTiming:
     """
     A caption's start and end are edited directly where they are shown, in

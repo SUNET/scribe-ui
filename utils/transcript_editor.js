@@ -39,8 +39,9 @@ export default {
         spellcheck="false"
         @input="onInput"
         @keydown="onKeydown"
+        @keyup="updateCaretBlock"
         @click="onClick"
-        @blur="flush"
+        @blur="onBlur"
         ref="body"
       ><template v-for="block in blocks" :key="blockKey(block)"><div
           class="transcript-gutter"
@@ -66,7 +67,7 @@ export default {
             :data-id="block.id"
           >{{ block.speaker }}</span><span v-if="!subtitleMode" class="transcript-colon">:</span></div><div
           class="transcript-cell"
-          :class="{ 'transcript-cell-active': block.id === activeId, 'transcript-cell-invalid': block.invalid, 'transcript-cell-highlighted': block.highlighted }"
+          :class="{ 'transcript-cell-active': block.id === activeId, 'transcript-cell-editing': block.id === caretId, 'transcript-cell-invalid': block.invalid, 'transcript-cell-highlighted': block.highlighted }"
           :data-id="block.id"
         ><div
             v-if="!subtitleMode"
@@ -323,6 +324,11 @@ export default {
       stamps: {},
       timed: [],
       menu: { open: false, x: 0, y: 0, id: null, speaker: null },
+      // The block the caret is in, so the caption being edited can look
+      // like it. Purely presentational, and separate from activeId, which
+      // is the caption the recording is playing -- the reader is very
+      // often editing one caption while listening to another.
+      caretId: null,
       // A block's own guess at its character-count guideline, from the text
       // as typed rather than what the server last rendered -- keyed by
       // block id, and only ever set for subtitles. See onInput and the
@@ -860,6 +866,8 @@ export default {
       clearTimeout(this.pending);
       this.edit = { id: at.id, text };
       this.pending = setTimeout(() => this.flush(), 400);
+
+      this.caretId = at.id;
     },
 
     // Mirrors caption_line_counts on the Python side exactly -- same
@@ -884,6 +892,22 @@ export default {
 
         return { length, exceeded, tooltip };
       });
+    },
+
+    // Which caption the caret is in now. Read from the selection rather
+    // than tracked through every edit: the caret moves for reasons nothing
+    // here hears about -- an arrow key, a click, a selection dragged with
+    // the mouse -- and the answer is cheap to ask for.
+    updateCaretBlock() {
+      const at = this.caret();
+      this.caretId = at ? at.id : null;
+    },
+
+    // Leaving the editor sends whatever was pending and takes the editing
+    // marking off with it: nothing is being edited once the caret is gone.
+    onBlur() {
+      this.flush();
+      this.caretId = null;
     },
 
     // Report a waiting edit now, e.g. before the caret is going to leave the
@@ -1201,6 +1225,8 @@ export default {
       const id = Number(block.dataset.id);
       const at = this.caret();
 
+      this.caretId = id;
+
       this.$emit("blockclick", {
         id,
         offset: at && at.id === id ? at.offset : 0,
@@ -1222,6 +1248,7 @@ export default {
         if (!block) return;
 
         this.placeCaretAt(block, offset);
+        this.caretId = id;
       });
     },
 

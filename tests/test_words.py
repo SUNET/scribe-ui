@@ -356,6 +356,21 @@ class TestSplitWithoutCursor:
         assert editor.captions[0].get_end_seconds() == pytest.approx(2.0)
 
 
+class Label:
+    """
+    Stand-in for the counter's own ui.label: the two calls it ever receives.
+    """
+
+    text = None
+    visible = True
+
+    def set_text(self, value):
+        self.text = value
+
+    def set_visibility(self, visible):
+        self.visible = visible
+
+
 class TestReviewMarking:
     """
     Marking of words worth reviewing, and the flagged counter.
@@ -464,37 +479,30 @@ class TestReviewMarking:
 
         assert "<br>" in html
 
-    def test_counter_reports_zero_while_switched_off(self, editor):
+    def test_the_counter_is_hidden_while_the_marking_is_off(self, editor):
+        """
+        Nothing is flagged by definition then, so "0 flagged" says nothing
+        and is one more thing to read in a panel of controls.
+        """
+
         editor.load_words(PAYLOAD)
-
-        class Label:
-            text = None
-
-            def set_text(self, value):
-                self.text = value
-
         editor.captions = [caption()]
         label = Label()
         editor.set_flagged_count_element(label)
 
-        assert label.text == "0 flagged", "off by default, so nothing is flagged"
+        assert label.visible is False, "off by default"
 
         editor.set_show_uncertain_words(True)
 
+        assert label.visible is True
         assert label.text == "1 flagged"
 
         editor.set_show_uncertain_words(False)
 
-        assert label.text == "0 flagged"
+        assert label.visible is False
 
     def test_counter_follows_sensitivity(self, editor):
         editor.load_words(PAYLOAD)
-
-        class Label:
-            text = None
-
-            def set_text(self, value):
-                self.text = value
 
         editor.captions = [caption()]
         label = Label()

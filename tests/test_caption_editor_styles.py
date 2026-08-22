@@ -143,6 +143,34 @@ class TestTranscriptCellStates:
         assert len({invalid, highlighted, active}) == 3
 
 
+class TestTheCaptionBeingEdited:
+    """
+    The caret's own caption is marked, so the editor says where you are
+    working even when the recording is playing somewhere else entirely.
+    """
+
+    def test_it_carries_the_same_rule_as_the_active_caption(self):
+        editing = effective(".transcript-cell-editing")
+
+        assert editing["border-left-color"] == "var(--color-brand-primary)"
+        assert editing["border-left-width"] == "2px"
+
+    def test_it_is_stated_after_the_playing_caption(self):
+        """
+        Both can be true at once -- reading one caption while another
+        plays -- and the later rule wins the background. What the reader is
+        doing beats what the player is doing.
+        """
+
+        selectors = [
+            selector for group, _ in rules() for selector in group
+        ]
+
+        assert selectors.index(".transcript-cell-editing") > selectors.index(
+            ".transcript-cell-active"
+        )
+
+
 class TestCaptionActions:
     """
     Split, merge, add and delete (subtitles only) stay out of the way until
@@ -295,15 +323,19 @@ class TestSubtitleMarginAlignment:
     def test_the_count_row_line_height_matches_the_text(self):
         """
         .transcript-count-row's line-height is stated in absolute terms to
-        equal .transcript-text's own (1.85 times its font-size) -- the two
-        have to move together, or a row drifts away from the line it
-        belongs to.
+        equal .transcript-text's own -- the two have to move together, or a
+        row drifts away from the line it belongs to. Read from the text's
+        own declared line-height rather than restating the multiplier here,
+        so changing the leading is one edit and not two.
         """
 
-        text_size = rem(effective(".transcript-text")["font-size"])
+        text = effective(".transcript-text")
+        text_size = rem(text["font-size"])
+        leading = float(text["line-height"])
+
         row_line_height = rem(effective(".transcript-count-row")["line-height"])
 
-        assert row_line_height == pytest.approx(text_size * 1.85)
+        assert row_line_height == pytest.approx(text_size * leading)
 
 
 class TestSubtitleTextOffset:

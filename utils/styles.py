@@ -508,6 +508,32 @@ theme_styles = """
         margin: 0 0.25rem;
     }
 
+    /* The document's own name, at the head of the toolbar: it says what is
+       being edited, which is a title, not a detail to be looked up at the
+       bottom of a panel. Capped and ellipsised -- a filename can be long
+       enough to push everything else off the row. */
+    .editor-title {
+        max-width: 18rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-weight: 600;
+        color: var(--color-text-primary);
+    }
+
+    /* The foot of the editor. Everything in it is a measurement of the
+       work, and the last of them moves as the reader edits. */
+    .editor-status {
+        padding: 0.5rem 0.25rem 0;
+        border-top: 1px solid var(--color-border-subtle);
+        font-size: 0.8125rem;
+        /* Secondary, not muted: it is small and set below the fold of the
+           editor, and muted grey on white left it needing a second look to
+           read at all. */
+        color: var(--color-text-secondary);
+        font-variant-numeric: tabular-nums;
+    }
+
     /* ── Editor toolbar buttons (flat, no border, subtle bg in dark mode) ── */
     .editor-btn {
         border: none !important;
@@ -977,6 +1003,31 @@ theme_styles = """
         content: none;
     }
 
+    /* The controls under the video are settings, not content: smaller than
+       the text they act on, and all in one colour rather than each in
+       whatever Quasar's defaults happened to give it -- three switches in
+       three different colours read as three unrelated things. The one
+       exception is below: a switch that turns on a marking wears that
+       marking's own colour, because the colour is what it is about. */
+    .q-toggle.editor-switch .q-toggle__label {
+        font-size: 0.875rem;
+    }
+    .q-toggle.editor-switch .q-toggle__inner--truthy {
+        color: var(--color-brand-primary);
+    }
+
+    /* "Off" is a state of the review control, not the review marking, so it
+       is drawn as plainly as any other unselected thing. Painting it in the
+       review violet -- which is what naming one toggle-color for every
+       segment did -- made the loudest thing in the panel the setting that
+       means nothing is being marked at all. */
+    .bg-toggle-off {
+        background: var(--color-bg-surface-hover) !important;
+    }
+    .text-toggle-off-fg {
+        color: var(--color-text-primary) !important;
+    }
+
     /* Each switch wears the colour of the marking it turns on, so the control
        and the words it affects read as one thing. Quasar draws both the track
        and the thumb of a switch that is on in currentColor, so setting the
@@ -1076,9 +1127,13 @@ theme_styles = """
         display: grid;
         grid-template-columns: 8rem minmax(0, 1fr);
         column-gap: 1rem;
-        row-gap: 1.25rem;
+        row-gap: 1rem;
         outline: none;
-        max-width: 60rem;
+        /* Wide enough to use the pane it is in. A subtitle line is capped
+           at CHARACTER_LIMIT characters by the guideline itself, so a
+           narrow column buys no readability here -- it only left the right
+           half of the editor empty. */
+        max-width: 72rem;
         margin: 0 auto;
     }
     /* The margin holds only the caption's index and its per-line character
@@ -1090,7 +1145,7 @@ theme_styles = """
        captions than the base rule's, which reads dense at a transcription's
        own smaller, denser scale. */
     .transcript-subtitle-mode .transcript-body {
-        row-gap: 1.75rem;
+        row-gap: 1.25rem;
     }
 
     .transcript-gutter {
@@ -1178,11 +1233,6 @@ theme_styles = """
     .transcript-subtitle-mode .transcript-gutter:hover + .transcript-cell::before {
         opacity: 1;
     }
-    /* The caption being played. A 2px rule alone was easy to lose while
-       following a recording, so it carries a wash of the brand navy too --
-       a tint of the colour the rule already is, not a second colour. Mixed
-       rather than a token of its own, so it stays a whisper of whatever
-       the brand colour is. */
     .transcript-cell-active {
         border-left-color: var(--color-brand-primary);
         border-left-width: 2px;
@@ -1195,6 +1245,21 @@ theme_styles = """
        these sit behind body text that has to stay the easiest thing in the
        cell to read. The rule on the left is what names the state; the wash
        only says which caption it belongs to. */
+    /* The caption the caret is in. After .transcript-cell-active, so the
+       caption being edited wins when the recording happens to be playing
+       the same one -- what the reader is doing beats what the player is
+       doing. A quieter fill than the active tint, and the same 2px rule:
+       the point is to say where the caret is without pulling the eye away
+       from the text itself. */
+    .transcript-cell-editing {
+        border-left-color: var(--color-brand-primary);
+        border-left-width: 2px;
+        padding-left: calc(1rem - 1px);
+        background-color: var(--color-bg-surface-alt);
+    }
+    .body--dark .transcript-cell-editing {
+        background-color: var(--color-bg-surface);
+    }
     .transcript-cell-invalid {
         border-left-color: var(--color-status-error-border);
         background-color: color-mix(
@@ -1278,10 +1343,10 @@ theme_styles = """
         display: flex;
         align-items: baseline;
         gap: 0.35rem;
-        /* Has to equal .transcript-text's own line-height (1.85 times its
+        /* Has to equal .transcript-text's own line-height (1.6 times its
            font-size, 1.0625rem) in absolute terms, or a row drifts away
            from the text line it belongs to. */
-        line-height: 1.965625rem;
+        line-height: 1.7rem;
     }
     /* A plain figure in the margin -- no box around it. Tabular figures so
        a count keeps one width as the number changes under the reader's
@@ -1454,12 +1519,19 @@ theme_styles = """
            tied to it moves with it -- .transcript-count-row's line-height
            in the margin above all. */
         font-size: 1.0625rem;
-        line-height: 1.85;
+        /* Read in long stretches, but corrected line by line -- 1.85 was
+           book leading and pushed a third of the captions off the screen.
+           .transcript-count-row's own line-height has to move with this;
+           see its note. */
+        line-height: 1.6;
         /* An empty block still has to be a line the caret can sit on. */
-        min-height: 1.85em;
+        min-height: 1.6em;
         white-space: pre-wrap;
         overflow-wrap: break-word;
         outline: none;
+        /* This is editable text, and the pointer is the first thing that
+           says so -- it stayed an arrow over the whole editor before. */
+        cursor: text;
     }
 
     /* The word under the playhead. Marked with an attribute rather than a
@@ -1555,49 +1627,6 @@ theme_styles = """
         gap: 0.5rem;
         padding: 0.75rem 0 0.25rem;
     }
-    /* ── SRT editor info panel ── */
-    .srt-info-panel {
-        background-color: var(--color-bg-surface-alt);
-        border: 1px solid var(--color-border-subtle);
-        border-radius: 8px;
-        gap: 0.35rem;
-    }
-    .body--dark .srt-info-panel {
-        background-color: var(--color-bg-page);
-    }
-    /* The filename. Centred over the pairs below it, and never widening the
-       panel however long it is. */
-    .srt-info-title {
-        align-self: center;
-        max-width: 100%;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-    /* Label on the left, value on the right, rather than a bolded name and
-       its value run together in one sentence: the values line up in a
-       column of their own and can be read without reading the labels
-       again each time. */
-    .srt-info-row {
-        display: flex;
-        align-items: baseline;
-        justify-content: space-between;
-        gap: 1rem;
-        width: 100%;
-        font-size: 0.875rem;
-    }
-    .srt-info-label {
-        color: var(--color-text-muted);
-    }
-    .srt-info-value {
-        color: var(--color-text-primary);
-        font-weight: 600;
-        font-variant-numeric: tabular-nums;
-        text-align: right;
-        min-width: 0;
-        overflow-wrap: anywhere;
-    }
-
     /* ── Theme-aware text utilities ── */
     .text-theme-primary {
         color: var(--color-text-primary);

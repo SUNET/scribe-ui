@@ -182,6 +182,13 @@ def create() -> None:
             "editor-toolbar justify-between w-full gap-2 items-center"
         ):
             with ui.row().classes("editor-toolbar-group"):
+                with ui.label(filename).classes("editor-title"):
+                    # Ellipsised to keep the toolbar its own width, so the
+                    # whole name needs somewhere to live.
+                    ui.tooltip(filename)
+
+                ui.separator().props("vertical")
+
                 editor.create_undo_redo_panel()
 
                 ui.separator().props("vertical")
@@ -237,6 +244,15 @@ def create() -> None:
                         transcript.set_follow(editor.autoscroll)
                         transcript.body.set_highlight_word(editor.highlight_word)
                         transcript.body.set_show_edits(editor.show_my_edits)
+
+                    # The foot of the editor, outside the scrolling text:
+                    # how much there is of it, how far it runs, and how fast
+                    # it reads -- the last of which moves as the reader
+                    # edits, which is why it lives here rather than in a
+                    # static panel of file details. The language is fixed
+                    # and only the page knows it, so it is handed over.
+                    status = ui.label().classes("editor-status w-full")
+                    editor.set_status_element(status, language)
                 with splitter.after:
                     with ui.card().classes("editor-panel w-full h-full"):
                         with ui.element("div").classes("video-frame w-full h-full"):
@@ -303,7 +319,7 @@ def create() -> None:
                                 follow = ui.switch(
                                     "Follow audio" if following_words else "Autoscroll",
                                     value=editor.autoscroll,
-                                )
+                                ).props("dense").classes("editor-switch")
                                 follow.on("click", save_follow)
 
                                 if following_words:
@@ -328,7 +344,7 @@ def create() -> None:
                                     overlay_switch = ui.switch(
                                         "Subtitle overlay",
                                         value=editor.show_subtitle_overlay,
-                                    )
+                                    ).props("dense").classes("editor-switch")
                                     overlay_switch.on("click", save_show_overlay)
                                     with overlay_switch:
                                         ui.tooltip(
@@ -351,7 +367,7 @@ def create() -> None:
                                     edits_switch = ui.switch(
                                         "My edits",
                                         value=editor.show_my_edits,
-                                    ).classes("edits-switch")
+                                    ).props("dense").classes("editor-switch edits-switch")
                                     edits_switch.on("click", save_show_edits)
                                     with edits_switch:
                                         ui.tooltip(
@@ -367,11 +383,46 @@ def create() -> None:
                             # carries confidence scores; older jobs have none
                             # to show.
                             if editor.has_confidence:
+                                ui.separator().classes("my-1")
+
                                 with ui.row().classes("items-center gap-2"):
-                                    ui.label("Uncertain words:").classes("text-sm")
+                                    ui.label("Uncertain words:").classes(
+                                        "text-sm text-theme-secondary"
+                                    )
+
+                                    def paint_sensitivity(choice) -> None:
+                                        """
+                                        The review violet belongs to the
+                                        levels, not to "Off" -- one
+                                        toggle-color paints whichever
+                                        segment is selected, which made the
+                                        loudest thing in the panel the
+                                        setting that marks nothing at all.
+                                        """
+
+                                        off = choice == "off"
+
+                                        sensitivity.props(
+                                            remove=(
+                                                "toggle-color=toggle-off "
+                                                "toggle-text-color=toggle-off-fg"
+                                                if not off
+                                                else "toggle-color=review-accent "
+                                                "toggle-text-color=review-accent-fg"
+                                            )
+                                        )
+                                        sensitivity.props(
+                                            "toggle-color=toggle-off "
+                                            "toggle-text-color=toggle-off-fg"
+                                            if off
+                                            else "toggle-color=review-accent "
+                                            "toggle-text-color=review-accent-fg"
+                                        )
 
                                     def save_sensitivity(event) -> None:
                                         choice = event.sender.value
+
+                                        paint_sensitivity(choice)
 
                                         # "off" is not one of the editor's own
                                         # sensitivities -- it is the marking
@@ -409,10 +460,11 @@ def create() -> None:
                                             if editor.show_uncertain_words
                                             else "off"
                                         ),
-                                    ).props(
-                                        "dense unelevated no-caps "
-                                        "toggle-color=review-accent "
-                                        "toggle-text-color=review-accent-fg"
+                                    ).props("dense unelevated no-caps")
+                                    paint_sensitivity(
+                                        editor.review_sensitivity
+                                        if editor.show_uncertain_words
+                                        else "off"
                                     )
                                     sensitivity.on(
                                         "update:model-value", save_sensitivity
@@ -427,24 +479,3 @@ def create() -> None:
                                         "text-sm text-theme-muted review-count"
                                     )
                                     editor.set_flagged_count_element(flagged)
-
-                        # What this job is, as label and value pairs rather
-                        # than bolded sentences -- the values line up in a
-                        # column of their own and can be read without
-                        # reading the labels again each time. Labels, not
-                        # ui.html: the filename is user content.
-                        with ui.column().classes("srt-info-panel p-4 w-full"):
-                            ui.label(filename).classes("text-h6 srt-info-title")
-
-                            with ui.row().classes("srt-info-row"):
-                                ui.label("Language").classes("srt-info-label")
-                                ui.label(language).classes("srt-info-value")
-
-                            with ui.row().classes("srt-info-row"):
-                                ui.label("Words per minute").classes(
-                                    "srt-info-label"
-                                )
-                                wpm_value = ui.label(
-                                    f"{editor.get_words_per_minute():.2f}"
-                                ).classes("srt-info-value")
-                                editor.set_words_per_minute_element(wpm_value)

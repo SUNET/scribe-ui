@@ -91,6 +91,10 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         # the reader's attention should move to.
         self.on_select: Optional[Callable] = None
         self.words_per_minute_element = None
+        # The editor's own status line, and the fixed text the page hands it
+        # (the language) -- see set_status_element.
+        self.status_element = None
+        self.status_suffix = ""
         self.speakers = set()
         self.data_format = None
         self.filename = filename
@@ -456,9 +460,66 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
 
         self.words_per_minute_element = element
 
+    def set_status_element(self, element, suffix: str = "") -> None:
+        """
+        Register the editor's status line, and whatever fixed text belongs
+        at the end of it -- the transcription's language, which the page
+        knows and the editor does not.
+        """
+
+        self.status_element = element
+        self.status_suffix = suffix
+        self.update_status()
+
+    def update_status(self) -> None:
+        """
+        Redraw the status line: how many captions there are, how far the
+        last one runs to, and how fast the result reads.
+        """
+
+        element = getattr(self, "status_element", None)
+
+        if element is None:
+            return
+
+        count = len(self.captions)
+        parts = [f"{count} caption" if count == 1 else f"{count} captions"]
+
+        if self.captions:
+            parts.append(self.format_duration(self.captions[-1].get_end_seconds()))
+
+        suffix = getattr(self, "status_suffix", "")
+
+        if suffix:
+            parts.append(suffix)
+
+        parts.append(f"{self.get_words_per_minute():.0f} wpm")
+
+        element.set_text("  ·  ".join(parts))
+
+    @staticmethod
+    def format_duration(seconds: float) -> str:
+        """
+        A running time, as a viewer would read it off a player.
+        """
+
+        total = max(0, int(seconds))
+        hours, remainder = divmod(total, 3600)
+        minutes, secs = divmod(remainder, 60)
+
+        if hours:
+            return f"{hours}:{minutes:02d}:{secs:02d}"
+
+        return f"{minutes}:{secs:02d}"
+
     def update_words_per_minute(self) -> None:
         """
         Update the words per minute display.
+
+        The status line goes with it: the moments the words-per-minute
+        figure changes -- an edit, a split, a merge, an undo -- are exactly
+        the moments the caption count and the running time change too, and
+        every one of them already calls this.
         """
 
         if self.words_per_minute_element:
@@ -466,6 +527,8 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
             # The value alone: the panel names it in a label of its own
             # beside this one, rather than repeating the name in the value.
             self.words_per_minute_element.set_text(f"{wpm:.2f}")
+
+        self.update_status()
 
     def get_words_per_minute(self) -> float:
         """

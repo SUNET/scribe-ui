@@ -890,7 +890,36 @@ class TestSwitchColours:
         page = pathlib.Path("pages/srt.py").read_text()
 
         assert '"My edits",' in page
-        assert 'classes("edits-switch")' in page
+        # Alongside editor-switch, which every control under the video
+        # carries for its size; edits-switch is what colours this one.
+        assert 'classes("editor-switch edits-switch")' in page
+
+    def test_the_other_switches_share_one_colour(self):
+        """
+        A switch that turns on a marking wears that marking's colour. The
+        rest have no colour of their own to wear, and taking Quasar's
+        defaults gave each of them a different one -- three switches in
+        three colours read as three unrelated things.
+        """
+
+        rule = re.search(
+            r"\.q-toggle\.editor-switch \.q-toggle__inner--truthy \{([^}]*)\}",
+            self.styles(),
+        )
+
+        assert rule
+        assert "color: var(--color-brand-primary)" in rule.group(1)
+
+    def test_the_marking_colour_is_stated_after_the_shared_one(self):
+        """
+        Same specificity, so the later rule is what My edits ends up with.
+        """
+
+        styles = self.styles()
+
+        assert styles.index(".q-toggle.edits-switch .q-toggle__inner--truthy") > (
+            styles.index(".q-toggle.editor-switch .q-toggle__inner--truthy")
+        )
 
     def test_uncertain_words_has_no_switch_of_its_own(self):
         """
@@ -1003,9 +1032,13 @@ class TestUncertainWordsControl:
         """
 
         page = self.compact()
+
+        # Everything from the gate to the end of the page handler: the
+        # control has to be inside it, not merely somewhere after it.
         block = page[page.index("ifeditor.has_confidence:"):]
 
-        assert block.index("sensitivity=ui.toggle") < block.index("srt-info-panel")
+        assert "sensitivity=ui.toggle" in block
+        assert "ifeditor.has_confidence:" not in block[len("ifeditor.has_confidence:"):]
 
 
 class TestControlTooltips:

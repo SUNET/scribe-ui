@@ -738,3 +738,73 @@ class TestSplitWithoutACaret:
         editor.split_caption(editor.captions[0], cursor_position=13)
 
         assert [c.text for c in editor.captions] == ["Hello there w", "onderful world"]
+
+
+class TestStatusLine:
+    """
+    The foot of the editor: how many captions there are, how far the last
+    one runs to, the language, and how fast the result reads. Everything in
+    it except the language is a measurement that moves as the reader edits.
+    """
+
+    class Label:
+        text = None
+
+        def set_text(self, value):
+            self.text = value
+
+    def editor(self, *captions) -> SRTEditor:
+        editor = SRTEditor("job-uuid", "srt", "file.srt")
+        editor.data_format = "srt"
+        editor.captions = list(captions)
+
+        return editor
+
+    def test_it_reads_as_one_line(self):
+        editor = self.editor(
+            SRTCaption(1, "00:00:00,000", "00:00:02,000", "Hej pa dig"),
+            SRTCaption(2, "00:00:02,000", "00:01:05,000", "Hej igen"),
+        )
+
+        label = self.Label()
+        editor.set_status_element(label, "Swedish")
+
+        assert label.text.startswith("2 captions  ·  1:05  ·  Swedish  ·  ")
+        assert label.text.endswith("wpm")
+
+    def test_one_caption_is_singular(self):
+        editor = self.editor(SRTCaption(1, "00:00:00,000", "00:00:02,000", "Hej"))
+
+        label = self.Label()
+        editor.set_status_element(label)
+
+        assert label.text.startswith("1 caption  ·  0:02")
+
+    def test_an_hour_long_recording_says_hours(self):
+        assert SRTEditor.format_duration(3725) == "1:02:05"
+
+    def test_a_short_one_does_not(self):
+        assert SRTEditor.format_duration(65) == "1:05"
+
+    def test_it_follows_an_edit(self):
+        """
+        Every edit already refreshes the words-per-minute figure, and the
+        caption count and running time change at exactly those moments.
+        """
+
+        editor = self.editor(SRTCaption(1, "00:00:00,000", "00:00:02,000", "Hej"))
+        label = self.Label()
+        editor.set_status_element(label)
+
+        editor.captions.append(
+            SRTCaption(2, "00:00:02,000", "00:00:06,000", "Hej igen")
+        )
+        editor.update_words_per_minute()
+
+        assert label.text.startswith("2 captions  ·  0:06")
+
+    def test_no_captions_reports_no_running_time(self):
+        label = self.Label()
+        self.editor().set_status_element(label)
+
+        assert label.text.startswith("0 captions  ·  ")

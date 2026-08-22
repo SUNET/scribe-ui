@@ -435,14 +435,21 @@ class ReviewMixin:
     def update_flagged_count(self) -> None:
         """
         Refresh the flagged-word counter.
+
+        Hidden outright while the marking is off rather than reporting zero:
+        nothing is flagged by definition then, so the number says nothing
+        and only adds another thing to read in the controls.
         """
 
         if self.flagged_count_element is None:
             return
 
-        count = self.flagged_word_count() if self.show_uncertain_words else 0
+        self.flagged_count_element.set_visibility(self.show_uncertain_words)
 
-        self.flagged_count_element.set_text(f"{count} flagged")
+        if not self.show_uncertain_words:
+            return
+
+        self.flagged_count_element.set_text(f"{self.flagged_word_count()} flagged")
 
 
     @staticmethod
