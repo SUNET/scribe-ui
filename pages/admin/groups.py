@@ -25,7 +25,7 @@ import httpx
 
 
 from nicegui import app, ui
-from utils.common import add_timezone_to_timestamp, page_init
+from utils.common import add_timezone_to_timestamp, page_init, reload_on_theme_change
 from utils.styles import default_styles, chart_colors
 from utils.helpers import (
     groups_get,
@@ -161,6 +161,10 @@ def edit_group(group_id: str) -> None:
     Page to edit a group.
     """
     page_init(use_drawer=True)
+    # Plotly draws its charts in one theme's colours server-side and
+    # cannot restyle itself, so this page reloads when the OS theme
+    # changes. Only pages with charts do -- see reload_on_theme_change.
+    reload_on_theme_change()
 
     if not get_admin_status():
         ui.navigate.to("/home")
@@ -282,6 +286,10 @@ async def statistics(group_id: str) -> None:
     Page to show statistics of a group with improved layout and design.
     """
     page_init(use_drawer=True)
+    # Plotly draws its charts in one theme's colours server-side and
+    # cannot restyle itself, so this page reloads when the OS theme
+    # changes. Only pages with charts do -- see reload_on_theme_change.
+    reload_on_theme_change()
 
     if not get_admin_status():
         ui.navigate.to("/home")
@@ -499,6 +507,10 @@ def create() -> None:
         Main page of the application.
         """
         page_init(use_drawer=True)
+        # Plotly draws its charts in one theme's colours server-side and
+        # cannot restyle itself, so this page reloads when the OS theme
+        # changes. Only pages with charts do -- see reload_on_theme_change.
+        reload_on_theme_change()
 
         if not get_admin_status():
             ui.navigate.to("/home")

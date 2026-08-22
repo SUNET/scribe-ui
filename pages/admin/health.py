@@ -26,7 +26,7 @@ import httpx
 
 from datetime import datetime
 from nicegui import app, ui
-from utils.common import page_init
+from utils.common import page_init, reload_on_theme_change
 from utils.styles import default_styles, chart_colors
 from utils.settings import get_settings
 from utils.token import (
@@ -44,6 +44,10 @@ async def health() -> None:
     """
 
     page_init(use_drawer=True)
+    # Plotly draws its charts in one theme's colours server-side and
+    # cannot restyle itself, so this page reloads when the OS theme
+    # changes. Only pages with charts do -- see reload_on_theme_change.
+    reload_on_theme_change()
 
     if not get_admin_status():
         ui.navigate.to("/home")
