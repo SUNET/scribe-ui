@@ -45,7 +45,14 @@ settings = get_settings()
 
 
 def create() -> None:
-    @ui.page("/srt")
+    # A long reconnect window, unlike every other page: the captions being
+    # edited live in this client's own SRTEditor on the server, and when the
+    # socket stays down past reconnect_timeout NiceGUI deletes that content
+    # and the browser reloads itself when it comes back -- taking every
+    # unsaved edit with it. A closed laptop lid, a wifi hop or an idle proxy
+    # is enough at the default 15 seconds. Five minutes covers those without
+    # keeping abandoned editors alive for long.
+    @ui.page("/srt", reconnect_timeout=300)
     def result(
         uuid: str, filename: str, model: str, language: str, data_format: str
     ) -> None:
