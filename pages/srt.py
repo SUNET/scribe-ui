@@ -34,6 +34,7 @@ from utils.srt import (
     REVIEW_SHOW_KEY,
     SRTEditor,
 )
+from utils.speech_timeline import SpeechTimeline
 from utils.transcript_editor import TranscriptEditor
 from utils.video import create_video_proxy
 
@@ -247,12 +248,53 @@ def create() -> None:
 
                     # The foot of the editor, outside the scrolling text:
                     # how much there is of it, how far it runs, and how fast
-                    # it reads -- the last of which moves as the reader
-                    # edits, which is why it lives here rather than in a
-                    # static panel of file details. The language is fixed
-                    # and only the page knows it, so it is handed over.
-                    status = ui.label().classes("editor-status w-full")
-                    editor.set_status_element(status, language)
+                    # it reads -- the last two of which move as the reader
+                    # edits, which is why they live here rather than in a
+                    # static panel of file details.
+                    #
+                    # A label per figure rather than one line of text, so
+                    # each can say what it means on hover: a row of bare
+                    # numbers explains nothing on its own.
+                    with ui.row().classes("editor-status w-full items-center"):
+                        figures = {}
+
+                        for name, explanation in (
+                            (
+                                "captions",
+                                "How many captions the file has."
+                                if data_format == "srt"
+                                else "How many blocks the transcription has.",
+                            ),
+                            (
+                                "duration",
+                                "Where the last caption ends -- how far the "
+                                "subtitles run, which can be shorter than "
+                                "the recording itself."
+                                if data_format == "srt"
+                                else "Where the last block ends.",
+                            ),
+                            (
+                                "wpm",
+                                "Words per minute across the whole result: "
+                                "how fast it reads. Around 150 is ordinary "
+                                "speech.",
+                            ),
+                        ):
+                            if figures:
+                                ui.label("·").classes("editor-status-divider")
+
+                            with ui.label().classes("editor-status-figure") as figure:
+                                ui.tooltip(explanation)
+
+                            figures[name] = figure
+
+                        ui.label("·").classes("editor-status-divider")
+
+                        # Fixed: the page knows it, and it never changes.
+                        with ui.label(language).classes("editor-status-figure"):
+                            ui.tooltip("The language the recording was transcribed in.")
+
+                        editor.set_status_elements(**figures)
                 with splitter.after:
                     with ui.card().classes("editor-panel w-full h-full"):
                         with ui.element("div").classes("video-frame w-full h-full"):
@@ -287,6 +329,14 @@ def create() -> None:
                                 transcript.set_overlay_enabled(
                                     editor.show_subtitle_overlay
                                 )
+
+                        # Where speech is, under the video: drawn from the
+                        # word timings rather than from the audio, so it
+                        # costs no decoding and no second download of the
+                        # recording. Nothing to draw without them.
+                        if editor.words:
+                            timeline = SpeechTimeline().classes("w-full")
+                            transcript.set_timeline(timeline)
 
                         # Always run, independent of the autoscroll switch
                         # below -- follow_video only moves the editor's own

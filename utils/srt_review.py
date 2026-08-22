@@ -345,6 +345,61 @@ class ReviewMixin:
         return set(first) | {index + offset for index in second}
 
 
+    def speech_runs(self, gap: float = 0.3) -> List[list]:
+        """
+        Where speech actually is, as [start, end] pairs.
+
+        Built from the word timings rather than from the audio: a word's own
+        start and end are already a far better answer to "is anyone talking
+        here" than a waveform's amplitude is, and they cost nothing -- no
+        decoding, no second download of the recording.
+
+        Words closer together than `gap` are one run: the space between two
+        words in a sentence is not a silence anyone means, and drawing every
+        one of them would turn a paragraph into a picket fence. What is left
+        is the pauses that matter -- where a caption could end.
+
+        Words without a timing are skipped; they were transcribed but not
+        placed, so there is nothing to say about when they were said.
+        """
+
+        runs: List[list] = []
+
+        for word in self.words:
+            if "s" not in word or "e" not in word:
+                continue
+
+            start = float(word["s"])
+            end = float(word["e"])
+
+            if runs and start - runs[-1][1] <= gap:
+                runs[-1][1] = max(runs[-1][1], end)
+                continue
+
+            runs.append([start, end])
+
+        return runs
+
+    def speech_duration(self) -> float:
+        """
+        How far the timeline runs: the last thing said or the last caption's
+        end, whichever is later -- a caption can be stretched past the last
+        word, and its own end has to stay on the strip.
+        """
+
+        last_word = 0.0
+
+        for word in reversed(self.words):
+            if "e" in word:
+                last_word = float(word["e"])
+                break
+
+        last_caption = (
+            self.captions[-1].get_end_seconds() if self.captions else 0.0
+        )
+
+        return max(last_word, last_caption)
+
     def flagged_word_count(self) -> int:
         """
         How many words are flagged across the whole transcription.

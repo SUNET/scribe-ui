@@ -50,6 +50,7 @@ export default {
         ><span
             v-if="subtitleMode"
             class="transcript-subtitle-index"
+            title="Caption number. Renumbered automatically when captions are split, merged or deleted."
           >#{{ block.id }}</span><div
             v-if="subtitleMode"
             class="transcript-subtitle-counts"
@@ -64,6 +65,7 @@ export default {
               >{{ count.length }}</span></span></div><span
             v-else
             class="transcript-speaker"
+            title="Who is speaking. Click to assign a different speaker, rename one, or add one."
             :data-id="block.id"
           >{{ block.speaker }}</span><span v-if="!subtitleMode" class="transcript-colon">:</span></div><div
           class="transcript-cell"
@@ -76,12 +78,14 @@ export default {
             :data-id="block.id"
           ><input
               class="transcript-time-input"
+              title="When this caption appears (HH:MM:SS.mmm). Click to edit."
               :value="block.start_label"
               @click.stop
               @keydown="onTimeInputKeydown($event)"
               @blur="retimeBlock(block.id, 'start', $event)"
             /><span class="transcript-dash">-</span><input
               class="transcript-time-input"
+              title="When this caption disappears (HH:MM:SS.mmm). Click to edit."
               :value="block.end_label"
               @click.stop
               @keydown="onTimeInputKeydown($event)"
@@ -95,12 +99,14 @@ export default {
               :data-id="block.id"
             ><div class="transcript-subtitle-timing"><input
                   class="transcript-time-input"
+                  title="When this caption appears (HH:MM:SS.mmm). Click to edit."
                   :value="block.start_label"
                   @click.stop
                   @keydown="onTimeInputKeydown($event)"
                   @blur="retimeBlock(block.id, 'start', $event)"
                 /><span class="transcript-dash">-</span><input
                   class="transcript-time-input"
+                  title="When this caption disappears (HH:MM:SS.mmm). Click to edit."
                   :value="block.end_label"
                   @click.stop
                   @keydown="onTimeInputKeydown($event)"

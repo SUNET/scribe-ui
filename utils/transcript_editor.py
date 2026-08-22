@@ -181,6 +181,9 @@ class TranscriptEditor:
         self.body: Optional[TranscriptBody] = None
         self.on_change: Optional[Callable] = None
         self.overlay: Optional[ui.element] = None
+        # The speech strip under the video, when there are word timings to
+        # draw one from -- see set_timeline.
+        self.timeline = None
         self.overlay_enabled = True
         # The caption the video is currently on, remembered so the overlay can
         # be redrawn without one -- turning it back on while paused has no
@@ -189,6 +192,97 @@ class TranscriptEditor:
         # Where the player last reported itself to be, so the overlay's own
         # caption can be worked out again after an edit -- see refresh_overlay.
         self.overlay_seconds: Optional[float] = None
+
+    def set_timeline(self, timeline) -> None:
+        """
+        Register the speech strip under the video and fill it in.
+
+        Its caption boundaries move with every structural edit, so refresh()
+        redraws them the same way it redraws the overlay -- the speech runs
+        themselves come from the word timings and never change.
+        """
+
+        self.timeline = timeline
+        timeline.set_speech(
+            self.editor.speech_runs(), self.editor.speech_duration()
+        )
+        timeline.on("retimespan", lambda event: self.retime_span(event.args))
+        timeline.on("selectcaption", lambda event: self.select_from_timeline(event.args))
+        self.refresh_timeline()
+
+    def refresh_timeline(self) -> None:
+        if self.timeline is None:
+            return
+
+        self.timeline.set_captions(
+            [
+                {
+                    "id": caption.index,
+                    "start": caption.get_start_seconds(),
+                    "end": caption.get_end_seconds(),
+                }
+                for caption in self.editor.captions
+            ]
+        )
+
+    def select_from_timeline(self, args) -> None:
+        """
+        A caption clicked on the strip: the text editor moves to it and the
+        recording follows.
+
+        The strip is a second view of the same captions, not a separate
+        thing to keep in step by hand -- so clicking one there does what
+        clicking one in the text does, rather than only seeking.
+        """
+
+        caption = self.caption(self.block_id(args))
+
+        if caption is None:
+            return
+
+        self.editor.seek_video(caption.get_start_seconds())
+        self.focus(caption.index)
+        self.mark_current(caption.index)
+
+    def mark_current(self, caption_index: int) -> None:
+        """
+        Tell the strip which caption the text editor is on.
+        """
+
+        if self.timeline is not None:
+            self.timeline.set_current(caption_index)
+
+    def retime_span(self, args) -> None:
+        """
+        A caption dragged on the strip under the video: both ends at once.
+
+        One call rather than a retime per edge, so dragging a caption across
+        is a single undo step -- apply_time takes the snapshot, and taking
+        two would mean pressing undo twice to put back one gesture.
+        """
+
+        caption = self.caption(self.block_id(args))
+
+        if caption is None or not isinstance(args, dict):
+            return
+
+        start = args.get("start")
+        end = args.get("end")
+
+        if start is None or end is None:
+            return
+
+        try:
+            start = float(start)
+            end = float(end)
+        except (TypeError, ValueError):
+            return
+
+        if not self.apply_time(caption, start, end):
+            # Refused (an end before its start): put the caption back where
+            # it was, since the strip is already drawing it where it was
+            # dropped.
+            self.refresh()
 
     def set_overlay(self, container: ui.element) -> None:
         """
@@ -300,6 +394,9 @@ class TranscriptEditor:
         # A split, merge, delete, retime or undo can change which caption
         # covers the moment being played, or what that caption now says.
         self.refresh_overlay()
+        # And where the captions divide the recording, which the strip under
+        # the video draws.
+        self.refresh_timeline()
 
     # ── lookup ──────────────────────────────────────────────────────────────
 
@@ -581,6 +678,8 @@ class TranscriptEditor:
         if caption is None:
             return
 
+        self.mark_current(caption.index)
+
         offset = args.get("offset") if isinstance(args, dict) else None
         seconds = self.time_at_offset(caption, offset)
 
@@ -650,6 +749,10 @@ class TranscriptEditor:
 
         if self.body is not None:
             self.body.scroll_to_block(caption.index)
+
+        # Search and autoscroll both move the reader to a caption, which is
+        # exactly what the strip means by "current".
+        self.mark_current(caption.index)
 
     # ── speaker ─────────────────────────────────────────────────────────────
 

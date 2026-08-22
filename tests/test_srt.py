@@ -743,8 +743,8 @@ class TestSplitWithoutACaret:
 class TestStatusLine:
     """
     The foot of the editor: how many captions there are, how far the last
-    one runs to, the language, and how fast the result reads. Everything in
-    it except the language is a measurement that moves as the reader edits.
+    one runs to, and how fast the result reads. A figure per label rather
+    than one line of text, so each can explain itself on hover.
     """
 
     class Label:
@@ -760,25 +760,31 @@ class TestStatusLine:
 
         return editor
 
-    def test_it_reads_as_one_line(self):
+    def figures(self, editor) -> dict:
+        labels = {name: self.Label() for name in ("captions", "duration", "wpm")}
+        editor.set_status_elements(**labels)
+
+        return labels
+
+    def test_each_figure_gets_its_own_value(self):
         editor = self.editor(
             SRTCaption(1, "00:00:00,000", "00:00:02,000", "Hej pa dig"),
             SRTCaption(2, "00:00:02,000", "00:01:05,000", "Hej igen"),
         )
 
-        label = self.Label()
-        editor.set_status_element(label, "Swedish")
+        labels = self.figures(editor)
 
-        assert label.text.startswith("2 captions  ·  1:05  ·  Swedish  ·  ")
-        assert label.text.endswith("wpm")
+        assert labels["captions"].text == "2 captions"
+        assert labels["duration"].text == "1:05"
+        assert labels["wpm"].text.endswith("wpm")
 
     def test_one_caption_is_singular(self):
-        editor = self.editor(SRTCaption(1, "00:00:00,000", "00:00:02,000", "Hej"))
+        labels = self.figures(
+            self.editor(SRTCaption(1, "00:00:00,000", "00:00:02,000", "Hej"))
+        )
 
-        label = self.Label()
-        editor.set_status_element(label)
-
-        assert label.text.startswith("1 caption  ·  0:02")
+        assert labels["captions"].text == "1 caption"
+        assert labels["duration"].text == "0:02"
 
     def test_an_hour_long_recording_says_hours(self):
         assert SRTEditor.format_duration(3725) == "1:02:05"
@@ -793,18 +799,30 @@ class TestStatusLine:
         """
 
         editor = self.editor(SRTCaption(1, "00:00:00,000", "00:00:02,000", "Hej"))
-        label = self.Label()
-        editor.set_status_element(label)
+        labels = self.figures(editor)
 
         editor.captions.append(
             SRTCaption(2, "00:00:02,000", "00:00:06,000", "Hej igen")
         )
         editor.update_words_per_minute()
 
-        assert label.text.startswith("2 captions  ·  0:06")
+        assert labels["captions"].text == "2 captions"
+        assert labels["duration"].text == "0:06"
 
     def test_no_captions_reports_no_running_time(self):
-        label = self.Label()
-        self.editor().set_status_element(label)
+        labels = self.figures(self.editor())
 
-        assert label.text.startswith("0 captions  ·  ")
+        assert labels["captions"].text == "0 captions"
+        assert labels["duration"].text == ""
+
+    def test_a_figure_the_page_does_not_show_is_simply_absent(self):
+        """
+        The page registers the figures it drew; nothing here assumes all of
+        them exist.
+        """
+
+        editor = self.editor(SRTCaption(1, "00:00:00,000", "00:00:02,000", "Hej"))
+        only = self.Label()
+        editor.set_status_elements(wpm=only)
+
+        assert only.text.endswith("wpm")

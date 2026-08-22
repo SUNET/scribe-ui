@@ -524,6 +524,7 @@ theme_styles = """
     /* The foot of the editor. Everything in it is a measurement of the
        work, and the last of them moves as the reader edits. */
     .editor-status {
+        gap: 0.5rem;
         padding: 0.5rem 0.25rem 0;
         border-top: 1px solid var(--color-border-subtle);
         font-size: 0.8125rem;
@@ -532,6 +533,20 @@ theme_styles = """
            read at all. */
         color: var(--color-text-secondary);
         font-variant-numeric: tabular-nums;
+    }
+
+    /* Each figure explains itself on hover, so each is its own element --
+       and each is dotted underneath, the usual sign that there is something
+       to hover. The dividers between them are not. */
+    .editor-status-figure {
+        /* Dotted underline only, never cursor: help -- the question-mark
+           cursor was reported as wrong over the editor's own text and is
+           kept out of the app entirely (see TestMarkedWordCursor). */
+        text-decoration: underline dotted var(--color-border);
+        text-underline-offset: 3px;
+    }
+    .editor-status-divider {
+        color: var(--color-text-muted);
     }
 
     /* ── Editor toolbar buttons (flat, no border, subtle bg in dark mode) ── */
@@ -1616,6 +1631,136 @@ theme_styles = """
     }
     .validation-issue:hover {
         background-color: var(--color-bg-surface-alt);
+    }
+
+    /* ── Speech strip ── */
+    /* Where someone is talking, under the video. The colours are stated as
+       custom properties because the canvas cannot read a stylesheet: the
+       component asks for these by name at draw time, which is also what
+       lets dark mode change them without the component knowing. */
+    .speech-timeline {
+        /* Speech along the top in the brand blue; the captions below it as
+           grey brackets, with the one being played or edited in the same
+           blue. The two are never in the same row and a bracket is not a
+           bar, so sharing a colour does not blur them together. */
+        --timeline-ground: var(--color-border-subtle);
+        --timeline-speech: var(--color-brand-primary);
+        --timeline-caption: var(--color-text-tertiary);
+        --timeline-caption-playing: var(--color-brand-primary);
+        --timeline-caption-current: var(--color-brand-primary);
+        --timeline-void: var(--color-bg-surface-hover);
+        --timeline-playhead: var(--color-text-danger);
+        position: relative;
+        width: 100%;
+        height: 4.5rem;
+        margin-top: 0.5rem;
+        border-radius: 6px;
+        background-color: var(--color-bg-surface-alt);
+        cursor: pointer;
+    }
+    .speech-timeline canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+    }
+    .body--dark .speech-timeline {
+        background-color: var(--color-bg-surface-alt);
+    }
+
+    /* What is under the pointer -- the time, whether anyone is talking
+       there, and which caption covers it. A canvas has no elements to hang
+       a tooltip on, so the strip works this out itself and draws it here.
+       Anchored to the pointer and never taking one: it would otherwise sit
+       between the reader and the strip they are trying to click. */
+    .speech-timeline-readout {
+        position: absolute;
+        bottom: calc(100% + 0.25rem);
+        transform: translateX(-50%);
+        z-index: 10;
+        padding: 2px 6px;
+        border-radius: 4px;
+        background-color: var(--color-bg-surface);
+        border: 1px solid var(--color-border-subtle);
+        box-shadow: 0 2px 6px var(--color-shadow-medium);
+        font-size: 0.75rem;
+        color: var(--color-text-primary);
+        white-space: nowrap;
+        pointer-events: none;
+        font-variant-numeric: tabular-nums;
+    }
+
+    /* The strip draws four things and names none of them, so the key does.
+       Small, muted, and directly under what it describes. */
+    .speech-timeline-legend {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.75rem;
+        margin-top: 0.35rem;
+        font-size: 0.75rem;
+        color: var(--color-text-secondary);
+    }
+    .speech-timeline-key {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+    }
+    /* Reads as part of the key -- what the strip is and what can be done to
+       it -- so it stays with it on the left. */
+    .speech-timeline-hint {
+        color: var(--color-text-muted);
+    }
+
+    /* Which minute of the recording is on the strip. A different question
+       from the key's, so it sits at the far end of the row rather than in
+       the queue behind it. */
+    .speech-timeline-range {
+        margin-left: auto;
+        color: var(--color-text-secondary);
+        font-variant-numeric: tabular-nums;
+    }
+
+    /* While a caption is being dragged the pointer owns it wherever it
+       goes, and nothing on the way should look selectable. */
+    .speech-timeline-dragging {
+        user-select: none;
+        cursor: grabbing !important;
+    }
+    .speech-timeline-swatch {
+        display: inline-block;
+        border-radius: 1px;
+    }
+    /* Each swatch is the shape the strip draws, not a uniform square: a
+       caption break is a thin full-height line there, and so is the
+       playhead, and reading the key should not need a second translation. */
+    .speech-timeline-swatch-speech {
+        width: 0.85rem;
+        height: 0.4rem;
+        border-radius: 2px;
+        background-color: var(--color-brand-primary);
+    }
+    .speech-timeline-swatch-silence {
+        width: 0.85rem;
+        height: 2px;
+        background-color: var(--color-border-subtle);
+    }
+    /* Drawn as the bracket it is on the strip, not as a block: which end
+       of a caption a boundary belongs to is the whole point of the shape. */
+    .speech-timeline-swatch-caption {
+        width: 0.7rem;
+        height: 0.7rem;
+        border: 2px solid var(--color-brand-primary);
+        border-left-width: 3px;
+        border-right-width: 3px;
+        border-top: 2px solid var(--color-brand-primary);
+        border-bottom: 2px solid var(--color-brand-primary);
+        background: transparent;
+        border-radius: 1px;
+    }
+    .speech-timeline-swatch-playhead {
+        width: 2px;
+        height: 0.75rem;
+        background-color: var(--color-text-danger);
     }
 
     /* ── SRT editor controls under the video ── */

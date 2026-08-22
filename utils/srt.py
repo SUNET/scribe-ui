@@ -91,10 +91,8 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         # the reader's attention should move to.
         self.on_select: Optional[Callable] = None
         self.words_per_minute_element = None
-        # The editor's own status line, and the fixed text the page hands it
-        # (the language) -- see set_status_element.
-        self.status_element = None
-        self.status_suffix = ""
+        # The status line's own figures, by name -- see set_status_elements.
+        self.status_elements: dict = {}
         self.speakers = set()
         self.data_format = None
         self.filename = filename
@@ -460,16 +458,36 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
 
         self.words_per_minute_element = element
 
-    def set_status_element(self, element, suffix: str = "") -> None:
+    def set_status_elements(self, **elements) -> None:
         """
-        Register the editor's status line, and whatever fixed text belongs
-        at the end of it -- the transcription's language, which the page
-        knows and the editor does not.
+        Register the status line's own figures, by name: "captions",
+        "duration" and "wpm". Each is a label of its own rather than one
+        line of text, so each can say what it means on hover -- a bare
+        number in a row of numbers explains nothing.
+
+        The language is not among them: it never changes, so the page draws
+        it once and the editor never touches it again.
         """
 
-        self.status_element = element
-        self.status_suffix = suffix
+        self.status_elements = elements
         self.update_status()
+
+    def status_values(self) -> dict:
+        """
+        What the status line reports, keyed the same way its elements are.
+        """
+
+        count = len(self.captions)
+
+        return {
+            "captions": f"{count} caption" if count == 1 else f"{count} captions",
+            "duration": (
+                self.format_duration(self.captions[-1].get_end_seconds())
+                if self.captions
+                else ""
+            ),
+            "wpm": f"{self.get_words_per_minute():.0f} wpm",
+        }
 
     def update_status(self) -> None:
         """
@@ -477,25 +495,15 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         last one runs to, and how fast the result reads.
         """
 
-        element = getattr(self, "status_element", None)
+        elements = getattr(self, "status_elements", None)
 
-        if element is None:
+        if not elements:
             return
 
-        count = len(self.captions)
-        parts = [f"{count} caption" if count == 1 else f"{count} captions"]
+        values = self.status_values()
 
-        if self.captions:
-            parts.append(self.format_duration(self.captions[-1].get_end_seconds()))
-
-        suffix = getattr(self, "status_suffix", "")
-
-        if suffix:
-            parts.append(suffix)
-
-        parts.append(f"{self.get_words_per_minute():.0f} wpm")
-
-        element.set_text("  ·  ".join(parts))
+        for name, element in elements.items():
+            element.set_text(values.get(name, ""))
 
     @staticmethod
     def format_duration(seconds: float) -> str:
