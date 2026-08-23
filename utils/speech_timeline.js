@@ -223,6 +223,11 @@ export default {
     // change at any time.
     this.observer = new ResizeObserver(() => this.draw());
     this.observer.observe(this.$refs.root);
+    // The wrapper too: it is what moves when the strip docks, and it can
+    // change size in ways the strip inside it does not report on its own.
+    if (this.$refs.root.parentElement) {
+      this.observer.observe(this.$refs.root.parentElement);
+    }
 
     // The menu rail opens and closes, and a docked strip has to start where
     // it ends. Watched rather than measured once, and read again after the
@@ -436,7 +441,53 @@ export default {
       this.$emit("dock", { docked: willDock });
 
       // A different width, and a different window across it.
-      this.$nextTick(() => this.draw());
+      this.settle();
+    },
+
+    // Redraw once the page has settled into its new shape.
+    //
+    // One redraw on the next tick is not enough: moving the strip teleports
+    // it, changes the padding the page keeps for it and moves the splitter
+    // under it, and the box it ends up with is not known until the browser
+    // has laid all of that out. Drawn too early the canvas keeps its old
+    // backing size and the strip comes back stretched -- the frames below
+    // are cheap, and the last one covers a transition finishing after them.
+    settle() {
+      // Let go of the old backing store first. A canvas is as wide as its
+      // own pixels unless something stops it, so on the way back from the
+      // foot of the page the strip measured itself against a box its own
+      // canvas was holding open -- and came back the width it had been
+      // docked at, with nothing drawn on it.
+      this.shrinkCanvas();
+
+      this.$nextTick(() => {
+        this.followTheRail();
+        this.draw();
+
+        requestAnimationFrame(() => {
+          this.followTheRail();
+          this.draw();
+        });
+
+        setTimeout(() => {
+          this.followTheRail();
+          this.draw();
+        }, 250);
+      });
+    },
+
+    // Back to nothing, so the element around it can be measured for what it
+    // is rather than for what the canvas used to be. draw() sizes it again
+    // from the box it finds.
+    shrinkCanvas() {
+      const canvas = this.$refs.canvas;
+
+      if (!canvas) return;
+
+      canvas.width = 0;
+      canvas.height = 0;
+      canvas.style.width = "100%";
+      canvas.style.height = "100%";
     },
 
     // The page has to leave room for a strip fixed along its foot, and the

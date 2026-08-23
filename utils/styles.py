@@ -1713,6 +1713,7 @@ theme_styles = """
        component asks for these by name at draw time, which is also what
        lets dark mode change them without the component knowing. */
     .speech-timeline {
+        min-width: 0;
         /* Speech along the top in the brand blue; the captions below it as
            grey brackets, with the one being played or edited in the same
            blue. The two are never in the same row and a bracket is not a
@@ -1741,6 +1742,17 @@ theme_styles = """
         display: block;
         width: 100%;
         height: 100%;
+        /* A canvas is as wide as its own backing store unless it is told
+           otherwise, and min-content sizing honours that: coming back from
+           the foot of the page, where it had been drawn several hundred
+           pixels wider, it held its old width open and pushed the legend
+           out past the edge of the column. */
+        max-width: 100%;
+        min-width: 0;
+    }
+    .speech-timeline-wrap {
+        min-width: 0;
+        max-width: 100%;
     }
     .body--dark .speech-timeline {
         background-color: var(--color-bg-surface-alt);

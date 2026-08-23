@@ -784,6 +784,49 @@ class TestDockingTheStrip:
         assert "if (willDock === this.docked) return;" in body
         assert body.index("if (willDock === this.docked)") < body.index('$emit("dock"')
 
+    def test_it_redraws_once_the_page_has_settled(self):
+        """
+        Moving the strip teleports it, changes the padding the page keeps
+        for it and moves the splitter under it. The box it ends up with is
+        not known until the browser has laid all of that out, and drawn too
+        early the canvas keeps its old backing size -- which is what left it
+        stretched on the way back from the bottom of the page.
+        """
+
+        source = self.source()
+        body = source[source.index("settle() {"):]
+        body = body[: body.index("\n    },")]
+
+        assert "this.shrinkCanvas();" in body, "before anything is measured"
+        assert "this.$nextTick(" in body
+        assert "requestAnimationFrame(" in body
+        assert "setTimeout(" in body, "and once more after any transition"
+        assert body.count("this.draw();") == 3
+
+    def test_the_canvas_lets_go_of_its_old_size_first(self):
+        """
+        A canvas is as wide as its own backing store unless something stops
+        it, and min-content sizing honours that -- coming back from the foot
+        of the page the strip measured itself against a box its own canvas
+        was holding open, and came back docked-width with nothing on it.
+        """
+
+        source = self.source()
+        body = source[source.index("shrinkCanvas() {"):]
+        body = body[: body.index("\n    },")]
+
+        assert "canvas.width = 0;" in body
+        assert 'canvas.style.width = "100%";' in body
+
+    def test_the_stylesheet_holds_it_to_its_box_too(self):
+        from utils.styles import theme_styles
+
+        rule = theme_styles[theme_styles.index(".speech-timeline canvas {"):]
+        rule = rule[: rule.index("}")]
+
+        assert "max-width: 100%" in rule
+        assert "min-width: 0" in rule
+
     def test_the_page_is_told_to_leave_room(self):
         """
         A fixed strip takes no space of its own, so the foot of the editor
