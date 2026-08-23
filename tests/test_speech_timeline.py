@@ -913,6 +913,97 @@ class TestDockingTheStrip:
         assert '_props["startDocked"]' in source
 
 
+class TestTheDrawLoopIsCheap:
+    """
+    While the recording plays the strip redraws every animation frame, so
+    everything draw() does happens sixty times a second.
+    """
+
+    def source(self) -> str:
+        return pathlib.Path("utils/speech_timeline.js").read_text()
+
+    def test_the_canvas_is_resized_only_when_it_changed(self):
+        """
+        Assigning canvas.width throws the backing store away and allocates a
+        new one. The size changes when the splitter moves, when the strip
+        docks and when the window is resized -- not sixty times a second.
+        """
+
+        source = self.source()
+        body = source[source.index("    draw() {"):]
+        body = body[: body.index("\n    },")]
+
+        assert "if (backing !== this.backing) {" in body
+        assert body.count("canvas.width =") == 1
+
+    def test_the_colours_are_read_once(self):
+        """
+        getComputedStyle can force a style recalculation, and draw() asks for
+        half a dozen custom properties.
+        """
+
+        source = self.source()
+        body = source[source.index("colour(name, fallback) {"):]
+        body = body[: body.index("\n    },")]
+
+        assert "getComputedStyle" not in body
+        assert "this.palette[name]" in body
+
+    def test_the_palette_is_dropped_when_it_could_have_changed(self):
+        """
+        Dark mode is a class on the body, and the strip moving puts it
+        somewhere with a different background behind it.
+        """
+
+        source = self.source()
+
+        assert "this.themeObserver = new MutationObserver(this.forgetPalette)" in source
+        assert 'attributeFilter: ["class"]' in source
+        assert "this.palette = null;" in source[source.index("onDockDrop() {"):]
+
+    def test_only_what_is_on_screen_is_drawn(self):
+        """
+        An hour of speech is thousands of runs and a subtitle file thousands
+        of captions; both lists are time-ordered, so the first one that
+        could be visible is found by bisection rather than by walking past
+        every earlier one.
+        """
+
+        source = self.source()
+        body = source[source.index("    draw() {"):]
+        body = body[: body.index("\n    },")]
+
+        assert "this.within(this.runs, from, from + visible)" in body
+        assert "this.visibleCaptions(from, from + visible)" in body
+        assert "for (const caption of this.captions)" not in body
+
+    def test_the_search_steps_back_over_a_long_entry(self):
+        """
+        The first entry reaching into the window is not necessarily the
+        first that starts inside it: a long one can begin well before and
+        run past.
+        """
+
+        source = self.source()
+        body = source[source.index("within(entries, from, to,"):]
+        body = body[: body.index("\n    },")]
+
+        assert "while (index > 0 && read(entries[index - 1])[1] >= from)" in body
+
+    def test_the_dragged_caption_is_drawn_wherever_it_is_going(self):
+        """
+        It is drawn where it would land, which can be outside the window its
+        own timings still put it in.
+        """
+
+        source = self.source()
+        body = source[source.index("visibleCaptions(from, to) {"):]
+        body = body[: body.index("\n    },")]
+
+        assert "this.preview" in body
+        assert "shown.push(held)" in body
+
+
 class TestWiring:
     """
     The strip is only offered where there is word data to draw it from, and

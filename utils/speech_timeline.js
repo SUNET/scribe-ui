@@ -180,7 +180,12 @@ export default {
       video: null,
       observer: null,
       railObserver: null,
+      themeObserver: null,
       frame: null,
+      // The canvas's backing size, as "widthxheightxratio" -- see draw().
+      backing: null,
+      // The custom properties draw() paints with, read once -- see colour().
+      palette: null,
     };
   },
   watch: {
@@ -242,6 +247,14 @@ export default {
 
     window.addEventListener("resize", this.followTheRail);
 
+    // Light and dark are a class on the body, and every colour the strip
+    // paints with changes with it.
+    this.themeObserver = new MutationObserver(this.forgetPalette);
+    this.themeObserver.observe(document.body, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+
     this.draw();
   },
   beforeUnmount() {
@@ -263,6 +276,7 @@ export default {
 
     if (this.observer) this.observer.disconnect();
     if (this.railObserver) this.railObserver.disconnect();
+    if (this.themeObserver) this.themeObserver.disconnect();
 
     const rail = document.querySelector(".q-drawer--left");
     if (rail) rail.removeEventListener("transitionend", this.followTheRail);
@@ -437,6 +451,7 @@ export default {
       if (willDock === this.docked) return;
 
       this.docked = willDock;
+      this.palette = null;
       this.markDocked();
       this.$emit("dock", { docked: willDock });
 
@@ -696,6 +711,66 @@ export default {
       return Math.max(0, speechEdge === null ? seconds : speechEdge);
     },
 
+    // The slice of a time-ordered list that overlaps a window.
+    //
+    // Bisection for the first candidate, then a walk until they stop
+    // overlapping: the lists are ordered by start, so once one begins after
+    // the window ends, so does everything after it. Entries are [start,
+    // end] pairs (the speech runs) or objects (the captions); `read` says
+    // which. The first entry that reaches into the window is not
+    // necessarily the first that starts inside it -- a long one can begin
+    // well before and run past -- so the search steps back over anything
+    // still overlapping.
+    within(entries, from, to, read = (entry) => entry) {
+      const found = [];
+
+      if (!entries.length) return found;
+
+      let low = 0;
+      let high = entries.length;
+
+      while (low < high) {
+        const middle = (low + high) >> 1;
+
+        if (read(entries[middle])[0] < from) low = middle + 1;
+        else high = middle;
+      }
+
+      let index = low;
+
+      while (index > 0 && read(entries[index - 1])[1] >= from) index -= 1;
+
+      for (; index < entries.length; index += 1) {
+        const [start, end] = read(entries[index]);
+
+        if (start > to) break;
+        if (end >= from) found.push(entries[index]);
+      }
+
+      return found;
+    },
+
+    visibleCaptions(from, to) {
+      const shown = this.within(
+        this.captions,
+        from,
+        to,
+        (caption) => [caption.start, caption.end]
+      );
+
+      // The one being dragged is drawn where it would land, which can be
+      // outside the window its own timings still put it in.
+      const dragging = this.preview;
+
+      if (dragging && !shown.some((caption) => caption.id === dragging.id)) {
+        const held = this.captions.find((caption) => caption.id === dragging.id);
+
+        if (held) shown.push(held);
+      }
+
+      return shown;
+    },
+
     // The closest of a set of times, if any of them is within reach.
     nearest(seconds, candidates, reach) {
       let best = null;
@@ -773,12 +848,42 @@ export default {
 
     // ── drawing ───────────────────────────────────────────────────────────
 
+    // getComputedStyle can force a style recalculation, and draw() asks for
+    // half a dozen colours -- sixty times a second while the recording
+    // plays. They are read once and kept until something that could change
+    // them happens: the theme, or the strip moving to a place with a
+    // different background behind it.
     colour(name, fallback) {
-      const value = getComputedStyle(this.$refs.root)
-        .getPropertyValue(name)
-        .trim();
+      if (this.palette === null) this.readPalette();
 
-      return value || fallback;
+      return this.palette[name] || fallback;
+    },
+
+    readPalette() {
+      const style = getComputedStyle(this.$refs.root);
+      const palette = {};
+
+      for (const name of [
+        "--timeline-ground",
+        "--timeline-speech",
+        "--timeline-caption",
+        "--timeline-caption-playing",
+        "--timeline-caption-current",
+        "--timeline-void",
+        "--timeline-playhead",
+        "--timeline-label",
+      ]) {
+        palette[name] = style.getPropertyValue(name).trim();
+      }
+
+      this.palette = palette;
+    },
+
+    // Dark mode is a class on the body, and every colour above is a custom
+    // property that changes with it.
+    forgetPalette() {
+      this.palette = null;
+      this.draw();
     },
 
     draw() {
@@ -793,11 +898,22 @@ export default {
 
       // Drawn at the display's own pixel density, or the strip is soft and
       // the playhead lands between pixels.
+      //
+      // Only when it has actually changed, though: assigning canvas.width
+      // throws the backing store away and allocates a new one, and this
+      // runs every animation frame while the recording plays. The size
+      // changes when the splitter moves, when the strip docks and when the
+      // window is resized -- not sixty times a second.
       const ratio = window.devicePixelRatio || 1;
-      canvas.width = width * ratio;
-      canvas.height = height * ratio;
-      canvas.style.width = `${width}px`;
-      canvas.style.height = `${height}px`;
+      const backing = `${width}x${height}x${ratio}`;
+
+      if (backing !== this.backing) {
+        canvas.width = width * ratio;
+        canvas.height = height * ratio;
+        canvas.style.width = `${width}px`;
+        canvas.style.height = `${height}px`;
+        this.backing = backing;
+      }
 
       const context = canvas.getContext("2d");
       context.setTransform(ratio, 0, 0, ratio, 0, 0);
@@ -832,9 +948,12 @@ export default {
 
       context.fillStyle = this.colour("--timeline-speech", "#9aa1ab");
 
-      for (const [start, end] of this.runs) {
-        if (end < from || start > from + visible) continue;
-
+      // Only what is on screen. Both lists are time-ordered, so the first
+      // one that could be visible is found by bisection rather than by
+      // walking past every earlier one -- an hour of speech is thousands of
+      // runs and a subtitle file thousands of captions, and this ran for
+      // every one of them on every animation frame.
+      for (const [start, end] of this.within(this.runs, from, from + visible)) {
         const left = at(start);
         // Never narrower than a pixel: a single short word still happened.
         const run = Math.max(1, at(end) - left);
@@ -848,11 +967,9 @@ export default {
       // begins, which is the common case in a subtitle file.
       const dragging = this.preview;
 
-      for (const caption of this.captions) {
+      for (const caption of this.visibleCaptions(from, from + visible)) {
         const shown =
           dragging && dragging.id === caption.id ? dragging : caption;
-
-        if (shown.end < from || shown.start > from + visible) continue;
 
         const held = dragging && dragging.id === caption.id;
         const hovered = this.hovered === caption.id;
