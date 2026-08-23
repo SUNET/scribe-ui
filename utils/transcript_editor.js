@@ -1007,10 +1007,14 @@ export default {
     // Typed into the caption rather than reported as a structural edit: it
     // is a character like any other once it is in, and the same onInput
     // that follows a keystroke carries it to the server, marks it as the
-    // reader's own and redraws the character counts. A caret elsewhere --
-    // the reader clicked the icon without ever putting it in this caption
-    // -- lands the note at the end of the text, where a note that belongs
-    // to the whole caption is what was meant.
+    // reader's own and redraws the character counts.
+    //
+    // A caret inside this caption puts one note exactly where it is. A
+    // caret elsewhere -- the reader clicked the icon without ever putting
+    // it in this caption -- means the note belongs to the caption as a
+    // whole rather than to a place in it, and a caption that is all music
+    // is written with a note at each end: "♪ Lyrics ♪". An empty caption
+    // gets one note rather than a pair with nothing between them.
     insertNote(id) {
       const block = this.$refs.body?.querySelector(
         `.transcript-text[data-id="${id}"]`
@@ -1020,25 +1024,53 @@ export default {
 
       const at = this.caret();
 
-      if (!at || at.id !== id) {
-        this.placeCaretAt(block, this.plainText(block.textContent).length);
+      if (at && at.id === id) {
+        this.writeNote(NOTE);
+        this.onInput();
+
+        return;
       }
 
+      const text = this.plainText(block.textContent);
+
+      if (!text.trim()) {
+        this.placeCaretAt(block, text.length);
+        this.writeNote(NOTE);
+        this.onInput();
+
+        return;
+      }
+
+      // The end first: writing the opening note would move it along by
+      // everything just inserted, and the length read here would be stale.
+      // Each note is held off the text by a space unless one is already
+      // there.
+      this.placeCaretAt(block, text.length);
+      this.writeNote(`${/\s$/.test(text) ? "" : " "}${NOTE}`);
+
+      this.placeCaretAt(block, 0);
+      this.writeNote(`${NOTE}${/^\s/.test(text) ? "" : " "}`);
+
+      this.onInput();
+    },
+
+    // Put text in at the caret, leaving the caret after it. Replaces the
+    // selection when there is one, the same as typing the character would.
+    writeNote(text) {
       const selection = window.getSelection();
+
       if (!selection.rangeCount) return;
 
       const range = selection.getRangeAt(0);
       range.deleteContents();
 
-      const node = document.createTextNode(NOTE);
+      const node = document.createTextNode(text);
       range.insertNode(node);
       range.setStart(node, node.length);
       range.collapse(true);
 
       selection.removeAllRanges();
       selection.addRange(range);
-
-      this.onInput();
     },
 
     // The split icon in a caption's own action row -- the mouse equivalent
@@ -1135,58 +1167,22 @@ export default {
       const at = this.caret();
       if (!at) return;
 
-      // The caption-scoped shortcuts, subtitles only -- they are the
-      // keyboard's half of the split/merge/add/delete actions the caption
-      // row offers the mouse, and a transcription has none of those. Each
-      // needs to know which caption the caret is in, which is why they live
-      // here rather than in the page's own document-level handler.
+      // The block-scoped shortcuts: one list per format, in
+      // subtitleShortcut and transcriptionShortcut below. They need to know
+      // which block the caret is in, which is why they live here rather
+      // than in the page's own document-level handler, and they are kept
+      // apart so a key can be given to one format without silently giving
+      // it to the other.
       //
       // Ahead of the Enter branches below: Ctrl/Cmd+Shift+Enter would
       // otherwise fall through to the split, which only checks for Enter
       // with a modifier and would not notice the Shift.
-      if (this.subtitleMode && (event.ctrlKey || event.metaKey)) {
-        // Add a caption after this one. Shift is what separates it from the
-        // plain Ctrl/Cmd+Enter split.
-        if (event.key === "Enter" && event.shiftKey) {
-          event.preventDefault();
-          this.flush();
-          this.$emit("addblock", { id: at.id });
-          return;
-        }
+      if (event.ctrlKey || event.metaKey) {
+        const handled = this.subtitleMode
+          ? this.subtitleShortcut(event, at)
+          : this.transcriptionShortcut(event, at);
 
-        // Hand a word across the boundary to the caption either side. The
-        // server picks the timings back up from the word data, so this is a
-        // report rather than anything worked out here.
-        if (event.key === "ArrowUp") {
-          event.preventDefault();
-          this.flush();
-          this.$emit("moveword", { id: at.id, direction: "previous" });
-          return;
-        }
-
-        if (event.key === "ArrowDown") {
-          event.preventDefault();
-          this.flush();
-          this.$emit("moveword", { id: at.id, direction: "next" });
-          return;
-        }
-
-        // Ctrl only for these two, deliberately: Cmd+D and Cmd+M are the
-        // browser's own bookmark and minimise on a Mac, and taking them
-        // would be taking them from the whole window.
-        if (key === "m" && !event.metaKey) {
-          event.preventDefault();
-          this.flush();
-          this.$emit("mergeblock", { id: at.id, direction: "next" });
-          return;
-        }
-
-        if (key === "d" && !event.metaKey) {
-          event.preventDefault();
-          this.flush();
-          this.$emit("deleteblock", { id: at.id });
-          return;
-        }
+        if (handled) return;
       }
 
       // Shift+Enter is a line break inside this caption. Ahead of the split
@@ -1227,6 +1223,86 @@ export default {
         this.flush();
         this.$emit("mergeblock", { id: at.id, direction: "next" });
       }
+    },
+
+    // Ctrl/Cmd with the caret in a caption. The keyboard's half of the
+    // caption row's own action icons, and deliberately a list of its own
+    // rather than one list shared with a transcription: the two agree today
+    // -- a paragraph is split, merged, deleted and trimmed at its edges
+    // exactly as a caption is -- but they are separate things to change,
+    // and add-after already only means something here, being the half of a
+    // caption row a transcription does not have.
+    subtitleShortcut(event, at) {
+      const key = event.key.toLowerCase();
+
+      // Add a caption after this one. Shift is what separates it from the
+      // plain Ctrl/Cmd+Enter split.
+      if (event.key === "Enter" && event.shiftKey) {
+        return this.report(event, "addblock", { id: at.id });
+      }
+
+      // Hand a word across the boundary to the caption either side. The
+      // server picks the timings back up from the word data, so this is a
+      // report rather than anything worked out here.
+      if (event.key === "ArrowUp") {
+        return this.report(event, "moveword", { id: at.id, direction: "previous" });
+      }
+
+      if (event.key === "ArrowDown") {
+        return this.report(event, "moveword", { id: at.id, direction: "next" });
+      }
+
+      // Ctrl only for these two, deliberately: Cmd+D and Cmd+M are the
+      // browser's own bookmark and minimise on a Mac, and taking them
+      // would be taking them from the whole window.
+      if (key === "m" && !event.metaKey) {
+        return this.report(event, "mergeblock", { id: at.id, direction: "next" });
+      }
+
+      if (key === "d" && !event.metaKey) {
+        return this.report(event, "deleteblock", { id: at.id });
+      }
+
+      return false;
+    },
+
+    // Ctrl/Cmd with the caret in a paragraph. The same keys as the subtitle
+    // list above, minus add-after: a transcription has no caption row for
+    // it to be the other half of. Kept as its own list for the reason given
+    // there.
+    transcriptionShortcut(event, at) {
+      const key = event.key.toLowerCase();
+
+      if (event.key === "ArrowUp") {
+        return this.report(event, "moveword", { id: at.id, direction: "previous" });
+      }
+
+      if (event.key === "ArrowDown") {
+        return this.report(event, "moveword", { id: at.id, direction: "next" });
+      }
+
+      // Ctrl only, same reasoning as the subtitle list.
+      if (key === "m" && !event.metaKey) {
+        return this.report(event, "mergeblock", { id: at.id, direction: "next" });
+      }
+
+      if (key === "d" && !event.metaKey) {
+        return this.report(event, "deleteblock", { id: at.id });
+      }
+
+      return false;
+    },
+
+    // Stop the browser from acting on the key, get whatever is pending to
+    // the server before the structure changes under it, then report the
+    // change. Returns true, so a key list can hand its own answer straight
+    // back with `return this.report(...)`.
+    report(event, name, payload) {
+      event.preventDefault();
+      this.flush();
+      this.$emit(name, payload);
+
+      return true;
     },
 
     assign(name) {

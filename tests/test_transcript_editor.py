@@ -555,13 +555,16 @@ class TestSplitFocus:
         assert calls == [(editor.captions[1].index, 0)]
 
 
-class TestSubtitleShortcuts:
+class TestBlockShortcuts:
     """
-    The keyboard half of the caption row's split/merge/add/delete actions,
-    plus handing a word across a caption boundary. Subtitles only: a
-    transcription offers none of those actions, and these all need to know
-    which caption the caret is in, which is why they live in the component
-    rather than the page's own document-level keyboard handler.
+    Ctrl/Cmd with the caret in a block: split, merge, delete, add after and
+    handing a word across a boundary. One list per format
+    (`subtitleShortcut`, `transcriptionShortcut`), kept apart so a key given
+    to one cannot silently reach the other -- they agree today, add-after
+    aside, since a paragraph is split, merged, deleted and trimmed exactly
+    as a caption is. They live in the component rather than the page's own
+    document-level keyboard handler because each has to know which block the
+    caret is in.
     """
 
     def source(self) -> str:
@@ -569,20 +572,48 @@ class TestSubtitleShortcuts:
 
         return pathlib.Path("utils/transcript_editor.js").read_text()
 
-    def body(self) -> str:
+    def method(self, name: str) -> str:
+        """
+        The named method's own source. Anchored on the definition -- its own
+        indented line -- rather than the first mention of the name, which is
+        a call site inside onKeydown for every one of these.
+        """
+
         source = self.source()
-        body = source[source.index("onKeydown(event) {"):]
+        body = source[source.index(f"\n    {name}(event") + 1:]
 
         return body[: body.index("\n    },\n")]
 
-    def test_they_are_gated_on_subtitle_mode_and_a_modifier(self):
-        assert "if (this.subtitleMode && (event.ctrlKey || event.metaKey)) {" in self.body()
+    def body(self) -> str:
+        return self.method("onKeydown")
 
-    def test_add_caption_after_is_shift_enter(self):
+    def subtitles(self) -> str:
+        return self.method("subtitleShortcut")
+
+    def transcription(self) -> str:
+        return self.method("transcriptionShortcut")
+
+    def test_they_are_gated_on_a_modifier_alone(self):
+        assert "if (event.ctrlKey || event.metaKey) {" in self.body()
+
+    def test_the_format_picks_which_list_answers(self):
         body = self.body()
 
-        assert 'if (event.key === "Enter" && event.shiftKey) {' in body
-        assert '$emit("addblock", { id: at.id })' in body
+        assert "this.subtitleMode" in body
+        assert "? this.subtitleShortcut(event, at)" in body
+        assert ": this.transcriptionShortcut(event, at)" in body
+
+    def test_add_caption_after_is_shift_enter_and_subtitles_only(self):
+        """
+        It is the keyboard's half of the caption row's own "+", and a
+        transcription has no such row.
+        """
+
+        subtitles = self.subtitles()
+
+        assert 'if (event.key === "Enter" && event.shiftKey) {' in subtitles
+        assert 'this.report(event, "addblock", { id: at.id })' in subtitles
+        assert "addblock" not in self.transcription()
 
     def test_add_is_checked_before_the_plain_split(self):
         """
@@ -593,53 +624,72 @@ class TestSubtitleShortcuts:
 
         body = self.body()
 
-        assert body.index('event.shiftKey') < body.index('$emit("splitblock"')
+        assert body.index("this.subtitleShortcut") < body.index('$emit("splitblock"')
 
-    def test_the_word_moves_report_their_direction(self):
-        body = self.body()
+    def test_the_word_moves_report_their_direction_in_both(self):
+        for keys in (self.subtitles(), self.transcription()):
+            assert 'if (event.key === "ArrowUp") {' in keys
+            assert (
+                'this.report(event, "moveword", { id: at.id, direction: "previous" })'
+                in keys
+            )
+            assert 'if (event.key === "ArrowDown") {' in keys
+            assert (
+                'this.report(event, "moveword", { id: at.id, direction: "next" })'
+                in keys
+            )
 
-        assert 'if (event.key === "ArrowUp") {' in body
-        assert '$emit("moveword", { id: at.id, direction: "previous" })' in body
-        assert 'if (event.key === "ArrowDown") {' in body
-        assert '$emit("moveword", { id: at.id, direction: "next" })' in body
-
-    def test_merge_and_delete_refuse_the_command_key(self):
+    def test_merge_and_delete_refuse_the_command_key_in_both(self):
         """
         Cmd+D and Cmd+M are the browser's own bookmark and minimise on a
         Mac, and taking them would be taking them from the whole window.
         """
 
-        body = self.body()
+        for keys in (self.subtitles(), self.transcription()):
+            assert 'if (key === "m" && !event.metaKey) {' in keys
+            assert 'if (key === "d" && !event.metaKey) {' in keys
 
-        assert 'if (key === "m" && !event.metaKey) {' in body
-        assert 'if (key === "d" && !event.metaKey) {' in body
+    def test_merge_goes_to_the_next_block_in_both(self):
+        for keys in (self.subtitles(), self.transcription()):
+            branch = keys[keys.index('if (key === "m"'):]
 
-    def test_merge_goes_to_the_next_caption(self):
-        body = self.body()
-        branch = body[body.index('if (key === "m"'):]
+            assert (
+                'this.report(event, "mergeblock", { id: at.id, direction: "next" })'
+                in branch
+            )
 
-        assert '$emit("mergeblock", { id: at.id, direction: "next" })' in branch
+    def test_delete_reports_the_block_the_caret_is_in_in_both(self):
+        for keys in (self.subtitles(), self.transcription()):
+            branch = keys[keys.index('if (key === "d"'):]
 
-    def test_delete_reports_the_caption_the_caret_is_in(self):
-        body = self.body()
-        branch = body[body.index('if (key === "d"'):]
+            assert 'this.report(event, "deleteblock", { id: at.id })' in branch
 
-        assert '$emit("deleteblock", { id: at.id })' in branch
+    def test_neither_list_claims_a_key_it_does_not_handle(self):
+        """
+        Falling through to false is what lets Ctrl/Cmd+Enter reach the split
+        branch below, and leaves every other modifier combination to the
+        page's own document-level handler.
+        """
+
+        for keys in (self.subtitles(), self.transcription()):
+            assert keys.rstrip().endswith("return false;")
 
     def test_each_one_stops_the_browser_and_flushes_first(self):
         """
         A pending edit has to reach the server before the structure changes
         under it, and every one of these keys means something to the browser
-        too.
+        too. Both lists report through the same helper, so this is asserted
+        once, on it.
         """
 
-        body = self.body()
-        gated = body[
-            body.index("if (this.subtitleMode &&"):body.index("// Shift+Enter is a line break")
-        ]
+        report = self.method("report")
 
-        assert gated.count("event.preventDefault()") == 5
-        assert gated.count("this.flush()") == 5
+        assert "event.preventDefault()" in report
+        assert report.index("this.flush()") < report.index("this.$emit(name, payload)")
+
+        for keys in (self.subtitles(), self.transcription()):
+            assert "event.preventDefault()" not in keys
+            assert "this.flush()" not in keys
 
 
 class TestTheMusicNote:
@@ -686,38 +736,68 @@ class TestTheMusicNote:
             assert "@mousedown.prevent.stop" in branch, action
 
     def test_it_lands_at_the_caret(self):
-        source = self.source()
-        body = source[source.index("insertNote(id) {"):]
-        body = body[: body.index("\n    },")]
+        body = self.method("insertNote")
 
-        assert "const node = document.createTextNode(NOTE);" in body
-        assert "range.insertNode(node)" in body
+        assert "if (at && at.id === id) {" in body
+        assert "this.writeNote(NOTE)" in body
 
-    def test_a_caret_elsewhere_lands_it_at_the_end(self):
+        writing = self.method("writeNote")
+
+        assert "const node = document.createTextNode(text);" in writing
+        assert "range.insertNode(node)" in writing
+
+    def test_a_caret_elsewhere_wraps_the_whole_caption(self):
         """
         The reader clicked the icon without ever putting the caret in this
-        caption, so a note belonging to the whole caption is what was meant.
+        caption, so the note belongs to the caption as a whole -- and a
+        caption that is all music is written with one at each end,
+        "♪ Lyrics ♪".
         """
 
-        source = self.source()
-        body = source[source.index("insertNote(id) {"):]
-        body = body[: body.index("\n    },")]
+        body = self.method("insertNote")
 
-        assert "if (!at || at.id !== id)" in body
-        assert "this.plainText(block.textContent).length" in body
+        end = body.index("this.placeCaretAt(block, text.length)")
+        start = body.index("this.placeCaretAt(block, 0)")
+
+        # The end first, or the opening note moves it along and the length
+        # read before either insert is stale.
+        assert end < start
+
+        assert 'this.writeNote(`${/\\s$/.test(text) ? "" : " "}${NOTE}`)' in body
+        assert 'this.writeNote(`${NOTE}${/^\\s/.test(text) ? "" : " "}`)' in body
+
+    def test_an_empty_caption_gets_one_note_rather_than_a_pair(self):
+        """
+        A pair with nothing between them is not what "this caption is
+        music" looks like.
+        """
+
+        body = self.method("insertNote")
+
+        assert "if (!text.trim()) {" in body
+        assert body.index("if (!text.trim()) {") < body.index(
+            "this.placeCaretAt(block, 0)"
+        )
 
     def test_it_is_reported_as_an_ordinary_edit(self):
         """
         It is a character like any other once it is in: the same onInput
         that follows a keystroke carries it to the server, marks it as the
-        reader's own and redraws the character counts.
+        reader's own and redraws the character counts. Once per click,
+        including the wrapping pair -- two would be two undo steps for one
+        gesture.
         """
 
-        source = self.source()
-        body = source[source.index("insertNote(id) {"):]
-        body = body[: body.index("\n    },")]
+        body = self.method("insertNote")
 
-        assert "this.onInput();" in body
+        assert body.count("this.onInput();") == 3
+        assert "this.onInput();" not in self.method("writeNote")
+
+    def method(self, name: str) -> str:
+        source = self.source()
+        body = source[source.index(f"\n    {name}(") + 1:]
+
+        return body[: body.index("\n    },")]
 
 
 class TestMoveWordIsWired:
@@ -2469,3 +2549,176 @@ class TestSpeakerMenuIcons:
 
         assert "@click.stop=" in icon
         assert "renamespeaker" in icon
+
+
+class TestTheShortcutsDialog:
+    """
+    The dialog is worded for whichever format is open. A reader editing
+    subtitles works on captions and a reader editing a transcription on
+    paragraphs; a list that says "block" says it to neither of them. Its
+    contents come from keyboard_shortcut_groups(), separate from the dialog
+    that draws them so the wording can be read without a UI.
+    """
+
+    def editor(self, data_format: str) -> SRTEditor:
+        """
+        As the page builds it: constructed and asked straight away, with
+        nothing parsed yet. The toolbar is built before any content is
+        fetched, so the dialog has to know the format from the editor's own
+        construction -- data_format read None here for the whole session
+        once, and every list came out worded for a transcription.
+        """
+
+        return SRTEditor("job-uuid", data_format, f"file.{data_format}")
+
+    def actions(self, data_format: str) -> dict:
+        groups = self.editor(data_format).keyboard_shortcut_groups()
+
+        return {
+            action: keys for _, rows in groups for action, keys in rows
+        }
+
+    def test_the_format_is_known_before_anything_is_parsed(self):
+        assert SRTEditor("job-uuid", "srt", "file.srt").data_format == "srt"
+        assert SRTEditor("job-uuid", "txt", "file.txt").data_format == "txt"
+
+    def test_it_names_the_format_in_its_own_title(self):
+        assert self.editor("srt").keyboard_shortcuts_title() == (
+            "Subtitle keyboard shortcuts"
+        )
+        assert self.editor("txt").keyboard_shortcuts_title() == (
+            "Transcription keyboard shortcuts"
+        )
+
+    def test_the_editing_rows_are_worded_for_what_is_open(self):
+        captions = self.actions("srt")
+        paragraphs = self.actions("txt")
+
+        assert captions["Split caption at cursor"] == "Enter"
+        assert captions["Merge with next"] == "Ctrl + M"
+        assert captions["Delete caption"] == "Ctrl + D"
+
+        assert paragraphs["Split paragraph at cursor"] == "Enter"
+        assert paragraphs["Merge with next"] == "Ctrl + M"
+        assert paragraphs["Delete paragraph"] == "Ctrl + D"
+
+    def test_neither_list_uses_the_other_ones_noun(self):
+        assert not any("paragraph" in action for action in self.actions("srt"))
+        assert not any("caption" in action for action in self.actions("txt"))
+
+    def test_the_transcription_list_is_exactly_these_and_nothing_else(self):
+        """
+        A transcription's own list is a closed set: the keys it has, in
+        order, with nothing extra. The Backspace/Delete joins are not on it
+        -- they are what those keys do in any text, not a shortcut worth
+        naming -- and the caption row's own icons do not exist here at all.
+        """
+
+        groups = self.editor("txt").keyboard_shortcut_groups()
+
+        assert groups == [
+            (
+                "Editing",
+                [
+                    ("Split paragraph at cursor", "Enter"),
+                    ("New line", "Shift + Enter"),
+                    ("Move first word to previous paragraph", "Ctrl/⌘ + ↑"),
+                    ("Move last word to next paragraph", "Ctrl/⌘ + ↓"),
+                    ("Merge with next", "Ctrl + M"),
+                    ("Delete paragraph", "Ctrl + D"),
+                ],
+            ),
+            (
+                "File operations",
+                [
+                    ("Save file", "Ctrl/⌘ + S"),
+                    ("Export file", "Ctrl/⌘ + E"),
+                    ("Find", "Ctrl/⌘ + F"),
+                ],
+            ),
+            (
+                "History",
+                [
+                    ("Undo", "Ctrl/⌘ + Z"),
+                    ("Redo", "Ctrl + Y / ⌘ + Shift + Z"),
+                ],
+            ),
+            (
+                "Transport",
+                [
+                    ("Play/Pause", "Ctrl + Space"),
+                ],
+            ),
+        ]
+
+    def test_the_subtitle_list_is_exactly_these_and_nothing_else(self):
+        """
+        A closed set, the same as the transcription's own. Add-after and
+        validate are the two rows a transcription does not get: one is the
+        keyboard's half of a caption row it has no equivalent of, and the
+        other checks guidelines only subtitles are held to. The
+        Backspace/Delete joins and the caption row's mouse icons still do
+        what they do, but neither is named here.
+        """
+
+        groups = self.editor("srt").keyboard_shortcut_groups()
+
+        assert groups == [
+            (
+                "Editing",
+                [
+                    ("Split caption at cursor", "Enter"),
+                    ("New line", "Shift + Enter"),
+                    ("Move first word to previous captions", "Ctrl/⌘ + ↑"),
+                    ("Move last word to next captions", "Ctrl/⌘ + ↓"),
+                    ("Merge with next", "Ctrl + M"),
+                    ("Add caption after", "Ctrl/⌘ + Shift + Enter"),
+                    ("Delete caption", "Ctrl + D"),
+                ],
+            ),
+            (
+                "File operations",
+                [
+                    ("Save file", "Ctrl/⌘ + S"),
+                    ("Export file", "Ctrl/⌘ + E"),
+                    ("Find", "Ctrl/⌘ + F"),
+                    ("Validate captions", "Ctrl + Shift + V"),
+                ],
+            ),
+            (
+                "History",
+                [
+                    ("Undo", "Ctrl/⌘ + Z"),
+                    ("Redo", "Ctrl + Y / ⌘ + Shift + Z"),
+                ],
+            ),
+            (
+                "Transport",
+                [
+                    ("Play/Pause", "Ctrl + Space"),
+                ],
+            ),
+        ]
+
+    def test_add_after_and_validate_are_subtitles_only(self):
+        """
+        Add-after is the keyboard's half of a caption row a transcription
+        does not have, and validate checks guidelines only subtitles are
+        held to.
+        """
+
+        captions = self.actions("srt")
+        paragraphs = self.actions("txt")
+
+        assert captions["Add caption after"] == "Ctrl/⌘ + Shift + Enter"
+        assert captions["Validate captions"] == "Ctrl + Shift + V"
+
+        assert not any("Add " in action for action in paragraphs)
+        assert not any("Validate" in action for action in paragraphs)
+
+    def test_the_keys_that_both_formats_share_agree(self):
+        captions = self.actions("srt")
+        paragraphs = self.actions("txt")
+
+        for action in ("Undo", "Redo", "Play/Pause"):
+            assert captions[action] == paragraphs[action]

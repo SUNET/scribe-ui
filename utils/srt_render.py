@@ -356,56 +356,79 @@ class RenderMixin:
                 for message in errors + entry["warnings"]:
                     ui.label(message).classes("text-body2 text-theme-secondary")
 
-    def show_keyboard_shortcuts(self, open_window: Optional[bool] = False) -> None:
+    def keyboard_shortcuts_title(self) -> str:
         """
-        Show keyboard shortcuts dialog.
+        What the dialog calls itself: a reader has subtitles open or a
+        transcription open, never both, and the list inside is worded for
+        whichever it is.
         """
 
-        # One editor now, for both formats, and Enter itself matches: Enter
-        # starts a new caption (a new block, in a transcription) and
-        # Shift+Enter breaks the line inside the one being edited -- what
-        # Enter does in a document, and what Shift+Enter does in most
-        # things that have both. Ctrl/Cmd+Enter still splits too, which is
-        # what it meant when Enter itself was the line break.
+        if self.data_format == "srt":
+            return "Subtitle keyboard shortcuts"
+
+        return "Transcription keyboard shortcuts"
+
+    def keyboard_shortcut_groups(self) -> list:
+        """
+        The dialog's own contents, as (group, [(action, keys), ...]).
+        Separate from the dialog that draws them so the wording can be
+        checked without a UI, the same way collect_validation_issues is
+        separate from the report that shows it.
+        """
+
+        # One dialog, worded for whichever format is open: a reader editing
+        # subtitles is working on captions and a reader editing a
+        # transcription on paragraphs, and a list that says "block" says it
+        # to neither of them. The keys themselves match all the way through
+        # -- split, line break, the word moves, merge and delete mean the
+        # same thing in each -- so the two lists differ in their nouns and
+        # in the two rows subtitles alone have: add-after, the keyboard's
+        # half of a caption row a transcription does not have, and validate.
+        # Each list is deliberately a closed set of the keys that format
+        # offers, and nothing else: Backspace at the start of a block still
+        # merges it and the caption row's icons still do what they do, but
+        # neither is a shortcut worth naming here. Enter itself
+        # matches: Enter starts a new caption (a new paragraph, in a
+        # transcription) and Shift+Enter breaks the line inside the one
+        # being edited -- what Enter does in a document, and what
+        # Shift+Enter does in most things that have both. Ctrl/Cmd+Enter
+        # still splits too, which is what it meant when Enter itself was the
+        # line break.
         subtitles = self.data_format == "srt"
 
+        editing = (
+            [
+                ("Split caption at cursor", "Enter"),
+                ("New line", "Shift + Enter"),
+                ("Move first word to previous captions", "Ctrl/⌘ + ↑"),
+                ("Move last word to next captions", "Ctrl/⌘ + ↓"),
+                ("Merge with next", "Ctrl + M"),
+                ("Add caption after", "Ctrl/⌘ + Shift + Enter"),
+                ("Delete caption", "Ctrl + D"),
+            ]
+            if subtitles
+            else [
+                ("Split paragraph at cursor", "Enter"),
+                ("New line", "Shift + Enter"),
+                ("Move first word to previous paragraph", "Ctrl/⌘ + ↑"),
+                ("Move last word to next paragraph", "Ctrl/⌘ + ↓"),
+                ("Merge with next", "Ctrl + M"),
+                ("Delete paragraph", "Ctrl + D"),
+            ]
+        )
+
         shortcut_groups = [
+            ("Editing", editing),
             (
-                "Editing",
-                (
-                    [
-                        ("Split into a new caption", "Enter"),
-                        ("New line in the caption", "Shift + Enter"),
-                        ("Move first word to previous caption", "Ctrl/⌘ + ↑"),
-                        ("Move last word to next caption", "Ctrl/⌘ + ↓"),
-                        ("Merge with next caption", "Ctrl + M"),
-                        ("Add caption after", "Ctrl/⌘ + Shift + Enter"),
-                        ("Delete caption", "Ctrl + D"),
-                        ("Validate captions", "Ctrl + Shift + V"),
-                        ("Join with the caption above", "Backspace at the start"),
-                        ("Join with the caption below", "Delete at the end"),
-                        ("Split (mouse)", "Click its split icon"),
-                        ("Merge with the caption below (mouse)", "Click its merge icon"),
-                        ("Add a caption after this one", "Click its + icon"),
-                        ("Delete a caption", "Click its trash icon"),
-                    ]
-                    if subtitles
-                    else [
-                        ("Split into a new block", "Enter"),
-                        ("New line in the block", "Shift + Enter"),
-                        ("Join with the block above", "Backspace at the start"),
-                        ("Join with the block below", "Delete at the end"),
-                        ("New block after this one", "Enter at the end"),
-                    ]
-                ),
-            ),
-            (
-                "File Operations",
+                "File operations",
                 [
                     ("Save file", "Ctrl/⌘ + S"),
                     ("Export file", "Ctrl/⌘ + E"),
                     ("Find", "Ctrl/⌘ + F"),
-                ],
+                ]
+                # Validate is a subtitle's alone: it checks the line-length
+                # and line-count guidelines only subtitles are held to.
+                + ([("Validate captions", "Ctrl + Shift + V")] if subtitles else []),
             ),
             (
                 "History",
@@ -415,18 +438,29 @@ class RenderMixin:
                 ],
             ),
             (
-                "Video",
+                "Transport",
                 [
                     ("Play/Pause", "Ctrl + Space"),
                 ],
             ),
         ]
 
+        return shortcut_groups
+
+    def show_keyboard_shortcuts(self, open_window: Optional[bool] = False) -> None:
+        """
+        Show keyboard shortcuts dialog.
+        """
+
+        shortcut_groups = self.keyboard_shortcut_groups()
+
         with ui.dialog() as dialog:
             with ui.card().classes("w-2/3 max-w-2xl").style(
                 "padding: 24px; max-height: 90vh; overflow-y: auto;"
             ):
-                ui.label("Keyboard shortcuts").classes("text-h5 mb-4 font-bold")
+                ui.label(self.keyboard_shortcuts_title()).classes(
+                    "text-h5 mb-4 font-bold"
+                )
 
                 with ui.column().classes("w-full gap-4"):
                     for group_name, shortcuts in shortcut_groups:
@@ -439,14 +473,28 @@ class RenderMixin:
                                     "justify-between w-full items-center"
                                 ):
                                     ui.label(action).classes("text-body1")
+                                    # The keys themselves are the point of
+                                    # the row, so they are drawn in the same
+                                    # ink as the action beside them rather
+                                    # than the muted grey a chip inherits --
+                                    # a border says "key" without taking the
+                                    # contrast to do it.
                                     ui.label(keys).classes(
                                         "text-body2 font-mono px-2 py-1 rounded"
                                     ).style(
-                                        "background-color: var(--color-bg-surface-hover);"
+                                        "background-color: var(--color-bg-surface-alt); "
+                                        "color: var(--color-text-primary); "
+                                        "border: 1px solid var(--color-border);"
                                     )
 
+                # The footer sits on top of the list as it scrolls under it,
+                # so it needs a fill of its own -- the card's own, not the
+                # grey it had, which read as a separate panel stuck to the
+                # bottom of a white dialog.
                 with ui.row().classes("w-full justify-end mt-4").style(
-                    "position: sticky; bottom: -24px; background-color: var(--color-bg-surface-alt); padding-bottom: 8px; z-index: 1;"
+                    "position: sticky; bottom: -24px; "
+                    "background-color: var(--color-bg-surface); "
+                    "padding-bottom: 8px; z-index: 1;"
                 ):
                     ui.button("Close").props("flat color=primary").on(
                         "click", dialog.close

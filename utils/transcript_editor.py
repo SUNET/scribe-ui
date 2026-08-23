@@ -640,8 +640,8 @@ class TranscriptEditor:
     def delete(self, args) -> None:
         """
         Drop a caption outright, rather than merging its text into a
-        neighbour. Subtitle-only: the click that reaches this only exists
-        when the component is in subtitle mode, see transcript_editor.js.
+        neighbour. Reached by Ctrl+D in either format, and by the trash icon
+        on the caption row, which subtitles alone have.
 
         Refocuses a neighbour afterward, the same as add_after does for the
         caption it starts -- refresh() removes the deleted caption's own
@@ -670,7 +670,8 @@ class TranscriptEditor:
     def add_after(self, args) -> None:
         """
         Insert a new empty caption after this one and focus it. The "+" next
-        to delete; subtitle-only, same reasoning as delete above.
+        to delete on the caption row, and Ctrl/Cmd+Shift+Enter -- both
+        subtitles only, since that row is what either one is the half of.
         """
 
         caption = self.caption(self.block_id(args))

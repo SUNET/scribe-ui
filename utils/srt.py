@@ -98,7 +98,15 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         # The status line's own figures, by name -- see set_status_elements.
         self.status_elements: dict = {}
         self.speakers = set()
-        self.data_format = None
+
+        # Seeded from what the page opened, not left as None until parsing:
+        # the toolbar is built before any content is fetched, and everything
+        # in it that asks which format is open -- the Shortcuts dialog most
+        # of all, which is worded for captions or for paragraphs -- read
+        # None and answered as though it were a transcription. parse_srt and
+        # parse_txt still set it, and are still the authority once content
+        # has actually been read.
+        self.data_format = srt_format
         self.filename = filename
 
         # Per-word timings, empty for results produced before they existed.
