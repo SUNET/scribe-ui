@@ -361,12 +361,12 @@ class RenderMixin:
         Show keyboard shortcuts dialog.
         """
 
-        # One editor now, for both formats, and Enter itself matches: bare
-        # Enter is a line break, splitting moves to Ctrl/Cmd+Enter -- a
-        # subtitle needs that because the reader controls its own line
-        # breaks more often than starting a new timed cue; a transcription
-        # gets the same split key so a speaker's own paragraph breaks stay
-        # separate from starting a new block.
+        # One editor now, for both formats, and Enter itself matches: Enter
+        # starts a new caption (a new block, in a transcription) and
+        # Shift+Enter breaks the line inside the one being edited -- what
+        # Enter does in a document, and what Shift+Enter does in most
+        # things that have both. Ctrl/Cmd+Enter still splits too, which is
+        # what it meant when Enter itself was the line break.
         subtitles = self.data_format == "srt"
 
         shortcut_groups = [
@@ -374,8 +374,8 @@ class RenderMixin:
                 "Editing",
                 (
                     [
-                        ("New line in the caption", "Enter"),
-                        ("Split", "Ctrl/⌘ + Enter"),
+                        ("Split into a new caption", "Enter"),
+                        ("New line in the caption", "Shift + Enter"),
                         ("Move first word to previous caption", "Ctrl/⌘ + ↑"),
                         ("Move last word to next caption", "Ctrl/⌘ + ↓"),
                         ("Merge with next caption", "Ctrl + M"),
@@ -391,11 +391,11 @@ class RenderMixin:
                     ]
                     if subtitles
                     else [
-                        ("New line in the block", "Enter"),
-                        ("Split block at cursor", "Ctrl/⌘ + Enter"),
+                        ("Split into a new block", "Enter"),
+                        ("New line in the block", "Shift + Enter"),
                         ("Join with the block above", "Backspace at the start"),
                         ("Join with the block below", "Delete at the end"),
-                        ("New block after this one", "Ctrl/⌘ + Enter at the end"),
+                        ("New block after this one", "Enter at the end"),
                     ]
                 ),
             ),

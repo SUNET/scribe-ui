@@ -1134,15 +1134,20 @@ export default {
         }
       }
 
-      // A bare Enter inserts a line break, in a transcription the same as
-      // a subtitle -- starting a whole new block (a new timed cue, or a
-      // fresh speaker turn) now needs Ctrl/Cmd held down instead.
-      if (event.key === "Enter" && !event.ctrlKey && !event.metaKey) {
+      // Shift+Enter is a line break inside this caption. Ahead of the split
+      // below, which only asks for Enter and would otherwise swallow it.
+      if (event.key === "Enter" && event.shiftKey && !event.ctrlKey && !event.metaKey) {
         event.preventDefault();
         this.insertLineBreak();
         return;
       }
 
+      // Enter starts a new caption (a new block, in a transcription): the
+      // text after the caret goes into it, and at the end of a caption
+      // there is nothing to move and a new empty one is started instead.
+      // Ctrl/Cmd+Enter means the same thing, and is kept -- it was the
+      // split key before Enter itself was.
+      //
       // Let the server split and re-render, rather than letting the browser
       // guess what element a new line should be.
       if (event.key === "Enter") {

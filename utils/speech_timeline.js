@@ -264,24 +264,60 @@ export default {
       return visible ? box.width / visible : 0;
     },
 
-    // The caption under a point, and which part of it: an edge if the
-    // pointer is within EDGE_GRIP of one, otherwise the body.
+    // The caption under a point, and which part of it: the nearest edge
+    // within EDGE_GRIP, otherwise the body of a caption the point is inside.
+    //
+    // The nearest edge of any caption, deliberately -- not the first caption
+    // in the list that happens to be in range, which is what this used to
+    // ask. Two cues close together both answer to a point between them, and
+    // taking whichever came first meant reaching for one caption's end and
+    // getting the next one's start. It also meant a caption shorter than the
+    // grip could only ever be taken by its start, since that check came
+    // first and both edges were in range.
+    //
+    // A tie is broken by which side of the edge the pointer is on, and so
+    // by which caption it is nearer the middle of. Where one cue ends at
+    // exactly the instant the next begins the two edges are the same
+    // instant: approaching from the left takes the first cue's end, from
+    // the right the second cue's start. Any fixed preference makes one of
+    // the two unreachable, which is what a reader hit when trying to move
+    // the start of a caption butted against its neighbour.
     captionAt(seconds) {
       const grip = EDGE_GRIP / (this.pixelsPerSecond() || 1);
 
+      let closest = null;
+      let distance = grip;
+      // Whether the caption itself lies on the pointer's side of the edge:
+      // a caption's body is to the left of its end and to the right of its
+      // start.
+      let facing = false;
+
       for (const caption of this.captions) {
-        if (seconds < caption.start - grip || seconds > caption.end + grip) {
-          continue;
-        }
+        for (const edge of ["end", "start"]) {
+          const away = Math.abs(seconds - caption[edge]);
 
-        if (Math.abs(seconds - caption.start) <= grip) {
-          return { caption, edge: "start" };
-        }
-        if (Math.abs(seconds - caption.end) <= grip) {
-          return { caption, edge: "end" };
-        }
+          if (away > distance) continue;
 
-        return { caption, edge: "body" };
+          const towards =
+            edge === "end" ? seconds <= caption.end : seconds >= caption.start;
+
+          // Nearer wins outright; equally near, the caption the pointer is
+          // approaching from wins, and only then does the order of this
+          // loop decide anything.
+          if (away < distance || (towards && !facing)) {
+            closest = { caption, edge };
+            distance = away;
+            facing = towards;
+          }
+        }
+      }
+
+      if (closest) return closest;
+
+      for (const caption of this.captions) {
+        if (seconds >= caption.start && seconds <= caption.end) {
+          return { caption, edge: "body" };
+        }
       }
 
       return null;
@@ -310,9 +346,15 @@ export default {
       // decides what the strip draws and what a click would take hold of.
       this.hovered = found ? found.caption.id : -1;
 
+      const part = found
+        ? found.edge === "body"
+          ? `caption #${found.caption.id}`
+          : `caption #${found.caption.id} ${found.edge}`
+        : null;
+
       this.readout =
         `${this.moment(seconds)} · ${speaking ? "speech" : "silence"}` +
-        (found ? ` · caption #${found.caption.id}` : "");
+        (part ? ` · ${part}` : "");
 
       const box = this.$refs.root.getBoundingClientRect();
       this.readoutLeft = `${event.clientX - box.left}px`;

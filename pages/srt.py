@@ -247,64 +247,83 @@ def create() -> None:
                             )
                     editor.show_keyboard_shortcuts()
 
-                ui.separator().props("vertical")
+                    # What is open and what is in it. A dialog rather than a
+                    # strip of the toolbar: it is read when a reader wonders,
+                    # not while they work, and the figures are far easier to
+                    # label properly with room to put the labels in.
+                    with ui.dialog() as info_dialog, ui.card().classes(
+                        "editor-info-card"
+                    ):
+                        ui.label("Video information").classes("text-h6")
+                        ui.separator()
 
-                with ui.row().classes("editor-toolbar-group editor-toolbar-about"):
-                    with ui.label(filename).classes("editor-title"):
-                        # Ellipsised to keep the toolbar its own width, so
-                        # the whole name needs somewhere to live.
-                        ui.tooltip(filename)
-
-                    # What is in what is open: how many captions there
-                    # are, how far they run and how fast they read -- all
-                    # but the language moving as the reader edits, which
-                    # is why they are here rather than in a static panel
-                    # of file details. Beside the name, in the toolbar,
-                    # which is the one part of the page that stays put.
-                    #
-                    # A label per figure rather than one line of text, so
-                    # each can say what it means on hover: a row of bare
-                    # numbers explains nothing on its own.
-                    with ui.row().classes("editor-status w-full items-center"):
                         figures = {}
 
-                        for name, explanation in (
-                            (
-                                "captions",
-                                "How many captions the file has."
-                                if data_format == "srt"
-                                else "How many blocks the transcription has.",
-                            ),
-                            (
-                                "duration",
-                                "Where the last caption ends -- how far the "
-                                "subtitles run, which can be shorter than "
-                                "the recording itself."
-                                if data_format == "srt"
-                                else "Where the last block ends.",
-                            ),
-                            (
-                                "wpm",
-                                "Words per minute across the whole result: "
-                                "how fast it reads. Around 150 is ordinary "
-                                "speech.",
-                            ),
-                        ):
-                            if figures:
-                                ui.label("·").classes("editor-status-divider")
+                        # Each row is a name, a value and what the value
+                        # means. The last three move as the reader edits;
+                        # the first two never do.
+                        with ui.column().classes("editor-info-rows"):
+                            for label, value, explanation in (
+                                ("File", filename, None),
+                                (
+                                    "Language",
+                                    language,
+                                    "What the recording was transcribed in.",
+                                ),
+                                (
+                                    "Captions",
+                                    "captions",
+                                    "How many captions the file has."
+                                    if data_format == "srt"
+                                    else "How many blocks the transcription has.",
+                                ),
+                                (
+                                    "Length",
+                                    "duration",
+                                    "Where the last caption ends -- which can "
+                                    "be short of the recording itself."
+                                    if data_format == "srt"
+                                    else "Where the last block ends.",
+                                ),
+                                (
+                                    "Reading speed",
+                                    "wpm",
+                                    "Across the whole result. Around 150 "
+                                    "words per minute is ordinary speech.",
+                                ),
+                            ):
+                                with ui.row().classes("editor-info-row"):
+                                    ui.label(label).classes("editor-info-label")
 
-                            with ui.label().classes("editor-status-figure") as figure:
-                                ui.tooltip(explanation)
+                                    with ui.column().classes("editor-info-value"):
+                                        # A figure the editor keeps up to
+                                        # date is registered by name; the
+                                        # fixed ones are drawn as they are.
+                                        if value in ("captions", "duration", "wpm"):
+                                            figures[value] = ui.label().classes(
+                                                "editor-info-figure"
+                                            )
+                                        else:
+                                            ui.label(value).classes(
+                                                "editor-info-figure"
+                                            )
 
-                            figures[name] = figure
-
-                        ui.label("·").classes("editor-status-divider")
-
-                        # Fixed: the page knows it, and it never changes.
-                        with ui.label(language).classes("editor-status-figure"):
-                            ui.tooltip("The language the recording was transcribed in.")
+                                        if explanation:
+                                            ui.label(explanation).classes(
+                                                "editor-info-explanation"
+                                            )
 
                         editor.set_status_elements(**figures)
+
+                        with ui.row().classes("w-full justify-end"):
+                            ui.button("Close", on_click=info_dialog.close).props(
+                                "flat"
+                            ).classes("editor-btn")
+
+                    ui.button("Info", icon="info").props("flat").classes(
+                        "editor-btn editor-toolbar-btn"
+                    ).on("click", info_dialog.open)
+
 
             with ui.button("Close editor", icon="close").props(
                 "flat"

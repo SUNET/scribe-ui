@@ -512,52 +512,44 @@ theme_styles = """
        being edited, which is a title, not a detail to be looked up at the
        bottom of a panel. Capped and ellipsised -- a filename can be long
        enough to push everything else off the row. */
-    /* The name of what is open and the figures describing it, at the far
-       end of the toolbar's own row: they say what is being worked on, which
-       is not an action and does not belong among the buttons. Allowed to
-       shrink -- the buttons keep their width and this gives ground first. */
-    .editor-toolbar-about {
-        min-width: 0;
-        flex-shrink: 1;
-        gap: 0.5rem;
+    /* ── Video information dialog ── */
+    /* What is open and what is in it. Read when a reader wonders rather than
+       while they work, so it lives behind a button instead of taking a strip
+       of the toolbar -- which also leaves room to say what each figure
+       means, which a row of bare numbers never had. */
+    .editor-info-card {
+        min-width: 26rem;
+        max-width: 32rem;
     }
-
-    .editor-title {
-        max-width: 18rem;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+    .editor-info-rows {
+        gap: 0.85rem;
+        width: 100%;
+    }
+    .editor-info-row {
+        display: flex;
+        align-items: baseline;
+        gap: 1rem;
+        width: 100%;
+    }
+    .editor-info-label {
+        flex: 0 0 8rem;
+        color: var(--color-text-muted);
+    }
+    .editor-info-value {
+        flex: 1 1 auto;
+        min-width: 0;
+        gap: 0.1rem;
+    }
+    .editor-info-figure {
         font-weight: 600;
         color: var(--color-text-primary);
-    }
-
-    /* In the toolbar now, beside the name of what is open. Everything in it
-       is a measurement of the work, and all but the language move as the
-       reader edits. No rule and no margin: it is one item on a row of
-       them, not a band of its own. */
-    .editor-status {
-        gap: 0.5rem;
-        width: auto;
-        font-size: 0.8125rem;
-        /* Secondary, not muted: it is small and set below the fold of the
-           editor, and muted grey on white left it needing a second look to
-           read at all. */
-        color: var(--color-text-secondary);
         font-variant-numeric: tabular-nums;
+        /* A filename has no spaces to break at and is often long. */
+        overflow-wrap: anywhere;
     }
-
-    /* Each figure explains itself on hover, so each is its own element --
-       and each is dotted underneath, the usual sign that there is something
-       to hover. The dividers between them are not. */
-    .editor-status-figure {
-        /* Dotted underline only, never cursor: help -- the question-mark
-           cursor was reported as wrong over the editor's own text and is
-           kept out of the app entirely (see TestMarkedWordCursor). */
-        text-decoration: underline dotted var(--color-border);
-        text-underline-offset: 3px;
-    }
-    .editor-status-divider {
-        color: var(--color-text-muted);
+    .editor-info-explanation {
+        font-size: 0.8125rem;
+        color: var(--color-text-secondary);
     }
 
     /* ── Editor toolbar buttons (flat, no border, subtle bg in dark mode) ── */
@@ -1129,7 +1121,7 @@ theme_styles = """
        the same rules the browser draws the bar by: up while paused, and
        while the pointer has moved over the frame in the last few seconds. */
     .video-controls-visible .video-subtitle-overlay {
-        bottom: 3rem;
+        bottom: 4.25rem;
     }
 
     .video-subtitle-line {

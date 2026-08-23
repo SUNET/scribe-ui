@@ -406,11 +406,13 @@ class TestEnterAtBlockEnd:
 
         assert editor.captions[1].speaker == "Speaker 1"
 
-    def test_new_block_claims_no_time(self, view, editor):
+    def test_a_new_block_takes_only_the_room_it_has(self, view, editor):
         """
-        It sits on the boundary where the previous block ended. An empty block
-        has nothing to time against, so it takes no duration rather than
-        overlapping its neighbour or inventing audio.
+        It starts where the block before it ended, and never runs into the
+        one after it -- inserted between two back-to-back blocks there is no
+        room at all, and it keeps the zero length a new block always used to
+        have. It can be widened by dragging it on the timeline or typing its
+        timing.
         """
 
         target = editor.captions[0]
@@ -421,7 +423,16 @@ class TestEnterAtBlockEnd:
         assert added.get_start_seconds() == pytest.approx(1.0)
         assert added.get_end_seconds() == pytest.approx(1.0)
 
-    def test_new_block_at_the_very_end_also_claims_no_time(self, view, editor):
+    def test_a_new_block_at_the_end_runs_for_a_second(self, view, editor):
+        """
+        Nothing after it to run into, so it takes NEW_CAPTION_SECONDS. A
+        zero-length caption is invisible on the timeline, has nothing to take
+        hold of there, and "Validate" objects to it -- a second of room is a
+        better starting point when there is a second to give.
+        """
+
+        from utils.settings import get_settings
+
         last = editor.captions[-1]
         boundary = last.get_end_seconds()
 
@@ -430,7 +441,28 @@ class TestEnterAtBlockEnd:
 
         assert added.text == ""
         assert added.get_start_seconds() == pytest.approx(boundary)
-        assert added.get_end_seconds() == pytest.approx(boundary)
+        assert added.get_end_seconds() == pytest.approx(
+            boundary + get_settings().NEW_CAPTION_SECONDS
+        )
+
+    def test_a_new_block_is_clamped_to_a_narrow_gap(self, view, editor):
+        """
+        Half a second of silence before the next block means half a second of
+        caption, not a second overlapping it.
+        """
+
+        first, second = editor.captions[0], editor.captions[1]
+        second.start_time = editor.seconds_to_timestamp(
+            first.get_end_seconds() + 0.5
+        )
+
+        view.split({"id": first.index, "offset": len(first.text)})
+        added = editor.captions[1]
+
+        assert added.get_end_seconds() == pytest.approx(
+            first.get_end_seconds() + 0.5
+        )
+        assert added.get_end_seconds() <= second.get_start_seconds()
 
     def test_blocks_are_renumbered(self, view, editor):
         view.split({"id": editor.captions[0].index, "offset": 4})
@@ -602,7 +634,9 @@ class TestSubtitleShortcuts:
         """
 
         body = self.body()
-        gated = body[body.index("if (this.subtitleMode &&"):body.index("// A bare Enter")]
+        gated = body[
+            body.index("if (this.subtitleMode &&"):body.index("// Shift+Enter is a line break")
+        ]
 
         assert gated.count("event.preventDefault()") == 5
         assert gated.count("this.flush()") == 5
@@ -673,11 +707,12 @@ class TestMoveWordIsWired:
 
 class TestSubtitleEnter:
     """
-    Enter means the same thing in both modes now: bare Enter inserts a line
-    break, and starting a new block -- a new timed cue in a subtitle, a new
-    speaker turn in a transcription -- moves to Ctrl/Cmd+Enter instead. See
-    the onKeydown routing itself, since only the client-side gate decides
-    which one a keypress reaches.
+    Enter means the same thing in both modes: Enter starts a new caption (a
+    new block, in a transcription) and Shift+Enter breaks the line inside
+    the one being edited -- what Enter does in a document, and what
+    Shift+Enter does in most things that have both. See the onKeydown
+    routing itself, since only the client-side gate decides which one a
+    keypress reaches.
     """
 
     def source(self) -> str:
@@ -691,25 +726,49 @@ class TestSubtitleEnter:
 
         return body[: body.index("\n    },\n")]
 
-    def test_bare_enter_is_gated_on_no_modifier(self):
+    def test_shift_enter_breaks_the_line(self):
         body = self.keydown_body()
 
         assert (
-            'event.key === "Enter" && !event.ctrlKey && !event.metaKey' in body
+            'event.key === "Enter" && event.shiftKey && !event.ctrlKey && !event.metaKey'
+            in body
         )
         assert "this.insertLineBreak()" in body
 
-    def test_splitting_still_falls_through_for_ctrl_or_cmd(self):
+    def test_the_line_break_is_checked_before_the_split(self):
         """
-        The unconditional split further down is what Ctrl/Cmd+Enter reaches
-        in either mode -- the gate above only intercepts the one case that
-        is not a split.
+        The split branch only asks for Enter, and would otherwise swallow
+        Shift+Enter along with it.
         """
 
         body = self.keydown_body()
-        after_gate = body[body.index("this.insertLineBreak()"):]
 
-        assert '$emit("splitblock"' in after_gate
+        assert body.index("this.insertLineBreak()") < body.index(
+            '$emit("splitblock"'
+        )
+
+    def test_a_bare_enter_starts_a_new_caption(self):
+        """
+        The text after the caret goes into it; at the end of a caption there
+        is nothing to move and a new empty one is started instead.
+        """
+
+        body = self.keydown_body()
+        split = body[body.index('if (event.key === "Enter") {'):]
+
+        assert '$emit("splitblock", { id: at.id, offset: at.offset })' in split
+
+    def test_ctrl_enter_still_splits(self):
+        """
+        What it meant when Enter itself was the line break. Nothing
+        intercepts it, so it falls through to the same branch.
+        """
+
+        body = self.keydown_body()
+        line_break = body[body.index("this.insertLineBreak()") - 400:]
+        gate = line_break[: line_break.index("this.insertLineBreak()")]
+
+        assert "!event.ctrlKey && !event.metaKey" in gate
 
     def insert_line_break_body(self) -> str:
         source = self.source()

@@ -742,6 +742,46 @@ class TestSplitWithoutACaret:
         assert [c.text for c in editor.captions] == ["Hello there w", "onderful world"]
 
 
+class TestVideoInformationDialog:
+    """
+    What is open and what is in it, behind a button rather than across the
+    toolbar: it is read when a reader wonders, not while they work.
+    """
+
+    def page(self) -> str:
+        import pathlib
+
+        return pathlib.Path("pages/srt.py").read_text()
+
+    def test_a_button_opens_it(self):
+        page = self.page()
+
+        assert 'ui.button("Info", icon="info")' in page
+        assert '.on("click", info_dialog.open)' in page
+
+    def test_it_names_what_it_shows(self):
+        """
+        A row of bare numbers explains nothing; with room for labels, each
+        figure can say what it means outright rather than on hover.
+        """
+
+        page = self.page()
+
+        for label in ("File", "Language", "Captions", "Length", "Reading speed"):
+            assert f'"{label}",' in page
+
+    def test_the_moving_figures_are_registered(self):
+        """
+        The count, the length and the reading speed all change as the reader
+        edits; the file name and the language never do.
+        """
+
+        page = self.page()
+
+        assert 'if value in ("captions", "duration", "wpm"):' in page
+        assert "editor.set_status_elements(**figures)" in page
+
+
 class TestSpacePlaysAndPauses:
     """
     Space plays and pauses the recording unless something is being typed
@@ -791,9 +831,10 @@ class TestSpacePlaysAndPauses:
 
 class TestStatusLine:
     """
-    The foot of the editor: how many captions there are, how far the last
-    one runs to, and how fast the result reads. A figure per label rather
-    than one line of text, so each can explain itself on hover.
+    The figures in the video information dialog: how many captions there
+    are, how far the last one runs to, and how fast the result reads. Each
+    is a label of its own, registered by name, so the editor can keep them
+    up to date as the reader works.
     """
 
     class Label:
@@ -888,8 +929,8 @@ class TestStatusLine:
 
     def test_a_figure_the_page_does_not_show_is_simply_absent(self):
         """
-        The page registers the figures it drew; nothing here assumes all of
-        them exist.
+        The dialog registers the figures it drew; nothing here assumes all
+        of them exist.
         """
 
         editor = self.editor(SRTCaption(1, "00:00:00,000", "00:00:02,000", "Hej"))

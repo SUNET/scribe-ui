@@ -41,6 +41,8 @@ from utils.caption import SRTCaption
 from utils.settings import get_settings
 from utils.srt_review import EDIT_TOOLTIP, REVIEW_TOOLTIP
 
+settings = get_settings()
+
 
 def format_time_label(seconds: float) -> str:
     """
@@ -122,7 +124,6 @@ class TranscriptBody(
         # guideline as it is typed into, without a round trip to the server
         # -- see onInput in the .js file for why that round trip is
         # deliberately not taken.
-        settings = get_settings()
         self._props["characterLimit"] = settings.CHARACTER_LIMIT
         self._props["maxSubtitleLines"] = settings.MAX_SUBTITLE_LINES
 
@@ -514,22 +515,34 @@ class TranscriptEditor:
         """
         Start a new empty block after this one, for the same speaker.
 
-        It begins and ends where the block before it ended, so it claims no
-        time of its own: an empty block has nothing to be timed against, and
-        guessing a duration would either overlap the next block or invent audio
-        that is not there. Widen it from the timestamp editor once it has words.
+        It begins where the block before it ended and runs for
+        NEW_CAPTION_SECONDS -- or up to the next block's start, whichever
+        comes first, so a new caption never overlaps the one it was inserted
+        before. Inserted into a run of back-to-back captions there is no room
+        at all, and it keeps the zero length it used to always have; it can
+        be widened by dragging it on the timeline or typing its timing.
+
+        A zero-length caption everywhere was the safe answer before there was
+        anywhere to see it: it is invisible on the timeline, has nothing to
+        take hold of, and "Validate" objects to it. A second of room is a
+        better starting point when there is a second to give.
         """
 
         captions = self.editor.captions
         position = captions.index(caption)
         boundary = caption.get_end_seconds()
 
+        room = settings.NEW_CAPTION_SECONDS
+
+        if position + 1 < len(captions):
+            room = min(room, captions[position + 1].get_start_seconds() - boundary)
+
         self.editor.save_state_for_undo()
 
         added = SRTCaption(
             caption.index + 1,
             self.editor.seconds_to_timestamp(boundary),
-            self.editor.seconds_to_timestamp(boundary),
+            self.editor.seconds_to_timestamp(boundary + max(0.0, room)),
             "",
             speaker=caption.speaker,
         )

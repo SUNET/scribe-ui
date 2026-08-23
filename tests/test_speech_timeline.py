@@ -335,8 +335,50 @@ class TestDraggingACaption:
         body = source[source.index("captionAt(seconds) {"):]
         body = body[: body.index("\n    },")]
 
-        assert body.index('edge: "start"') < body.index('edge: "body"')
-        assert body.index('edge: "end"') < body.index('edge: "body"')
+        assert body.index("if (closest) return closest;") < body.index('edge: "body"')
+
+    def test_the_nearest_edge_wins_not_the_first_caption(self):
+        """
+        Two cues close together both answer to a point between them. Taking
+        whichever came first in the list meant reaching for one caption's
+        end and getting the next one's start -- and a caption shorter than
+        the grip could only ever be taken by its start.
+        """
+
+        source = self.source()
+        body = source[source.index("captionAt(seconds) {"):]
+        body = body[: body.index("\n    },")]
+
+        assert "let distance = grip;" in body
+        assert "if (away > distance) continue;" in body
+
+    def test_a_tie_is_broken_by_which_side_the_pointer_is_on(self):
+        """
+        Where one cue ends at exactly the instant the next begins, the two
+        edges are the same instant: approaching from the left takes the
+        first cue's end, from the right the second cue's start. Any fixed
+        preference makes one of the two unreachable.
+        """
+
+        source = self.source()
+        body = source[source.index("captionAt(seconds) {"):]
+        body = body[: body.index("\n    },")]
+
+        assert (
+            'edge === "end" ? seconds <= caption.end : seconds >= caption.start'
+            in body
+        )
+        assert "away < distance || (towards && !facing)" in body
+
+    def test_the_readout_says_which_edge(self):
+        """
+        So the reader can see what a drag would take hold of before taking
+        it.
+        """
+
+        source = self.source()
+
+        assert "`caption #${found.caption.id} ${found.edge}`" in source
 
     def test_an_edge_never_crosses_its_own_other_end(self):
         """
