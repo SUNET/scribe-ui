@@ -1530,6 +1530,18 @@ theme_styles = """
         color: var(--color-severity-maint-icon);
         background-color: var(--color-severity-maint-bg);
     }
+    /* The reader's own addition to the text, so it wears the colour their
+       own edits do. */
+    .transcript-action-note:hover {
+        color: var(--color-edit-accent);
+        background-color: var(--color-edit-bg);
+    }
+    /* A glyph, not an icon: there is no icon for it, and the character the
+       button inserts is the clearest possible label for the button. */
+    .transcript-note-glyph {
+        font-size: 15px;
+        line-height: 1;
+    }
     .transcript-action-add:hover {
         color: var(--color-status-ok-border);
         background-color: var(--color-status-ok-bg);
@@ -1648,6 +1660,54 @@ theme_styles = """
     }
 
     /* ── Speech strip ── */
+    /* Along the foot of the page rather than under the video: the full width
+       of the window, and a minute across it instead of twenty seconds --
+       three times as wide, so the same seconds per pixel, which is what
+       decides whether a caption edge can be seen and aimed at.
+
+       Fixed rather than moved in the DOM: the strip keeps its component, its
+       listeners and its state, and only its box changes. */
+    .speech-timeline-docked {
+        position: fixed;
+        /* left is set by the component, from where the menu rail ends: the
+           rail is fixed too, and it opens and closes. */
+        right: 0;
+        bottom: 0;
+        z-index: 900;
+        padding: 0.5rem 1rem 0.75rem;
+        background-color: var(--color-bg-surface);
+        border-top: 1px solid var(--color-border-subtle);
+        box-shadow: 0 -4px 14px var(--color-shadow-light);
+    }
+    .body--dark .speech-timeline-docked {
+        background-color: var(--color-bg-page);
+    }
+    /* Room for it, so the foot of the editor is not left underneath. Taken
+       by the page because the strip is fixed and takes no space of its own;
+       the component sets the class (see markDocked). */
+    body.timeline-docked .nicegui-content {
+        padding-bottom: 9rem;
+    }
+
+    /* The grip that moves it, and what it says while it is being moved. */
+    .speech-timeline-grip {
+        cursor: grab;
+        user-select: none;
+        color: var(--color-text-muted);
+        letter-spacing: -0.1em;
+    }
+    .speech-timeline-lifting .speech-timeline-grip {
+        cursor: grabbing;
+    }
+    .speech-timeline-lifting {
+        outline: 2px dashed var(--color-brand-primary);
+        outline-offset: 4px;
+    }
+    .speech-timeline-dock-hint {
+        color: var(--color-brand-primary);
+        font-weight: 600;
+    }
+
     /* Where someone is talking, under the video. The colours are stated as
        custom properties because the canvas cannot read a stylesheet: the
        component asks for these by name at draw time, which is also what

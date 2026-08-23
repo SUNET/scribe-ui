@@ -62,6 +62,7 @@ EDITS_SHOW_KEY = "srt_show_my_edits"
 AUTOSCROLL_KEY = "srt_autoscroll"
 OVERLAY_SHOW_KEY = "srt_show_subtitle_overlay"
 TIMELINE_SHOW_KEY = "srt_show_timeline"
+TIMELINE_DOCK_KEY = "srt_timeline_docked"
 
 
 

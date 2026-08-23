@@ -33,6 +33,7 @@ from utils.srt import (
     REVIEW_SENSITIVITY_KEY,
     REVIEW_SHOW_KEY,
     SRTEditor,
+    TIMELINE_DOCK_KEY,
     TIMELINE_SHOW_KEY,
 )
 from utils.speech_timeline import SpeechTimeline
@@ -472,6 +473,22 @@ def create() -> None:
                         if data_format == "srt" and editor.words:
                             timeline = SpeechTimeline().classes("w-full")
                             transcript.set_timeline(timeline)
+
+                            # Where the reader left it: under the video, or
+                            # along the foot of the page. Only where it
+                            # starts -- the component owns the position from
+                            # then on and reports each move back here to be
+                            # remembered.
+                            timeline.set_docked(
+                                app.storage.user.get(TIMELINE_DOCK_KEY, False)
+                            )
+
+                            def save_dock(event) -> None:
+                                app.storage.user[TIMELINE_DOCK_KEY] = bool(
+                                    (event.args or {}).get("docked")
+                                )
+
+                            timeline.on("dock", save_dock)
                             # Restored before the first paint, so a reader
                             # who turned it off does not see it flash past.
                             timeline.set_visibility(editor.show_timeline)

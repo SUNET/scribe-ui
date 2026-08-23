@@ -51,10 +51,25 @@ class SpeechTimeline(
         self._props["captions"] = []
         self._props["duration"] = 0.0
         self._props["currentId"] = -1
+        self._props["startDocked"] = False
 
     def set_speech(self, runs: List[list], duration: float) -> None:
         self._props["runs"] = runs
         self._props["duration"] = float(duration)
+        self.update()
+
+    def set_docked(self, docked: bool) -> None:
+        """
+        Whether the strip opens along the foot of the page rather than under
+        the video.
+
+        Only where it *starts*: from then on the reader moves it by dragging
+        its grip, and the component owns that state -- the server hears about
+        each move so it can be remembered for next time, and never sends the
+        position back mid-session.
+        """
+
+        self._props["startDocked"] = bool(docked)
         self.update()
 
     def set_current(self, caption_index: int) -> None:

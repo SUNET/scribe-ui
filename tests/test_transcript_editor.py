@@ -642,6 +642,84 @@ class TestSubtitleShortcuts:
         assert gated.count("this.flush()") == 5
 
 
+class TestTheMusicNote:
+    """
+    A caption of song, or of music under the picture, is written with a
+    music note -- and it is not a character any keyboard offers.
+    """
+
+    def source(self) -> str:
+        import pathlib
+
+        return pathlib.Path("utils/transcript_editor.js").read_text()
+
+    def test_it_rides_the_same_row_as_the_other_caption_actions(self):
+        source = self.source()
+
+        assert "transcript-action transcript-action-note" in source
+        assert "<q-tooltip>Insert music note</q-tooltip>" in source
+
+    def test_the_button_wears_the_character_it_inserts(self):
+        """
+        There is no icon for it, and the character is the clearest possible
+        label for the button.
+        """
+
+        source = self.source()
+
+        assert '<span class="transcript-note-glyph">♪</span>' in source
+
+    def test_pressing_the_icon_does_not_move_the_caret(self):
+        """
+        Pressing the mouse down anywhere moves the caret, and by the time
+        the click arrived the reader's own caret was gone -- every note
+        landed at the end of the caption because the fallback was all that
+        was left. The split icon reads the caret too, and needs the same.
+        """
+
+        source = self.source()
+
+        for action in ("transcript-action-note", "transcript-action-split"):
+            branch = source[source.index(action):]
+            branch = branch[: branch.index("</div>")]
+
+            assert "@mousedown.prevent.stop" in branch, action
+
+    def test_it_lands_at_the_caret(self):
+        source = self.source()
+        body = source[source.index("insertNote(id) {"):]
+        body = body[: body.index("\n    },")]
+
+        assert "const node = document.createTextNode(NOTE);" in body
+        assert "range.insertNode(node)" in body
+
+    def test_a_caret_elsewhere_lands_it_at_the_end(self):
+        """
+        The reader clicked the icon without ever putting the caret in this
+        caption, so a note belonging to the whole caption is what was meant.
+        """
+
+        source = self.source()
+        body = source[source.index("insertNote(id) {"):]
+        body = body[: body.index("\n    },")]
+
+        assert "if (!at || at.id !== id)" in body
+        assert "this.plainText(block.textContent).length" in body
+
+    def test_it_is_reported_as_an_ordinary_edit(self):
+        """
+        It is a character like any other once it is in: the same onInput
+        that follows a keystroke carries it to the server, marks it as the
+        reader's own and redraws the character counts.
+        """
+
+        source = self.source()
+        body = source[source.index("insertNote(id) {"):]
+        body = body[: body.index("\n    },")]
+
+        assert "this.onInput();" in body
+
+
 class TestMoveWordIsWired:
     """
     The editor has had move_first_word_to_previous/move_last_word_to_next

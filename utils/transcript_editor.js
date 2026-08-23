@@ -30,6 +30,9 @@
 // fresh set. The contenteditable is then only ever doing what it is reliable
 // at: editing text inside one block.
 
+// What a caption of song, or of music under the picture, is written with.
+const NOTE = "\u266a";
+
 export default {
   template: `
     <div class="transcript-editor" :class="{ 'transcript-show-edits': showEdits, 'transcript-subtitle-mode': subtitleMode }">
@@ -115,11 +118,16 @@ export default {
                 class="transcript-cell-actions"
               ><div
                   class="transcript-action transcript-action-split"
+                  @mousedown.prevent.stop
                   @click.stop="splitAt(block.id)"
                 ><q-icon name="call_split" size="16px" /><q-tooltip>Split</q-tooltip></div><div
                   class="transcript-action transcript-action-merge"
                   @click.stop="mergeWithNext(block.id)"
                 ><q-icon name="merge_type" size="16px" /><q-tooltip>Merge with next caption</q-tooltip></div><div
+                  class="transcript-action transcript-action-note"
+                  @mousedown.prevent.stop
+                  @click.stop="insertNote(block.id)"
+                ><span class="transcript-note-glyph">♪</span><q-tooltip>Insert music note</q-tooltip></div><div
                   class="transcript-action transcript-action-add"
                   @click.stop="$emit('addblock', { id: block.id })"
                 ><q-icon name="add" size="16px" /><q-tooltip>Add caption after</q-tooltip></div><div
@@ -978,6 +986,53 @@ export default {
       const node = document.createTextNode(atEnd ? "\n\u200B" : "\n");
       range.insertNode(node);
       range.setStart(node, 1);
+      range.collapse(true);
+
+      selection.removeAllRanges();
+      selection.addRange(range);
+
+      this.onInput();
+    },
+
+    // The music note, at the caret. A caption of song or of music playing
+    // under the picture is written with one, and it is not a character any
+    // keyboard offers.
+    //
+    // Note the @mousedown.prevent on the icon itself: pressing the mouse
+    // down anywhere moves the caret, and by the time the click arrives the
+    // reader's own caret is gone -- every note landed at the end of the
+    // caption because the fallback below was all that was left. Preventing
+    // the default on mousedown leaves the selection exactly where it was.
+    //
+    // Typed into the caption rather than reported as a structural edit: it
+    // is a character like any other once it is in, and the same onInput
+    // that follows a keystroke carries it to the server, marks it as the
+    // reader's own and redraws the character counts. A caret elsewhere --
+    // the reader clicked the icon without ever putting it in this caption
+    // -- lands the note at the end of the text, where a note that belongs
+    // to the whole caption is what was meant.
+    insertNote(id) {
+      const block = this.$refs.body?.querySelector(
+        `.transcript-text[data-id="${id}"]`
+      );
+
+      if (!block) return;
+
+      const at = this.caret();
+
+      if (!at || at.id !== id) {
+        this.placeCaretAt(block, this.plainText(block.textContent).length);
+      }
+
+      const selection = window.getSelection();
+      if (!selection.rangeCount) return;
+
+      const range = selection.getRangeAt(0);
+      range.deleteContents();
+
+      const node = document.createTextNode(NOTE);
+      range.insertNode(node);
+      range.setStart(node, node.length);
       range.collapse(true);
 
       selection.removeAllRanges();

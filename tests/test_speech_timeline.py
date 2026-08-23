@@ -276,6 +276,15 @@ class TestZoom:
 
         assert "const WINDOW = 20;" in self.source()
 
+    def test_docked_it_holds_a_minute(self):
+        """
+        Three times as wide along the foot of the page, so three times the
+        window at much the same seconds per pixel -- which is what actually
+        decides whether an edge can be seen and aimed at.
+        """
+
+        assert "const DOCKED_WINDOW = 60;" in self.source()
+
     def test_it_is_not_a_control(self):
         source = self.source()
 
@@ -287,7 +296,8 @@ class TestZoom:
         body = source[source.index("visible() {"):]
         body = body[: body.index("\n    },")]
 
-        assert "Math.min(WINDOW, this.span())" in body
+        assert "Math.min(window, this.span())" in body
+        assert "this.docked ? DOCKED_WINDOW : WINDOW" in body
 
     def test_the_playhead_stays_in_the_centre(self):
         """
@@ -726,6 +736,138 @@ class TestTheOverlayFollowsTheControlBar:
 
         assert "setInterval" in page
         assert "clearInterval(waiting)" in page
+
+
+class TestDockingTheStrip:
+    """
+    The strip can be dragged to the foot of the page, where it spans the
+    whole width and holds a minute instead of twenty seconds.
+    """
+
+    def source(self) -> str:
+        return pathlib.Path("utils/speech_timeline.js").read_text()
+
+    def test_it_is_moved_by_a_grip_not_by_the_strip(self):
+        """
+        Dragging the strip already means taking hold of a caption, and one
+        gesture cannot mean two things.
+        """
+
+        source = self.source()
+
+        assert 'class="speech-timeline-grip"' in source
+        assert '@mousedown="startDockDrag"' in source
+
+    def test_letting_go_low_enough_docks_it(self):
+        source = self.source()
+        body = source[source.index("onDockDragMove(event) {"):]
+        body = body[: body.index("\n    },")]
+
+        assert "event.clientY > window.innerHeight * DOCK_AT" in body
+
+    def test_it_says_what_letting_go_would_do(self):
+        source = self.source()
+
+        assert "Release to dock along the bottom" in source
+        assert "Release to put it back under the video" in source
+
+    def test_moving_it_nowhere_changes_nothing(self):
+        """
+        A grip picked up and put back where it was is not a move, and must
+        not be saved as one.
+        """
+
+        source = self.source()
+        body = source[source.index("onDockDrop() {"):]
+        body = body[: body.index("\n    },")]
+
+        assert "if (willDock === this.docked) return;" in body
+        assert body.index("if (willDock === this.docked)") < body.index('$emit("dock"')
+
+    def test_the_page_is_told_to_leave_room(self):
+        """
+        A fixed strip takes no space of its own, so the foot of the editor
+        would sit underneath it.
+        """
+
+        from utils.styles import theme_styles
+
+        source = self.source()
+
+        assert 'classList.toggle("timeline-docked", this.docked)' in source
+        assert "body.timeline-docked .nicegui-content" in theme_styles
+
+    def test_it_is_fixed_to_the_foot_of_the_page(self):
+        from utils.styles import theme_styles
+
+        rule = theme_styles[theme_styles.index(".speech-timeline-docked {"):]
+        rule = rule[: rule.index("}")]
+
+        assert "position: fixed" in rule
+        assert "bottom: 0" in rule
+
+    def test_docked_it_is_teleported_out_of_the_splitter(self):
+        """
+        Fixed positioning alone was not enough: the strip lives inside the
+        splitter, whose separator is a positioned element of its own, and
+        that separator drew a line straight down through it. Out at the body
+        nothing can clip it, give it a containing block, or paint over it.
+
+        Teleport keeps the component itself where it is -- same instance,
+        same listeners, same state -- and only moves where it renders.
+        """
+
+        source = self.source()
+
+        assert '<Teleport to="body" :disabled="!docked">' in source
+
+    def test_it_starts_where_the_editor_does(self):
+        """
+        The menu rail down the left is fixed as well, so a strip at left: 0
+        runs underneath it -- and the rail is not a fixed width: it opens
+        and closes, and Quasar animates it while it does.
+        """
+
+        source = self.source()
+        body = source[source.index("followTheRail() {"):]
+        body = body[: body.index("\n    },")]
+
+        assert 'document.querySelector(".q-drawer--left")' in body
+        assert "Math.max(0, box.right)" in body
+
+    def test_it_follows_the_rail_as_it_moves(self):
+        source = self.source()
+
+        assert "this.railObserver = new ResizeObserver" in source
+        assert 'rail.addEventListener("transitionend", this.followTheRail)' in source
+        assert 'window.addEventListener("resize", this.followTheRail)' in source
+
+    def test_the_stylesheet_leaves_the_left_edge_alone(self):
+        from utils.styles import theme_styles
+
+        rule = theme_styles[theme_styles.index(".speech-timeline-docked {"):]
+        rule = rule[: rule.index("}")]
+
+        assert "left:" not in rule, "the component sets it"
+        assert "right: 0" in rule
+
+    def test_where_it_starts_is_remembered(self):
+        page = pathlib.Path("pages/srt.py").read_text()
+
+        assert "timeline.set_docked(" in page
+        assert "TIMELINE_DOCK_KEY" in page
+        assert 'timeline.on("dock", save_dock)' in page
+
+    def test_the_server_only_says_where_it_starts(self):
+        """
+        The reader moves it after that, and the component owns the position
+        from then on -- a prop pushed back mid-session would yank the strip
+        out from under them.
+        """
+
+        source = pathlib.Path("utils/speech_timeline.py").read_text()
+
+        assert '_props["startDocked"]' in source
 
 
 class TestWiring:

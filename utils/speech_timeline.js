@@ -31,6 +31,13 @@
 // edge to move that edge, by the middle to move the whole cue -- which is
 // reported to the server as one retime and so one undo step.
 //
+// Docked, the strip is teleported to the body rather than left where it sits
+// in the page. Fixed positioning alone was not enough: it lives inside the
+// splitter, whose separator is a positioned element of its own, and that
+// separator drew a line straight down through the strip. Out at the body it
+// answers to nothing but its own z-index, and no ancestor can clip it, give
+// it a containing block, or paint over it.
+//
 // The playhead follows the video element directly rather than being pushed a
 // position from the server: timeupdate fires several times a second, and a
 // round trip per tick to move a line two pixels is not worth taking. Seeking
@@ -58,9 +65,25 @@ const CAPTION_SNAP = 14;
 // 10-30s the issue asks for (SUNET/scribe-ui#126).
 const WINDOW = 20;
 
+// The same, docked along the foot of the page. It is three or four times as
+// wide there, so it can hold three times as long without the scale changing
+// at all -- the same seconds per pixel, more of them.
+const DOCKED_WINDOW = 60;
+
+// How far down the window the grip has to be let go for the strip to dock.
+const DOCK_AT = 0.7;
+
 export default {
   template: `
-    <div class="speech-timeline-wrap">
+    <Teleport to="body" :disabled="!docked">
+    <div
+      class="speech-timeline-wrap"
+      :class="{
+        'speech-timeline-docked': docked,
+        'speech-timeline-lifting': dockDrag !== null,
+      }"
+      :style="docked ? { left: dockLeft + 'px' } : null"
+    >
       <div
         class="speech-timeline"
         ref="root"
@@ -77,6 +100,13 @@ export default {
         >{{ readout }}</div>
       </div>
       <div class="speech-timeline-legend">
+        <span
+          class="speech-timeline-grip"
+          :title="docked
+            ? 'Drag up to put the timeline back under the video'
+            : 'Drag to the bottom of the page to widen the timeline'"
+          @mousedown="startDockDrag"
+        >⠿</span>
         <span class="speech-timeline-key">
           <span class="speech-timeline-swatch speech-timeline-swatch-speech"></span>
           Speech
@@ -97,8 +127,14 @@ export default {
           Click a caption to go to it · drag it, or one of its brackets, to retime
         </span>
         <span class="speech-timeline-range" :title="rangeTitle">{{ range }}</span>
+        <span v-if="dockDrag" class="speech-timeline-dock-hint">
+          {{ dockDrag.willDock
+            ? "Release to dock along the bottom"
+            : "Release to put it back under the video" }}
+        </span>
       </div>
     </div>
+    </Teleport>
   `,
   props: {
     // [[start, end], ...] in seconds -- where someone is talking.
@@ -111,11 +147,24 @@ export default {
     // is where "which caption is being edited" is known -- this is a second
     // view of the captions, not the owner of them.
     currentId: { type: Number, default: -1 },
+    // Whether the strip starts along the foot of the page rather than under
+    // the video. A saved preference, so it is the server that knows it.
+    startDocked: { type: Boolean, default: false },
   },
-  emits: ["retimespan", "selectcaption"],
+  emits: ["retimespan", "selectcaption", "dock"],
   data() {
     return {
       position: 0,
+      // Along the foot of the page, the full width of the editor, rather
+      // than under the video.
+      docked: false,
+      // Where the editor starts, horizontally: the menu rail down the left
+      // is fixed too, and a strip starting at 0 runs underneath it.
+      dockLeft: 0,
+      // Where the grip is while it is being dragged, and whether letting go
+      // there would dock -- so the reader can see the answer before
+      // committing to it.
+      dockDrag: null,
       // The caption under the pointer. Distinct from the caption being
       // played and from the one being edited: hovering one here must not
       // take the text editor's focus off another.
@@ -130,6 +179,7 @@ export default {
       readoutLeft: "0px",
       video: null,
       observer: null,
+      railObserver: null,
       frame: null,
     };
   },
@@ -163,11 +213,29 @@ export default {
     // and out of the window, and ends wherever it is let go.
     window.addEventListener("mousemove", this.onDragMove);
     window.addEventListener("mouseup", this.onUp);
+    window.addEventListener("mousemove", this.onDockDragMove);
+    window.addEventListener("mouseup", this.onDockDrop);
+
+    this.docked = this.startDocked;
+    this.markDocked();
 
     // The strip is drawn at the size it actually has, which the splitter can
     // change at any time.
     this.observer = new ResizeObserver(() => this.draw());
     this.observer.observe(this.$refs.root);
+
+    // The menu rail opens and closes, and a docked strip has to start where
+    // it ends. Watched rather than measured once, and read again after the
+    // animation Quasar runs while it moves.
+    const rail = document.querySelector(".q-drawer--left");
+
+    if (rail) {
+      this.railObserver = new ResizeObserver(() => this.followTheRail());
+      this.railObserver.observe(rail);
+      rail.addEventListener("transitionend", this.followTheRail);
+    }
+
+    window.addEventListener("resize", this.followTheRail);
 
     this.draw();
   },
@@ -183,8 +251,18 @@ export default {
 
     window.removeEventListener("mousemove", this.onDragMove);
     window.removeEventListener("mouseup", this.onUp);
+    window.removeEventListener("mousemove", this.onDockDragMove);
+    window.removeEventListener("mouseup", this.onDockDrop);
+
+    document.body.classList.remove("timeline-docked");
 
     if (this.observer) this.observer.disconnect();
+    if (this.railObserver) this.railObserver.disconnect();
+
+    const rail = document.querySelector(".q-drawer--left");
+    if (rail) rail.removeEventListener("transitionend", this.followTheRail);
+
+    window.removeEventListener("resize", this.followTheRail);
   },
   computed: {
     // Which part of the recording is on the strip: one stretch of speech
@@ -230,13 +308,16 @@ export default {
       return Math.max(known, this.duration, 0);
     },
 
-    // Seconds across the strip. Twenty, always: an hour across a pane this
-    // wide is roughly a minute per pixel, where no caption edge can be seen
-    // let alone aimed at, and a scale that changes underfoot makes the strip
-    // harder to read rather than easier. A recording shorter than the window
-    // simply shows all of itself.
+    // Seconds across the strip: twenty under the video, a minute docked
+    // along the foot of the page. Not a choice offered for its own sake --
+    // the docked strip is several times as wide, so it holds the longer
+    // window at much the same seconds per pixel, which is the thing that
+    // actually decides whether an edge can be seen and aimed at. A
+    // recording shorter than the window simply shows all of itself.
     visible() {
-      return Math.min(WINDOW, this.span()) || this.span();
+      const window = this.docked ? DOCKED_WINDOW : WINDOW;
+
+      return Math.min(window, this.span()) || this.span();
     },
 
     // Left edge of the view. The playhead is fixed in the centre and the
@@ -321,6 +402,60 @@ export default {
       }
 
       return null;
+    },
+
+    // ── moving the strip itself ───────────────────────────────────────────
+
+    // A grip of its own, not the strip: dragging the strip already means
+    // taking hold of a caption, and one gesture cannot mean two things.
+    startDockDrag(event) {
+      event.preventDefault();
+      this.dockDrag = { willDock: this.docked };
+      this.onDockDragMove(event);
+    },
+
+    onDockDragMove(event) {
+      if (!this.dockDrag) return;
+
+      // Far enough down the window to be asking for the foot of it.
+      this.dockDrag = {
+        willDock: event.clientY > window.innerHeight * DOCK_AT,
+      };
+    },
+
+    onDockDrop() {
+      if (!this.dockDrag) return;
+
+      const willDock = this.dockDrag.willDock;
+      this.dockDrag = null;
+
+      if (willDock === this.docked) return;
+
+      this.docked = willDock;
+      this.markDocked();
+      this.$emit("dock", { docked: willDock });
+
+      // A different width, and a different window across it.
+      this.$nextTick(() => this.draw());
+    },
+
+    // The page has to leave room for a strip fixed along its foot, and the
+    // page is not this component's to style -- so it is told, and takes the
+    // room in its own stylesheet.
+    markDocked() {
+      document.body.classList.toggle("timeline-docked", this.docked);
+      this.followTheRail();
+    },
+
+    // Start where the editor starts, not where the window does. The menu
+    // rail down the left is fixed as well, so a strip at left: 0 runs
+    // underneath it -- and the rail is not a fixed width: it opens and
+    // closes, and Quasar animates it while it does.
+    followTheRail() {
+      const rail = document.querySelector(".q-drawer--left");
+      const box = rail ? rail.getBoundingClientRect() : null;
+
+      this.dockLeft = box ? Math.max(0, box.right) : 0;
     },
 
     // ── pointer ───────────────────────────────────────────────────────────
