@@ -208,6 +208,7 @@ class TranscriptEditor:
             self.editor.speech_runs(), self.editor.speech_duration()
         )
         timeline.on("retimespan", lambda event: self.retime_span(event.args))
+        timeline.on("createcaption", lambda event: self.create_caption(event.args))
         timeline.on("selectcaption", lambda event: self.select_from_timeline(event.args))
         self.refresh_timeline()
 
@@ -234,6 +235,13 @@ class TranscriptEditor:
         The strip is a second view of the same captions, not a separate
         thing to keep in step by hand -- so clicking one there does what
         clicking one in the text does, rather than only seeking.
+
+        To the middle of the caption, the same as a caption just dragged
+        out -- see create_caption. A click on the strip aimed at a caption
+        asks for the caption, not for the instant it begins, and the frame
+        at that instant shows what is about to be said rather than what the
+        caption covers. A click on the strip *itself* still means the
+        moment it landed on, to the pixel; that one never reaches here.
         """
 
         caption = self.caption(self.block_id(args))
@@ -241,7 +249,10 @@ class TranscriptEditor:
         if caption is None:
             return
 
-        self.editor.seek_video(caption.get_start_seconds())
+        middle = (caption.get_start_seconds() + caption.get_end_seconds()) / 2
+
+        self.editor.seek_video(middle)
+        self.moved_to(middle)
         self.focus(caption.index)
         self.mark_current(caption.index)
 
@@ -284,6 +295,89 @@ class TranscriptEditor:
             # it was, since the strip is already drawing it where it was
             # dropped.
             self.refresh()
+
+    def create_caption(self, args) -> None:
+        """
+        An empty stretch of the strip dragged out: a new caption covering
+        exactly it.
+
+        The strip is where a reader can see that nothing covers a passage of
+        speech, so it is where they should be able to say that something now
+        does -- rather than adding a caption after some other one and
+        dragging it across. It starts empty and takes the caret, the same as
+        "Add caption after", since the next thing wanted is its text.
+
+        The client keeps the drag inside the gap it was started in, so the
+        overlap check below is a guard rather than the rule: captions can
+        have moved since the strip was last drawn.
+        """
+
+        if not isinstance(args, dict):
+            return
+
+        try:
+            start = float(args.get("start"))
+            end = float(args.get("end"))
+        except (TypeError, ValueError):
+            return
+
+        if end <= start:
+            return
+
+        overlaps = any(
+            start < caption.get_end_seconds() and end > caption.get_start_seconds()
+            for caption in self.editor.captions
+        )
+
+        if overlaps:
+            # The strip is already drawing the caption it thought it was
+            # making; nothing else would take it back off.
+            self.refresh()
+            ui.notify("A caption already covers part of that", type="warning")
+
+            return
+
+        self.editor.save_state_for_undo()
+
+        added = SRTCaption(
+            len(self.editor.captions) + 1,
+            self.editor.seconds_to_timestamp(start),
+            self.editor.seconds_to_timestamp(end),
+            "",
+        )
+
+        self.editor.captions.append(added)
+        # A caption's number is its position in the list, and this one was
+        # appended rather than inserted -- sort_captions renumbers as it
+        # goes, so `added.index` is only right after this.
+        self.editor.sort_captions()
+        self.editor.mark_as_changed()
+        self.refresh()
+        self.changed()
+
+        # Everything a click on the strip does, because making a caption is
+        # asking for it as much as clicking one is: the recording moves to
+        # it, the caret goes into it, and the strip marks it as current.
+        #
+        # The seek is what keeps the frame under the subtitle overlay
+        # honest. The overlay draws whatever caption covers the play
+        # position, and a caption dragged out of the empty stretch around
+        # the playhead -- which is fixed at the centre of the strip, so that
+        # is where the empty stretch usually is -- covers it: the text
+        # appeared over a frame from somewhere else entirely as it was
+        # typed. Moving the recording to the caption makes what is shown and
+        # what is under it the same moment.
+        #
+        # To the middle of it rather than its start: the start is the edge
+        # the reader has just placed, and a frame from the very instant a
+        # cue begins shows what is about to be said rather than what it
+        # covers. The middle is the frame the caption is about.
+        middle = (start + end) / 2
+
+        self.editor.seek_video(middle)
+        self.moved_to(middle)
+        self.focus(added.index)
+        self.mark_current(added.index)
 
     def set_overlay(self, container: ui.element) -> None:
         """
@@ -698,9 +792,36 @@ class TranscriptEditor:
         seconds = self.time_at_offset(caption, offset)
 
         if seconds is None:
-            return
+            # The word under the caret cannot be placed in the recording --
+            # the reader wrote it, or the model transcribed it without a
+            # timing. Refusing to move is right only while the recording is
+            # inside this caption already: that is the case the rule was
+            # written for, a reader listening to a caption and clicking a
+            # word in it, where jumping back to its first word is worse than
+            # staying put.
+            #
+            # Coming from somewhere else, though, the click is asking for
+            # the caption itself, and there is no position within it to
+            # refine. Doing nothing there means clicking a caption is
+            # silently ignored -- no seek, no overlay, no active block --
+            # which is what a reader sees as the editor having missed the
+            # click entirely.
+            # Only when the recording is known to be elsewhere. Before the
+            # player has reported itself even once there is nothing saying
+            # it has left this caption, so the rule stands as written.
+            playing = (
+                caption
+                if self.overlay_seconds is None
+                else self.caption_at(self.overlay_seconds)
+            )
+
+            if playing is caption:
+                return
+
+            seconds = caption.get_start_seconds()
 
         self.editor.seek_video(seconds)
+        self.moved_to(seconds)
 
     def time_at_offset(self, caption: SRTCaption, offset) -> Optional[float]:
         """
@@ -741,6 +862,23 @@ class TranscriptEditor:
         )
 
         words = self.editor.aligned_words(caption)
+
+        # Nothing in this caption can be placed in the recording at all. A
+        # caption dragged out on the timeline is exactly that: it covers
+        # whatever words are under it, but its text was typed by hand and so
+        # aligns with none of them, leaving every entry None -- and a
+        # caption in a silent stretch has no words under it to begin with.
+        # Its own start is the answer, the same as for a job with no word
+        # data; the rule below is about telling one edited word apart from
+        # the timed ones around it, and needs there to be timed ones.
+        #
+        # Without this, clicking such a caption in the text moved the
+        # recording nowhere, so the subtitle overlay went on showing
+        # whatever the player was still parked in -- or nothing at all, when
+        # that was a stretch no caption covers.
+        if not any(self.editor.word_is_timed(word) for word in words):
+            return start
+
         word = words[index] if index < len(words) else None
 
         # Nor has a word that was transcribed without a timing of its own.
@@ -1064,13 +1202,30 @@ class TranscriptEditor:
         if not isinstance(seconds, (int, float)):
             return
 
+        self.moved_to(seconds)
+
+    def moved_to(self, seconds: float) -> None:
+        """
+        The recording is at this moment now: mark the block being played and
+        draw its text over the video.
+
+        Called both by follow_video, when the player reports itself, and by
+        whatever asked the player to move -- a click in the text, a caption
+        on the strip, a caption just dragged out. Waiting for the report was
+        not enough: setting currentTime to the value it already holds moves
+        nothing and so fires no timeupdate at all, and the first caption of
+        a recording usually starts at 0, exactly where a freshly opened
+        player already sits. Clicking it drew no overlay and lit no block,
+        while every other caption worked.
+        """
+
         # Kept so the overlay can be worked out again without the player --
         # see refresh_overlay, which is what an edit goes through.
         self.overlay_seconds = seconds
 
         playing = self.caption_at(seconds)
 
-        if playing is not None and self.editor.autoscroll:
+        if playing is not None and self.editor.autoscroll and self.body is not None:
             self.body.set_active(playing.index)
 
         # None between two captions, or past the last one -- nothing playing

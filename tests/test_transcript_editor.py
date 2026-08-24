@@ -2420,6 +2420,109 @@ class TestSeekToCaret:
         assert view.time_at_offset(caption, 4) == pytest.approx(10.5)
         assert view.time_at_offset(caption, 20) == pytest.approx(12.5)
 
+    def test_the_editor_follows_a_seek_it_asked_for_itself(self, view, timed):
+        """
+        Setting currentTime to the value the player already holds moves
+        nothing and so fires no timeupdate, and the first caption of a
+        recording usually starts at 0 -- exactly where a freshly opened
+        player sits. Waiting to be told where the recording is left that one
+        caption drawing no overlay and lighting no block, while every other
+        caption worked.
+        """
+
+        timed.captions[0].start_time = "00:00:00,000"
+        timed.load_words({"version": 1, "words": [
+            {"t": "Vi", "s": 0.0, "e": 0.4},
+        ]})
+        timed.captions[0].text = "Vi"
+
+        view.seek({"id": 1, "offset": 0})
+
+        assert view.overlay_seconds == pytest.approx(0.0)
+        assert view.overlay_text == "Vi"
+
+    def test_a_caption_whose_every_word_is_untimed_falls_back_to_its_start(
+        self, view, timed
+    ):
+        """
+        A caption dragged out on the timeline over speech that had none: it
+        covers the words under it, but its text was typed by hand and so
+        aligns with none of them -- every entry comes back None. Its own
+        start is the answer, exactly as for a job with no word data.
+
+        Without this, clicking such a caption in the text moved the
+        recording nowhere at all, so the subtitle overlay went on showing
+        whatever the player was still parked in -- or nothing, when that was
+        a stretch no caption covers.
+        """
+
+        made = SRTCaption(2, "00:00:10,500", "00:00:12,000", "Ny text")
+        timed.captions.append(made)
+
+        assert view.time_at_offset(made, 0) == pytest.approx(10.5)
+        assert view.time_at_offset(made, 5) == pytest.approx(10.5)
+
+    def test_a_caption_over_no_words_at_all_does_too(self, view, timed):
+        """
+        The other way there: dragged out of a silent stretch, so there are
+        no words under it to align against in the first place.
+        """
+
+        made = SRTCaption(2, "00:00:30,000", "00:00:32,000", "Ny text")
+        timed.captions.append(made)
+
+        assert view.time_at_offset(made, 0) == pytest.approx(30.0)
+
+    def test_an_empty_caption_does_too(self, view, timed):
+        made = SRTCaption(2, "00:00:30,000", "00:00:32,000", "")
+        timed.captions.append(made)
+
+        assert view.time_at_offset(made, 0) == pytest.approx(30.0)
+
+    def test_a_word_with_no_time_still_takes_you_to_the_caption(
+        self, view, timed
+    ):
+        """
+        Coming from somewhere else, a click on a caption is asking for that
+        caption: there is no position within it to refine, and refusing to
+        move meant the click was silently ignored -- no seek, no overlay, no
+        active block, which reads as the editor having missed it entirely.
+        """
+
+        caption = timed.captions[0]
+        caption.text = "Vi har DEMOKRATI idag"
+
+        sought = []
+        timed.seek_video = lambda seconds: sought.append(seconds)
+
+        # The recording is elsewhere -- a caption just made further along.
+        view.overlay_seconds = 30.0
+
+        view.seek({"id": 1, "offset": 10})
+
+        assert sought == [pytest.approx(10.0)], "the caption's own start"
+
+    def test_but_not_while_the_recording_is_inside_that_caption(
+        self, view, timed
+    ):
+        """
+        The case the rule was written for: a reader listening to a caption
+        clicks a word in it that they changed. Jumping back to the caption's
+        first word is worse than staying put.
+        """
+
+        caption = timed.captions[0]
+        caption.text = "Vi har DEMOKRATI idag"
+
+        sought = []
+        timed.seek_video = lambda seconds: sought.append(seconds)
+
+        view.overlay_seconds = 11.5
+
+        view.seek({"id": 1, "offset": 10})
+
+        assert sought == []
+
     def test_clicking_an_edited_word_leaves_the_recording_alone(self, view, timed):
         """
         Reported from a screenshot: clicking a word carrying "You changed this

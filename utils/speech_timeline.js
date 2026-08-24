@@ -29,7 +29,11 @@
 // no caption edge can be seen there, let alone aimed at; the view follows
 // the playhead through the recording. And a caption can be dragged -- by an
 // edge to move that edge, by the middle to move the whole cue -- which is
-// reported to the server as one retime and so one undo step.
+// reported to the server as one retime and so one undo step. Dragging where
+// there is no caption makes one covering exactly that stretch, which is the
+// same gesture meaning the same thing on empty ground: the strip is where a
+// reader can see that nothing covers a passage of speech, so it is where
+// they should be able to say that something now does.
 //
 // Docked, the strip is teleported to the body rather than left where it sits
 // in the page. Fixed positioning alone was not enough: it lives inside the
@@ -72,6 +76,17 @@ const DOCKED_WINDOW = 60;
 
 // How far down the window the grip has to be let go for the strip to dock.
 const DOCK_AT = 0.7;
+
+// The id a caption being dragged out of empty strip is drawn under. It has
+// no number of its own until the server has made it one -- a caption's
+// number is its position among the others -- and no real caption is ever 0,
+// since renumber_captions counts from 1.
+const NEW_CAPTION = 0;
+
+// The shortest new caption a drag can make. Below this the gesture was a
+// click that happened to travel a pixel or two, not an attempt to cover
+// anything, and a caption too short to see is worse than none.
+const MIN_NEW_SECONDS = 0.05;
 
 export default {
   template: `
@@ -125,7 +140,8 @@ export default {
           Playhead
         </span>
         <span class="speech-timeline-hint">
-          Click a caption to go to it · drag it, or one of its brackets, to retime
+          Click a caption to go to it · drag it, or one of its brackets, to
+          retime · drag an empty stretch to add caption
         </span>
         <span class="speech-timeline-range" :title="rangeTitle">{{ range }}</span>
         <span v-if="dockDrag" class="speech-timeline-dock-hint">
@@ -162,7 +178,7 @@ export default {
     // where they are, so coming back is a redraw rather than a rebuild.
     shown: { type: Boolean, default: true },
   },
-  emits: ["retimespan", "selectcaption", "dock"],
+  emits: ["retimespan", "createcaption", "selectcaption", "dock"],
   data() {
     return {
       position: 0,
@@ -182,6 +198,12 @@ export default {
       hovered: -1,
       // { id, edge, grabbed, start, end } while a caption is being dragged.
       drag: null,
+      // { anchor, gap, start, end } while a new caption is being dragged out
+      // of a stretch the captions do not cover. Separate from `drag`, which
+      // is a caption that already exists being moved: this one has no id to
+      // move, cannot leave the gap it was started in, and is reported as a
+      // different thing entirely.
+      creating: null,
       // Set by a drag, cleared on the next click: a click event follows a
       // mouseup even when the pointer travelled, and seeking to wherever a
       // drag ended is never what was meant.
@@ -443,6 +465,30 @@ export default {
       return null;
     },
 
+    // The stretch around a moment that no caption covers -- what a new one
+    // dragged out from there is allowed to fill.
+    //
+    // A new caption is kept inside it rather than left to overlap: two cues
+    // covering the same instant is one of the things "Validate" reports as
+    // an error, and a gesture on the strip should not be able to make one
+    // by accident. Null when the moment is inside a caption after all, or
+    // when there is no room at all around it.
+    gapAt(seconds) {
+      const span = this.span();
+
+      let from = 0;
+      let to = span;
+
+      for (const caption of this.captions) {
+        if (seconds > caption.start && seconds < caption.end) return null;
+
+        if (caption.end <= seconds) from = Math.max(from, caption.end);
+        if (caption.start >= seconds) to = Math.min(to, caption.start);
+      }
+
+      return to > from ? { from, to } : null;
+    },
+
     // ── moving the strip itself ───────────────────────────────────────────
 
     // A grip of its own, not the strip: dragging the strip already means
@@ -557,7 +603,9 @@ export default {
     // ── pointer ───────────────────────────────────────────────────────────
 
     onMove(event) {
-      if (this.drag) return;
+      // A gesture in flight owns the readout and the cursor; the strip's own
+      // mousemove still fires alongside the window one that is driving it.
+      if (this.drag || this.creating) return;
 
       const span = this.span();
 
@@ -595,11 +643,13 @@ export default {
         ? found.edge === "body"
           ? "grab"
           : "ew-resize"
+        : this.gapAt(seconds)
+        ? "crosshair"
         : "pointer";
     },
 
     onLeave() {
-      if (this.drag) return;
+      if (this.drag || this.creating) return;
 
       this.readout = "";
       this.hovered = -1;
@@ -607,9 +657,15 @@ export default {
     },
 
     onDown(event) {
-      const found = this.captionAt(this.secondsAt(event.clientX));
+      const seconds = this.secondsAt(event.clientX);
+      const found = this.captionAt(seconds);
 
-      if (!found) return;
+      // Nothing there to take hold of: the same gesture starts a caption
+      // covering whatever is dragged over instead.
+      if (!found) {
+        this.startCreate(event, seconds);
+        return;
+      }
 
       // Or the browser starts a text selection across the page instead.
       event.preventDefault();
@@ -625,6 +681,11 @@ export default {
     },
 
     onDragMove(event) {
+      if (this.creating) {
+        this.onCreateMove(event);
+        return;
+      }
+
       if (!this.drag) return;
 
       const moved = this.secondsAt(event.clientX) - this.drag.grabbed;
@@ -660,6 +721,11 @@ export default {
     },
 
     onUp() {
+      if (this.creating) {
+        this.finishCreate();
+        return;
+      }
+
       if (!this.drag) return;
 
       const preview = this.preview;
@@ -682,6 +748,72 @@ export default {
         start: preview.start,
         end: preview.end,
       });
+    },
+
+    // ── making a caption ──────────────────────────────────────────────────
+
+    // Pressing down where no caption is: the start of a new one.
+    //
+    // Both ends are snapped exactly as a dragged edge is, so a caption
+    // pulled out beside an existing one meets it flush, and one pulled over
+    // a phrase lands on the ends of the speech rather than a hair inside
+    // them.
+    startCreate(event, seconds) {
+      const gap = this.gapAt(seconds);
+
+      if (!this.span() || !gap) return;
+
+      // Or the browser starts a text selection across the page instead.
+      event.preventDefault();
+
+      const anchor = this.withinGap(this.snap(seconds, null), gap);
+
+      this.creating = { anchor, gap, start: anchor, end: anchor };
+      this.dragged = false;
+    },
+
+    onCreateMove(event) {
+      const { anchor, gap } = this.creating;
+      const to = this.withinGap(
+        this.snap(this.secondsAt(event.clientX), null),
+        gap
+      );
+
+      const start = Math.min(anchor, to);
+      const end = Math.max(anchor, to);
+
+      if ((end - start) * this.pixelsPerSecond() > 2) this.dragged = true;
+
+      this.creating = { ...this.creating, start, end };
+      this.readout =
+        `New caption · ${this.timecode(start)} → ${this.timecode(end)}`;
+
+      const box = this.$refs.root.getBoundingClientRect();
+      this.readoutLeft = `${event.clientX - box.left}px`;
+
+      this.draw();
+    },
+
+    finishCreate() {
+      const made = this.creating;
+
+      this.creating = null;
+      this.readout = "";
+      this.$refs.root.style.cursor = "";
+
+      // Barely moved: that was a click on empty strip, which means the
+      // moment rather than a caption, and onClick is left to seek to it.
+      if (!this.dragged || made.end - made.start < MIN_NEW_SECONDS) {
+        this.draw();
+        return;
+      }
+
+      this.$emit("createcaption", { start: made.start, end: made.end });
+    },
+
+    // Kept inside the stretch the captions leave free -- see gapAt.
+    withinGap(seconds, gap) {
+      return Math.max(gap.from, Math.min(gap.to, seconds));
     },
 
     onClick(event) {
@@ -796,6 +928,17 @@ export default {
         const held = this.captions.find((caption) => caption.id === dragging.id);
 
         if (held) shown.push(held);
+      }
+
+      // A caption being dragged out of empty strip is not in the list at
+      // all -- it exists only as the gesture until the server has made it
+      // one -- so it is added here to be drawn like any other.
+      if (this.creating && this.dragged) {
+        shown.push({
+          id: NEW_CAPTION,
+          start: this.creating.start,
+          end: this.creating.end,
+        });
       }
 
       return shown;
@@ -1001,16 +1144,20 @@ export default {
         const shown =
           dragging && dragging.id === caption.id ? dragging : caption;
 
-        const held = dragging && dragging.id === caption.id;
+        // The one being made right now is held by definition, and drawn as
+        // the caption the reader is on: it is about to become exactly that.
+        const making = caption.id === NEW_CAPTION;
+        const held = making || (dragging && dragging.id === caption.id);
         const hovered = this.hovered === caption.id;
         const current = this.currentId === caption.id;
         const playing = this.playingId === caption.id;
 
-        const colour = current
-          ? this.colour("--timeline-caption-current", "#082954")
-          : playing
-          ? this.colour("--timeline-caption-playing", "#3f5f8a")
-          : this.colour("--timeline-caption", "#9aa1ab");
+        const colour =
+          making || current
+            ? this.colour("--timeline-caption-current", "#082954")
+            : playing
+            ? this.colour("--timeline-caption-playing", "#3f5f8a")
+            : this.colour("--timeline-caption", "#9aa1ab");
 
         const left = at(shown.start);
         const right = Math.max(left + 2, at(shown.end));
@@ -1050,7 +1197,7 @@ export default {
 
         const room = right - left - arm * 2 - 4;
 
-        if (context.measureText(label).width < room) {
+        if (!making && context.measureText(label).width < room) {
           context.fillStyle = this.colour("--timeline-label", "#111827");
           context.fillText(label, left + arm + 2, bandTop + bandHeight / 2);
         }

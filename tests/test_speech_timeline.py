@@ -636,6 +636,26 @@ class TestClickingACaption:
         assert "self.focus(caption.index)" in body
         assert "self.mark_current(caption.index)" in body
 
+    def test_it_seeks_to_the_middle_of_the_caption(self):
+        """
+        A click aimed at a caption asks for the caption, not for the instant
+        it begins -- that frame shows what is about to be said rather than
+        what the caption covers. The same answer a caption just dragged out
+        gets. A click on the strip itself still means the moment it landed
+        on, and never reaches here.
+        """
+
+        source = pathlib.Path("utils/transcript_editor.py").read_text()
+        body = source[source.index("def select_from_timeline(self, args)"):]
+        body = body[: body.index("\n    def ", 10)]
+
+        assert (
+            "middle = (caption.get_start_seconds() + caption.get_end_seconds()) / 2"
+            in body
+        )
+        assert "self.editor.seek_video(middle)" in body
+        assert "self.moved_to(middle)" in body
+
     def test_clicking_the_strip_only_seeks(self):
         source = pathlib.Path("utils/speech_timeline.js").read_text()
         body = source[source.index("onClick(event) {"):]
@@ -692,6 +712,188 @@ class TestRetimeSpan:
         source = self.source()
 
         assert 'timeline.on("retimespan"' in source
+
+
+class TestCreatingACaption:
+    """
+    Dragging where there is no caption makes one covering exactly that
+    stretch. The strip is where a reader can see that nothing covers a
+    passage of speech, so it is where they can say that something now does.
+    """
+
+    def source(self) -> str:
+        return pathlib.Path("utils/speech_timeline.js").read_text()
+
+    def server(self) -> str:
+        return pathlib.Path("utils/transcript_editor.py").read_text()
+
+    @pytest.fixture
+    def view(self, monkeypatch):
+        from utils.transcript_editor import TranscriptEditor
+
+        held = editor(
+            captions=[
+                SRTCaption(1, "00:00:00,000", "00:00:02,000", "Ett."),
+                SRTCaption(2, "00:00:06,000", "00:00:08,000", "Tva."),
+            ]
+        )
+        held.save_state_for_undo = lambda *a, **k: None
+        held.mark_as_changed = lambda *a, **k: None
+
+        # No component attached, so refreshing is a no-op and notifications
+        # are swallowed; what the captions become is what matters here.
+        monkeypatch.setattr(
+            "utils.transcript_editor.ui.notify", lambda *a, **k: None
+        )
+
+        return TranscriptEditor(held)
+
+    def times(self, view):
+        return [
+            (caption.index, caption.get_start_seconds(), caption.get_end_seconds())
+            for caption in view.editor.captions
+        ]
+
+    def test_it_makes_a_caption_covering_the_drag(self, view):
+        view.create_caption({"start": 3.0, "end": 4.5})
+
+        assert self.times(view) == [(1, 0.0, 2.0), (2, 3.0, 4.5), (3, 6.0, 8.0)]
+
+    def test_it_starts_empty_and_takes_the_caret(self, view):
+        focused = []
+        view.focus = lambda block_id, offset=0: focused.append(block_id)
+
+        view.create_caption({"start": 3.0, "end": 4.5})
+
+        assert view.editor.captions[1].text == ""
+        assert focused == [2], "the new caption, by its number after sorting"
+
+    def test_the_recording_moves_to_the_middle_of_it(self, view):
+        """
+        Making a caption is asking for it as much as clicking one is, and
+        the overlay draws whatever caption covers the play position: a
+        caption dragged out of the empty stretch around the playhead --
+        which is fixed at the centre of the strip, so that is where the
+        empty stretch usually is -- covers it, and the text appeared over a
+        frame from somewhere else entirely as it was typed.
+
+        The middle rather than the start: the start is the edge just
+        placed, and the frame at the very instant a cue begins shows what
+        is about to be said rather than what the cue covers.
+        """
+
+        sought = []
+        view.editor.seek_video = lambda seconds: sought.append(seconds)
+
+        view.create_caption({"start": 3.0, "end": 4.5})
+
+        assert sought == [pytest.approx(3.75)]
+        assert view.overlay_seconds == pytest.approx(3.75)
+
+    def test_it_is_numbered_by_where_it_lands(self, view):
+        """
+        A caption's number is its position in the list, and this one is
+        appended rather than inserted -- so nothing is right until the list
+        has been sorted.
+        """
+
+        view.create_caption({"start": 9.0, "end": 10.0})
+
+        assert self.times(view)[-1] == (3, 9.0, 10.0)
+
+    def test_it_is_one_undo_step(self, view):
+        saved = []
+        view.editor.save_state_for_undo = lambda *a, **k: saved.append(True)
+
+        view.create_caption({"start": 3.0, "end": 4.5})
+
+        assert len(saved) == 1
+
+    def test_a_stretch_already_covered_is_refused(self, view):
+        """
+        Two cues over the same instant is one of the things Validate reports
+        as an error. The client keeps a drag inside the gap it started in,
+        so this is the guard behind that rather than the rule itself.
+        """
+
+        view.create_caption({"start": 1.0, "end": 3.0})
+
+        assert len(view.editor.captions) == 2
+
+    @pytest.mark.parametrize(
+        "args",
+        [None, "nonsense", {}, {"start": 1.0}, {"start": None, "end": 2.0},
+         {"start": "x", "end": "y"}, {"start": 4.0, "end": 4.0},
+         {"start": 4.0, "end": 3.0}],
+    )
+    def test_nothing_usable_makes_nothing(self, view, args):
+        view.create_caption(args)
+
+        assert len(view.editor.captions) == 2
+
+    def test_the_strip_is_wired_to_it(self):
+        assert 'timeline.on("createcaption"' in self.server()
+
+    def test_the_drag_stays_out_of_the_captions(self):
+        """
+        A new caption is kept inside the gap it was started in rather than
+        left to overlap one that is already there.
+        """
+
+        source = self.source()
+        body = source[source.index("gapAt(seconds) {"):]
+        body = body[: body.index("\n    },")]
+
+        assert "if (seconds > caption.start && seconds < caption.end) return null;" in body
+        assert "return to > from ? { from, to } : null;" in body
+
+    def test_both_ends_snap_like_any_other_edge(self):
+        """
+        So a caption pulled out beside an existing one meets it flush, and
+        one pulled over a phrase lands on the ends of the speech.
+        """
+
+        source = self.source()
+
+        for method in ("startCreate(event, seconds) {", "onCreateMove(event) {"):
+            body = source[source.index(method):]
+            body = body[: body.index("\n    },")]
+
+            assert "this.snap(" in body
+            assert "this.withinGap(" in body
+
+    def test_a_gesture_too_short_to_see_makes_nothing(self):
+        """
+        A click on empty strip means that moment, not a caption -- and one
+        that travelled a pixel or two is still a click.
+        """
+
+        source = self.source()
+        body = source[source.index("finishCreate() {"):]
+        body = body[: body.index("\n    },")]
+
+        assert "if (!this.dragged || made.end - made.start < MIN_NEW_SECONDS)" in body
+        assert body.index("this.draw();") < body.index("$emit")
+
+    def test_it_is_drawn_while_it_is_being_made(self):
+        """
+        It is in no list to draw from -- it exists only as the gesture until
+        the server has made it a caption.
+        """
+
+        source = self.source()
+
+        assert "id: NEW_CAPTION," in source
+        assert "const making = caption.id === NEW_CAPTION;" in source
+        assert "if (!making && context.measureText(label).width < room) {" in source, (
+            "no number: it has not been given one yet"
+        )
+
+    def test_the_pointer_says_a_caption_can_be_made_there(self):
+        source = self.source()
+
+        assert '? "crosshair"' in source
+        assert "`New caption · ${this.timecode(start)} → ${this.timecode(end)}`" in source
 
 
 class TestTheOverlayFollowsTheControlBar:
