@@ -45,6 +45,9 @@ export default {
         @keyup="updateCaretBlock"
         @click="onClick"
         @blur="onBlur"
+        @paste="onPaste"
+        @drop.prevent
+        @dragover.prevent
         ref="body"
       ><template v-for="block in blocks" :key="blockKey(block)"><div
           class="transcript-gutter"
@@ -986,6 +989,74 @@ export default {
       const node = document.createTextNode(atEnd ? "\n\u200B" : "\n");
       range.insertNode(node);
       range.setStart(node, 1);
+      range.collapse(true);
+
+      selection.removeAllRanges();
+      selection.addRange(range);
+
+      this.onInput();
+    },
+
+    // Paste, reduced to the plain text it carries.
+    //
+    // Left alone, a contenteditable inserts the clipboard's *HTML* flavour
+    // -- whatever markup the page the reader copied from chose to put
+    // there, styling, elements, and event-handler attributes included. An
+    // <img onerror=...> in that flavour runs its handler the moment it is
+    // inserted, in this origin, with this session: copying a quote from a
+    // hostile page and pasting it into a caption is all it takes. The text
+    // the caption keeps was never going to be anything but plain
+    // (plainText/textContent strip markup before the server sees it), so
+    // nothing is lost by never letting the markup in at all.
+    //
+    // Inserted with the same Range splice insertLineBreak uses, for the
+    // same reason: execCommand("insertText") corrupted surrounding content
+    // in testing. And like there, a programmatic insertion fires no input
+    // event, so onInput is called by hand to mark, count and report the
+    // edit exactly as typing it would have. Drop is simply prevented on
+    // the editor above -- the same HTML flavour arrives that way, dropping
+    // text into a caption is not a gesture this editor means anything by,
+    // and a caret position for dropped content is nothing onPaste's own
+    // selection-based insert could honour anyway.
+    //
+    // Newlines survive (white-space: pre-wrap draws them, the same as
+    // Shift+Enter's own "\n"); a trailing one gets insertLineBreak's
+    // zero-width space so it earns a line box, and plainText strips that
+    // back out before the text is read for anything.
+    onPaste(event) {
+      event.preventDefault();
+
+      const text = event.clipboardData?.getData("text/plain") ?? "";
+
+      const selection = window.getSelection();
+      if (!selection.rangeCount) return;
+
+      const range = selection.getRangeAt(0);
+      const block = this.blockOf(range.startContainer);
+      if (!block) return;
+
+      // A selection reaching into another block would take that block's
+      // own structure with it when deleted -- the gutters between are not
+      // editable text. The browser's native handling of such a selection
+      // is its own hazard, but this handler is not adding one of ours.
+      if (this.blockOf(range.endContainer) !== block) return;
+
+      if (!text) return;
+
+      let atEnd = false;
+      const rest = range.cloneRange();
+      rest.selectNodeContents(block);
+      rest.setStart(range.endContainer, range.endOffset);
+      atEnd = this.plainText(rest.toString()).length === 0;
+
+      range.deleteContents();
+
+      const trailingBreak = text.endsWith("\n") && atEnd;
+      const node = document.createTextNode(
+        trailingBreak ? text + "\u200B" : text
+      );
+      range.insertNode(node);
+      range.setStart(node, node.length);
       range.collapse(true);
 
       selection.removeAllRanges();

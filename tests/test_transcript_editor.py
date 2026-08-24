@@ -986,6 +986,86 @@ class TestSubtitleEnter:
         assert "range.setStart(node, 1)" in body
 
 
+class TestPaste:
+    """
+    A contenteditable inserts the clipboard's HTML flavour unless told
+    otherwise -- markup from whatever page the reader copied from, and an
+    <img onerror=...> in it runs its handler on insertion, in this origin,
+    with this session. The editor only ever keeps plain text, so paste is
+    reduced to the text/plain flavour before anything reaches the DOM.
+    """
+
+    def source(self) -> str:
+        import pathlib
+
+        return pathlib.Path("utils/transcript_editor.js").read_text()
+
+    def paste_body(self) -> str:
+        source = self.source()
+        body = source[source.index("onPaste(event) {"):]
+
+        return body[: body.index("\n    },")]
+
+    def test_the_editor_intercepts_paste_and_drop(self):
+        source = self.source()
+
+        assert '@paste="onPaste"' in source
+        # The same HTML flavour arrives by drag as by paste.
+        assert "@drop.prevent" in source
+        assert "@dragover.prevent" in source
+
+    def test_only_the_plain_text_flavour_is_read(self):
+        body = self.paste_body()
+
+        assert "event.preventDefault()" in body
+        assert 'getData("text/plain")' in body
+        assert "getData(\"text/html\")" not in body
+
+    def test_it_is_inserted_as_a_text_node_not_markup(self):
+        """
+        The same Range splice insertLineBreak uses -- never innerHTML, never
+        execCommand, so the pasted characters can only ever be characters.
+        """
+
+        body = self.paste_body()
+
+        assert "document.createTextNode(" in body
+        assert "innerHTML" not in body
+        assert "execCommand" not in body
+
+    def test_the_edit_is_reported_like_typing(self):
+        """
+        A programmatic insertion fires no input event, so onInput is called
+        by hand -- the same bookkeeping a keystroke gets.
+        """
+
+        body = self.paste_body()
+
+        assert "this.onInput()" in body
+
+    def test_a_selection_into_another_block_is_refused(self):
+        """
+        Deleting across blocks would take the blocks' own structure with
+        it -- the gutters between are not editable text.
+        """
+
+        body = self.paste_body()
+
+        assert "this.blockOf(range.endContainer) !== block" in body
+
+    def test_a_trailing_newline_still_earns_its_line_box(self):
+        """
+        insertLineBreak's own rule: a "\n" with nothing after it gets no
+        line box, so a zero-width space follows it -- and plainText strips
+        that back out before the text is read for anything.
+        """
+
+        body = self.paste_body()
+
+        assert 'text.endsWith("\\n") && atEnd' in body
+        assert "\\u200B" in body
+
+
 class TestPlainText:
     """
     The zero-width space insertLineBreak plants at a caption's true end
