@@ -495,8 +495,13 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
 
         count = len(self.captions)
 
+        # A reader editing a transcription has paragraphs in front of them,
+        # not captions -- the same noun the information dialog's own row
+        # label uses.
+        noun = "caption" if self.data_format == "srt" else "paragraph"
+
         return {
-            "captions": f"{count} caption" if count == 1 else f"{count} captions",
+            "captions": f"{count} {noun}" if count == 1 else f"{count} {noun}s",
             "duration": (
                 self.format_duration(self.captions[-1].get_end_seconds())
                 if self.captions

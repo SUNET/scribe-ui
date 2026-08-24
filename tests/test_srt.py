@@ -742,7 +742,7 @@ class TestSplitWithoutACaret:
         assert [c.text for c in editor.captions] == ["Hello there w", "onderful world"]
 
 
-class TestVideoInformationDialog:
+class TestInformationDialog:
     """
     What is open and what is in it, behind a button rather than across the
     toolbar: it is read when a reader wonders, not while they work.
@@ -767,18 +767,41 @@ class TestVideoInformationDialog:
 
         page = self.page()
 
-        for label in ("File", "Language", "Captions", "Length", "Reading speed"):
+        for label in ("File", "Language", "Reading speed"):
             assert f'"{label}",' in page
 
-    def test_the_moving_figures_are_registered(self):
+    def test_the_count_is_worded_for_the_format(self):
         """
-        The count, the length and the reading speed all change as the reader
-        edits; the file name and the language never do.
+        A reader editing a transcription has paragraphs in front of them,
+        not captions -- and "block" is neither.
         """
 
         page = self.page()
 
-        assert 'if value in ("captions", "duration", "wpm"):' in page
+        assert '"Captions" if data_format == "srt" else "Paragraphs"' in page
+        assert "How many paragraphs the " in page
+        assert "blocks the transcription" not in page
+
+    def test_it_does_not_say_where_the_last_caption_ends(self):
+        """
+        The running time was where the subtitles stop, not how long the
+        recording is, which is not what a reader reads that row as.
+        """
+
+        page = self.page()
+
+        assert '"Length",' not in page
+        assert '"duration"' not in page
+
+    def test_the_moving_figures_are_registered(self):
+        """
+        The count and the reading speed change as the reader edits; the file
+        name and the language never do.
+        """
+
+        page = self.page()
+
+        assert 'if value in ("captions", "wpm"):' in page
         assert "editor.set_status_elements(**figures)" in page
 
 
@@ -867,6 +890,19 @@ class TestStatusLine:
         assert labels["captions"].text == "2 captions"
         assert labels["duration"].text == "1:05"
         assert labels["wpm"].text.endswith("wpm")
+
+    def test_a_transcription_counts_paragraphs(self):
+        """
+        The figure says the same noun the dialog's own row label does.
+        """
+
+        editor = self.editor(
+            SRTCaption(1, "00:00:00,000", "00:00:02,000", "Hej pa dig"),
+            SRTCaption(2, "00:00:02,000", "00:01:05,000", "Hej igen"),
+        )
+        editor.data_format = "txt"
+
+        assert self.figures(editor)["captions"].text == "2 paragraphs"
 
     def test_one_caption_is_singular(self):
         labels = self.figures(

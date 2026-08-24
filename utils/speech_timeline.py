@@ -52,6 +52,7 @@ class SpeechTimeline(
         self._props["duration"] = 0.0
         self._props["currentId"] = -1
         self._props["startDocked"] = False
+        self._props["shown"] = True
 
     def set_speech(self, runs: List[list], duration: float) -> None:
         self._props["runs"] = runs
@@ -70,6 +71,20 @@ class SpeechTimeline(
         """
 
         self._props["startDocked"] = bool(docked)
+        self.update()
+
+    def set_shown(self, shown: bool) -> None:
+        """
+        Whether the strip is on at all -- the "Timeline" switch under the
+        video.
+
+        A prop of its own rather than NiceGUI's set_visibility: that works by
+        putting a "hidden" class on the element, and this component's
+        template is rooted in a <Teleport>, which is not a DOM node and has
+        nothing for a fallthrough class to land on. The switch did nothing.
+        """
+
+        self._props["shown"] = bool(shown)
         self.update()
 
     def set_current(self, caption_index: int) -> None:

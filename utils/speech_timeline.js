@@ -78,6 +78,7 @@ export default {
     <Teleport to="body" :disabled="!docked">
     <div
       class="speech-timeline-wrap"
+      v-show="shown"
       :class="{
         'speech-timeline-docked': docked,
         'speech-timeline-lifting': dockDrag !== null,
@@ -150,6 +151,16 @@ export default {
     // Whether the strip starts along the foot of the page rather than under
     // the video. A saved preference, so it is the server that knows it.
     startDocked: { type: Boolean, default: false },
+    // Whether the strip is on at all -- the "Timeline" switch under the
+    // video. A prop rather than NiceGUI's own set_visibility: that hides an
+    // element by putting a "hidden" class on it, and this component's
+    // template is rooted in a <Teleport>, which is not a DOM node and so has
+    // nothing for a fallthrough class to land on. The switch did nothing at
+    // all until this existed.
+    //
+    // v-show, not v-if: the canvas and the listeners mounted() set up stay
+    // where they are, so coming back is a redraw rather than a rebuild.
+    shown: { type: Boolean, default: true },
   },
   emits: ["retimespan", "selectcaption", "dock"],
   data() {
@@ -197,6 +208,15 @@ export default {
     },
     currentId() {
       this.draw();
+    },
+    shown(on) {
+      // A hidden strip must not keep the page padded out of its way, and a
+      // strip coming back has been display: none -- so it has no size to
+      // have measured itself against, and settle() is what waits for the
+      // browser to give it one.
+      this.markDocked();
+
+      if (on) this.settle();
     },
     duration() {
       this.draw();
@@ -503,13 +523,23 @@ export default {
       canvas.height = 0;
       canvas.style.width = "100%";
       canvas.style.height = "100%";
+
+      // draw() only reallocates the backing store when the size string it
+      // works out differs from this one -- so the remembered size has to go
+      // with the pixels. Hiding the strip and showing it again gives back
+      // exactly the box it had, which matched, so draw() kept the 0x0
+      // backing store this just left and painted the strip into nothing.
+      this.backing = null;
     },
 
     // The page has to leave room for a strip fixed along its foot, and the
     // page is not this component's to style -- so it is told, and takes the
     // room in its own stylesheet.
     markDocked() {
-      document.body.classList.toggle("timeline-docked", this.docked);
+      // Only while it is actually on screen: a fixed strip takes no space of
+      // its own, so the page is padded out of its way by hand, and a hidden
+      // one would leave that padding as a gap at the foot of the page.
+      document.body.classList.toggle("timeline-docked", this.docked && this.shown);
       this.followTheRail();
     },
 

@@ -837,8 +837,40 @@ class TestDockingTheStrip:
 
         source = self.source()
 
-        assert 'classList.toggle("timeline-docked", this.docked)' in source
+        assert (
+            'classList.toggle("timeline-docked", this.docked && this.shown)'
+            in source
+        )
         assert "body.timeline-docked .nicegui-content" in theme_styles
+
+    def test_coming_back_reallocates_the_canvas(self):
+        """
+        shrinkCanvas() throws the pixels away, and draw() only allocates new
+        ones when the size it measures differs from the size it remembers --
+        so the remembered size has to go with them. Hiding the strip and
+        showing it again gives back exactly the box it had, which matched,
+        and the strip came back blank: drawn into a 0x0 backing store.
+        """
+
+        source = self.source()
+        shrink = source[source.index("shrinkCanvas() {"):]
+        shrink = shrink[: shrink.index("\n    },")]
+
+        assert "canvas.width = 0;" in shrink
+        assert "this.backing = null;" in shrink
+
+    def test_a_hidden_strip_gives_the_room_back(self):
+        """
+        The padding is put on the body by hand, so a strip turned off while
+        docked would otherwise leave a gap at the foot of the page.
+        """
+
+        source = self.source()
+        watcher = source[source.index("shown(on) {"):]
+        watcher = watcher[: watcher.index("\n    },")]
+
+        assert "this.markDocked();" in watcher
+        assert "if (on) this.settle();" in watcher
 
     def test_it_is_fixed_to_the_foot_of_the_page(self):
         from utils.styles import theme_styles
@@ -1031,3 +1063,44 @@ class TestWiring:
         refresh = refresh[: refresh.index("\n    # ")]
 
         assert "self.refresh_timeline()" in refresh
+
+
+class TestTheTimelineSwitch:
+    """
+    "Timeline" under the video turns the strip off.
+
+    It went through NiceGUI's own set_visibility, which hides an element by
+    putting a "hidden" class on it -- and this component's template is
+    rooted in a <Teleport>, which is not a DOM node and has nothing for a
+    fallthrough class to land on. The switch did nothing at all; the strip
+    owns the answer itself now, through a prop.
+    """
+
+    def source(self) -> str:
+        import pathlib
+
+        return pathlib.Path("utils/speech_timeline.js").read_text()
+
+    def page(self) -> str:
+        import pathlib
+
+        return pathlib.Path("pages/srt.py").read_text()
+
+    def test_the_strip_takes_it_as_a_prop(self):
+        source = self.source()
+
+        assert "shown: { type: Boolean, default: true }" in source
+        assert 'v-show="shown"' in source
+
+    def test_the_switch_sets_it_rather_than_the_element_visibility(self):
+        page = self.page()
+
+        assert "timeline.set_shown(value)" in page
+        assert "timeline.set_shown(editor.show_timeline)" in page
+        assert "timeline.set_visibility" not in page
+
+    def test_it_survives_a_reload(self):
+        page = self.page()
+
+        assert "app.storage.user[TIMELINE_SHOW_KEY] = value" in page
+        assert "editor.show_timeline = value" in page

@@ -255,14 +255,16 @@ def create() -> None:
                     with ui.dialog() as info_dialog, ui.card().classes(
                         "editor-info-card"
                     ):
-                        ui.label("Video information").classes("text-h6")
+                        ui.label("Information").classes("text-h6")
                         ui.separator()
 
                         figures = {}
 
                         # Each row is a name, a value and what the value
-                        # means. The last three move as the reader edits;
-                        # the first two never do.
+                        # means. The last two move as the reader edits; the
+                        # first two never do. Worded for whichever format is
+                        # open: a reader has captions in front of them or
+                        # paragraphs, and "block" is neither.
                         with ui.column().classes("editor-info-rows"):
                             for label, value, explanation in (
                                 ("File", filename, None),
@@ -272,19 +274,12 @@ def create() -> None:
                                     "What the recording was transcribed in.",
                                 ),
                                 (
-                                    "Captions",
+                                    "Captions" if data_format == "srt" else "Paragraphs",
                                     "captions",
                                     "How many captions the file has."
                                     if data_format == "srt"
-                                    else "How many blocks the transcription has.",
-                                ),
-                                (
-                                    "Length",
-                                    "duration",
-                                    "Where the last caption ends -- which can "
-                                    "be short of the recording itself."
-                                    if data_format == "srt"
-                                    else "Where the last block ends.",
+                                    else "How many paragraphs the "
+                                    "transcription has.",
                                 ),
                                 (
                                     "Reading speed",
@@ -300,7 +295,7 @@ def create() -> None:
                                         # A figure the editor keeps up to
                                         # date is registered by name; the
                                         # fixed ones are drawn as they are.
-                                        if value in ("captions", "duration", "wpm"):
+                                        if value in ("captions", "wpm"):
                                             figures[value] = ui.label().classes(
                                                 "editor-info-figure"
                                             )
@@ -491,7 +486,7 @@ def create() -> None:
                             timeline.on("dock", save_dock)
                             # Restored before the first paint, so a reader
                             # who turned it off does not see it flash past.
-                            timeline.set_visibility(editor.show_timeline)
+                            timeline.set_shown(editor.show_timeline)
 
                         # Always run, independent of the autoscroll switch
                         # below -- follow_video only moves the editor's own
@@ -567,7 +562,7 @@ def create() -> None:
                                         value = bool(event.sender.value)
                                         editor.show_timeline = value
                                         app.storage.user[TIMELINE_SHOW_KEY] = value
-                                        timeline.set_visibility(value)
+                                        timeline.set_shown(value)
 
                                     timeline_switch = ui.switch(
                                         "Timeline",
