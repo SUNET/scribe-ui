@@ -965,6 +965,11 @@ class TranscriptEditor:
         self.editor.save_state_for_undo()
         caption.start_time = self.editor.seconds_to_timestamp(start)
         caption.end_time = self.editor.seconds_to_timestamp(end)
+        # A retime can move a caption past a neighbour, and a caption's
+        # number is its position in the list -- so the list has to follow the
+        # clock, or the text editor keeps showing it where it used to be
+        # under a number that matches neither its own timing nor the strip.
+        self.editor.sort_captions()
         self.editor.mark_as_changed()
         self.refresh()
         self.changed()

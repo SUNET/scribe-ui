@@ -742,6 +742,24 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
 
         self.update_status()
 
+    def sort_captions(self) -> None:
+        """
+        Put the captions back into the order they play in, and renumber.
+
+        Nothing else does: a caption's number is its position in the list,
+        and the list is the order it was parsed in. Retiming one -- dragged
+        on the strip, or typed into -- can move it past a neighbour, and
+        without this the text editor went on showing it where it used to be,
+        with numbering that no longer matched either the times beside it or
+        the brackets on the strip.
+
+        Stable, so two captions starting at the same instant keep the order
+        they already had rather than swapping on every unrelated retime.
+        """
+
+        self.captions.sort(key=lambda caption: caption.get_start_seconds())
+        self.renumber_captions()
+
     def format_time_display(self, timestamp: str) -> str:
         """
         Format timestamp for display.

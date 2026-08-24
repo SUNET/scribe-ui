@@ -400,8 +400,8 @@ class RenderMixin:
             [
                 ("Split caption at cursor", "Enter"),
                 ("New line", "Shift + Enter"),
-                ("Move first word to previous captions", "Ctrl/⌘ + ↑"),
-                ("Move last word to next captions", "Ctrl/⌘ + ↓"),
+                ("Move first word to previous caption", "Ctrl/⌘ + ↑"),
+                ("Move last word to next caption", "Ctrl/⌘ + ↓"),
                 ("Merge with next", "Ctrl + M"),
                 ("Add caption after", "Ctrl/⌘ + Shift + Enter"),
                 ("Delete caption", "Ctrl + D"),

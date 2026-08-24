@@ -2669,8 +2669,8 @@ class TestTheShortcutsDialog:
                 [
                     ("Split caption at cursor", "Enter"),
                     ("New line", "Shift + Enter"),
-                    ("Move first word to previous captions", "Ctrl/⌘ + ↑"),
-                    ("Move last word to next captions", "Ctrl/⌘ + ↓"),
+                    ("Move first word to previous caption", "Ctrl/⌘ + ↑"),
+                    ("Move last word to next caption", "Ctrl/⌘ + ↓"),
                     ("Merge with next", "Ctrl + M"),
                     ("Add caption after", "Ctrl/⌘ + Shift + Enter"),
                     ("Delete caption", "Ctrl + D"),
@@ -2722,3 +2722,60 @@ class TestTheShortcutsDialog:
 
         for action in ("Undo", "Redo", "Play/Pause"):
             assert captions[action] == paragraphs[action]
+
+
+class TestRetimingReorders:
+    """
+    A caption's number is its position in the list, and the list is the
+    order it was parsed in. Dragging one on the strip -- or typing a time
+    into it -- can move it past a neighbour, and nothing put the list back
+    in the order it plays in: the text editor went on showing the caption
+    where it used to be, under a number matching neither the timing beside
+    it nor the bracket on the strip.
+    """
+
+    def starts(self, editor) -> list:
+        return [caption.get_start_seconds() for caption in editor.captions]
+
+    def numbers(self, editor) -> list:
+        return [caption.index for caption in editor.captions]
+
+    def test_dragging_a_caption_back_moves_it_up_the_list(self, view, editor):
+        third = editor.captions[2]
+
+        view.retime_span({"id": third.index, "start": 0.5, "end": 0.9})
+
+        assert editor.captions[1] is third
+        assert self.starts(editor) == sorted(self.starts(editor))
+
+    def test_the_numbers_follow_the_order(self, view, editor):
+        view.retime_span({"id": editor.captions[2].index, "start": 0.5, "end": 0.9})
+
+        assert self.numbers(editor) == [1, 2, 3, 4]
+
+    def test_a_typed_time_reorders_the_same_way(self, view, editor):
+        first = editor.captions[0]
+
+        # The end first: a start typed past the end it still has would be
+        # refused for ending before it starts.
+        view.retime({"id": first.index, "edge": "end", "value": "00:01:00.000"})
+        view.retime({"id": first.index, "edge": "start", "value": "00:00:59.000"})
+
+        assert editor.captions[-1] is first
+        assert self.numbers(editor) == [1, 2, 3, 4]
+
+    def test_a_refused_retime_leaves_the_order_alone(self, view, editor):
+        before = list(editor.captions)
+
+        view.retime_span({"id": editor.captions[1].index, "start": 5.0, "end": 1.0})
+
+        assert editor.captions == before
+
+    def test_captions_starting_together_keep_their_order(self, editor):
+        editor.captions[1].start_time = editor.captions[0].start_time
+        first, second = editor.captions[0], editor.captions[1]
+
+        editor.sort_captions()
+
+        assert editor.captions[0] is first
+        assert editor.captions[1] is second
