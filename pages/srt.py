@@ -262,32 +262,38 @@ def create() -> None:
 
                         # Each row is a name, a value and what the value
                         # means. The last two move as the reader edits; the
-                        # first two never do. Worded for whichever format is
-                        # open: a reader has captions in front of them or
+                        # first two never do. One set of rows for both
+                        # formats -- they say the same things about the same
+                        # file -- differing only in what a block of it is
+                        # called: a reader has captions in front of them or
                         # paragraphs, and "block" is neither.
+                        counted = "captions" if data_format == "srt" else "paragraphs"
+
+                        rows = (
+                            (
+                                "Media file",
+                                filename,
+                                "The source file for this transcription.",
+                            ),
+                            (
+                                "Language",
+                                language,
+                                "The language used for the transcription.",
+                            ),
+                            (
+                                counted.capitalize(),
+                                "captions",
+                                f"The number of {counted} in the transcription.",
+                            ),
+                            (
+                                "Reading speed",
+                                "wpm",
+                                "Average reading speed across the transcription.",
+                            ),
+                        )
+
                         with ui.column().classes("editor-info-rows"):
-                            for label, value, explanation in (
-                                ("File", filename, None),
-                                (
-                                    "Language",
-                                    language,
-                                    "What the recording was transcribed in.",
-                                ),
-                                (
-                                    "Captions" if data_format == "srt" else "Paragraphs",
-                                    "captions",
-                                    "How many captions the file has."
-                                    if data_format == "srt"
-                                    else "How many paragraphs the "
-                                    "transcription has.",
-                                ),
-                                (
-                                    "Reading speed",
-                                    "wpm",
-                                    "Across the whole result. Around 150 "
-                                    "words per minute is ordinary speech.",
-                                ),
-                            ):
+                            for label, value, explanation in rows:
                                 with ui.row().classes("editor-info-row"):
                                     ui.label(label).classes("editor-info-label")
 

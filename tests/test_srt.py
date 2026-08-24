@@ -762,25 +762,35 @@ class TestInformationDialog:
     def test_it_names_what_it_shows(self):
         """
         A row of bare numbers explains nothing; with room for labels, each
-        figure can say what it means outright rather than on hover.
+        figure can say what it means outright rather than on hover -- the
+        file among them, which used to be the one row with no explanation
+        under it.
         """
 
         page = self.page()
 
-        for label in ("File", "Language", "Reading speed"):
-            assert f'"{label}",' in page
+        for label in ("Media file", "Language", "Reading speed"):
+            assert f'"{label}"' in page
+
+        assert '"The source file for this transcription."' in page
 
     def test_the_count_is_worded_for_the_format(self):
         """
         A reader editing a transcription has paragraphs in front of them,
-        not captions -- and "block" is neither.
+        not captions -- and "block" is neither. It is the only word the two
+        formats' rows differ in.
         """
 
         page = self.page()
 
-        assert '"Captions" if data_format == "srt" else "Paragraphs"' in page
-        assert "How many paragraphs the " in page
-        assert "blocks the transcription" not in page
+        assert (
+            'counted = "captions" if data_format == "srt" else "paragraphs"' in page
+        )
+        assert "counted.capitalize()" in page
+        assert 'f"The number of {counted} in the transcription."' in page
+        assert "block" not in page[page.index("counted ="):page.index(
+            "editor-info-rows"
+        )]
 
     def test_it_does_not_say_where_the_last_caption_ends(self):
         """

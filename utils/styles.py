@@ -525,30 +525,36 @@ theme_styles = """
         gap: 0.85rem;
         width: 100%;
     }
+    /* Each figure is a small heading with its answer under it, rather than
+       a name in one column and a value in another: the two-column form gave
+       every label a fixed 8rem whatever it said, and a filename -- the one
+       value with no room to spare -- got what was left. */
     .editor-info-row {
         display: flex;
-        align-items: baseline;
-        gap: 1rem;
+        flex-direction: column;
+        gap: 0.1rem;
         width: 100%;
     }
     .editor-info-label {
-        flex: 0 0 8rem;
-        color: var(--color-text-muted);
+        font-weight: 600;
+        color: var(--color-text-primary);
     }
     .editor-info-value {
-        flex: 1 1 auto;
         min-width: 0;
         gap: 0.1rem;
+        padding-left: 0.25rem;
     }
     .editor-info-figure {
-        font-weight: 600;
         color: var(--color-text-primary);
         font-variant-numeric: tabular-nums;
         /* A filename has no spaces to break at and is often long. */
         overflow-wrap: anywhere;
     }
+    /* Italic, so the sentence saying what a figure means cannot be read as
+       another figure. */
     .editor-info-explanation {
         font-size: 0.8125rem;
+        font-style: italic;
         color: var(--color-text-secondary);
     }
 

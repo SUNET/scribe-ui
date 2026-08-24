@@ -429,3 +429,35 @@ class TestVideoSubtitleOverlay:
         assert "--subtitle-char-limit" in font_size
         assert font_size.startswith("min(1rem,")
         assert effective(".video-frame")["container-type"] == "inline-size"
+
+
+class TestTheInformationRows:
+    """
+    Each figure in the information dialog is a small heading with its value
+    under it, not a name in one column and a value in another: the
+    two-column form gave every label a fixed 8rem whatever it said, and the
+    filename -- the one value with no room to spare -- got what was left.
+    """
+
+    def rule(self, selector: str) -> str:
+        from utils.styles import theme_styles
+
+        rule = theme_styles[theme_styles.index(f"{selector} {{"):]
+
+        return rule[: rule.index("}")]
+
+    def test_a_row_stacks(self):
+        rule = self.rule(".editor-info-row")
+
+        assert "flex-direction: column" in rule
+
+    def test_the_label_heads_it(self):
+        rule = self.rule(".editor-info-label")
+
+        assert "font-weight: 600" in rule
+        assert "var(--color-text-primary)" in rule
+
+    def test_the_explanation_cannot_be_read_as_a_figure(self):
+        rule = self.rule(".editor-info-explanation")
+
+        assert "font-style: italic" in rule
