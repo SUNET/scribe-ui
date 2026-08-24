@@ -141,7 +141,7 @@ export default {
         </span>
         <span class="speech-timeline-hint">
           Click a caption to go to it · drag it, or one of its brackets, to
-          retime · drag an empty stretch to add caption
+          retime · drag across empty space to add a caption
         </span>
         <span class="speech-timeline-range" :title="rangeTitle">{{ range }}</span>
         <span v-if="dockDrag" class="speech-timeline-dock-hint">
