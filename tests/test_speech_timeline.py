@@ -636,25 +636,21 @@ class TestClickingACaption:
         assert "self.focus(caption.index)" in body
         assert "self.mark_current(caption.index)" in body
 
-    def test_it_seeks_to_the_middle_of_the_caption(self):
+    def test_it_seeks_to_the_start_of_the_caption(self):
         """
-        A click aimed at a caption asks for the caption, not for the instant
-        it begins -- that frame shows what is about to be said rather than
-        what the caption covers. The same answer a caption just dragged out
-        gets. A click on the strip itself still means the moment it landed
-        on, and never reaches here.
+        A reader clicking a caption is asking to play it. It once seeked to
+        the middle, which meant the first half of the caption was never
+        heard without seeking back by hand. A click on the strip itself
+        still means the moment it landed on, and never reaches here.
         """
 
         source = pathlib.Path("utils/transcript_editor.py").read_text()
         body = source[source.index("def select_from_timeline(self, args)"):]
         body = body[: body.index("\n    def ", 10)]
 
-        assert (
-            "middle = (caption.get_start_seconds() + caption.get_end_seconds()) / 2"
-            in body
-        )
-        assert "self.editor.seek_video(middle)" in body
-        assert "self.moved_to(middle)" in body
+        assert "start = caption.get_start_seconds()" in body
+        assert "self.editor.seek_video(start)" in body
+        assert "self.moved_to(start)" in body
 
     def test_clicking_the_strip_only_seeks(self):
         source = pathlib.Path("utils/speech_timeline.js").read_text()

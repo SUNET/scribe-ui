@@ -236,12 +236,13 @@ class TranscriptEditor:
         thing to keep in step by hand -- so clicking one there does what
         clicking one in the text does, rather than only seeking.
 
-        To the middle of the caption, the same as a caption just dragged
-        out -- see create_caption. A click on the strip aimed at a caption
-        asks for the caption, not for the instant it begins, and the frame
-        at that instant shows what is about to be said rather than what the
-        caption covers. A click on the strip *itself* still means the
-        moment it landed on, to the pixel; that one never reaches here.
+        To the caption's own start. It once went to the middle, on the
+        reasoning that the frame where a cue begins shows what is about to
+        be said rather than what the cue covers -- but a reader clicking a
+        caption is asking to play it, and landing halfway through means the
+        first half of it is never heard without seeking back by hand. A
+        click on the strip *itself* still means the moment it landed on, to
+        the pixel; that one never reaches here.
         """
 
         caption = self.caption(self.block_id(args))
@@ -249,10 +250,10 @@ class TranscriptEditor:
         if caption is None:
             return
 
-        middle = (caption.get_start_seconds() + caption.get_end_seconds()) / 2
+        start = caption.get_start_seconds()
 
-        self.editor.seek_video(middle)
-        self.moved_to(middle)
+        self.editor.seek_video(start)
+        self.moved_to(start)
         self.focus(caption.index)
         self.mark_current(caption.index)
 
