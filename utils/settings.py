@@ -83,6 +83,28 @@ class Settings(BaseSettings):
     REVIEW_SENSITIVITY_MEDIUM: float = 0.50
     REVIEW_SENSITIVITY_HIGH: float = 0.75
 
+    # Inference (summaries, study notes and the like) over a finished
+    # transcription. The request goes from this page to the inference hub
+    # and on to a worker over websockets, and is never stored anywhere --
+    # so what a reader gets back lives in the page and nowhere else, and
+    # closing it throws the answer away.
+    INFERENCE_ENABLED: bool = True
+
+    # Where the inference hub is. It is a separate application from the
+    # API, and behind a reverse proxy it usually shares a name with it --
+    # which is what empty means here. Development has no proxy, so point
+    # this at the hub's own port instead: http://localhost:8001
+    INFERENCE_URL: str = ""
+
+    # Full websocket address, when it is not simply INFERENCE_URL with the
+    # scheme swapped -- an unusual proxy path, say.
+    INFERENCE_WS_URL: str = ""
+
+    # How long to wait for the hub to answer at all before giving up on a
+    # request, in seconds. Generous: a long transcript on a busy worker can
+    # sit in the queue for a while before the first word arrives.
+    INFERENCE_TIMEOUT: int = 900
+
     WHISPER_MODELS: list[str] = [
         "Fast transcription (normal accuracy)",
         "Slower transcription (higher accuracy)",

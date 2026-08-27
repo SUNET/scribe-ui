@@ -29,6 +29,7 @@ from utils.token import (
     get_auth_header,
     get_bofh_status,
     get_user_data,
+    session_alive,
     token_refresh_or_wait,
 )
 from utils.helpers import (
@@ -324,6 +325,14 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
     unreachable = {"count": 0}
 
     async def refresh():
+        # This timer outlives the session it was started for: a closed tab,
+        # a server restart or a logout takes the user storage away while the
+        # timer is still on the loop. Refreshing a token for a session that
+        # no longer exists is both pointless and, since NiceGUI raises
+        # rather than answering, noisy.
+        if not session_alive():
+            return
+
         keep = await token_refresh_or_wait(unreachable["count"])
 
         if keep is True:

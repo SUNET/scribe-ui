@@ -113,6 +113,29 @@ async def token_refresh() -> bool:
     return True
 
 
+def session_alive() -> bool:
+    """
+    Whether this client's user storage is still there.
+
+    Background timers outlive the session that started them -- a reader
+    closes the tab, the server restarts, someone logs out -- and NiceGUI
+    does not answer "no" when asked for the storage of a session it no
+    longer has: it raises (an assertion in its storage.py). Anything running
+    on a timer has to ask first, or the first anyone hears of a session
+    ending is a traceback from a refresh firing into nothing.
+
+    Returns:
+        bool: True when app.storage.user can be read.
+    """
+
+    try:
+        app.storage.user
+    except Exception:
+        return False
+
+    return True
+
+
 async def token_refresh_or_wait(failures: int = 0) -> bool:
     """
     Whether to keep the session, given how many times refreshing has already

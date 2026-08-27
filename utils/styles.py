@@ -558,6 +558,180 @@ theme_styles = """
         color: var(--color-text-secondary);
     }
 
+    /* The Analyse strip, under the video. One row at rest: a mark, a
+       button per thing the model can be asked for, and the answer beneath
+       them only once there is one -- so an unused feature costs a single
+       row of the pane. */
+    .inference-panel {
+        gap: 0.35rem;
+        padding-top: 0.35rem;
+        /* Takes whatever the video, the timeline and the switches leave,
+           rather than a height of its own: the answer is the thing being
+           read once there is one, and a fixed box left it scrolling inside
+           a pane with empty space under it. min-height: 0 because a flex
+           item refuses to shrink below its content without it, and the
+           answer's content is arbitrarily long. */
+        flex: 1 1 auto;
+        min-height: 0;
+    }
+    /* Three cells, not a flex row: the mark on the left, the pills in the
+       middle, the copy and download buttons on the right. The outer two
+       are equal fractions so the middle one lands on the row's true
+       centre -- centring a flex item between its neighbours only centres
+       it in whatever space they leave over, which put the pills visibly
+       left of centre. */
+    .inference-bar {
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .inference-tools {
+        justify-self: end;
+        gap: 0.15rem;
+        flex-wrap: nowrap;
+    }
+    /* The one piece of chrome saying what the row is. A label said the same
+       thing in four times the width. */
+    .inference-mark {
+        font-size: 1.05rem;
+        color: var(--color-text-tertiary);
+    }
+    .inference-actions {
+        justify-content: center;
+        gap: 0.35rem;
+        flex-wrap: wrap;
+    }
+    /* Pills rather than buttons: they are four peers, none of them the
+       action of the page, and a row of filled buttons under the video
+       would shout louder than Save does in the toolbar. */
+    .inference-chip {
+        border-radius: 999px;
+        font-size: 0.8125rem;
+        font-weight: 500;
+        padding: 0.15rem 0.8rem;
+        transition: background 0.15s ease, color 0.15s ease;
+    }
+    .inference-chip .q-icon {
+        font-size: 1rem;
+    }
+    /* Filled, in the near-black the transcription itself is set in --
+       these are the one thing in this pane a reader presses, and outlined
+       pills read as disabled next to the switches above them. The colour
+       is a token rather than #000 so dark mode inverts it: the same rule
+       gives white pills on black there, where filling them with the
+       page's own colour would make them vanish. */
+    .body--light .q-btn.inference-chip,
+    .body--dark .q-btn.inference-chip {
+        background-color: var(--color-text-primary) !important;
+        border: none !important;
+        color: var(--color-bg-surface) !important;
+    }
+    .body--light .q-btn.inference-chip .q-icon,
+    .body--light .q-btn.inference-chip .q-btn__content,
+    .body--dark .q-btn.inference-chip .q-icon,
+    .body--dark .q-btn.inference-chip .q-btn__content {
+        color: var(--color-bg-surface) !important;
+    }
+    .body--light .q-btn.inference-chip:hover,
+    .body--dark .q-btn.inference-chip:hover {
+        background-color: var(--color-text-secondary) !important;
+    }
+    .body--light .q-btn.inference-chip[disabled],
+    .body--dark .q-btn.inference-chip[disabled] {
+        opacity: 0.35;
+    }
+    /* The same near-black the pills are filled with, rather than Quasar's
+       default primary -- blue icons beside black buttons read as a
+       different control belonging to something else. Drawn as glyphs, not
+       filled circles: copying and downloading act on an answer that is
+       already there, while the pills are what produce one. */
+    .body--light .q-btn.inference-icon-btn,
+    .body--dark .q-btn.inference-icon-btn,
+    .body--light .q-btn.inference-icon-btn .q-icon,
+    .body--dark .q-btn.inference-icon-btn .q-icon {
+        color: var(--color-text-primary) !important;
+    }
+    .body--light .q-btn.inference-icon-btn:hover,
+    .body--dark .q-btn.inference-icon-btn:hover {
+        background-color: var(--color-bg-surface-hover) !important;
+    }
+    .inference-status-line {
+        font-size: 0.78rem;
+        color: var(--color-text-muted);
+        min-height: 1.1rem;
+        padding-left: 0.15rem;
+    }
+    /* A tinted surface rather than a bordered box. The strip sits inside a
+       card already, and a second rule around the answer drew a frame
+       within a frame. */
+    .inference-output {
+        width: 100%;
+        /* NiceGUI gives a scroll area a fixed 16rem; this one is measured
+           by the space left in the pane instead, with a floor so it is
+           still a box worth reading on a short window. */
+        flex: 1 1 auto;
+        height: auto;
+        min-height: 7rem;
+        border-radius: 0.75rem;
+        background: var(--color-bg-surface-alt);
+        padding: 0.2rem 0.85rem;
+    }
+    /* A caret while the text is still arriving, so a pause between batches
+       reads as the model thinking rather than as the answer having
+       stopped. */
+    .inference-output.is-generating .nicegui-markdown > *:last-child::after {
+        content: "▌";
+        margin-left: 0.1rem;
+        color: var(--color-text-tertiary);
+        animation: inference-caret 1.1s steps(2, start) infinite;
+    }
+    @keyframes inference-caret {
+        to {
+            visibility: hidden;
+        }
+    }
+    /* Study notes are headings and lists, written for a page rather than
+       for a strip this size, so the type is stepped down and the vertical
+       rhythm tightened to match. */
+    .inference-output .nicegui-markdown {
+        font-size: 0.85rem;
+        line-height: 1.5;
+        color: var(--color-text-primary);
+    }
+    .inference-output .nicegui-markdown h1,
+    .inference-output .nicegui-markdown h2,
+    .inference-output .nicegui-markdown h3 {
+        font-size: 0.9rem;
+        font-weight: 600;
+        letter-spacing: 0.01em;
+        margin: 0.7rem 0 0.2rem;
+    }
+    .inference-output .nicegui-markdown h1:first-child,
+    .inference-output .nicegui-markdown h2:first-child,
+    .inference-output .nicegui-markdown h3:first-child {
+        margin-top: 0.25rem;
+    }
+    .inference-output .nicegui-markdown p,
+    .inference-output .nicegui-markdown ul,
+    .inference-output .nicegui-markdown ol {
+        margin: 0.3rem 0;
+    }
+    .inference-output .nicegui-markdown ul,
+    .inference-output .nicegui-markdown ol {
+        padding-left: 1.1rem;
+        list-style: revert;
+    }
+    .inference-output .nicegui-markdown strong {
+        color: var(--color-text-primary);
+        font-weight: 600;
+    }
+    .inference-output .nicegui-markdown ul,
+    .inference-output .nicegui-markdown ol {
+        padding-left: 1.1rem;
+        list-style: revert;
+    }
+
     /* ── Editor toolbar buttons (flat, no border, subtle bg in dark mode) ── */
     .editor-btn {
         border: none !important;
@@ -1074,6 +1248,12 @@ theme_styles = """
        ui.video nor the card wrapping it establishes one. */
     .video-frame {
         position: relative;
+        /* Sized by the picture it holds, and no taller: the frame used to
+           be h-full and claimed the whole pane, leaving the Analyse strip
+           under it nothing to grow into. Note it must keep a content-based
+           floor -- giving it min-height: 0 as well let flex shrink the
+           video to nothing at all. */
+        flex: 0 0 auto;
         /* The frame sits inside a rounded panel now, so the picture is
            rounded to match rather than filling square corners inside it. */
         border-radius: 8px;

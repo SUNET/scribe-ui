@@ -24,6 +24,7 @@ from utils.common import get_auth_header
 from utils.styles import default_styles
 from utils.common import page_init
 from utils.helpers import storage_decrypt
+from utils.inference_panel import InferencePanel
 from utils.settings import get_settings
 from utils.srt import (
     AUTOSCROLL_KEY,
@@ -354,8 +355,20 @@ def create() -> None:
                         transcript.body.set_show_edits(editor.show_my_edits)
 
                 with splitter.after:
-                    with ui.card().classes("editor-panel w-full h-full"):
-                        with ui.element("div").classes("video-frame w-full h-full"):
+                    # The same height the transcript's own scroll area is
+                    # given on the other side of the splitter. h-full alone
+                    # measures nothing here -- the splitter panel is sized by
+                    # its content, so a percentage of it resolves to auto and
+                    # the pane ends wherever the switches happen to stop.
+                    # With a definite height the Analyse strip at the foot
+                    # can take what the video and the controls leave.
+                    with ui.card().classes("editor-panel w-full h-full").style(
+                        "height: calc(90vh - 100px);"
+                    ):
+                        # Not h-full: the frame takes the height the picture
+                        # needs, so what is left of the pane goes to the
+                        # Analyse strip at the foot of it.
+                        with ui.element("div").classes("video-frame w-full"):
                             video = ui.video(
                                 f"/video/{uuid}",
                                 controls=True,
@@ -708,3 +721,16 @@ def create() -> None:
                                         "text-sm text-theme-muted review-count"
                                     )
                                     editor.set_flagged_count_element(flagged)
+
+                        # Asking a model about what was transcribed --
+                        # summary, study notes and the like. Under the video
+                        # rather than behind a toolbar button because it is
+                        # read alongside the transcription: a reader checks
+                        # the summary against what was actually said. It
+                        # draws itself only if the hub has something to
+                        # offer, and is a single row until there is an
+                        # answer to show.
+                        if settings.INFERENCE_ENABLED:
+                            inference = InferencePanel(editor, filename, language)
+                            inference.build()
+                            inference.register_cleanup()
