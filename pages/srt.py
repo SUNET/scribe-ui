@@ -368,7 +368,9 @@ def create() -> None:
                         # Not h-full: the frame takes the height the picture
                         # needs, so what is left of the pane goes to the
                         # Analyse strip at the foot of it.
-                        with ui.element("div").classes("video-frame w-full"):
+                        video_frame = ui.element("div").classes("video-frame w-full")
+
+                        with video_frame:
                             video = ui.video(
                                 f"/video/{uuid}",
                                 controls=True,
@@ -518,7 +520,11 @@ def create() -> None:
                         # what the editor marks in the text -- rather than
                         # left as one undifferentiated row of switches with
                         # the sensitivity selector orphaned below them.
-                        with ui.column().classes("editor-settings w-full"):
+                        settings_column = ui.column().classes(
+                            "editor-settings w-full"
+                        )
+
+                        with settings_column:
                             with ui.row().classes("items-center gap-4"):
 
                                 def save_follow(event) -> None:
@@ -731,6 +737,36 @@ def create() -> None:
                         # offer, and is a single row until there is an
                         # answer to show.
                         if settings.INFERENCE_ENABLED:
-                            inference = InferencePanel(editor, filename, language)
+
+                            def show_player(visible: bool) -> None:
+                                """
+                                Fold the player away so the answer can be
+                                read, and bring it back afterwards.
+
+                                The video keeps playing while it is hidden:
+                                listening to the recording while reading the
+                                notes made from it is exactly why they share
+                                a pane.
+                                """
+
+                                video_frame.set_visibility(visible)
+                                settings_column.set_visibility(visible)
+
+                                # Not set_visibility: the timeline's template
+                                # is rooted in a Teleport, so NiceGUI's hidden
+                                # class has no element to land on. Its own
+                                # prop is what hides it -- and it comes back
+                                # only if the reader had it on.
+                                if timeline is not None:
+                                    timeline.set_shown(
+                                        visible and editor.show_timeline
+                                    )
+
+                            inference = InferencePanel(
+                                editor,
+                                filename,
+                                language,
+                                on_expand=show_player,
+                            )
                             inference.build()
                             inference.register_cleanup()

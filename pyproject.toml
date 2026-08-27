@@ -31,6 +31,7 @@ dependencies = [
     "itsdangerous>=2.2.0",
     "jinja2>=3.1.6",
     "jwt>=1.4.0",
+    "latex2mathml>=3.81.0",
     "markdown2>=2.5.4",
     "markupsafe>=3.0.2",
     "multidict>=6.6.4",

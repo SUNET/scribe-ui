@@ -30,10 +30,17 @@ who keeps it.
 The answer is never trusted as markup. What comes back is a model's reading
 of a transcript, and a transcript is other people's speech: it can contain
 anything, including an attempt to get something rendered into this page.
-The text is escaped before the markdown renderer sees it (see safe_markup),
-so what the model writes can be read but never run.
+It is `ui.markdown`'s own sanitiser that stops that -- `sanitize=True` runs
+the browser's `setHTML`, or DOMPurify where that is missing, over the
+rendered HTML before it is inserted. That is a real sanitiser rather than
+the character escaping this used to do, which is why maths and diagrams can
+be shown at all: escaping every `<` and `&` made a formula and a mermaid
+arrow (`-->`) unrenderable along with the markup it was defending against.
 """
 
+import re
+
+from contextlib import contextmanager
 from typing import Optional
 
 from nicegui import ui
@@ -67,25 +74,130 @@ TASK_ICONS = {
 }
 
 
-def safe_markup(text: str) -> str:
-    """
-    Model output, with any HTML in it turned back into plain characters.
+# What the answer may contain. Mathematics is turned into MathML on this
+# side (markdown2's latex extra, via latex2mathml) and drawn by the browser
+# itself; mermaid fences become diagrams drawn by the copy of mermaid
+# NiceGUI already ships. Neither costs us a line of Javascript.
+MARKDOWN_EXTRAS = ["fenced-code-blocks", "tables", "latex", "mermaid"]
 
-    The markdown renderer passes raw HTML straight through, and this text
-    is not ours: it is a model's answer about a transcript that anyone
-    could have said anything into. Escaping the three characters that start
-    markup leaves every piece of markdown syntax working -- headings, lists,
-    emphasis, code fences -- while a tag written by the model shows up as
-    the tag it is instead of running.
+# A mermaid diagram can bind a click on a node to a Javascript call. It only
+# works when mermaid is initialised with securityLevel "loose" -- which it
+# is not here -- but the answer is written by a model reading somebody
+# else's speech, and a directive that only fails to run because of a
+# setting elsewhere is not a defence. They are dropped.
+MERMAID_CLICK = re.compile(r"^\s*click\s+\S+.*$", re.MULTILINE)
+
+# A fenced mermaid block in the answer.
+MERMAID_FENCE = re.compile(r"```mermaid[ \t]*\n(.*?)(?:```|\Z)", re.DOTALL)
+
+# What a mermaid diagram may start with. Anything else is a model writing
+# prose into a mermaid fence, and mermaid answers that with an error box
+# where the diagram should be -- so it is shown as the code block it really
+# is instead.
+MERMAID_KINDS = (
+    "architecture",
+    "block",
+    "c4context",
+    "classDiagram",
+    "erDiagram",
+    "flowchart",
+    "gantt",
+    "gitGraph",
+    "graph",
+    "journey",
+    "mindmap",
+    "pie",
+    "quadrantChart",
+    "requirementDiagram",
+    "sankey",
+    "sequenceDiagram",
+    "stateDiagram",
+    "timeline",
+    "xychart",
+)
+
+
+def is_diagram(source: str) -> bool:
+    """
+    Whether a mermaid fence holds something mermaid can actually draw.
+
+    Parameters:
+        source (str): The contents of the fence.
+
+    Returns:
+        bool: True when it opens with a diagram type mermaid knows.
+    """
+
+    for line in source.strip().splitlines():
+        line = line.strip()
+
+        if not line or line.startswith("%%"):
+            continue
+
+        return line.lower().startswith(tuple(k.lower() for k in MERMAID_KINDS))
+
+    return False
+
+
+def split_answer(text: str) -> list[tuple[str, str]]:
+    """
+    An answer broken into prose and diagrams, in order.
+
+    They are drawn by different things. Prose goes through ui.markdown,
+    which sanitises the HTML it produces before the browser inserts it; a
+    diagram goes to ui.mermaid, which takes the source as a prop and never
+    becomes HTML on this side at all. They cannot be one element: the
+    sanitiser strips the class attribute that markdown's own mermaid
+    support looks for, so a diagram written inside markdown is rendered as
+    its own source code and nothing else.
 
     Parameters:
         text (str): The model's answer.
 
     Returns:
-        str: The answer, safe to render as markdown.
+        list[tuple[str, str]]: ("text", markdown) and ("mermaid", source)
+            pairs, in the order they appeared.
     """
 
-    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    parts: list[tuple[str, str]] = []
+    position = 0
+
+    for match in MERMAID_FENCE.finditer(text):
+        source = match.group(1).strip()
+
+        if not is_diagram(source):
+            continue
+
+        if before := text[position:match.start()].strip():
+            parts.append(("text", before))
+
+        parts.append(("mermaid", source))
+        position = match.end()
+
+    if rest := text[position:].strip():
+        parts.append(("text", rest))
+
+    return parts
+
+
+def prepare_answer(text: str) -> str:
+    """
+    A model's answer, ready to be rendered.
+
+    The rendering itself is what is defended: ui.markdown sanitises the HTML
+    it produces in the browser before inserting it, which is why nothing is
+    escaped here. What this does remove is the one construct a sanitiser
+    would let through because it is legitimate mermaid -- a click directive
+    binding a node to a script.
+
+    Parameters:
+        text (str): The model's answer.
+
+    Returns:
+        str: The answer, ready for ui.markdown.
+    """
+
+    return MERMAID_CLICK.sub("", text)
 
 
 class InferencePanel:
@@ -106,10 +218,25 @@ class InferencePanel:
         language (str): The language the transcription was made in.
     """
 
-    def __init__(self, editor, filename: str, language: str = "") -> None:
+    def __init__(
+        self,
+        editor,
+        filename: str,
+        language: str = "",
+        on_expand=None,
+    ) -> None:
         self.editor = editor
         self.filename = filename
         self.language = language
+
+        # Called with False to fold the video, the timeline and the
+        # playback switches away, and True to bring them back. The strip
+        # does not own those, so the page hands it a way to ask -- and the
+        # page knows the awkward one: the timeline is a custom component
+        # rooted in a Teleport, where set_visibility() has nothing to land
+        # on and does nothing at all.
+        self.on_expand = on_expand
+        self.expanded = False
 
         self.client = InferenceClient()
         self.catalogue: dict = {}
@@ -122,6 +249,7 @@ class InferencePanel:
         self.actions = None
         self.buttons: dict = {}
         self.output = None
+        self.parts = None
         self.body = None
         self.status = None
         self.stop_button = None
@@ -160,6 +288,21 @@ class InferencePanel:
                 # pills can then be centred on the row's true middle, with
                 # these held to the right of it.
                 with ui.row().classes("inference-tools"):
+                    # An answer is read, and the pane it shares with the
+                    # video leaves it a few lines. This gives it the whole
+                    # pane and puts everything back afterwards. The video
+                    # keeps playing while it is folded away -- a reader
+                    # listening to the recording and reading the notes at
+                    # the same time is the point of it being here.
+                    self.expand_button = (
+                        ui.button(icon="open_in_full")
+                        .props("flat dense round")
+                        .classes("inference-icon-btn")
+                        .on("click", self.toggle_expand)
+                    )
+                    with self.expand_button:
+                        self.expand_tooltip = ui.tooltip("Fill the pane")
+
                     self.stop_button = (
                         ui.button(icon="stop")
                         .props("flat dense round")
@@ -202,7 +345,16 @@ class InferencePanel:
 
             with ui.scroll_area().classes("inference-output") as body:
                 self.body = body
-                self.output = ui.markdown("")
+
+                # A container rather than one element: a finished answer is
+                # rebuilt into prose and diagrams (see split_answer), and
+                # while it is still arriving it is a single markdown element
+                # being appended to, which is far cheaper than rebuilding a
+                # tree several times a second.
+                self.parts = ui.column().classes("inference-answer w-full")
+
+                with self.parts:
+                    self.output = ui.markdown("", extras=MARKDOWN_EXTRAS)
 
         self._set_running(False)
         self._show_answer(False)
@@ -316,6 +468,26 @@ class InferencePanel:
             else:
                 self.body.classes(remove="is-generating")
 
+    def toggle_expand(self) -> None:
+        """
+        Give the answer the whole pane, or hand the pane back.
+
+        Returns:
+            None
+        """
+
+        self.expanded = not self.expanded
+
+        if self.on_expand is not None:
+            self.on_expand(not self.expanded)
+
+        self.expand_button.props(
+            f'icon={"close_fullscreen" if self.expanded else "open_in_full"}'
+        )
+        self.expand_tooltip.set_text(
+            "Show the video again" if self.expanded else "Fill the pane"
+        )
+
     async def start(self, task: str) -> None:
         """
         Send the current transcription off to be worked on.
@@ -347,7 +519,13 @@ class InferencePanel:
 
         self.answer = ""
         self.current_task = task
-        self.output.set_content("")
+
+        # The previous answer may have been rebuilt into several elements.
+        self.parts.clear()
+
+        with self.parts:
+            self.output = ui.markdown("", extras=MARKDOWN_EXTRAS)
+
         self.status.set_text("Waiting for a free worker...")
         self._show_answer(True)
         self._set_running(True)
@@ -367,6 +545,28 @@ class InferencePanel:
             on_error=self._error,
         )
 
+    @contextmanager
+    def _on_the_page(self):
+        """
+        Enter the strip's own slot.
+
+        Everything the hub sends back arrives on a background task, and a
+        background task has no slot stack: NiceGUI cannot tell which client
+        an element or a notification belongs to, and raises rather than
+        guessing. Entering the panel's slot answers both questions at once,
+        since the client is read from the slot's parent.
+
+        Yields:
+            None
+        """
+
+        if self.panel is None:
+            yield
+            return
+
+        with self.panel:
+            yield
+
     def _accepted(self, model: str) -> None:
         """
         Note that a worker took the request.
@@ -381,7 +581,8 @@ class InferencePanel:
             None
         """
 
-        self.status.set_text(f"{self._task_label()} — generating...")
+        with self._on_the_page():
+            self.status.set_text(f"{self._task_label()} — generating...")
 
     def _delta(self, text: str) -> None:
         """
@@ -395,7 +596,38 @@ class InferencePanel:
         """
 
         self.answer += text
-        self.output.set_content(safe_markup(self.answer))
+
+        with self._on_the_page():
+            if self.output is not None:
+                self.output.set_content(prepare_answer(self.answer))
+
+    def _render_answer(self) -> None:
+        """
+        Draw the finished answer: prose as markdown, diagrams as diagrams.
+
+        Only once it is finished. A fence half-arrived is not a diagram
+        yet, and redrawing the tree on every batch would flicker for the
+        whole length of an answer.
+
+        Returns:
+            None
+        """
+
+        parts = split_answer(prepare_answer(self.answer))
+
+        if not any(kind == "mermaid" for kind, _ in parts):
+            return
+
+        self.parts.clear()
+
+        with self.parts:
+            for kind, payload in parts:
+                if kind == "mermaid":
+                    ui.mermaid(payload).classes("inference-diagram")
+                else:
+                    ui.markdown(payload, extras=MARKDOWN_EXTRAS)
+
+        self.output = None
 
     def _done(self) -> None:
         """
@@ -406,8 +638,11 @@ class InferencePanel:
         """
 
         self.request_id = None
-        self.status.set_text(NOT_SAVED)
-        self._set_running(False)
+
+        with self._on_the_page():
+            self._render_answer()
+            self.status.set_text(NOT_SAVED)
+            self._set_running(False)
 
     def _error(self, message: str) -> None:
         """
@@ -421,10 +656,12 @@ class InferencePanel:
         """
 
         self.request_id = None
-        self.status.set_text(IDLE_HINT)
-        self._set_running(False)
-        self._show_answer(bool(self.answer))
-        ui.notify(message)
+
+        with self._on_the_page():
+            self.status.set_text(IDLE_HINT)
+            self._set_running(False)
+            self._show_answer(bool(self.answer))
+            ui.notify(message)
 
     async def stop(self) -> None:
         """
@@ -441,6 +678,7 @@ class InferencePanel:
             await self.client.cancel(self.request_id)
             self.request_id = None
 
+        self._render_answer()
         self.status.set_text(NOT_SAVED if self.answer else IDLE_HINT)
         self._set_running(False)
 

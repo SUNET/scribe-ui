@@ -694,9 +694,11 @@ theme_styles = """
     /* Study notes are headings and lists, written for a page rather than
        for a strip this size, so the type is stepped down and the vertical
        rhythm tightened to match. */
+    /* Stepped up from 0.85rem: this is prose to be read, not a caption
+       to be glanced at, and it shares a pane rather than a page. */
     .inference-output .nicegui-markdown {
-        font-size: 0.85rem;
-        line-height: 1.5;
+        font-size: 0.9rem;
+        line-height: 1.55;
         color: var(--color-text-primary);
     }
     .inference-output .nicegui-markdown h1,
@@ -725,6 +727,43 @@ theme_styles = """
     .inference-output .nicegui-markdown strong {
         color: var(--color-text-primary);
         font-weight: 600;
+    }
+    /* Mathematics, drawn by the browser itself from the MathML the answer
+       is rendered into. Block formulae get room of their own and scroll
+       sideways rather than pushing the strip wider than the pane. */
+    .inference-output .nicegui-markdown math {
+        font-size: 1.05em;
+    }
+    .inference-output .nicegui-markdown math[display="block"] {
+        display: block;
+        overflow-x: auto;
+        margin: 0.5rem 0;
+        padding-bottom: 0.15rem;
+    }
+    /* The finished answer: prose and diagrams stacked in the order the
+       model wrote them. */
+    .inference-answer {
+        gap: 0.25rem;
+        width: 100%;
+    }
+    /* Diagrams. Centred, held inside the box's width, and given a ground of
+       their own in dark mode -- mermaid draws in its own palette, and its
+       dark text on the near-black answer surface cannot be read. */
+    .inference-diagram {
+        width: 100%;
+        display: flex;
+        justify-content: center;
+        overflow-x: auto;
+        margin: 0.4rem 0;
+    }
+    .inference-diagram svg {
+        max-width: 100%;
+        height: auto;
+    }
+    .body--dark .inference-diagram {
+        background: var(--color-bg-surface);
+        border-radius: 0.5rem;
+        padding: 0.5rem 0;
     }
     .inference-output .nicegui-markdown ul,
     .inference-output .nicegui-markdown ol {

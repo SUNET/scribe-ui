@@ -35,7 +35,13 @@ from utils.inference import (
     plain_text,
     transcript_text,
 )
-from utils.inference_panel import InferencePanel, safe_markup
+from utils.inference_panel import (
+    MARKDOWN_EXTRAS,
+    InferencePanel,
+    is_diagram,
+    prepare_answer,
+    split_answer,
+)
 from utils.settings import get_settings
 from utils.srt import SRTEditor
 
@@ -137,22 +143,41 @@ def test_configured_hub_url_wins(monkeypatch):
     assert hub_url() == "wss://hub.example.se/ws"
 
 
-def test_model_output_cannot_bring_markup_with_it():
-    # The answer describes a transcript, and a transcript is whatever
-    # somebody said into a microphone -- including, one day, a tag.
-    rendered = safe_markup("<script>alert(1)</script> and <b>bold</b>")
+def test_a_mermaid_click_directive_is_dropped():
+    # Mermaid can bind a node to a Javascript call. It needs mermaid to be
+    # initialised with securityLevel "loose", which it is not -- but the
+    # answer is written by a model reading somebody else's speech, and a
+    # directive that only fails to run because of a setting somewhere else
+    # is not a defence.
+    answer = prepare_answer(
+        "```mermaid\ngraph LR\n  A --> B\n  click A \"javascript:alert(1)\"\n```"
+    )
 
-    assert "<script>" not in rendered
-    assert "<b>" not in rendered
-    assert "&lt;script&gt;" in rendered
+    assert "click A" not in answer
+    assert "A --> B" in answer
 
 
-def test_markdown_still_works_after_escaping():
-    rendered = safe_markup("# Heading\n\n- point one\n- point two\n\n**bold**")
+def test_the_diagram_itself_survives():
+    # The arrows are the diagram. Escaping them, which is what this code
+    # used to do to every angle bracket, left mermaid nothing to draw.
+    answer = prepare_answer("```mermaid\ngraph TD\n  A[Start] --> B[End]\n```")
 
-    assert rendered.startswith("# Heading")
-    assert "- point one" in rendered
-    assert "**bold**" in rendered
+    assert "-->" in answer
+    assert "&gt;" not in answer
+
+
+def test_mathematics_is_left_alone():
+    answer = prepare_answer("The bound is $a < b$ and $$\\int_0^1 x^2\\,dx$$")
+
+    assert "$a < b$" in answer
+    assert "\\int_0^1" in answer
+
+
+def test_the_renderer_is_asked_for_maths_and_diagrams():
+    # Without these extras the answer shows the LaTeX and the mermaid
+    # source as text, which is worse than not offering them at all.
+    assert "latex" in MARKDOWN_EXTRAS
+    assert "mermaid" in MARKDOWN_EXTRAS
 
 
 def test_the_analyse_strip_uses_theme_tokens_not_fixed_colours():
@@ -176,8 +201,15 @@ def test_the_analyse_strip_uses_theme_tokens_not_fixed_colours():
 
             name, _, value = declaration.partition(":")
 
-            if name.strip() in ("color", "background", "background-color"):
-                assert "var(--color-" in value, f"{match.group(1)}: {declaration}"
+            if name.strip() not in ("color", "background", "background-color"):
+                continue
+
+            # Keywords that carry no colour of their own are theme-safe by
+            # definition -- a transparent ground is whatever is behind it.
+            if value.strip() in ("transparent", "none", "inherit", "currentColor"):
+                continue
+
+            assert "var(--color-" in value, f"{match.group(1)}: {declaration}"
 
 
 def test_every_task_the_hub_offers_gets_a_button_icon():
@@ -265,3 +297,113 @@ def test_the_export_says_what_it_is():
         assert "board meeting.mp4" in document
         assert "Not part of the transcript." in document
         assert "Book the room" in document
+
+
+def test_a_diagram_is_taken_out_of_the_prose():
+    # They are drawn by different things: prose by ui.markdown, which
+    # sanitises the HTML it produces, and a diagram by ui.mermaid, which
+    # never becomes HTML on this side at all.
+    parts = split_answer(
+        "Before.\n\n```mermaid\ngraph LR\n  A --> B\n```\n\nAfter."
+    )
+
+    assert parts == [
+        ("text", "Before."),
+        ("mermaid", "graph LR\n  A --> B"),
+        ("text", "After."),
+    ]
+
+
+def test_prose_in_a_mermaid_fence_stays_prose():
+    # A model writing sentences into a mermaid fence gets an error box
+    # where the diagram should be. Shown as the code block it really is.
+    answer = "```mermaid\nThe speaker explains the process\n```"
+
+    assert split_answer(answer) == [("text", answer)]
+    assert is_diagram("The speaker explains the process") is False
+    assert is_diagram("sequenceDiagram\n  A->>B: hi") is True
+
+
+def test_an_answer_with_no_diagram_is_left_whole():
+    assert split_answer("Just prose.") == [("text", "Just prose.")]
+
+
+def test_a_diagram_survives_the_text_export():
+    # The source is the diagram. Stripping what looks like markup out of it
+    # exports something that no longer draws -- and the reader downloaded it
+    # precisely to keep what they saw.
+    text = plain_text(
+        "**Process:**\n\n```mermaid\ngraph LR\n  A[Start] --> B[End]\n```\n"
+    )
+
+    assert "```mermaid" in text
+    assert "A[Start] --> B[End]" in text
+    assert "**Process:**" not in text
+
+
+def test_mathematics_survives_the_text_export():
+    text = plain_text("The bound is $E = mc^2$ here.")
+
+    assert "$E = mc^2$" in text
+
+
+def test_expanding_folds_the_player_away_and_brings_it_back():
+    """
+    The answer shares a pane with the video and gets a few lines of it.
+    Expanding hands it the whole pane; collapsing puts the player back.
+    """
+
+    shown = []
+
+    class FakeButton:
+        def props(self, value):
+            self.last = value
+
+    class FakeTooltip:
+        text = ""
+
+        def set_text(self, value):
+            self.text = value
+
+    panel = InferencePanel(
+        editor=None, filename="x.mp4", language="Swedish", on_expand=shown.append
+    )
+    panel.expand_button = FakeButton()
+    panel.expand_tooltip = FakeTooltip()
+
+    panel.toggle_expand()
+
+    assert panel.expanded is True
+    assert shown == [False]
+    assert "close_fullscreen" in panel.expand_button.last
+    assert panel.expand_tooltip.text == "Show the video again"
+
+    panel.toggle_expand()
+
+    assert panel.expanded is False
+    assert shown == [False, True]
+    assert "open_in_full" in panel.expand_button.last
+
+
+def test_a_failing_callback_does_not_take_the_socket_down():
+    """
+    A callback draws into the page, and drawing can fail for reasons that
+    have nothing to do with the connection -- as it did when every message
+    from the hub arrived on a background task with no slot stack. Left
+    unguarded, one such failure ended the read loop and every later message
+    with it.
+    """
+
+    from utils.inference import InferenceClient
+
+    def explode(_):
+        raise RuntimeError("the current slot cannot be determined")
+
+    delivered = []
+
+    handlers = {"on_delta": explode, "on_done": lambda: delivered.append("done")}
+
+    InferenceClient._deliver(handlers, "on_delta", "some text")
+    InferenceClient._deliver(handlers, "on_done")
+
+    assert delivered == ["done"]

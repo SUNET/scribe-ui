@@ -31,6 +31,7 @@ says so and offers a download.
 
 import asyncio
 import json
+import logging
 import re
 import uuid
 
@@ -45,6 +46,7 @@ from utils.settings import get_settings
 from utils.token import get_auth_header
 
 settings = get_settings()
+log = logging.getLogger(__name__)
 
 # What the transcript is called in the download the reader gets.
 NOTES_SUFFIX = {
@@ -187,8 +189,22 @@ def plain_text(text: str) -> str:
     """
 
     lines = []
+    fenced = False
 
     for line in text.splitlines():
+        # A code fence, and everything inside it, is left exactly as it
+        # was: a mermaid diagram's source is the diagram, and stripping
+        # what looks like markup out of it would export something that no
+        # longer draws.
+        if line.lstrip().startswith("```"):
+            fenced = not fenced
+            lines.append(line.rstrip())
+            continue
+
+        if fenced:
+            lines.append(line.rstrip())
+            continue
+
         line = re.sub(r"^\s{0,3}#{1,6}\s*", "", line)
         line = re.sub(r"^(\s*)[-*+]\s+", r"\1- ", line)
         line = re.sub(r"\*\*(.+?)\*\*", r"\1", line)
@@ -342,36 +358,69 @@ class InferenceClient:
                 except ValueError:
                     continue
 
-                handlers = self.handlers.get(str(message.get("req_id", "")), {})
+                req_id = str(message.get("req_id", ""))
+                handlers = self.handlers.get(req_id, {})
 
                 match message.get("type"):
                     case "accepted":
-                        if callback := handlers.get("on_accepted"):
-                            callback(message.get("model", ""))
+                        self._deliver(handlers, "on_accepted", message.get("model", ""))
                     case "delta":
-                        if callback := handlers.get("on_delta"):
-                            callback(message.get("text", ""))
+                        self._deliver(handlers, "on_delta", message.get("text", ""))
                     case "done":
-                        if callback := handlers.get("on_done"):
-                            callback()
-                        self.handlers.pop(str(message.get("req_id", "")), None)
+                        self._deliver(handlers, "on_done")
+                        self.handlers.pop(req_id, None)
                     case "error":
-                        if callback := handlers.get("on_error"):
-                            callback(message.get("message", "The request failed."))
-                        self.handlers.pop(str(message.get("req_id", "")), None)
+                        self._deliver(
+                            handlers,
+                            "on_error",
+                            message.get("message", "The request failed."),
+                        )
+                        self.handlers.pop(req_id, None)
                     case _:
                         pass
         except asyncio.CancelledError:
             raise
         except Exception:
-            # The socket dropped. Everything waiting on it is told, rather
-            # than left spinning.
+            # The socket dropped. Logged with the reason, because "the
+            # connection was lost" is all the page can honestly say and it
+            # is not enough to work out why. Nothing here carries what was
+            # being worked on.
+            log.warning("Inference socket closed unexpectedly", exc_info=True)
+
+            # Everything waiting on it is told, rather than left spinning.
             for handlers in list(self.handlers.values()):
-                if callback := handlers.get("on_error"):
-                    callback("The connection to the service was lost.")
+                self._deliver(
+                    handlers, "on_error", "The connection to the service was lost."
+                )
 
             self.handlers.clear()
             self.socket = None
+
+    @staticmethod
+    def _deliver(handlers: dict, name: str, *args) -> None:
+        """
+        Hand one message to the page, without letting it take the socket down.
+
+        A callback draws into the page, and drawing can fail for reasons
+        that have nothing to do with the connection. Left unguarded, one
+        such failure ends the read loop and every later message with it.
+
+        Parameters:
+            handlers (dict): The callbacks registered for this request.
+            name (str): Which one to call.
+            *args: What to call it with.
+
+        Returns:
+            None
+        """
+
+        if (callback := handlers.get(name)) is None:
+            return
+
+        try:
+            callback(*args)
+        except Exception:
+            log.warning(f"Inference {name} handler failed", exc_info=True)
 
     async def ask(
         self,
