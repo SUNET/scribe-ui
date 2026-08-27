@@ -1167,10 +1167,20 @@ def table_transcribe(selected_row, on_complete=None) -> None:
                     verbatim_container.set_visibility(
                         language.value.lower() == "swedish"
                     )
+                    # Untick as well as hide: set_visibility leaves the
+                    # value alone, so a box ticked under Swedish survived
+                    # unseen behind a language with no verbatim model and
+                    # the dialog sent "<language> (verbatim)" -- a key the
+                    # worker cannot look up, which kills its job thread
+                    # (seen in production as KeyError: 'Ukrainian
+                    # (verbatim)').
                     language.on_value_change(
-                        lambda e: verbatim_container.set_visibility(
-                            e.value.lower() == "swedish"
-                            or e.value.lower() == "norwegian"
+                        lambda e: (
+                            verbatim.set_value(False),
+                            verbatim_container.set_visibility(
+                                e.value.lower() == "swedish"
+                                or e.value.lower() == "norwegian"
+                            ),
                         )
                     )
 
@@ -1273,9 +1283,14 @@ def table_bulk_transcribe(table: ui.table, on_complete=None) -> None:
                     verbatim_container.set_visibility(
                         language.value.lower() == "swedish"
                     )
+                    # Untick as well as hide -- see the same handler in
+                    # the re-transcribe dialog above.
                     language.on_value_change(
-                        lambda e: verbatim_container.set_visibility(
-                            e.value.lower() == "swedish"
+                        lambda e: (
+                            verbatim.set_value(False),
+                            verbatim_container.set_visibility(
+                                e.value.lower() == "swedish"
+                            ),
                         )
                     )
 
