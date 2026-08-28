@@ -1043,15 +1043,18 @@ class TestPaste:
 
         assert "this.onInput()" in body
 
-    def test_a_selection_into_another_block_is_refused(self):
+    def test_a_selection_into_another_block_goes_to_the_server(self):
         """
-        Deleting across blocks would take the blocks' own structure with
-        it -- the gutters between are not editable text.
+        Deleting across blocks here would take the blocks' own structure
+        with it -- the gutters between are not editable text -- so the
+        whole gesture is reported as one deleterange carrying the pasted
+        text, and the server sends a fresh set of blocks back.
         """
 
         body = self.paste_body()
 
-        assert "this.blockOf(range.endContainer) !== block" in body
+        assert "const span = this.selectionSpan();" in body
+        assert 'this.$emit("deleterange", { ...span, text });' in body
 
     def test_a_trailing_newline_still_earns_its_line_box(self):
         """
@@ -1092,8 +1095,13 @@ class TestPlainText:
         body = source[source.index("caret() {"):]
         body = body[: body.index("\n    },\n")]
 
-        assert "this.plainText(measure.toString()).length" in body
+        assert "this.offsetIn(block, range.startContainer, range.startOffset)" in body
         assert "this.plainText(block.textContent).length" in body
+
+        measured = source[source.index("offsetIn(block, container, offset) {"):]
+        measured = measured[: measured.index("\n    },\n")]
+
+        assert "this.plainText(measure.toString()).length" in measured
 
     def test_the_reported_edit_reads_through_it(self):
         source = self.source()

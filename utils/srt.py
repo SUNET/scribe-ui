@@ -1222,6 +1222,78 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
             # Editing a word can take it off the count, or put one on it.
             self.update_flagged_count()
 
+    def delete_range(
+        self,
+        first: SRTCaption,
+        last: SRTCaption,
+        start_offset: int,
+        end_offset: int,
+        text: str = "",
+    ) -> Optional[int]:
+        """
+        Delete a selection that reaches across two or more captions, putting
+        ``text`` (a typed character, a paste, or nothing at all) where it was.
+
+        The browser cannot be left to do this itself. Two captions are
+        separate elements with the gutter's timings and numbers between them,
+        and a native delete across that boundary takes those elements with the
+        text -- the page comes apart rather than the captions being edited.
+        So the whole gesture is one edit here: the first caption keeps what
+        lies before the selection, the last keeps what lies after, the two
+        become one caption spanning both timings, and every caption between
+        them goes.
+
+        Returns the seam's character offset in the surviving caption, for the
+        caret to be put back at, or None when the range is not one this can
+        act on.
+        """
+
+        if first is None or last is None or first is last:
+            return None
+
+        start = self.captions.index(first)
+        end = self.captions.index(last)
+
+        if end <= start:
+            return None
+
+        # Offsets come from the browser, so they are clamped rather than
+        # trusted.
+        head = first.text[: max(0, min(int(start_offset), len(first.text)))]
+        tail = last.text[max(0, min(int(end_offset), len(last.text))) :]
+        merged = head + text + tail
+
+        self.save_state_for_undo()
+
+        # The marks of every caption the selection touched, as if their texts
+        # had already been joined -- then retagged against what is left of
+        # them. Both halves that survive keep their marks; whatever the
+        # reader typed or pasted in earns marks of its own, which is what
+        # retag_edits does with words a change brought in.
+        old_text = first.text
+        old_marks = set(first.edited_words)
+
+        for caption in self.captions[start + 1 : end + 1]:
+            old_marks = self.joined_edits(
+                old_marks, caption.edited_words, len(old_text.split())
+            )
+            old_text = "\n".join(
+                part for part in (old_text, caption.text) if part
+            )
+
+        first.edited_words = self.retag_edits(old_text, merged, old_marks)
+        first.text = merged
+        first.end_time = last.end_time
+
+        del self.captions[start + 1 : end + 1]
+
+        self.renumber_captions()
+        self.update_flagged_count()
+        self.update_words_per_minute()
+        self.refresh_display(force_full_refresh=True)
+
+        return len(head + text)
+
     def merge_with_next(self, caption: SRTCaption) -> None:
         """
         Merge the current caption with the next one.

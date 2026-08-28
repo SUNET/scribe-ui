@@ -46,6 +46,7 @@ export default {
         @click="onClick"
         @blur="onBlur"
         @paste="onPaste"
+        @cut="onCut"
         @drop.prevent
         @dragover.prevent
         ref="body"
@@ -393,24 +394,85 @@ export default {
       return (text || "").replace(/\u200B/g, "");
     },
 
+    // Offset from the start of a block's text, not of the text node, so a
+    // block split across highlight spans still reports one number.
+    offsetIn(block, container, offset) {
+      const measure = document.createRange();
+      measure.selectNodeContents(block);
+      measure.setEnd(container, offset);
+      return this.plainText(measure.toString()).length;
+    },
+
     caret() {
       const selection = window.getSelection();
       if (!selection || selection.rangeCount === 0) return null;
       const range = selection.getRangeAt(0);
       const block = this.blockOf(range.startContainer);
       if (!block) return null;
-      // Offset from the start of the block's text, not of the text node,
-      // so a block split across highlight spans still reports one number.
-      const measure = range.cloneRange();
-      measure.selectNodeContents(block);
-      measure.setEnd(range.startContainer, range.startOffset);
       return {
         id: Number(block.dataset.id),
-        offset: this.plainText(measure.toString()).length,
+        offset: this.offsetIn(block, range.startContainer, range.startOffset),
         length: this.plainText(block.textContent).length,
         collapsed: range.collapsed,
         block,
       };
+    },
+
+    // A selection that reaches across two or more blocks, as the pair of
+    // ends the server needs to act on it -- or null for the ordinary case
+    // of a selection inside one block, which the browser can be left to.
+    //
+    // Nothing in a contenteditable stops a reader dragging across the
+    // gutters between blocks, and a native edit over such a selection
+    // deletes them: the timings, the numbers and the block elements
+    // themselves go with the text, and the page is left as wreckage rather
+    // than as captions. So every key that would edit over one is
+    // intercepted (see onKeydown) and reported as a deleterange instead.
+    //
+    // getRangeAt reports its ends in document order, which is caption
+    // order, however the drag itself went.
+    selectionSpan() {
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0) return null;
+
+      const range = selection.getRangeAt(0);
+      if (range.collapsed) return null;
+
+      const start = this.blockOf(range.startContainer);
+      const end = this.blockOf(range.endContainer);
+
+      if (!start || !end || start === end) return null;
+
+      return {
+        startId: Number(start.dataset.id),
+        startOffset: this.offsetIn(start, range.startContainer, range.startOffset),
+        endId: Number(end.dataset.id),
+        endOffset: this.offsetIn(end, range.endContainer, range.endOffset),
+      };
+    },
+
+    // What a cross-block selection actually holds, for the clipboard. Built
+    // from the blocks' own text rather than from selection.toString(),
+    // which sweeps up the gutters in between -- the numbers, the speaker
+    // and the timings are not part of any caption's text.
+    spanText(span) {
+      const blocks = Array.from(
+        this.$refs.body?.querySelectorAll(".transcript-text") ?? []
+      );
+      const first = blocks.findIndex((block) => Number(block.dataset.id) === span.startId);
+      const last = blocks.findIndex((block) => Number(block.dataset.id) === span.endId);
+
+      if (first < 0 || last < 0) return "";
+
+      return blocks
+        .slice(first, last + 1)
+        .map((block, offset) => {
+          const text = this.plainText(block.textContent);
+          const from = offset === 0 ? span.startOffset : 0;
+          const to = first + offset === last ? span.endOffset : text.length;
+          return text.slice(from, to);
+        })
+        .join("\n");
     },
 
     // The inverse of caret()'s own offset -- used to put the caret back
@@ -1023,6 +1085,20 @@ export default {
     // Shift+Enter's own "\n"); a trailing one gets insertLineBreak's
     // zero-width space so it earns a line box, and plainText strips that
     // back out before the text is read for anything.
+    // Cut over a cross-block selection, same hazard as the keys above and
+    // the same answer -- with the clipboard filled by hand first, since
+    // preventing the default prevents the copy half of the cut too.
+    onCut(event) {
+      const span = this.selectionSpan();
+
+      if (!span) return;
+
+      event.preventDefault();
+      event.clipboardData?.setData("text/plain", this.spanText(span));
+      this.flush();
+      this.$emit("deleterange", { ...span, text: "" });
+    },
+
     onPaste(event) {
       event.preventDefault();
 
@@ -1035,11 +1111,18 @@ export default {
       const block = this.blockOf(range.startContainer);
       if (!block) return;
 
-      // A selection reaching into another block would take that block's
-      // own structure with it when deleted -- the gutters between are not
-      // editable text. The browser's native handling of such a selection
-      // is its own hazard, but this handler is not adding one of ours.
-      if (this.blockOf(range.endContainer) !== block) return;
+      // A selection reaching into another block cannot be deleted here --
+      // the gutters between are not editable text, and taking them out
+      // takes the block structure with them. The server owns that, so the
+      // whole gesture goes to it as one deleterange carrying the pasted
+      // text (see selectionSpan).
+      const span = this.selectionSpan();
+
+      if (span) {
+        this.flush();
+        this.$emit("deleterange", { ...span, text });
+        return;
+      }
 
       if (!text) return;
 
@@ -1233,6 +1316,30 @@ export default {
         event.preventDefault();
         this.flush();
         return;
+      }
+
+      // Anything that would edit over a selection reaching across blocks is
+      // the server's, not the browser's: see selectionSpan for what the
+      // browser does with the gutters otherwise. flush first, so the text
+      // typed into a block before the selection was made reaches the server
+      // ahead of the offsets measured against it.
+      //
+      // A printable key is sent along as the replacement text, the same as
+      // the paste is; Backspace, Delete and Enter replace with nothing.
+      // Enter does not also split at the seam -- one gesture, one edit, one
+      // undo step, and a second Enter there splits as it always does.
+      const span = this.selectionSpan();
+
+      if (span) {
+        const typed =
+          event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey;
+
+        if (typed || ["Backspace", "Delete", "Enter"].includes(event.key)) {
+          event.preventDefault();
+          this.flush();
+          this.$emit("deleterange", { ...span, text: typed ? event.key : "" });
+          return;
+        }
       }
 
       const at = this.caret();

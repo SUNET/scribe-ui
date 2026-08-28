@@ -1326,6 +1326,32 @@ theme_styles = """
         );
     }
 
+    /* The timing row is not part of the caption's text, so a selection
+       dragged across captions must not paint it as though it were: a
+       reader selecting two captions is selecting words, and a highlighted
+       timestamp between them reads as text that is about to be deleted
+       with them (it never is -- see selectionSpan in transcript_editor.js,
+       which acts on the blocks' own text alone). The gutter already opts
+       out the same way. The fields themselves opt back in below, or their
+       own value could not be selected to be retyped. */
+    .transcript-time,
+    .transcript-subtitle-time {
+        user-select: none;
+    }
+    /* The field opts back in only while it has focus. A document selection
+       that merely encloses an input still paints that input's own value as
+       selected, so an unconditional user-select: text here was exactly what
+       kept the timestamps highlighted as a selection was dragged past them
+       -- and none of that value is ever part of what a cross-block delete
+       takes. Focus is enough for editing it: a click focuses the field on
+       mousedown, before any drag inside it begins. */
+    .transcript-time-input {
+        user-select: none;
+    }
+    .transcript-time-input:focus {
+        user-select: text;
+    }
+
     .transcript-time {
         display: flex;
         align-items: baseline;
