@@ -736,7 +736,15 @@ def create() -> None:
                         # draws itself only if the hub has something to
                         # offer, and is a single row until there is an
                         # answer to show.
-                        if settings.INFERENCE_ENABLED:
+                        #
+                        # Subtitles are left out: a caption is a line cut to
+                        # fit a screen rather than a sentence, and the same
+                        # speech is already there to read -- there is nothing
+                        # to summarise that the file does not already say in
+                        # fewer words. It is a transcription -- a lecture, a
+                        # meeting, an interview -- that is long enough to be
+                        # worth asking about.
+                        if settings.INFERENCE_ENABLED and data_format != "srt":
 
                             def show_player(visible: bool) -> None:
                                 """
@@ -767,6 +775,13 @@ def create() -> None:
                                 filename,
                                 language,
                                 on_expand=show_player,
+                                # Clicking a line of an answer moves the
+                                # transcription to where it came from --
+                                # study notes and action items are read
+                                # against the recording, and finding the
+                                # passage by hand is the tedious half of
+                                # that.
+                                on_jump=transcript.go_to,
                             )
                             inference.build()
                             inference.register_cleanup()

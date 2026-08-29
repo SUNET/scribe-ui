@@ -52,6 +52,7 @@ from utils.inference import (
     answer_language,
     export_document,
     fetch_tasks,
+    locate_caption,
     transcript_text,
 )
 from utils.settings import get_settings
@@ -60,6 +61,12 @@ settings = get_settings()
 
 # What the reader is told, in the line under the buttons.
 NOT_SAVED = "Generated from the transcription as it stands now. Not saved — download it to keep it."
+# Said only once there is an answer to click on, and only where the page
+# has given the strip somewhere to jump to.
+JUMP_HINT = "Click a line to go to where it was said."
+# What the reader is told when a line cannot be placed. A heading the model
+# wrote, or a sentence in its own words, belongs to no single caption.
+NOT_FOUND = "That line could not be placed in the transcription."
 IDLE_HINT = "Ask about this transcription. Answers are not saved."
 NO_WORKER = "No model is available right now. Try again in a moment."
 
@@ -180,6 +187,76 @@ def split_answer(text: str) -> list[tuple[str, str]]:
     return parts
 
 
+# A line of Markdown that stands on its own: a heading, or an item of a
+# list. Either one starts a new passage even without a blank line before
+# it, because either one is a separate thing to click.
+HEADING = re.compile(r"^\s*#{1,6}\s+")
+BULLET = re.compile(r"^\s*(?:[-*+]\s+|\d+[.)]\s+)")
+
+
+def text_blocks(text: str) -> list[str]:
+    """
+    A stretch of the answer's prose cut into the passages a reader clicks.
+
+    Not one element for the whole answer: a bullet in a set of study notes
+    is about one moment in the recording, and clicking the notes as a whole
+    could only ever mean one of them. Paragraphs, headings and list items
+    each become a passage of their own; a fenced code block stays whole,
+    since its blank lines are part of it.
+
+    Parameters:
+        text (str): Markdown, with no diagram fences left in it.
+
+    Returns:
+        list[str]: The passages, in order, as Markdown.
+    """
+
+    blocks: list[str] = []
+    current: list[str] = []
+    fenced = False
+
+    def flush() -> None:
+        if block := "\n".join(current).strip():
+            blocks.append(block)
+
+        current.clear()
+
+    for line in text.splitlines():
+        if line.lstrip().startswith("```"):
+            if fenced:
+                current.append(line)
+                flush()
+                fenced = False
+            else:
+                flush()
+                current.append(line)
+                fenced = True
+
+            continue
+
+        if fenced:
+            current.append(line)
+            continue
+
+        if not line.strip():
+            flush()
+            continue
+
+        if HEADING.match(line):
+            flush()
+            blocks.append(line.strip())
+            continue
+
+        if BULLET.match(line):
+            flush()
+
+        current.append(line)
+
+    flush()
+
+    return blocks
+
+
 def prepare_answer(text: str) -> str:
     """
     A model's answer, ready to be rendered.
@@ -224,6 +301,7 @@ class InferencePanel:
         filename: str,
         language: str = "",
         on_expand=None,
+        on_jump=None,
     ) -> None:
         self.editor = editor
         self.filename = filename
@@ -237,6 +315,19 @@ class InferencePanel:
         # on and does nothing at all.
         self.on_expand = on_expand
         self.expanded = False
+
+        # Called with the caption a clicked passage was traced back to, so
+        # the transcription moves to where the answer came from. The strip
+        # does not own the text editor or the player, so the page hands it
+        # a way to ask. Without one the passages are still drawn, just not
+        # clickable -- there is nowhere to go.
+        self.on_jump = on_jump
+
+        # The passages of the finished answer, and the one last followed --
+        # kept marked, since it is the only thing on the page saying which
+        # of a dozen similar bullets the transcription was moved for.
+        self.passages: list = []
+        self.followed = None
 
         self.client = InferenceClient()
         self.catalogue: dict = {}
@@ -271,6 +362,14 @@ class InferencePanel:
         Returns:
             None
         """
+
+        # Subtitles are not analysed. A caption is a line cut to fit a
+        # screen, and a subtitle file is the same speech the transcription
+        # already holds -- summarising one is asking a model to read a
+        # column of fragments. The page does not build the strip there at
+        # all; this is the same rule stated where the strip itself is.
+        if getattr(self.editor, "data_format", "") == "srt":
+            return
 
         with ui.column().classes("inference-panel w-full") as panel:
             self.panel = panel
@@ -598,8 +697,19 @@ class InferencePanel:
         self.answer += text
 
         with self._on_the_page():
-            if self.output is not None:
-                self.output.set_content(prepare_answer(self.answer))
+            # A finished answer is rebuilt into passages and diagrams, and
+            # the one element being streamed into is dropped. A batch
+            # arriving after that -- the hub is still sending when a reader
+            # presses Stop -- goes back to the streaming element rather
+            # than being lost, since the passages it would be appended to
+            # are already drawn.
+            if self.output is None:
+                self.parts.clear()
+
+                with self.parts:
+                    self.output = ui.markdown("", extras=MARKDOWN_EXTRAS)
+
+            self.output.set_content(prepare_answer(self.answer))
 
     def _render_answer(self) -> None:
         """
@@ -613,21 +723,120 @@ class InferencePanel:
             None
         """
 
-        parts = split_answer(prepare_answer(self.answer))
-
-        if not any(kind == "mermaid" for kind, _ in parts):
+        if not self.answer:
             return
 
+        parts = split_answer(prepare_answer(self.answer))
+
         self.parts.clear()
+        self.passages = []
+        self.followed = None
 
         with self.parts:
             for kind, payload in parts:
                 if kind == "mermaid":
                     ui.mermaid(payload).classes("inference-diagram")
-                else:
-                    ui.markdown(payload, extras=MARKDOWN_EXTRAS)
+                    continue
+
+                for block in text_blocks(payload):
+                    self._passage(block)
 
         self.output = None
+
+    def _passage(self, block: str) -> None:
+        """
+        Draw one passage of the answer, and let it be followed back.
+
+        Parameters:
+            block (str): The passage, as Markdown.
+
+        Returns:
+            None
+        """
+
+        passage = ui.element("div").classes("inference-passage")
+
+        with passage:
+            ui.markdown(block, extras=MARKDOWN_EXTRAS)
+
+        if self.on_jump is None:
+            return
+
+        self.passages.append(passage)
+        passage.classes(add="is-linked")
+        passage.on(
+            "click", lambda _, source=block, element=passage: self.jump_to(
+                source, element
+            )
+        )
+
+    def _mark_followed(self, passage) -> None:
+        """
+        Mark the passage the reader followed, and unmark the last one.
+
+        Parameters:
+            passage: The passage element, or None to leave none marked.
+
+        Returns:
+            None
+        """
+
+        if self.followed is not None and self.followed is not passage:
+            self.followed.classes(remove="is-followed")
+
+        self.followed = passage
+
+        if passage is not None:
+            passage.classes(add="is-followed")
+
+    def jump_to(self, source: str, passage=None) -> None:
+        """
+        Move the transcription to where a passage of the answer came from.
+
+        The answer quotes nothing, so the passage is traced back by the
+        words it and the transcription have in common -- see
+        locate_caption. A heading, or a sentence written entirely in the
+        model's own words, belongs to no one caption and is said to be
+        unplaceable rather than guessed at.
+
+        Parameters:
+            source (str): The passage that was clicked, as Markdown.
+            passage: The element it was drawn in, marked as the one
+                followed once there is somewhere to follow it to.
+
+        Returns:
+            None
+        """
+
+        if self.on_jump is None:
+            return
+
+        caption = locate_caption(source, self.editor.captions)
+
+        if caption is None:
+            # Nothing was moved, so nothing is marked: a line left marked
+            # here would claim the transcription is showing where it came
+            # from, which is exactly what could not be worked out.
+            ui.notify(NOT_FOUND)
+            return
+
+        self._mark_followed(passage)
+        self.on_jump(caption)
+
+    def _finished_line(self) -> str:
+        """
+        What the line under the answer says once there is one.
+
+        Returns:
+            str: The note about the answer not being saved, and -- where
+                the page gave the strip somewhere to jump to -- how to
+                follow a line back into the transcription.
+        """
+
+        if self.on_jump is None:
+            return NOT_SAVED
+
+        return f"{NOT_SAVED} {JUMP_HINT}"
 
     def _done(self) -> None:
         """
@@ -641,7 +850,7 @@ class InferencePanel:
 
         with self._on_the_page():
             self._render_answer()
-            self.status.set_text(NOT_SAVED)
+            self.status.set_text(self._finished_line())
             self._set_running(False)
 
     def _error(self, message: str) -> None:
@@ -679,7 +888,7 @@ class InferencePanel:
             self.request_id = None
 
         self._render_answer()
-        self.status.set_text(NOT_SAVED if self.answer else IDLE_HINT)
+        self.status.set_text(self._finished_line() if self.answer else IDLE_HINT)
         self._set_running(False)
 
     # ------------------------------------------------------------------

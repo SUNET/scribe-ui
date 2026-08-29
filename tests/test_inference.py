@@ -27,20 +27,26 @@ must never reach the page as markup.
 
 from utils.caption import SRTCaption
 from utils.inference import (
+    JUMP_MIN_TERMS,
     NOTES_SUFFIX,
     answer_language,
     export_document,
     hub_base,
     hub_url,
+    locate_caption,
     plain_text,
     transcript_text,
 )
 from utils.inference_panel import (
+    JUMP_HINT,
     MARKDOWN_EXTRAS,
+    NOT_FOUND,
+    NOT_SAVED,
     InferencePanel,
     is_diagram,
     prepare_answer,
     split_answer,
+    text_blocks,
 )
 from utils.settings import get_settings
 from utils.srt import SRTEditor
@@ -407,3 +413,190 @@ def test_a_failing_callback_does_not_take_the_socket_down():
     InferenceClient._deliver(handlers, "on_done")
 
     assert delivered == ["done"]
+
+
+def test_a_passage_is_traced_back_to_the_caption_it_came_from():
+    """
+    The answer quotes nothing -- it is a model's own wording -- so a line is
+    followed back by the words it and the transcription share, weighted so
+    that a rare one counts and "and" does not.
+    """
+
+    transcription = editor(
+        "txt",
+        caption(1, "Today we look at photosynthesis in higher plants."),
+        caption(2, "The budget for the coming year is set in November."),
+        caption(3, "Chlorophyll absorbs light and the leaf stores the sugar."),
+    )
+
+    found = locate_caption(
+        "- Photosynthesis in plants was the subject of the lecture.",
+        transcription.captions,
+    )
+
+    assert found is not None
+    assert found.index == 1
+
+
+def test_a_line_in_the_models_own_words_is_not_placed():
+    # A heading, or a sentence of the model's own, belongs to no caption.
+    # Moving the reader somewhere on a coincidence is worse than saying so.
+    transcription = editor(
+        "txt",
+        caption(1, "Today we look at photosynthesis in higher plants."),
+        caption(2, "The budget for the coming year is set in November."),
+    )
+
+    assert locate_caption("## Key points", transcription.captions) is None
+    assert locate_caption("", transcription.captions) is None
+    assert locate_caption("Anything at all", []) is None
+
+
+def test_one_shared_word_is_a_coincidence():
+    # However rare it is. A jump has to rest on more than a single word.
+    transcription = editor("txt", caption(1, "The budget is set in November."))
+
+    assert JUMP_MIN_TERMS >= 2
+    assert locate_caption("Budget.", transcription.captions) is None
+
+
+def test_the_answer_is_cut_into_the_lines_a_reader_clicks():
+    # A bullet is about one moment in the recording; the notes as a whole
+    # are about all of them, so the list cannot be one target.
+    blocks = text_blocks(
+        "## Key points\n\n"
+        "- The first thing said\n"
+        "- The second thing said\n\n"
+        "A closing paragraph\nwrapped over two lines."
+    )
+
+    assert blocks == [
+        "## Key points",
+        "- The first thing said",
+        "- The second thing said",
+        "A closing paragraph\nwrapped over two lines.",
+    ]
+
+
+def test_a_code_fence_stays_whole():
+    # Its blank lines are part of it, not passage boundaries.
+    blocks = text_blocks("Before.\n\n```\nfirst\n\nsecond\n```\n\nAfter.")
+
+    assert blocks == ["Before.", "```\nfirst\n\nsecond\n```", "After."]
+
+
+def test_clicking_a_line_moves_the_transcription_to_it():
+    jumped = []
+
+    panel = InferencePanel(
+        editor=editor(
+            "txt",
+            caption(1, "Chlorophyll absorbs light in the leaf."),
+            caption(2, "The budget for the year is set in November."),
+        ),
+        filename="lecture.mp4",
+        on_jump=jumped.append,
+    )
+
+    panel.jump_to("- The budget is set in November.")
+
+    assert [found.index for found in jumped] == [2]
+
+
+def test_the_hint_is_only_given_where_there_is_somewhere_to_go():
+    # The strip draws the passages either way; without a way to ask the
+    # page to move, they are not clickable and saying so would be a lie.
+    assert JUMP_HINT not in InferencePanel(editor=None, filename="x")._finished_line()
+
+    with_jump = InferencePanel(editor=None, filename="x", on_jump=lambda _: None)
+
+    assert with_jump._finished_line() == f"{NOT_SAVED} {JUMP_HINT}"
+
+
+def test_subtitles_are_not_analysed():
+    """
+    A caption is a line cut to fit a screen, and the file is the same
+    speech the reader already has in front of them. The page does not build
+    the strip for subtitles at all, and the strip refuses to draw itself
+    there even if something did.
+    """
+
+    from pathlib import Path
+
+    page = Path("pages/srt.py").read_text()
+
+    assert 'settings.INFERENCE_ENABLED and data_format != "srt"' in page
+
+    panel = InferencePanel(editor=editor("srt", caption(1, "A line.")), filename="x")
+    panel.build()
+
+    assert panel.panel is None
+
+
+class FakePassage:
+    """
+    Stands in for a passage element: what is asked of it is which classes it
+    ends up carrying.
+    """
+
+    def __init__(self):
+        self.marks = set()
+
+    def classes(self, add=None, remove=None):
+        if add:
+            self.marks.update(add.split())
+
+        if remove:
+            self.marks.difference_update(remove.split())
+
+        return self
+
+
+def test_the_line_the_reader_followed_stays_marked():
+    """
+    A dozen bullets look alike, and the transcription was moved for exactly
+    one of them. Following another moves the mark rather than leaving two.
+    """
+
+    panel = InferencePanel(
+        editor=editor(
+            "txt",
+            caption(1, "Chlorophyll absorbs light in the leaf."),
+            caption(2, "The budget for the year is set in November."),
+        ),
+        filename="x",
+        on_jump=lambda _: None,
+    )
+
+    first = FakePassage()
+    second = FakePassage()
+
+    panel.jump_to("- The budget is set in November.", first)
+
+    assert "is-followed" in first.marks
+
+    panel.jump_to("- Chlorophyll absorbs the light.", second)
+
+    assert "is-followed" in second.marks
+    assert "is-followed" not in first.marks
+
+
+def test_a_line_that_could_not_be_placed_is_not_marked(monkeypatch):
+    # Nothing was moved, so a mark here would claim the transcription is
+    # showing where the line came from -- which is what could not be
+    # worked out.
+    said = []
+
+    monkeypatch.setattr("utils.inference_panel.ui.notify", said.append)
+
+    panel = InferencePanel(
+        editor=editor("txt", caption(1, "The budget is set in November.")),
+        filename="x",
+        on_jump=lambda _: None,
+    )
+
+    passage = FakePassage()
+    panel.jump_to("## Key points", passage)
+
+    assert passage.marks == set()
+    assert said == [NOT_FOUND]

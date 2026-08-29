@@ -746,6 +746,45 @@ theme_styles = """
         gap: 0.25rem;
         width: 100%;
     }
+    /* One passage of the answer -- a paragraph, a heading, a bullet. Each
+       is its own element so that clicking it can move the transcription to
+       where it came from; on its own it should read as running prose, so
+       it carries no rule, no ground and no gap of its own beyond the
+       column's. */
+    .inference-passage {
+        width: 100%;
+        border-radius: 0.4rem;
+        padding: 0.05rem 0.35rem;
+        margin-left: -0.35rem;
+    }
+    /* Only where there is somewhere to go. A quiet ground on hover rather
+       than a link's colour or underline: every line is followable, and
+       marking them all as links would make the answer unreadable. */
+    .inference-passage.is-linked {
+        cursor: pointer;
+        transition: background-color 0.12s ease;
+    }
+    .inference-passage.is-linked:hover {
+        background-color: var(--color-bg-surface);
+    }
+    /* The line the reader followed, kept marked while the answer is on
+       screen: it is the one thing on the page that says which of a dozen
+       similar bullets the transcription was moved for. A rule down the
+       side rather than a ground, so it does not read as a second hover. */
+    .inference-passage.is-followed {
+        box-shadow: inset 2px 0 var(--color-brand-primary);
+        background-color: color-mix(
+            in srgb, var(--color-brand-primary) 8%, transparent
+        );
+    }
+    /* The passages are stacked by the column, so their own first and last
+       margins would double the gap between them. */
+    .inference-passage .nicegui-markdown > *:first-child {
+        margin-top: 0;
+    }
+    .inference-passage .nicegui-markdown > *:last-child {
+        margin-bottom: 0;
+    }
     /* Diagrams. Centred, held inside the box's width, and given a ground of
        their own in dark mode -- mermaid draws in its own palette, and its
        dark text on the near-black answer surface cannot be read. */
@@ -1543,6 +1582,39 @@ theme_styles = """
         background-color: color-mix(
             in srgb, var(--color-warning-border) 22%, transparent
         );
+    }
+    /* Where a jump from outside the text landed -- a line of an analysis
+       followed back to what was said. A ring rather than a tint: the three
+       tinted states above already own the caption's background between
+       them (playing, being typed into, a search match), and a fourth
+       colour there would be one more thing to tell apart. It fades on its
+       own, which is also what says it is not a state the caption is in but
+       an answer to "where did I land". */
+    .transcript-cell-found {
+        animation: transcript-found 2.4s ease-out;
+    }
+    @keyframes transcript-found {
+        0% {
+            box-shadow: 0 0 0 2px
+                color-mix(in srgb, var(--color-brand-primary) 85%, transparent);
+        }
+        60% {
+            box-shadow: 0 0 0 2px
+                color-mix(in srgb, var(--color-brand-primary) 70%, transparent);
+        }
+        100% {
+            box-shadow: 0 0 0 2px transparent;
+        }
+    }
+    /* A reader who has asked for less movement still has to be told where
+       they landed, so the mark is simply held for as long as it would have
+       taken to fade. */
+    @media (prefers-reduced-motion: reduce) {
+        .transcript-cell-found {
+            animation: none;
+            box-shadow: 0 0 0 2px
+                color-mix(in srgb, var(--color-brand-primary) 70%, transparent);
+        }
     }
 
     .transcript-time {

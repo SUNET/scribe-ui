@@ -32,6 +32,7 @@ says so and offers a download.
 import asyncio
 import json
 import logging
+import math
 import re
 import uuid
 
@@ -169,6 +170,106 @@ def transcript_text(editor) -> str:
             blocks.append(caption.text.strip())
 
     return "\n\n".join(blocks)
+
+
+# Finding a passage again in the transcription.
+#
+# The answer is prose a model wrote about the transcript, not a quotation
+# of it, so there is no marker to follow back -- what is left is the words
+# the two have in common. A rare word ("photosynthesis", a name, a figure)
+# says a great deal about where a sentence came from and a common one
+# ("and", "the") says nothing, which is what the inverse document
+# frequency below weighs: a caption is scored by how much of the clicked
+# text's *weight* it accounts for, not by how many words it happens to
+# share.
+WORD = re.compile(r"\w+", re.UNICODE)
+
+# How much of that weight has to land in one caption before the jump is
+# offered, and how many separate words have to be behind it. A single
+# shared word is a coincidence however rare it is, and moving the reader
+# somewhere on the strength of one is worse than telling them the passage
+# could not be placed.
+JUMP_MIN_SCORE = 0.3
+JUMP_MIN_TERMS = 2
+
+
+def terms(text: str) -> list[str]:
+    """
+    The words of a piece of text, as something comparable.
+
+    Case and punctuation are dropped, which also takes the Markdown marks
+    the answer is written with -- a bullet's `**heading**` compares as the
+    word inside it.
+
+    Parameters:
+        text (str): Any text.
+
+    Returns:
+        list[str]: Its words, lower case.
+    """
+
+    return WORD.findall(text.lower())
+
+
+def locate_caption(text: str, captions: list) -> Optional[object]:
+    """
+    The caption a passage of the answer most likely came from.
+
+    Words the transcription never uses are left out of the reckoning
+    altogether rather than counted as misses: the answer is a paraphrase,
+    and half of any sentence in it is the model's own wording. What is
+    scored is how much of the shared vocabulary's weight one caption
+    accounts for.
+
+    Parameters:
+        text (str): The passage the reader clicked.
+        captions (list[SRTCaption]): The transcription, as it stands.
+
+    Returns:
+        Optional[SRTCaption]: The best match, or None when nothing is close
+            enough to be worth moving the reader for.
+    """
+
+    query = set(terms(text))
+
+    if not query or not captions:
+        return None
+
+    spoken = [set(terms(caption.text)) for caption in captions]
+    total = len(spoken)
+
+    weights = {}
+
+    for term in query:
+        appears = sum(1 for words in spoken if term in words)
+
+        if appears:
+            weights[term] = math.log(1 + total / appears)
+
+    weight = sum(weights.values())
+
+    if not weight:
+        return None
+
+    best = None
+    best_score = 0.0
+
+    for caption, words in zip(captions, spoken):
+        shared = [term for term in weights if term in words]
+
+        if len(shared) < JUMP_MIN_TERMS:
+            continue
+
+        score = sum(weights[term] for term in shared) / weight
+
+        # Strictly greater, so a passage that fits two captions equally
+        # well lands on the earlier one -- which is where it was said
+        # first.
+        if score > best_score:
+            best = caption
+            best_score = score
+
+    return best if best_score >= JUMP_MIN_SCORE else None
 
 
 def plain_text(text: str) -> str:

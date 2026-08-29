@@ -126,6 +126,10 @@ class TranscriptBody(
         # deliberately not taken.
         self._props["characterLimit"] = settings.CHARACTER_LIMIT
         self._props["maxSubtitleLines"] = settings.MAX_SUBTITLE_LINES
+        # Which caption was just arrived at from outside the text, and how
+        # many times one has been -- see flash_block.
+        self._props["flash"] = None
+        self._flashes = 0
 
     def set_speakers(self, speakers: List[str], unused: List[str]) -> None:
         self._props["speakers"] = speakers
@@ -166,6 +170,20 @@ class TranscriptBody(
 
     def scroll_to_block(self, block_id: int) -> None:
         self.run_method("scrollToBlock", block_id)
+
+    def flash_block(self, block_id: int) -> None:
+        """
+        Mark a caption as the one just arrived at, briefly.
+
+        The count is what makes each ask its own: jumping to the same
+        caption twice sends the same id, and a prop that does not change is
+        a watcher that does not fire -- the second jump would land with
+        nothing marking it.
+        """
+
+        self._flashes += 1
+        self._props["flash"] = {"id": block_id, "n": self._flashes}
+        self.update()
 
     def set_subtitle_mode(self, subtitle_mode: bool) -> None:
         self._props["subtitleMode"] = subtitle_mode
@@ -256,6 +274,29 @@ class TranscriptEditor:
         self.moved_to(start)
         self.focus(caption.index)
         self.mark_current(caption.index)
+
+    def go_to(self, caption: SRTCaption) -> None:
+        """
+        Move to a caption without taking the caret to it.
+
+        What a jump from somewhere outside the text means: the recording
+        seeks to the caption, the editor scrolls it into view and the strip
+        marks it as current, but whatever the reader was typing into keeps
+        the caret. select_from_timeline does the same and focuses as well,
+        because a click on the strip is a click on the captions themselves.
+        """
+
+        start = caption.get_start_seconds()
+
+        self.editor.seek_video(start)
+        self.moved_to(start)
+        self.scroll_to(caption)
+
+        # Scrolling a caption into view says where to look, not what to
+        # look at: the reader arrives in the middle of a page of speech.
+        # The mark fades by itself -- see the component's flash watcher.
+        if self.body is not None:
+            self.body.flash_block(caption.index)
 
     def mark_current(self, caption_index: int) -> None:
         """
