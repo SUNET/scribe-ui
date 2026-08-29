@@ -810,6 +810,151 @@ theme_styles = """
         list-style: revert;
     }
 
+    /* ── Review assistant ───────────────────────────────────────────────
+       One suggestion at a time, in a dialog: a pass through the whole
+       transcription with a beginning and an end, and the only thing the
+       reader is doing while it is open. Wide enough for a sentence of a
+       transcript to be read without wrapping three times, no wider. */
+    .review-dialog {
+        width: 34rem;
+        max-width: 92vw;
+        padding: 1rem 1.25rem 0.85rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    .review-title {
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--color-text-primary);
+    }
+    .review-mark {
+        color: var(--color-brand-primary);
+    }
+    /* A fixed height, not a floor. Accept, Dismiss and Skip are pressed
+       dozens of times in a row, and a card that grew with a long
+       explanation would move all three out from under the pointer between
+       one suggestion and the next. A suggestion longer than the box
+       scrolls inside it instead. */
+    .review-body {
+        gap: 0.6rem;
+        height: 13rem;
+        overflow-y: auto;
+        flex: 0 0 auto;
+    }
+    .review-footer {
+        gap: 0.4rem;
+        padding-top: 0.35rem;
+        border-top: 1px solid var(--color-border-subtle);
+    }
+    /* Waiting for the hub. It fills the card and sits in the middle of it:
+       nothing else is on the card while this is up, and a spinner in the
+       top corner of an empty box reads as a fault rather than as work
+       going on. */
+    .review-working {
+        flex: 1 1 auto;
+        width: 100%;
+        min-height: 100%;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+        gap: 0.6rem;
+    }
+    .review-working-note {
+        max-width: 24rem;
+    }
+    .review-lead {
+        font-size: 0.95rem;
+        color: var(--color-text-primary);
+    }
+    .review-note {
+        font-size: 0.78rem;
+        color: var(--color-text-muted);
+    }
+    .review-domain {
+        font-size: 1.05rem;
+        font-weight: 600;
+        color: var(--color-brand-primary);
+    }
+    .review-select {
+        width: 100%;
+    }
+    /* What kind of thing is being suggested -- terminology, a name, a
+       word used two ways. A quiet chip: it groups the suggestions, it is
+       not the suggestion. */
+    .review-kind {
+        font-size: 0.7rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        padding: 0.1rem 0.5rem;
+        border-radius: 999px;
+        background-color: var(--color-bg-surface-alt);
+        color: var(--color-text-secondary);
+    }
+    .review-progress {
+        margin-left: auto;
+        font-size: 0.75rem;
+        color: var(--color-text-muted);
+    }
+    .review-change {
+        gap: 0.3rem;
+        padding: 0.6rem 0.75rem;
+        border-radius: 0.6rem;
+        background-color: var(--color-bg-surface-alt);
+    }
+    .review-change-row {
+        gap: 0.6rem;
+        flex-wrap: wrap;
+    }
+    .review-change-label {
+        min-width: 7rem;
+        font-size: 0.75rem;
+        color: var(--color-text-muted);
+    }
+    /* The two halves of the decision. The transcribed text is what is
+       there now, so it is stated plainly rather than struck through --
+       nothing has been changed yet, and a strike would say it had. */
+    .review-original {
+        font-size: 0.95rem;
+        color: var(--color-text-primary);
+    }
+    .review-replacement {
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: var(--color-brand-primary);
+    }
+    /* The model's own sentence, in the language of the recording. Set apart
+       from the product's own English, which is everything else here. */
+    .review-why {
+        font-size: 0.85rem;
+        font-style: italic;
+        color: var(--color-text-secondary);
+    }
+    .review-where {
+        gap: 0.5rem;
+    }
+    .review-summary {
+        gap: 0.15rem;
+        font-size: 0.85rem;
+        color: var(--color-text-secondary);
+    }
+    /* Quasar gives a flat button the primary colour, which here is the
+       brand blue -- three blue words in a row read as three links, and
+       Accept is the only action of the three that does anything to the
+       transcription. The plain answers are set in the page's own text
+       colour and Accept alone carries the brand. */
+    .body--light .q-btn.review-action,
+    .body--dark .q-btn.review-action,
+    .body--light .q-btn.review-action .q-icon,
+    .body--dark .q-btn.review-action .q-icon {
+        color: var(--color-text-primary) !important;
+    }
+    .body--light .q-btn.review-primary,
+    .body--dark .q-btn.review-primary {
+        background-color: var(--color-brand-primary) !important;
+        color: var(--color-text-on-brand) !important;
+    }
+
     /* ── Editor toolbar buttons (flat, no border, subtle bg in dark mode) ── */
     .editor-btn {
         border: none !important;

@@ -533,6 +533,7 @@ class InferenceClient:
         on_done: Callable[[], None],
         on_error: Callable[[str], None],
         on_accepted: Optional[Callable[[str], None]] = None,
+        domain: Optional[str] = None,
     ) -> Optional[str]:
         """
         Send one request and route its answer back to the page.
@@ -547,6 +548,10 @@ class InferenceClient:
             on_error (Callable): Called with a message when it is not.
             on_accepted (Optional[Callable]): Called with the model that
                 took the request.
+            domain (Optional[str]): Subject domain code, for the review
+                assistant's own tasks. A code from the hub's own list -- it
+                is looked up there and only the hub's label for it reaches
+                a prompt.
 
         Returns:
             Optional[str]: The request identifier, or None when it could not
@@ -576,6 +581,7 @@ class InferenceClient:
                         "text": text,
                         "language": language,
                         "model": model,
+                        "domain": domain,
                         # The socket outlives the token it was opened with,
                         # so every request carries the current one and the
                         # hub checks it again.

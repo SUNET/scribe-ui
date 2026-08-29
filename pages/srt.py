@@ -25,6 +25,7 @@ from utils.styles import default_styles
 from utils.common import page_init
 from utils.helpers import storage_decrypt
 from utils.inference_panel import InferencePanel
+from utils.review_assistant import ReviewAssistant
 from utils.settings import get_settings
 from utils.srt import (
     AUTOSCROLL_KEY,
@@ -326,6 +327,22 @@ def create() -> None:
                     ui.button("Info", icon="info").props("flat").classes(
                         "editor-btn editor-toolbar-btn"
                     ).on("click", info_dialog.open)
+
+                    # Going through the transcription looking for likely
+                    # mishearings, one suggestion at a time -- see
+                    # utils/review_assistant.py. Drawn hidden and revealed
+                    # only once the hub has said it can do it: a button
+                    # that explains it does not work is worse than no
+                    # button. Its handler is attached further down, where
+                    # the assistant itself is built -- it needs the
+                    # transcript view and the hub connection, and neither
+                    # exists yet up here.
+                    review_button = (
+                        ui.button("Review assistant", icon="rate_review")
+                        .props("flat")
+                        .classes("editor-btn editor-toolbar-btn")
+                    )
+                    review_button.set_visibility(False)
 
 
             with ui.button("Close editor", icon="close").props(
@@ -770,11 +787,39 @@ def create() -> None:
                                         visible and editor.show_timeline
                                     )
 
+                            # The review assistant shares the strip's own
+                            # connection to the hub: one socket per open
+                            # editor, whichever of the two is asking.
+                            assistant = ReviewAssistant(
+                                editor,
+                                language,
+                                on_jump=transcript.go_to,
+                            )
+
+                            def offer_review(catalogue: dict) -> None:
+                                """
+                                Reveal the toolbar button, if the hub can
+                                actually review anything.
+
+                                A hub with no worker connected names its
+                                domains all the same, and a button that
+                                only produces an apology one click later is
+                                worse than no button.
+                                """
+
+                                assistant.set_catalogue(catalogue)
+
+                                if assistant.available and catalogue.get("models"):
+                                    review_button.set_visibility(True)
+
+                            review_button.on("click", assistant.open)
+
                             inference = InferencePanel(
                                 editor,
                                 filename,
                                 language,
                                 on_expand=show_player,
+                                on_catalogue=offer_review,
                                 # Clicking a line of an answer moves the
                                 # transcription to where it came from --
                                 # study notes and action items are read
@@ -785,3 +830,7 @@ def create() -> None:
                             )
                             inference.build()
                             inference.register_cleanup()
+
+                            # Built after the strip, which is what owns the
+                            # socket both of them talk over.
+                            assistant.client = inference.client

@@ -302,6 +302,7 @@ class InferencePanel:
         language: str = "",
         on_expand=None,
         on_jump=None,
+        on_catalogue=None,
     ) -> None:
         self.editor = editor
         self.filename = filename
@@ -328,6 +329,12 @@ class InferencePanel:
         # of a dozen similar bullets the transcription was moved for.
         self.passages: list = []
         self.followed = None
+
+        # Called once with what the hub offers. The strip is what asks for
+        # that menu, and the review assistant needs the same answer -- the
+        # domain list rides along in it -- so it is handed on rather than
+        # fetched a second time.
+        self.on_catalogue = on_catalogue
 
         self.client = InferenceClient()
         self.catalogue: dict = {}
@@ -477,6 +484,12 @@ class InferencePanel:
         """
 
         self.catalogue = await fetch_tasks()
+
+        # Handed on before anything is drawn, and whatever the answer says:
+        # a hub with no worker connected still names its domains, and what
+        # depends on this menu is not only this strip.
+        if self.on_catalogue is not None:
+            self.on_catalogue(self.catalogue)
 
         tasks = self.catalogue.get("tasks", [])
 
