@@ -131,6 +131,88 @@ def answer_language(name: str) -> Optional[str]:
     return cleaned or None
 
 
+def usage_of(message: dict) -> dict:
+    """
+    What an answer cost, out of the hub's own "done".
+
+    The same figures the hub writes to its usage row, so the number a
+    reader is shown and the number that gets billed cannot drift apart.
+    A worker that reports none of them leaves zeros rather than nothing:
+    the caller then has one shape to deal with.
+
+    Parameters:
+        message (dict): The "done" message.
+
+    Returns:
+        dict: input_tokens, output_tokens and gpu_seconds.
+    """
+
+    def number(name, kind):
+        try:
+            return kind(message.get(name, 0) or 0)
+        except (TypeError, ValueError):
+            return kind(0)
+
+    return {
+        "input_tokens": number("input_tokens", int),
+        "output_tokens": number("output_tokens", int),
+        "gpu_seconds": number("gpu_seconds", float),
+    }
+
+
+def add_usage(total: dict, more: dict) -> dict:
+    """
+    Two answers' cost, added up.
+
+    Parameters:
+        total (dict): What has been spent so far.
+        more (dict): What the latest answer cost.
+
+    Returns:
+        dict: The sum, as a new dict.
+    """
+
+    return {
+        key: total.get(key, 0) + more.get(key, 0)
+        for key in ("input_tokens", "output_tokens", "gpu_seconds")
+    }
+
+
+def usage_line(usage: dict) -> str:
+    """
+    What an answer cost, in one line for the page.
+
+    Tokens in, tokens out, and the GPU time behind them -- the three
+    figures that say what a question actually cost, which is otherwise
+    invisible to everyone but an operator reading the usage table. Thin
+    spaces group the thousands, since a five-figure token count is
+    unreadable without them.
+
+    Parameters:
+        usage (dict): As usage_of() returns it.
+
+    Returns:
+        str: The line, or an empty string when the worker reported nothing
+            at all -- a row of zeros says less than no row.
+    """
+
+    if not usage or not any(usage.get(key) for key in usage):
+        return ""
+
+    def grouped(value: int) -> str:
+        return f"{value:,}".replace(",", "\u2009")
+
+    parts = [
+        f"{grouped(int(usage.get('input_tokens', 0)))} tokens in",
+        f"{grouped(int(usage.get('output_tokens', 0)))} out",
+    ]
+
+    if seconds := float(usage.get("gpu_seconds", 0)):
+        parts.append(f"{seconds:.1f}\u2009s on the GPU")
+
+    return " · ".join(parts)
+
+
 def transcript_text(editor) -> str:
     """
     The text to reason about, taken from the editor as it stands now.
@@ -468,7 +550,7 @@ class InferenceClient:
                     case "delta":
                         self._deliver(handlers, "on_delta", message.get("text", ""))
                     case "done":
-                        self._deliver(handlers, "on_done")
+                        self._deliver(handlers, "on_done", usage_of(message))
                         self.handlers.pop(req_id, None)
                     case "error":
                         self._deliver(
@@ -530,7 +612,7 @@ class InferenceClient:
         language: Optional[str],
         model: Optional[str],
         on_delta: Callable[[str], None],
-        on_done: Callable[[], None],
+        on_done: Callable[[dict], None],
         on_error: Callable[[str], None],
         on_accepted: Optional[Callable[[str], None]] = None,
         domain: Optional[str] = None,
@@ -544,7 +626,8 @@ class InferenceClient:
             language (Optional[str]): Language to answer in.
             model (Optional[str]): Model alias, or None for the default.
             on_delta (Callable): Called with each piece of the answer.
-            on_done (Callable): Called when the answer is complete.
+            on_done (Callable): Called with what the answer cost when it is
+                complete -- see usage_of().
             on_error (Callable): Called with a message when it is not.
             on_accepted (Optional[Callable]): Called with the model that
                 took the request.

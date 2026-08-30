@@ -28,6 +28,9 @@ must never reach the page as markup.
 from utils.caption import SRTCaption
 from utils.inference import (
     JUMP_MIN_TERMS,
+    add_usage,
+    usage_line,
+    usage_of,
     NOTES_SUFFIX,
     answer_language,
     export_document,
@@ -600,3 +603,70 @@ def test_a_line_that_could_not_be_placed_is_not_marked(monkeypatch):
 
     assert passage.marks == set()
     assert said == [NOT_FOUND]
+
+
+class TestWhatAnAnswerCost:
+    """
+    Tokens in, tokens out and the GPU time behind them. Otherwise visible
+    only to an operator reading the usage table, though it is the reader's
+    own question that ran the GPU.
+    """
+
+    def test_the_figures_come_off_the_done_message(self):
+        usage = usage_of(
+            {
+                "type": "done",
+                "input_tokens": 1240,
+                "output_tokens": 380,
+                "gpu_seconds": 4.25,
+            }
+        )
+
+        assert usage == {
+            "input_tokens": 1240,
+            "output_tokens": 380,
+            "gpu_seconds": 4.25,
+        }
+
+    def test_a_worker_that_reports_nothing_leaves_zeros(self):
+        # One shape for the caller to deal with, whatever the worker sent.
+        assert usage_of({}) == {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "gpu_seconds": 0.0,
+        }
+        assert usage_of({"input_tokens": "nonsense"})["input_tokens"] == 0
+
+    def test_the_line_names_all_three(self):
+        line = usage_line(
+            {"input_tokens": 12345, "output_tokens": 380, "gpu_seconds": 4.25}
+        )
+
+        assert "tokens in" in line
+        assert "380 out" in line
+        assert "4.2" in line
+        # Thin spaces, since a five-figure token count cannot be read
+        # without them.
+        assert "12\u2009345" in line
+
+    def test_nothing_reported_says_nothing(self):
+        # A row of zeros says less than no row.
+        assert usage_line({}) == ""
+        assert usage_line(usage_of({})) == ""
+
+    def test_a_worker_with_no_gpu_timing_still_reports_its_tokens(self):
+        line = usage_line({"input_tokens": 10, "output_tokens": 2, "gpu_seconds": 0})
+
+        assert "10 tokens in · 2 out" == line
+
+    def test_several_answers_add_up(self):
+        total = add_usage(
+            {"input_tokens": 100, "output_tokens": 20, "gpu_seconds": 1.5},
+            usage_of({"input_tokens": 50, "output_tokens": 5, "gpu_seconds": 0.5}),
+        )
+
+        assert total == {
+            "input_tokens": 150,
+            "output_tokens": 25,
+            "gpu_seconds": 2.0,
+        }

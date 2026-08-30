@@ -662,6 +662,23 @@ theme_styles = """
         min-height: 1.1rem;
         padding-left: 0.15rem;
     }
+    /* The line under the answer: what it is on the left, what it cost on
+       the right. The cost is quieter than the note beside it -- it is
+       there to be found, not to be read every time. */
+    .inference-status {
+        gap: 0.75rem;
+        flex-wrap: wrap;
+    }
+    .inference-usage {
+        margin-left: auto;
+        font-size: 0.72rem;
+        color: var(--color-text-tertiary);
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+    }
+    .review-usage {
+        font-variant-numeric: tabular-nums;
+    }
     /* A tinted surface rather than a bordered box. The strip sits inside a
        card already, and a second rule around the answer drew a frame
        within a frame. */
@@ -925,6 +942,30 @@ theme_styles = """
     }
     /* The model's own sentence, in the language of the recording. Set apart
        from the product's own English, which is everything else here. */
+    /* The sentence the suggestion is about, with the words it would change
+       picked out. Three labels laid out inline so they read as one
+       wrapping sentence -- a caption is somebody's speech and a suggestion
+       is a model's writing, and neither is markup to be trusted here. */
+    .review-context-block {
+        gap: 0.15rem;
+    }
+    .review-context {
+        font-size: 0.85rem;
+        line-height: 1.5;
+        color: var(--color-text-secondary);
+    }
+    .review-context > * {
+        display: inline;
+    }
+    .review-context-hit {
+        font-weight: 600;
+        color: var(--color-text-primary);
+        background-color: color-mix(
+            in srgb, var(--color-brand-primary) 18%, transparent
+        );
+        border-radius: 0.2rem;
+        padding: 0 0.1rem;
+    }
     .review-why {
         font-size: 0.85rem;
         font-style: italic;

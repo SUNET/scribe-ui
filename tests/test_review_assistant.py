@@ -29,10 +29,12 @@ import pytest
 
 from utils.caption import SRTCaption
 from utils.review_assistant import (
+    CONTEXT_CHARS,
     MAX_SUGGESTIONS,
     ReviewAssistant,
     Suggestion,
     apply_suggestion,
+    excerpt,
     matching_captions,
     occurrences,
     parse_suggestions,
@@ -409,3 +411,189 @@ def test_no_button_in_the_dialog_asks_for_a_colour():
         assert colours[0].value.value is None
 
     assert buttons >= 8
+
+
+class TestTheSentenceAround:
+    """
+    "dos" against "dose" cannot be judged on its own: whether it is a
+    mishearing or the word the speaker meant is decided by what is around
+    it.
+    """
+
+    def test_the_match_is_kept_apart_from_its_surroundings(self):
+        before, hit, after = excerpt("The dos was too high.", 4, 7)
+
+        assert (before, hit, after) == ("The ", "dos", " was too high.")
+
+    def test_a_long_caption_is_cut_back_on_both_sides(self):
+        text = "x" * 400 + " dos " + "y" * 400
+        before, hit, after = excerpt(text, 401, 404)
+
+        assert hit == "dos"
+        assert before.startswith("…")
+        assert after.endswith("…")
+        assert len(before) <= CONTEXT_CHARS + 1
+        assert len(after) <= CONTEXT_CHARS + 1
+
+    def test_line_breaks_are_flattened(self):
+        # One line of a card, not the caption being edited.
+        before, hit, after = excerpt("first line\nthe dos here", 15, 18)
+
+        assert "\n" not in before + hit + after
+        assert before == "first line the "
+
+
+class TestArrivingWhileStillGenerating:
+    """
+    The answer is JSON Lines precisely so a finished line can be read while
+    the rest is still being written. A reader should be deciding on the
+    first suggestion while the model is still finding the fifth.
+    """
+
+    @pytest.fixture
+    def assistant(self, editor, monkeypatch) -> ReviewAssistant:
+        monkeypatch.setattr(
+            "utils.review_assistant.ui.notify", lambda *a, **k: None
+        )
+        assistant = ReviewAssistant(editor, language="Swedish")
+        assistant.drawn = []
+        assistant._draw_current = lambda: assistant.drawn.append("card")
+        assistant._update_progress = lambda: assistant.drawn.append("count")
+        assistant._on_the_page = lambda: __import__("contextlib").nullcontext()
+        assistant.streaming = True
+
+        return assistant
+
+    def test_the_first_finished_line_takes_the_spinner_away(self, assistant):
+        assistant._collect('{"find": "dos", "replace": "dose"}\n')
+
+        assert [entry.find for entry in assistant.queue] == ["dos"]
+        assert assistant.drawn == ["card"]
+
+    def test_a_half_arrived_line_is_not_offered(self, assistant):
+        assistant._collect('{"find": "dos", "repl')
+
+        assert assistant.queue == []
+        assert assistant.drawn == []
+
+        assistant._collect('ace": "dose"}\n')
+
+        assert [entry.find for entry in assistant.queue] == ["dos"]
+
+    def test_later_suggestions_do_not_redraw_the_card(self, assistant):
+        # Redrawing would move what the reader is reading, several times a
+        # second while the answer arrives.
+        assistant._collect('{"find": "dos", "replace": "dose"}\n')
+        assistant.deciding = True
+        assistant._collect('{"find": "Lindquist", "replace": "Lindqvist"}\n')
+
+        assert assistant.drawn == ["card", "count"]
+        assert len(assistant.queue) == 2
+
+    def test_a_skipped_suggestion_is_not_re_ordered_by_an_arrival(
+        self, assistant
+    ):
+        # The queue is appended to, never rebuilt from the answer: Skip
+        # moves a suggestion to the back of this same list, and rebuilding
+        # would undo the reader's own decisions.
+        assistant._collect('{"find": "dos", "replace": "dose"}\n')
+        assistant.deciding = True
+        assistant.queue[0].state = "dismissed"
+        assistant._collect('{"find": "Lindquist", "replace": "Lindqvist"}\n')
+
+        assert [entry.state for entry in assistant.queue] == [
+            "dismissed",
+            "pending",
+        ]
+
+    def test_the_counter_says_more_are_coming(self, assistant):
+        assistant._collect('{"find": "dos", "replace": "dose"}\n')
+
+        assert "still looking" in assistant._progress_text()
+
+        assistant.streaming = False
+
+        assert assistant._progress_text() == "Last suggestion"
+
+
+class TestUndoingAnAccept:
+    """
+    Accepting is one undo step, so the editor's own history is what puts the
+    text back. Nothing is remembered in the assistant but which suggestion
+    to offer again.
+    """
+
+    @pytest.fixture
+    def assistant(self, editor, monkeypatch) -> ReviewAssistant:
+        monkeypatch.setattr(
+            "utils.review_assistant.ui.notify", lambda *a, **k: None
+        )
+        assistant = ReviewAssistant(editor, language="Swedish")
+        assistant.queue = [
+            Suggestion(find="Lindquist", replace="Lindqvist"),
+            Suggestion(find="dos", replace="dose"),
+        ]
+        assistant._draw_current = lambda: None
+
+        return assistant
+
+    def test_the_text_goes_back_and_the_suggestion_comes_back(
+        self, assistant, editor
+    ):
+        before = [entry.text for entry in editor.captions]
+
+        assistant._accept()
+
+        assert assistant.last_accepted is not None
+
+        assistant._undo()
+
+        assert [entry.text for entry in editor.captions] == before
+        assert assistant.outcome.accepted == 0
+        assert assistant.outcome.changed == 0
+        assert assistant._current().find == "Lindquist"
+
+    def test_only_the_most_recent_accept_can_be_taken_back(
+        self, assistant, editor
+    ):
+        # Reaching further into the editor's history than the change the
+        # assistant made itself would be undoing the reader's own typing.
+        assistant._accept()
+        assistant._undo()
+
+        assert assistant.last_accepted is None
+
+        assistant._undo()
+
+        assert assistant.outcome.accepted == 0
+        assert "Lindquist" in editor.captions[1].text
+
+    def test_dismissing_leaves_nothing_to_undo(self, assistant):
+        assistant._dismiss()
+
+        assert assistant.last_accepted is None
+
+
+def test_a_review_adds_up_what_both_requests_cost(editor, monkeypatch):
+    # Two requests behind one review -- the classification and the review
+    # itself -- and the reader is told what the pair came to.
+    monkeypatch.setattr("utils.review_assistant.ui.notify", lambda *a, **k: None)
+
+    assistant = ReviewAssistant(editor, language="Swedish")
+    assistant._draw_domain = lambda: None
+    assistant._take_new_suggestions = lambda: None
+    assistant._draw_current = lambda: None
+    assistant._on_the_page = lambda: __import__("contextlib").nullcontext()
+
+    assistant._domain_ready(
+        {"input_tokens": 900, "output_tokens": 4, "gpu_seconds": 0.3}
+    )
+    assistant._suggestions_ready(
+        {"input_tokens": 900, "output_tokens": 300, "gpu_seconds": 6.2}
+    )
+
+    assert assistant.spent == {
+        "input_tokens": 1800,
+        "output_tokens": 304,
+        "gpu_seconds": 6.5,
+    }

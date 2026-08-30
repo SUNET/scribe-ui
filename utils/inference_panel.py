@@ -49,11 +49,13 @@ from utils.helpers import sanitize_filename
 from utils.inference import (
     InferenceClient,
     NOTES_SUFFIX,
+    add_usage,
     answer_language,
     export_document,
     fetch_tasks,
     locate_caption,
     transcript_text,
+    usage_line,
 )
 from utils.settings import get_settings
 
@@ -341,6 +343,11 @@ class InferencePanel:
         self.answer = ""
         self.request_id: Optional[str] = None
 
+        # What the last answer cost, and what this page has spent
+        # altogether -- see the line under the answer.
+        self.usage: dict = {}
+        self.spent: dict = {"input_tokens": 0, "output_tokens": 0, "gpu_seconds": 0.0}
+
         self.current_task = ""
         self.available = True
         self.panel = None
@@ -350,6 +357,7 @@ class InferencePanel:
         self.parts = None
         self.body = None
         self.status = None
+        self.usage_label = None
         self.stop_button = None
         self.copy_button = None
         self.download_button = None
@@ -447,7 +455,13 @@ class InferencePanel:
                                 "Markdown (.md)", lambda: self.download("md")
                             )
 
-            self.status = ui.label(IDLE_HINT).classes("inference-status-line")
+            with ui.row().classes("inference-status w-full items-baseline"):
+                self.status = ui.label(IDLE_HINT).classes("inference-status-line")
+
+                # What the answer cost. Otherwise invisible to everyone but
+                # an operator reading the usage table, and it is the
+                # reader's own question that ran the GPU.
+                self.usage_label = ui.label().classes("inference-usage")
 
             with ui.scroll_area().classes("inference-output") as body:
                 self.body = body
@@ -631,6 +645,10 @@ class InferencePanel:
 
         self.answer = ""
         self.current_task = task
+        self.usage = {}
+
+        if self.usage_label is not None:
+            self.usage_label.set_text("")
 
         # The previous answer may have been rebuilt into several elements.
         self.parts.clear()
@@ -851,17 +869,23 @@ class InferencePanel:
 
         return f"{NOT_SAVED} {JUMP_HINT}"
 
-    def _done(self) -> None:
+    def _done(self, usage: Optional[dict] = None) -> None:
         """
         Finish a completed answer.
+
+        Parameters:
+            usage (Optional[dict]): What it cost, as the hub reported it.
 
         Returns:
             None
         """
 
         self.request_id = None
+        self.usage = usage or {}
+        self.spent = add_usage(self.spent, self.usage)
 
         with self._on_the_page():
+            self._show_usage()
             self._render_answer()
             self.status.set_text(self._finished_line())
             self._set_running(False)
@@ -884,6 +908,28 @@ class InferencePanel:
             self._set_running(False)
             self._show_answer(bool(self.answer))
             ui.notify(message)
+
+    def _show_usage(self) -> None:
+        """
+        Say what the answer cost, under it.
+
+        The whole page's spending is named too once there has been more
+        than one answer: a reader asking four questions of a recording is
+        entitled to know what the four came to, not only the last one.
+
+        Returns:
+            None
+        """
+
+        if self.usage_label is None:
+            return
+
+        line = usage_line(self.usage)
+
+        if line and self.spent != self.usage and (total := usage_line(self.spent)):
+            line = f"{line}  ·  {total} this session"
+
+        self.usage_label.set_text(line)
 
     async def stop(self) -> None:
         """

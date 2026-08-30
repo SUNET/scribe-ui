@@ -55,7 +55,7 @@ from typing import Callable, Optional
 
 from nicegui import ui
 
-from utils.inference import answer_language, transcript_text
+from utils.inference import add_usage, answer_language, transcript_text, usage_line
 
 # The hub's two review tasks. Not offered in the Analyse strip -- they are
 # asked for here, in this order.
@@ -74,6 +74,10 @@ KIND_LABELS = {
 # More than this from one review is not a review any more. The prompt asks
 # for restraint; this is what happens when it is not shown any.
 MAX_SUGGESTIONS = 40
+
+# How much of the caption to show either side of the words a suggestion
+# would change. Enough to judge it by; not so much that the card scrolls.
+CONTEXT_CHARS = 90
 
 # What the reader is told, in English.
 ANALYSING = "Reading the transcription..."
@@ -259,6 +263,41 @@ def occurrences(captions: list, find: str) -> int:
     return sum(len(pattern.findall(caption.text)) for caption in captions)
 
 
+def excerpt(
+    text: str, start: int, end: int, width: int = CONTEXT_CHARS
+) -> tuple[str, str, str]:
+    """
+    A match with enough of its sentence around it to be judged.
+
+    Parameters:
+        text (str): The caption's text.
+        start (int): Where the match begins.
+        end (int): Where it ends.
+        width (int): How many characters to keep either side.
+
+    Returns:
+        tuple[str, str, str]: What comes before, the match itself, and what
+            comes after -- the outer two cut back to `width` with an
+            ellipsis, and every line break flattened to a space, since this
+            is one line of a card and not the caption being edited.
+    """
+
+    def flat(part: str) -> str:
+        return part.replace("\n", " ")
+
+    before = flat(text[:start])
+    hit = flat(text[start:end])
+    after = flat(text[end:])
+
+    if len(before) > width:
+        before = "…" + before[-width:]
+
+    if len(after) > width:
+        after = after[:width] + "…"
+
+    return before, hit, after
+
+
 def apply_suggestion(editor, suggestion: Suggestion) -> int:
     """
     Accept a suggestion: change every place it applies to, once.
@@ -381,10 +420,36 @@ class ReviewAssistant:
         self.answer = ""
         self.request_id: Optional[str] = None
 
+        # What the review cost: two requests, the classification and the
+        # review itself, added together. Shown at the end rather than
+        # between the suggestions, where it would be one more thing to read
+        # on a card that is being decided on.
+        self.spent: dict = {"input_tokens": 0, "output_tokens": 0, "gpu_seconds": 0.0}
+
         self.queue: list[Suggestion] = []
         self.position = 0
         self.skips = 0
         self.outcome = Outcome()
+
+        # How many suggestions have been read out of the answer so far.
+        # The answer arrives a line at a time and each line is a whole
+        # suggestion, so the reader starts deciding while the rest is still
+        # being written -- see _collect.
+        self.parsed = 0
+        self.streaming = False
+
+        # The counter on the card, kept as a reference so an arriving
+        # suggestion can update it without the card being redrawn under a
+        # reader who is reading it.
+        self.progress_label = None
+
+        # The last suggestion accepted, and the button that takes it back.
+        # Accepting is one undo step, so the editor's own undo is what
+        # undoes it -- there is nothing to remember here but which
+        # suggestion to offer again.
+        self.last_accepted: Optional[Suggestion] = None
+        self.last_changed = 0
+        self.undo_button = None
 
     # ------------------------------------------------------------------
     # What the hub offers
@@ -452,6 +517,10 @@ class ReviewAssistant:
         self.queue = []
         self.position = 0
         self.skips = 0
+        self.parsed = 0
+        self.streaming = False
+        self.last_accepted = None
+        self.spent = {"input_tokens": 0, "output_tokens": 0, "gpu_seconds": 0.0}
         self.outcome = Outcome()
 
         self._build()
@@ -531,7 +600,16 @@ class ReviewAssistant:
 
     def _collect(self, text: str) -> None:
         """
-        Keep a piece of an answer.
+        Keep a piece of an answer, and show a suggestion the moment there is
+        one.
+
+        The answer is JSON Lines precisely so that a finished line can be
+        read while the rest is still being written: a review of a long
+        recording takes a model a while, and there is no reason for the
+        reader to watch a spinner through all of it when the first
+        suggestion was ready in the first second. A partial last line is
+        not an object yet and parse_suggestions ignores it, so nothing
+        half-arrived is ever offered.
 
         Parameters:
             text (str): The piece.
@@ -542,15 +620,80 @@ class ReviewAssistant:
 
         self.answer += text
 
-    def _domain_ready(self) -> None:
+        if not self.streaming:
+            return
+
+        with self._on_the_page():
+            self._take_new_suggestions()
+
+    def _take_new_suggestions(self) -> None:
+        """
+        Put whatever has arrived since the last look on the queue.
+
+        Returns:
+            None
+        """
+
+        found = parse_suggestions(self.answer)
+
+        if len(found) <= self.parsed:
+            return
+
+        # Appended, never re-ordered: Skip moves a suggestion to the back of
+        # this same list, so rebuilding it from the answer would undo the
+        # reader's own decisions.
+        self.queue.extend(found[self.parsed :])
+        self.parsed = len(found)
+
+        if not self.deciding:
+            # The first one to arrive is what takes the spinner away.
+            self._draw_current()
+        else:
+            self._update_progress()
+
+    def _update_progress(self) -> None:
+        """
+        Say how many suggestions are still waiting, without redrawing the
+        card.
+
+        Redrawing it would move what the reader is reading, and while the
+        answer is still arriving that would happen several times a second.
+
+        Returns:
+            None
+        """
+
+        if self.progress_label is not None:
+            self.progress_label.set_text(self._progress_text())
+
+    def _progress_text(self) -> str:
+        """
+        The counter in the corner of the card.
+
+        Returns:
+            str: How many are left, and whether more are still coming.
+        """
+
+        left = sum(entry.state == "pending" for entry in self.queue)
+
+        if self.streaming:
+            return f"{left} so far, still looking..."
+
+        return f"{left} left to decide" if left > 1 else "Last suggestion"
+
+    def _domain_ready(self, usage: Optional[dict] = None) -> None:
         """
         Show the domain the model settled on, for the reader to confirm.
+
+        Parameters:
+            usage (Optional[dict]): What the classification cost.
 
         Returns:
             None
         """
 
         self.request_id = None
+        self.spent = add_usage(self.spent, usage or {})
         self.domain = read_domain_code(
             self.answer, [domain["code"] for domain in self.domains]
         )
@@ -643,6 +786,11 @@ class ReviewAssistant:
             return
 
         self.answer = ""
+        self.parsed = 0
+        self.queue = []
+        self.position = 0
+        self.skips = 0
+        self.streaming = True
         self._working(REVIEWING)
 
         self.request_id = await self.client.ask(
@@ -658,21 +806,33 @@ class ReviewAssistant:
             domain=self.domain,
         )
 
-    def _suggestions_ready(self) -> None:
+    def _suggestions_ready(self, usage: Optional[dict] = None) -> None:
         """
         Start stepping through what came back.
+
+        Parameters:
+            usage (Optional[dict]): What the review itself cost, on top of
+                the classification.
 
         Returns:
             None
         """
 
         self.request_id = None
-        self.queue = parse_suggestions(self.answer)
-        self.position = 0
-        self.skips = 0
+        self.spent = add_usage(self.spent, usage or {})
 
         with self._on_the_page():
-            self._draw_current()
+            # Everything that arrived in the last batch, and then the
+            # counter stops saying "still looking".
+            self._take_new_suggestions()
+            self.streaming = False
+
+            if self.deciding:
+                self._update_progress()
+            else:
+                # Nothing was ever drawn: either the answer held no
+                # suggestion at all, or none of them survived parsing.
+                self._draw_current()
 
     def _current(self) -> Optional[Suggestion]:
         """
@@ -721,18 +881,15 @@ class ReviewAssistant:
             return
 
         places = occurrences(self.editor.captions, suggestion.find)
-        left = sum(entry.state == "pending" for entry in self.queue)
 
         self.body.clear()
 
         with self.body:
             with ui.row().classes("review-meta items-center w-full"):
                 ui.label(suggestion.kind_label).classes("review-kind")
-                ui.label(
-                    f"{left} left to decide"
-                    if left > 1
-                    else "Last suggestion"
-                ).classes("review-progress")
+                self.progress_label = ui.label(self._progress_text()).classes(
+                    "review-progress"
+                )
 
             with ui.column().classes("review-change w-full"):
                 with ui.row().classes("review-change-row items-center"):
@@ -748,6 +905,8 @@ class ReviewAssistant:
             # somebody's speech, and neither is trusted here.
             if suggestion.why:
                 ui.label(suggestion.why).classes("review-why")
+
+            self._draw_context(suggestion)
 
             with ui.row().classes("review-where items-center"):
                 ui.label(
@@ -771,6 +930,49 @@ class ReviewAssistant:
         # _review_footer and .review-body's own fixed height.
         if not self.deciding:
             self._review_footer()
+
+    def _draw_context(self, suggestion: Suggestion) -> None:
+        """
+        The sentence the suggestion is about, with the words it would change
+        picked out.
+
+        "dos" against "dose" cannot be judged on its own -- whether it is a
+        mishearing or a word the speaker meant is decided by what is around
+        it, and asking the reader to go and look it up in the transcription
+        for every suggestion is asking them not to bother.
+
+        Three labels rather than one piece of HTML: a caption is somebody's
+        speech and a suggestion is a model's writing, and neither is markup
+        to be trusted here. They are laid out inline (see .review-context)
+        so the three read as one wrapping sentence.
+
+        Parameters:
+            suggestion (Suggestion): The one being decided on.
+
+        Returns:
+            None
+        """
+
+        found = matching_captions(self.editor.captions, suggestion.find)
+
+        if not found:
+            return
+
+        caption = found[0]
+        match = match_pattern(suggestion.find).search(caption.text)
+
+        if match is None:
+            return
+
+        before, hit, after = excerpt(caption.text, match.start(), match.end())
+
+        with ui.column().classes("review-context-block w-full"):
+            ui.label(f"In caption #{caption.index}").classes("review-change-label")
+
+            with ui.element("div").classes("review-context"):
+                ui.label(before).classes("review-context-text")
+                ui.label(hit).classes("review-context-hit")
+                ui.label(after).classes("review-context-text")
 
     def _review_footer(self) -> None:
         """
@@ -805,6 +1007,14 @@ class ReviewAssistant:
 
             with stop:
                 ui.tooltip("End the review. What you accepted stays.")
+
+            self.undo_button = ui.button(
+                "Undo last accept", icon="undo", on_click=self._undo, color=None
+            ).props("flat no-caps").classes("review-action")
+            self.undo_button.set_enabled(self.last_accepted is not None)
+
+            with self.undo_button:
+                ui.tooltip("Put the last accepted change back as it was.")
 
             ui.space()
 
@@ -867,7 +1077,65 @@ class ReviewAssistant:
 
         self.position += 1
         self.skips = 0
+        self.last_changed = changed
+        self._remember_accept(suggestion)
 
+        self._draw_current()
+
+    def _remember_accept(self, suggestion: Optional[Suggestion]) -> None:
+        """
+        Note which suggestion Undo would take back.
+
+        Parameters:
+            suggestion (Optional[Suggestion]): The one just accepted, or
+                None once there is nothing to undo.
+
+        Returns:
+            None
+        """
+
+        self.last_accepted = suggestion
+
+        if self.undo_button is not None:
+            self.undo_button.set_enabled(suggestion is not None)
+
+    def _undo(self) -> None:
+        """
+        Take back the last accepted suggestion, and offer it again.
+
+        Accepting is one undo step, so the editor's own history is what
+        puts the text back -- nothing is remembered here but which
+        suggestion to put back on the queue. Only the most recent accept
+        can be taken back: further undo is the editor's own business, and
+        an assistant reaching further into that history than the change it
+        made itself would be undoing the reader's typing.
+
+        Returns:
+            None
+        """
+
+        suggestion = self.last_accepted
+
+        if suggestion is None:
+            return
+
+        self.editor.undo()
+
+        suggestion.state = "pending"
+        self.outcome.accepted = max(0, self.outcome.accepted - 1)
+        self.outcome.changed = max(0, self.outcome.changed - self.last_changed)
+        self.last_changed = 0
+
+        if suggestion in self.outcome.applied:
+            self.outcome.applied.remove(suggestion)
+
+        # Back to it, so the reader lands on the suggestion they just took
+        # back rather than having to find it again.
+        if 0 <= self.position - 1 < len(self.queue):
+            if self.queue[self.position - 1] is suggestion:
+                self.position -= 1
+
+        self._remember_accept(None)
         self._draw_current()
 
     def _dismiss(self) -> None:
@@ -968,6 +1236,12 @@ class ReviewAssistant:
 
             if self.outcome.accepted:
                 ui.label(NOT_SAVED).classes("review-note")
+
+            # What the review cost: both requests, the classification and
+            # the review itself. Said at the end, where there is nothing
+            # left to decide, rather than on a card being read.
+            if line := usage_line(self.spent):
+                ui.label(line).classes("review-note review-usage")
 
         with self.footer:
             ui.space()
