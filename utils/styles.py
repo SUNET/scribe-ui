@@ -833,7 +833,11 @@ theme_styles = """
        reader is doing while it is open. Wide enough for a sentence of a
        transcript to be read without wrapping three times, no wider. */
     .review-dialog {
-        width: 34rem;
+        /* Wide enough that a suggestion's own sentence, and the caption it
+           came out of, are read on two or three lines rather than five --
+           the card is a passage of somebody's speech, not a form. Still
+           capped against the window, so a narrow one is not overrun. */
+        width: 46rem;
         max-width: 92vw;
         padding: 1rem 1.25rem 0.85rem;
         display: flex;
