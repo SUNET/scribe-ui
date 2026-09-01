@@ -36,6 +36,7 @@ from utils.inference import (
     export_document,
     hub_base,
     hub_url,
+    fold,
     locate_caption,
     plain_text,
     transcript_text,
@@ -461,6 +462,107 @@ def test_one_shared_word_is_a_coincidence():
 
     assert JUMP_MIN_TERMS >= 2
     assert locate_caption("Budget.", transcription.captions) is None
+
+
+def test_a_line_about_a_stretch_of_speech_is_placed_at_its_start():
+    """
+    A bullet summarises a passage, not a sentence of it -- and in a
+    transcription a caption is a whole speaker turn, so the words behind one
+    line of the answer are routinely spread over two or three of them.
+    Scored one caption at a time, no single one accounts for enough of the
+    line and it is not placed at all, which is how the jump usually missed.
+    """
+
+    transcription = editor(
+        "txt",
+        caption(1, "Any questions before we carry on with the next part?"),
+        caption(2, "Chlorophyll absorbs light in the blue and the red bands."),
+        caption(3, "The energy then builds sugar out of carbon dioxide and water."),
+        caption(4, "The budget for the coming year is set in November."),
+    )
+
+    found = locate_caption(
+        "- Chlorophyll absorbs light, and that energy builds sugar from carbon "
+        "dioxide.",
+        transcription.captions,
+    )
+
+    assert found is not None
+
+    # The start of the stretch, not the caption that happens to account for
+    # most of it: landing halfway through means the first half is never
+    # heard without seeking back by hand.
+    assert found.index == 2
+
+
+def test_an_inflected_word_is_the_same_word():
+    """
+    The recordings are mostly Swedish, where the definite article is a
+    suffix -- "budget" is "budgeten" the second time it is mentioned -- and
+    a model writing about the transcript uses whichever form its own
+    sentence wants. Compared on the surface form, the two texts share far
+    less than they really do.
+    """
+
+    assert fold("budgeten") == fold("budget")
+    assert fold("växterna") == fold("växter")
+    assert fold("colouring") == fold("colours")
+
+    transcription = editor(
+        "txt",
+        caption(1, "Stomata reglerar hur mycket koldioxid som kommer in."),
+        caption(2, "Nästa vecka går vi igenom cellandningen i stället."),
+    )
+
+    found = locate_caption(
+        "- Stomatan reglerade koldioxiden.", transcription.captions
+    )
+
+    assert found is not None
+    assert found.index == 1
+
+
+def test_words_the_whole_transcription_uses_are_not_evidence():
+    """
+    A sentence of the model's own about the answer itself shares nothing
+    with the transcription but words every caption uses. Those are all of
+    it that the transcription uses at all, so scored by weight alone the
+    line accounts for everything and is placed, confidently, somewhere
+    arbitrary.
+    """
+
+    transcription = editor(
+        "txt",
+        caption(1, "The first thing that was said in the recording."),
+        caption(2, "The second thing that was said in the recording."),
+        caption(3, "The third thing that was said in the recording."),
+    )
+
+    assert (
+        locate_caption(
+            "This answer was generated from the recording.",
+            transcription.captions,
+        )
+        is None
+    )
+
+
+def test_a_line_that_fits_one_caption_is_not_spread_over_three():
+    # A longer run covers more of any passage simply by being longer, so it
+    # only wins when it genuinely accounts for more.
+    transcription = editor(
+        "txt",
+        caption(1, "Brooks theorem bounds the chromatic number for most graphs."),
+        caption(2, "Any questions before the break? Back in ten minutes."),
+        caption(3, "The exam covers everything up to chapter seven."),
+    )
+
+    found = locate_caption(
+        "- Brooks theorem bounds the chromatic number.", transcription.captions
+    )
+
+    assert found is not None
+    assert found.index == 1
 
 
 def test_the_answer_is_cut_into_the_lines_a_reader_clicks():

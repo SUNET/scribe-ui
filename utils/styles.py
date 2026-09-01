@@ -843,23 +843,47 @@ theme_styles = """
         display: flex;
         flex-direction: column;
         gap: 0.5rem;
+        /* The dialog is seamless -- no backdrop, since the transcription
+           under it is what a suggestion is judged against and a dimmed,
+           locked page cannot be read or scrolled. Nothing separates the
+           card from the text behind it, then, so it says where its own
+           edges are. */
+        box-shadow: 0 0.75rem 2.5rem rgba(0, 0, 0, 0.28);
+        border: 1px solid var(--color-border-subtle);
+    }
+    /* The header is the handle: the card can be pushed aside to read the
+       passage underneath it. Not the card itself -- it holds the
+       replacement box and the excerpt, and a drag begun on either of those
+       is a text selection the reader meant. */
+    .review-header {
+        cursor: move;
+        user-select: none;
+    }
+    .review-header .q-btn {
+        cursor: pointer;
+    }
+    .review-grip {
+        color: var(--color-text-muted);
     }
     .review-title {
         font-size: 1rem;
         font-weight: 600;
         color: var(--color-text-primary);
     }
-    .review-mark {
-        color: var(--color-brand-primary);
-    }
     /* A fixed height, not a floor. Accept, Dismiss and Skip are pressed
        dozens of times in a row, and a card that grew with a long
        explanation would move all three out from under the pointer between
        one suggestion and the next. A suggestion longer than the box
-       scrolls inside it instead. */
+       scrolls inside it instead -- but 13rem was short enough that the
+       ordinary case scrolled too: the meta row, the two-line change box,
+       the model's sentence and the caption it came out of come to a good
+       19rem together, and a card that has to be scrolled to be read is a
+       card that is read wrong. The window still wins where it is shorter
+       than that, minus the header, footer and padding around this box, so
+       the dialog can never grow past the screen it is on. */
     .review-body {
         gap: 0.6rem;
-        height: 13rem;
+        height: min(19rem, calc(100vh - 12rem));
         overflow-y: auto;
         flex: 0 0 auto;
     }
@@ -943,6 +967,29 @@ theme_styles = """
         font-size: 0.95rem;
         font-weight: 600;
         color: var(--color-brand-primary);
+    }
+    /* The replacement is the reader's to change, so it is a box and not a
+       label -- but it is still the value on the card, so it is set in the
+       same brand weight the label was rather than dressed as a form field
+       in the middle of a sentence. A quiet underline is what says it can be
+       typed into; it strengthens on focus. */
+    .review-replacement-input {
+        flex: 1 1 12rem;
+        min-width: 8rem;
+    }
+    .review-replacement-input .q-field__control,
+    .review-replacement-input .q-field__native {
+        min-height: 1.6rem;
+        padding: 0;
+    }
+    .review-replacement-input .q-field__native {
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: var(--color-brand-primary);
+        border-bottom: 1px dashed var(--color-border-subtle);
+    }
+    .review-replacement-input .q-field__native:focus {
+        border-bottom-color: var(--color-brand-primary);
     }
     /* The model's own sentence, in the language of the recording. Set apart
        from the product's own English, which is everything else here. */

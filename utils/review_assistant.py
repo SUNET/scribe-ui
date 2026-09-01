@@ -93,6 +93,98 @@ NOT_SAVED = "Nothing has been saved. Close the assistant and press Save to keep 
 STALE_NOTE = "This text is no longer in the transcription -- it was probably changed by an earlier suggestion."
 
 
+# Moving the card is done in the page. A drag is a pointer moving several
+# times a second, and a round trip per move to shift a card two pixels is
+# not one worth taking -- see ReviewAssistant._make_draggable, which fills
+# in the id of the row that acts as the handle.
+DRAG_SCRIPT = """
+(() => {
+    // The dialog is drawn from the server, so the row this is about may
+    // not be in the page yet when the script arrives. Wait for it rather
+    // than miss it.
+    const wire = (handle, card) => {
+        let offsetX = 0;
+        let offsetY = 0;
+        let startX = 0;
+        let startY = 0;
+        let limits = null;
+
+        const clamp = (value, low, high) =>
+            Math.min(Math.max(value, low), high);
+
+        const move = (event) => {
+            if (!limits) {
+                return;
+            }
+
+            const dx = clamp(event.clientX - startX, limits.minX, limits.maxX);
+            const dy = clamp(event.clientY - startY, limits.minY, limits.maxY);
+
+            card.style.transform =
+                'translate(' + (offsetX + dx) + 'px, ' + (offsetY + dy) + 'px)';
+        };
+
+        const up = (event) => {
+            if (!limits) {
+                return;
+            }
+
+            offsetX += clamp(event.clientX - startX, limits.minX, limits.maxX);
+            offsetY += clamp(event.clientY - startY, limits.minY, limits.maxY);
+            limits = null;
+
+            window.removeEventListener('pointermove', move);
+            window.removeEventListener('pointerup', up);
+        };
+
+        handle.addEventListener('pointerdown', (event) => {
+            // The close button rides the same row.
+            if (event.button !== 0 || event.target.closest('button')) {
+                return;
+            }
+
+            const box = card.getBoundingClientRect();
+
+            startX = event.clientX;
+            startY = event.clientY;
+            limits = {
+                minX: -box.left,
+                maxX: window.innerWidth - box.right,
+                minY: -box.top,
+                maxY: window.innerHeight - box.bottom,
+            };
+
+            event.preventDefault();
+            window.addEventListener('pointermove', move);
+            window.addEventListener('pointerup', up);
+        });
+    };
+
+    const attach = (tries) => {
+        const handle = document.getElementById('c%d');
+        const card = handle && handle.closest('.review-dialog');
+
+        if (!card) {
+            if (tries > 0) {
+                requestAnimationFrame(() => attach(tries - 1));
+            }
+
+            return;
+        }
+
+        if (card.dataset.reviewDrag) {
+            return;
+        }
+
+        card.dataset.reviewDrag = '1';
+        wire(handle, card);
+    };
+
+    attach(60);
+})()
+"""
+
+
 @dataclass
 class Suggestion:
     """
@@ -100,7 +192,12 @@ class Suggestion:
 
     Parameters:
         find (str): The text to replace, copied from the transcription.
-        replace (str): What it would say instead.
+        replace (str): What it would say instead. The reader can change
+            this on the card before accepting, so it is what is applied,
+            not necessarily what the model proposed.
+        suggested (str): What the model proposed, kept as it was written so
+            an edited suggestion can be told from an untouched one. Filled
+            in from replace when the suggestion is made.
         why (str): One sentence saying why, in the language of the
             recording.
         kind (str): terminology, name, consistency or wording.
@@ -109,9 +206,50 @@ class Suggestion:
 
     find: str
     replace: str
+    suggested: str = ""
     why: str = ""
     kind: str = "wording"
     state: str = "pending"
+
+    def __post_init__(self) -> None:
+        """
+        Note the model's own wording, before the reader can change it.
+
+        Returns:
+            None
+        """
+
+        if not self.suggested:
+            self.suggested = self.replace
+
+    @property
+    def edited(self) -> bool:
+        """
+        Whether the reader reworded the replacement themselves.
+
+        Returns:
+            bool: True when what would be applied is no longer what the
+                model proposed.
+        """
+
+        return self.replace.strip() != self.suggested.strip()
+
+    @property
+    def applicable(self) -> bool:
+        """
+        Whether accepting this would change anything.
+
+        A reader who empties the box, or types the transcribed text back
+        into it, has asked for no change -- which is Dismiss, not Accept.
+
+        Returns:
+            bool: True when there is a replacement, and it differs from
+                the text being replaced.
+        """
+
+        replacement = self.replace.strip()
+
+        return bool(replacement) and replacement != self.find
 
     @property
     def kind_label(self) -> str:
@@ -132,6 +270,7 @@ class Outcome:
     """
 
     accepted: int = 0
+    edited: int = 0
     dismissed: int = 0
     skipped: int = 0
     stale: int = 0
@@ -451,6 +590,16 @@ class ReviewAssistant:
         self.last_changed = 0
         self.undo_button = None
 
+        # The card's own drag handle, wired up in the page once the dialog
+        # is open (see _make_draggable).
+        self.header = None
+
+        # Accept, kept as a reference for the same reason the counter is:
+        # the footer is drawn once for the whole review, and the reader can
+        # edit the replacement on the card -- emptying the box, or typing
+        # the transcribed text back into it, leaves nothing to accept.
+        self.accept_button = None
+
     # ------------------------------------------------------------------
     # What the hub offers
     # ------------------------------------------------------------------
@@ -525,6 +674,7 @@ class ReviewAssistant:
 
         self._build()
         self.dialog.open()
+        self._make_draggable()
 
         await self._ask_domain()
 
@@ -536,14 +686,27 @@ class ReviewAssistant:
             None
         """
 
-        with ui.dialog().props("persistent") as dialog, ui.card().classes(
+        # seamless: no backdrop, and the page behind stays live. A
+        # suggestion is judged against the transcription it came out of,
+        # and the card sits over that very text -- the excerpt on the card
+        # is a sentence, while what settles a mishearing is often the
+        # paragraph around it. Dimmed and locked, the reader could not read
+        # it, scroll it, or play the recording to hear the word again
+        # without closing the review and losing their place in it.
+        with ui.dialog().props("persistent seamless") as dialog, ui.card().classes(
             "review-dialog"
         ):
             self.dialog = dialog
 
-            with ui.row().classes("review-header items-center w-full"):
-                ui.icon("rate_review").classes("review-mark")
+            # The header is the handle. Not the card itself: the card holds
+            # the replacement box and the excerpt, and a drag begun on
+            # either of those is a text selection the reader meant.
+            with ui.row().classes("review-header items-center w-full") as header:
+                self.header = header
+
+                ui.icon("drag_indicator").classes("review-grip")
                 ui.label("Review Assistant").classes("review-title")
+                ui.tooltip("Drag to move the assistant off the text.")
                 ui.space()
                 ui.button(icon="close", on_click=self.close, color=None).props(
                     "flat dense round"
@@ -551,6 +714,27 @@ class ReviewAssistant:
 
             self.body = ui.column().classes("review-body w-full")
             self.footer = ui.row().classes("review-footer items-center w-full")
+
+    def _make_draggable(self) -> None:
+        """
+        Let the card be pushed aside by its header.
+
+        Done in the page rather than through the server: a drag is a
+        pointer moving several times a second, and a round trip per move to
+        shift a card two pixels is not one worth taking. The listeners live
+        on the window, so a fast drag that outruns the header keeps working,
+        and the card is kept inside the window -- one dragged off the bottom
+        of the screen could not be dragged back, since the handle went with
+        it.
+
+        Returns:
+            None
+        """
+
+        if self.header is None:
+            return
+
+        ui.run_javascript(DRAG_SCRIPT % self.header.id)
 
     async def close(self) -> None:
         """
@@ -712,6 +896,7 @@ class ReviewAssistant:
         self.body.clear()
         self.footer.clear()
         self.deciding = False
+        self.accept_button = None
 
         with self.body:
             if self.domain:
@@ -896,9 +1081,25 @@ class ReviewAssistant:
                     ui.label("Transcribed as").classes("review-change-label")
                     ui.label(suggestion.find).classes("review-original")
 
+                # The replacement is the reader's to change. A model that
+                # has heard "halvsats" for "halstabletter" has usually
+                # heard the right *kind* of thing and the wrong word, and
+                # a reader who can see what was meant should not have to
+                # dismiss the suggestion and go and find the caption to
+                # type one word into it. Editing it here keeps the rest of
+                # what the card is worth -- every occurrence changed at
+                # once, as one undo step, with the sentence it came out of
+                # in front of them.
                 with ui.row().classes("review-change-row items-center"):
                     ui.label("Suggested").classes("review-change-label")
-                    ui.label(suggestion.replace).classes("review-replacement")
+
+                    replacement = ui.input(
+                        value=suggestion.replace,
+                        on_change=lambda event, s=suggestion: self._reword(s, event),
+                    ).props("dense borderless").classes("review-replacement-input")
+
+                    with replacement:
+                        ui.tooltip("Change the wording before accepting it.")
 
             # The model's own sentence, in the language of the recording.
             # A label, never markdown or HTML: it is generated text about
@@ -930,6 +1131,40 @@ class ReviewAssistant:
         # _review_footer and .review-body's own fixed height.
         if not self.deciding:
             self._review_footer()
+
+        self._sync_accept(suggestion)
+
+    def _reword(self, suggestion: Suggestion, event) -> None:
+        """
+        Take what the reader typed into the replacement box.
+
+        Parameters:
+            suggestion (Suggestion): The one being decided on.
+            event: The input's own change event.
+
+        Returns:
+            None
+        """
+
+        suggestion.replace = str(event.value or "")
+
+        self._sync_accept(suggestion)
+
+    def _sync_accept(self, suggestion: Optional[Suggestion]) -> None:
+        """
+        Let Accept be pressed only while there is a change to make.
+
+        Parameters:
+            suggestion (Optional[Suggestion]): The one being decided on.
+
+        Returns:
+            None
+        """
+
+        if self.accept_button is not None:
+            self.accept_button.set_enabled(
+                suggestion is not None and suggestion.applicable
+            )
 
     def _draw_context(self, suggestion: Suggestion) -> None:
         """
@@ -1036,6 +1271,8 @@ class ReviewAssistant:
                 "Accept", icon="check", on_click=self._accept, color=None
             ).props("unelevated no-caps").classes("review-primary")
 
+            self.accept_button = accept
+
             with accept:
                 ui.tooltip("Change the transcription here. Nothing is saved yet.")
 
@@ -1065,13 +1302,24 @@ class ReviewAssistant:
 
         suggestion = self._current()
 
-        if suggestion is None:
+        # Accept is disabled while there is nothing to apply, but the
+        # check belongs here too: a suggestion emptied on the card must
+        # never reach the captions as a deletion nobody asked for.
+        if suggestion is None or not suggestion.applicable:
             return
+
+        # What was typed, not what was typed plus whatever spaces came with
+        # it -- the replacement goes straight into a caption.
+        suggestion.replace = suggestion.replace.strip()
 
         changed = apply_suggestion(self.editor, suggestion)
 
         suggestion.state = "accepted"
         self.outcome.accepted += 1
+
+        if suggestion.edited:
+            self.outcome.edited += 1
+
         self.outcome.changed += changed
         self.outcome.applied.append(suggestion)
 
@@ -1123,6 +1371,10 @@ class ReviewAssistant:
 
         suggestion.state = "pending"
         self.outcome.accepted = max(0, self.outcome.accepted - 1)
+
+        if suggestion.edited:
+            self.outcome.edited = max(0, self.outcome.edited - 1)
+
         self.outcome.changed = max(0, self.outcome.changed - self.last_changed)
         self.last_changed = 0
 
@@ -1204,6 +1456,7 @@ class ReviewAssistant:
         self.body.clear()
         self.footer.clear()
         self.deciding = False
+        self.accept_button = None
 
         with self.body:
             if not self.queue:
@@ -1221,6 +1474,15 @@ class ReviewAssistant:
                             else ""
                         )
                     )
+                    if self.outcome.edited:
+                        # Worth saying: those are the reader's own words,
+                        # not the model's, and the count is the only place
+                        # that distinction survives the review.
+                        ui.label(
+                            f"{self.outcome.edited} of them reworded before "
+                            "accepting"
+                        )
+
                     ui.label(f"{self.outcome.dismissed} dismissed")
 
                     if self.outcome.skipped:
@@ -1267,6 +1529,7 @@ class ReviewAssistant:
         self.body.clear()
         self.footer.clear()
         self.deciding = False
+        self.accept_button = None
 
         # Centred in the card rather than sitting in its top corner: while
         # this is up there is nothing else on it, and a spinner tucked into
@@ -1303,6 +1566,7 @@ class ReviewAssistant:
         self.body.clear()
         self.footer.clear()
         self.deciding = False
+        self.accept_button = None
 
         with self.body:
             ui.label(heading).classes("review-lead")

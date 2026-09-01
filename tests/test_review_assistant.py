@@ -30,6 +30,7 @@ import pytest
 from utils.caption import SRTCaption
 from utils.review_assistant import (
     CONTEXT_CHARS,
+    DRAG_SCRIPT,
     MAX_SUGGESTIONS,
     ReviewAssistant,
     Suggestion,
@@ -344,7 +345,7 @@ class TestTheDialogsOwnShape:
         # next. A long one scrolls inside the box instead.
         body = self.rule(".review-body")
 
-        assert "height: 13rem" in body
+        assert "height: min(19rem, calc(100vh - 12rem))" in body
         assert "overflow-y: auto" in body
 
     def test_the_spinner_sits_in_the_middle_of_the_card(self):
@@ -514,6 +515,134 @@ class TestArrivingWhileStillGenerating:
         assistant.streaming = False
 
         assert assistant._progress_text() == "Last suggestion"
+
+
+class TestGettingOutOfTheWay:
+    """
+    A suggestion is judged against the transcription it came out of, and the
+    card sits over that very text.
+    """
+
+    def css(self) -> str:
+        import re
+
+        from utils.styles import default_styles
+
+        return re.sub(r"/\*.*?\*/", "", default_styles, flags=re.S)
+
+    def rule(self, selector: str) -> str:
+        import re
+
+        for match in re.finditer(r"([^{}]+)\{([^{}]*)\}", self.css()):
+            if selector in [part.strip() for part in match.group(1).split(",")]:
+                return match.group(2)
+
+        raise AssertionError(f"no rule for {selector}")
+
+    def test_the_page_behind_stays_readable(self):
+        # seamless: no backdrop and no scroll lock, so the reader can read
+        # the paragraph around the word, scroll, and play the recording
+        # again without closing the review and losing their place in it.
+        source = open("utils/review_assistant.py").read()
+
+        assert 'ui.dialog().props("persistent seamless")' in source
+
+    def test_the_header_is_the_handle(self):
+        header = self.rule(".review-header")
+
+        assert "cursor: move" in header
+
+        # Not the card itself: a drag begun on the excerpt or in the
+        # replacement box is a text selection the reader meant.
+        assert "cursor: move" not in self.rule(".review-dialog")
+
+    def test_the_close_button_is_not_a_handle(self):
+        assert "cursor: pointer" in self.rule(".review-header .q-btn")
+
+    def test_the_card_cannot_be_dragged_off_the_screen(self):
+        # One dragged past the bottom could not be dragged back, since the
+        # handle went with it.
+        assert "window.innerHeight - box.bottom" in DRAG_SCRIPT
+        assert "window.innerWidth - box.right" in DRAG_SCRIPT
+        assert "clamp" in DRAG_SCRIPT
+
+    def test_the_drag_is_not_a_round_trip_per_pixel(self):
+        # The listeners are the page's own, on the window so a fast drag
+        # that outruns the header keeps working.
+        assert "window.addEventListener('pointermove'" in DRAG_SCRIPT
+        assert "handle.addEventListener('pointerdown'" in DRAG_SCRIPT
+
+
+class TestRewordingASuggestion:
+    """
+    The replacement is the reader's to change before accepting it. A model
+    that heard the wrong word usually heard the right kind of thing, and a
+    reader who can see what was meant should not have to dismiss the
+    suggestion and go and find the caption to type one word into it.
+    """
+
+    @pytest.fixture
+    def assistant(self, editor, monkeypatch) -> ReviewAssistant:
+        monkeypatch.setattr(
+            "utils.review_assistant.ui.notify", lambda *a, **k: None
+        )
+        assistant = ReviewAssistant(editor, language="Swedish")
+        assistant.queue = [Suggestion(find="Lindquist", replace="Lindqvist")]
+        assistant._draw_current = lambda: None
+
+        return assistant
+
+    def test_what_the_reader_typed_is_what_is_applied(self, assistant, editor):
+        assistant._current().replace = "Lindkvist"
+
+        assistant._accept()
+
+        assert "Lindkvist" in editor.captions[1].text
+        assert assistant.outcome.accepted == 1
+        assert assistant.outcome.edited == 1
+
+    def test_an_untouched_suggestion_is_not_counted_as_reworded(
+        self, assistant, editor
+    ):
+        assistant._accept()
+
+        assert assistant.outcome.accepted == 1
+        assert assistant.outcome.edited == 0
+
+    def test_the_reader_gets_the_spaces_they_meant_and_no_others(
+        self, assistant, editor
+    ):
+        assistant._current().replace = "  Lindkvist  "
+
+        assistant._accept()
+
+        assert "a Lindkvist e" not in editor.captions[1].text
+        assert "Doctor Lindkvist examined" in editor.captions[1].text
+
+    def test_an_emptied_replacement_is_never_applied(self, assistant, editor):
+        # Emptying the box asks for no change, which is Dismiss -- it must
+        # not reach the captions as a deletion nobody asked for.
+        before = [entry.text for entry in editor.captions]
+        assistant._current().replace = "   "
+
+        assistant._accept()
+
+        assert [entry.text for entry in editor.captions] == before
+        assert assistant.outcome.accepted == 0
+
+    def test_typing_the_transcribed_text_back_is_no_change(self, assistant):
+        assistant._current().replace = "Lindquist"
+
+        assert assistant._current().applicable is False
+
+    def test_undo_takes_the_reworded_count_back_with_it(self, assistant):
+        assistant._current().replace = "Lindkvist"
+
+        assistant._accept()
+        assistant._undo()
+
+        assert assistant.outcome.edited == 0
+        assert assistant.outcome.accepted == 0
 
 
 class TestUndoingAnAccept:

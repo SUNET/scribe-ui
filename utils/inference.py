@@ -266,7 +266,7 @@ def transcript_text(editor) -> str:
 # share.
 WORD = re.compile(r"\w+", re.UNICODE)
 
-# How much of that weight has to land in one caption before the jump is
+# How much of that weight has to land in one place before the jump is
 # offered, and how many separate words have to be behind it. A single
 # shared word is a coincidence however rare it is, and moving the reader
 # somewhere on the strength of one is worse than telling them the passage
@@ -274,23 +274,106 @@ WORD = re.compile(r"\w+", re.UNICODE)
 JUMP_MIN_SCORE = 0.3
 JUMP_MIN_TERMS = 2
 
+# How many captions in a row a passage is allowed to have come out of. A
+# bullet in a set of study notes summarises a stretch of speech, not one
+# sentence of it, and in a transcription a caption is one speaker turn --
+# so the words behind a single line of the answer are routinely spread over
+# two or three of them, and scoring each caption alone means no single one
+# ever accounts for enough of the passage to clear the threshold. That was
+# the common way for a jump to miss: not a wrong caption, but no caption at
+# all for a line that plainly came from somewhere.
+JUMP_WINDOW = 3
+
+# How much of the run's best caption a caption has to carry before it
+# counts as where the passage started, rather than a caption that happens
+# to share a word with it.
+LEAD_SHARE = 0.35
+
+# A longer window covers more of any passage simply by being longer, so
+# each caption past the first costs a little: a run of three only wins when
+# it genuinely accounts for more than the best single caption in it does.
+WINDOW_DISCOUNT = 0.92
+
+# A word used in more than this much of the transcription is not evidence
+# of anything: it still counts for what it weighs, but it cannot be one of
+# the words a jump rests on. Without this, a sentence of the model's own --
+# "This answer was generated from the transcription." -- shares "the" and
+# "was" with some caption and, since those are the only terms in it the
+# transcription uses at all, accounts for its whole weight and is placed
+# with confidence somewhere arbitrary.
+COMMON_SHARE = 0.5
+
+# What a word counts for at least, even when every caption uses it. Without
+# a floor the whole reckoning collapses on a short transcription, where a
+# word in every caption weighs exactly nothing and a passage made of such
+# words weighs nothing at all.
+TERM_FLOOR = 0.05
+
+# Endings stripped, longest first, to compare a word with the same word
+# inflected. The recordings are mostly Swedish, where the definite article
+# is a suffix ("budget" is "budgeten" the second time it is mentioned) and
+# a model writing about the transcript reaches for whichever form its own
+# sentence wants -- so an exact match on the surface form misses most of
+# what the two texts really have in common. Cheap and blunt on purpose:
+# the same folding is applied to both sides, so over-folding merges words
+# rather than losing them.
+ENDINGS = (
+    "arna", "erna", "orna", "ande", "ende", "aren", "arne",
+    "ade", "are", "ast", "ing", "ens", "ans", "ets",
+    "ar", "er", "en", "et", "es", "an", "na", "ns", "or", "ur",
+    "a", "e", "n", "s", "t",
+)
+
+# Nothing is folded below this, and nothing is compared past it: a stem of
+# three letters is not a word any more, and two long words that agree for
+# eight letters are the same word for this purpose.
+MIN_STEM = 4
+MAX_STEM = 8
+
+
+def fold(word: str) -> str:
+    """
+    A word as something an inflected form of it also folds to.
+
+    Parameters:
+        word (str): One word, lower case.
+
+    Returns:
+        str: Its stem, as far as this can be taken without a dictionary.
+    """
+
+    stem = word
+
+    # Repeatedly, since one ending routinely sits on another: "budgeten"
+    # is "budget" is "budg", and "budget" itself has to reach the same
+    # place or the two would not compare equal.
+    while True:
+        for ending in ENDINGS:
+            if stem.endswith(ending) and len(stem) - len(ending) >= MIN_STEM:
+                stem = stem[: -len(ending)]
+                break
+        else:
+            break
+
+    return stem[:MAX_STEM]
+
 
 def terms(text: str) -> list[str]:
     """
     The words of a piece of text, as something comparable.
 
-    Case and punctuation are dropped, which also takes the Markdown marks
-    the answer is written with -- a bullet's `**heading**` compares as the
-    word inside it.
+    Case, punctuation and inflection are dropped, which also takes the
+    Markdown marks the answer is written with -- a bullet's `**heading**`
+    compares as the word inside it.
 
     Parameters:
         text (str): Any text.
 
     Returns:
-        list[str]: Its words, lower case.
+        list[str]: Its words, folded.
     """
 
-    return WORD.findall(text.lower())
+    return [fold(word) for word in WORD.findall(text.lower())]
 
 
 def locate_caption(text: str, captions: list) -> Optional[object]:
@@ -300,8 +383,19 @@ def locate_caption(text: str, captions: list) -> Optional[object]:
     Words the transcription never uses are left out of the reckoning
     altogether rather than counted as misses: the answer is a paraphrase,
     and half of any sentence in it is the model's own wording. What is
-    scored is how much of the shared vocabulary's weight one caption
-    accounts for.
+    scored is how much of the shared vocabulary's weight one *run* of
+    captions accounts for -- a run rather than a single caption because a
+    line of an answer summarises a stretch of speech, and the words behind
+    it are normally spread over more than one of them.
+
+    The reader is put down at the *start* of that run rather than at its
+    strongest caption: a line of an answer is about a stretch of speech,
+    and landing halfway through it means the first half is never heard
+    without seeking back by hand -- the same reason clicking a caption on
+    the timeline seeks to its start. "The start" is the first caption in
+    the run actually carrying some of the passage, so a run that opens on a
+    caption sharing nothing but a common word does not send the reader a
+    caption early.
 
     Parameters:
         text (str): The passage the reader clicked.
@@ -321,37 +415,101 @@ def locate_caption(text: str, captions: list) -> Optional[object]:
     total = len(spoken)
 
     weights = {}
+    common = set()
 
     for term in query:
         appears = sum(1 for words in spoken if term in words)
 
+        if appears > total * COMMON_SHARE:
+            common.add(term)
+
         if appears:
-            weights[term] = math.log(1 + total / appears)
+            # Smoothed inverse document frequency: a word every caption
+            # uses says nothing about which one a line came from, and
+            # counting it dilutes the words that do -- half a summary is
+            # made of such words. TERM_FLOOR keeps it from being nothing
+            # at all, which would leave a short transcription unplaceable.
+            weights[term] = (
+                math.log((1 + total) / (1 + appears)) + TERM_FLOOR
+            )
 
     weight = sum(weights.values())
 
     if not weight:
         return None
 
+    # What each caption accounts for on its own, worked out once: it is
+    # both the score of a one-caption run and, inside a winning run, what
+    # decides where the reader is put down.
+    shares = []
+
+    for words in spoken:
+        shared = [term for term in weights if term in words]
+        shares.append((shared, sum(weights[term] for term in shared)))
+
     best = None
     best_score = 0.0
 
-    for caption, words in zip(captions, spoken):
-        shared = [term for term in weights if term in words]
+    for start in range(total):
+        covered: set = set()
+        found = 0.0
 
-        if len(shared) < JUMP_MIN_TERMS:
-            continue
+        for length in range(1, JUMP_WINDOW + 1):
+            index = start + length - 1
 
-        score = sum(weights[term] for term in shared) / weight
+            if index >= total:
+                break
 
-        # Strictly greater, so a passage that fits two captions equally
-        # well lands on the earlier one -- which is where it was said
-        # first.
-        if score > best_score:
-            best = caption
-            best_score = score
+            for term in shares[index][0]:
+                if term not in covered:
+                    covered.add(term)
+                    found += weights[term]
 
-    return best if best_score >= JUMP_MIN_SCORE else None
+            # The minimum is a minimum of *telling* words. A run sharing
+            # nothing but words the whole transcription uses has not been
+            # found, however much of the passage's weight those words
+            # happen to be.
+            if len(covered - common) < JUMP_MIN_TERMS:
+                continue
+
+            score = (found / weight) * (WINDOW_DISCOUNT ** (length - 1))
+
+            # Strictly greater, so a passage that fits two runs equally
+            # well lands in the earlier one -- which is where it was said
+            # first.
+            if score > best_score:
+                best_score = score
+                best = _landing(shares, start, index)
+
+    if best is None or best_score < JUMP_MIN_SCORE:
+        return None
+
+    return captions[best]
+
+
+def _landing(shares: list, start: int, end: int) -> int:
+    """
+    Where in a run of captions to put the reader down.
+
+    Parameters:
+        shares (list[tuple]): Per caption, the passage's terms it carries
+            and what they weigh.
+        start (int): First caption of the run.
+        end (int): Last caption of the run, inclusive.
+
+    Returns:
+        int: The caption to move to.
+    """
+
+    strongest = max(shares[at][1] for at in range(start, end + 1))
+
+    for at in range(start, end + 1):
+        # A caption sharing a word or two of the common kind is not where
+        # the passage began; one carrying a real part of it is.
+        if shares[at][1] >= LEAD_SHARE * strongest:
+            return at
+
+    return start
 
 
 def plain_text(text: str) -> str:
