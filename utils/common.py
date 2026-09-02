@@ -953,6 +953,7 @@ def table_upload(table) -> None:
                 def _cleanup_dialog():
                     ui.run_javascript(
                         f"const upl = getElement({upload.id});"
+                        f"if (upl && upl._recordCleanup) upl._recordCleanup();"
                         f"if (upl && upl._cleanup) upl._cleanup();"
                     )
                     try:
@@ -1033,6 +1034,157 @@ def table_upload(table) -> None:
                     ),
                     once=True,
                 )
+                # Recording is wired in the page rather than through
+                # Python handlers: getUserMedia wants the click that asked
+                # for it, and a round trip to the server and back is not
+                # that click any more.  The finished recording is handed to
+                # the same uploader a dropped file goes to, so progress,
+                # naming and the upload itself stay one code path.
+                with ui.column().classes("w-full items-center q-mt-md"):
+                    with ui.row().classes("items-center").style("gap: 12px;"):
+                        with ui.button(
+                            "Record from microphone", icon="mic"
+                        ) as record_button:
+                            record_button.props("color=black flat")
+                            record_button.classes("default-style")
+                        with ui.button("Stop recording", icon="stop") as stop_button:
+                            stop_button.props("color=black flat")
+                            stop_button.classes("cancel-style")
+                            stop_button.style("display: none;")
+                    record_status = ui.label("").classes(
+                        "text-caption q-mt-sm text-theme-muted"
+                    )
+
+                ui.timer(
+                    0.1,
+                    lambda: ui.run_javascript(
+                        "const rec = getHtmlElement("
+                        + str(record_button.id)
+                        + ");"
+                        "const stopBtn = getHtmlElement("
+                        + str(stop_button.id)
+                        + ");"
+                        "const status = getHtmlElement("
+                        + str(record_status.id)
+                        + ");"
+                        "const upl = getElement("
+                        + str(upload_id)
+                        + ");"
+                        "if (!rec || !stopBtn || !status || !upl) return;"
+                        "const show = (el, on) => { el.style.display = on ? '' : 'none'; };"
+                        "const say = t => { status.textContent = t; };"
+                        # A microphone is only offered in a secure context --
+                        # https, or localhost in development.  In production
+                        # TLS ends at the proxy and this app is plain http
+                        # behind it, but the *browser* is on https, which is
+                        # what decides this, so recording is available there.
+                        # The three ways it can be missing are told apart on
+                        # purpose: over https the answer is never "use
+                        # https", and a message that says so sends whoever
+                        # reads it looking in the wrong place.
+                        "if (window.isSecureContext === false) {"
+                        "  rec.disabled = true;"
+                        "  say('Recording needs an https connection.');"
+                        "  return;"
+                        "}"
+                        "if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia"
+                        "    || typeof MediaRecorder === 'undefined') {"
+                        "  rec.disabled = true;"
+                        "  say('This browser cannot record audio.');"
+                        "  return;"
+                        "}"
+                        "let recorder = null, chunks = [], stream = null;"
+                        "let ticker = null, started = 0;"
+                        "const kinds = ["
+                        "  ['audio/webm;codecs=opus', '.webm'],"
+                        "  ['audio/webm', '.webm'],"
+                        "  ['audio/ogg;codecs=opus', '.ogg'],"
+                        "  ['audio/mp4', '.mp4'],"
+                        "];"
+                        "const kind = kinds.find(k => MediaRecorder.isTypeSupported(k[0]));"
+                        "const stamp = () => {"
+                        "  const d = new Date(), p = n => String(n).padStart(2, '0');"
+                        "  return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate())"
+                        "    + '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());"
+                        "};"
+                        "const clock = () => {"
+                        "  const s = Math.floor((Date.now() - started) / 1000);"
+                        "  say('Recording ' + Math.floor(s / 60) + ':'"
+                        "    + String(s % 60).padStart(2, '0'));"
+                        "};"
+                        "const release = () => {"
+                        "  if (ticker) { clearInterval(ticker); ticker = null; }"
+                        "  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }"
+                        "  recorder = null;"
+                        "};"
+                        "const idle = () => { show(rec, true); show(stopBtn, false); };"
+                        "rec.addEventListener('click', async () => {"
+                        "  if (recorder) return;"
+                        "  say('');"
+                        "  try {"
+                        "    stream = await navigator.mediaDevices.getUserMedia({audio: true});"
+                        "  } catch (e) {"
+                        # Named, not "something went wrong": over https the
+                        # refusal is nearly always the browser's own
+                        # permission, or a Permissions-Policy header from
+                        # the proxy in front of this app -- and those are
+                        # fixed in two different places by two different
+                        # people.
+                        "    const named = {"
+                        "      NotAllowedError: 'Microphone access was refused. Allow it for"
+                        " this site in the browser; if it was never asked for, a"
+                        " Permissions-Policy header is blocking it.',"
+                        "      SecurityError: 'Microphone access was blocked by the security"
+                        " policy of this site.',"
+                        "      NotFoundError: 'No microphone was found.',"
+                        "      DevicesNotFoundError: 'No microphone was found.',"
+                        "      NotReadableError: 'The microphone is being used by another"
+                        " program.',"
+                        "      TrackStartError: 'The microphone is being used by another"
+                        " program.',"
+                        "    };"
+                        "    say(named[e.name] || ('No microphone available: '"
+                        "      + (e.name || e)));"
+                        "    return;"
+                        "  }"
+                        "  chunks = [];"
+                        "  recorder = new MediaRecorder(stream, kind ? {mimeType: kind[0]} : undefined);"
+                        "  recorder.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };"
+                        "  recorder.onstop = () => {"
+                        "    const type = (kind && kind[0]) || 'audio/webm';"
+                        "    const blob = new Blob(chunks, {type: type});"
+                        "    chunks = [];"
+                        "    release();"
+                        "    idle();"
+                        "    if (!blob.size) { say('Nothing was recorded.'); return; }"
+                        "    const name = 'recording-' + stamp() + ((kind && kind[1]) || '.webm');"
+                        "    say('');"
+                        "    upl.$refs.qRef.addFiles([new File([blob], name, {type: type})]);"
+                        "  };"
+                        # A timeslice rather than one blob at the end: a
+                        # long recording held whole in memory is a tab that
+                        # dies before it can be uploaded.
+                        "  recorder.start(1000);"
+                        "  started = Date.now();"
+                        "  clock();"
+                        "  ticker = setInterval(clock, 1000);"
+                        "  show(rec, false);"
+                        "  show(stopBtn, true);"
+                        "});"
+                        "stopBtn.addEventListener('click', () => {"
+                        "  if (recorder && recorder.state !== 'inactive') recorder.stop();"
+                        "});"
+                        "upl._recordCleanup = () => {"
+                        "  if (recorder && recorder.state !== 'inactive') {"
+                        "    recorder.onstop = null;"
+                        "    try { recorder.stop(); } catch (e) {}"
+                        "  }"
+                        "  release();"
+                        "};"
+                    ),
+                    once=True,
+                )
+
                 with ui.row().style("justify-content: flex-end; gap: 12px;"):
                     with ui.button(
                         "Cancel",
