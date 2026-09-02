@@ -466,6 +466,38 @@ theme_styles = """
         background-color: var(--color-bg-surface-hover) !important;
     }
 
+    /* ── Microphone recorder ── */
+    /* The same width as the drop target: the two are the same dialog seen
+       two ways, and a recorder that laid out wider would read as a
+       different card. */
+    .recorder-wave {
+        width: 384px;
+        height: 96px;
+        border-radius: 12px;
+        background-color: var(--color-bg-surface-alt);
+        border: 1px solid var(--color-border-subtle);
+        cursor: pointer;
+    }
+    .recorder-player {
+        width: 384px;
+    }
+
+    /* One width for every button in the recorder.  .default-style carries no
+       width and .cancel-style carries 150px, so a pair built from the two
+       came out different sizes -- and the narrower one was too narrow for its
+       label, which is worse than it sounds: Quasar wraps a q-btn's content
+       when the label does not fit, so the icon went above the text and that
+       button became a two-line block of a different height as well.  This
+       rule follows both of those in the stylesheet, which is what lets it
+       take the width; nowrap is what stops the restacking outright, so a
+       longer label overflows visibly instead of silently changing shape. */
+    .recorder-action {
+        width: 190px;
+    }
+    .recorder-action .q-btn__content {
+        flex-wrap: nowrap;
+    }
+
     /* ── Global dark mode button override ── */
     .body--dark .q-btn--flat {
         color: var(--color-text-primary) !important;
