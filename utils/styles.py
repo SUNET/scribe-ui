@@ -482,6 +482,18 @@ theme_styles = """
         width: 384px;
     }
 
+    /* A native <select>: its options are written from the page as devices
+       come and go, which a QSelect (whose options live on the server) would
+       need a round trip for. */
+    .recorder-device {
+        width: 384px;
+        padding: 6px 8px;
+        border-radius: 8px;
+        background-color: var(--color-bg-surface);
+        color: var(--color-text-primary);
+        border: 1px solid var(--color-border);
+    }
+
     /* One width for every button in the recorder.  .default-style carries no
        width and .cancel-style carries 150px, so a pair built from the two
        came out different sizes -- and the narrower one was too narrow for its
