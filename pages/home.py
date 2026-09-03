@@ -116,7 +116,18 @@ def create() -> None:
         table.on("deselect_all", deselect_all)
 
         def table_handle_row_click(e: events.GenericEventArguments) -> None:
-            if e.args.get("status") == "Completed":
+            if not e.args.get("uuid"):
+                # The row is the table's own placeholder for a file still
+                # being registered by the backend -- it is marked "Uploaded"
+                # (so it draws this very button) a moment before the real
+                # row replaces it, and it has no job to act on.
+                ui.notify(
+                    "That upload is still being registered. "
+                    "Try again in a moment.",
+                    type="warning",
+                    position="top",
+                )
+            elif e.args.get("status") == "Completed":
                 table_click(e)
             else:
                 table_transcribe(

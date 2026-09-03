@@ -1108,6 +1108,26 @@ async def handle_upload_with_feedback(files, dialog, table):
         )
     table.update_rows(existing_rows, clear_selection=True)
 
+    async def _swap_in_real_rows(pending_row_ids: list) -> None:
+        """
+        Replace the finished placeholder rows with the backend's own.
+
+        The placeholders of files not uploaded yet are kept, ids and all, so
+        their progress goes on being written to them.  Placeholder ids are
+        strings (`_uploading_0`) and the backend's are ints, so the two can
+        never collide.
+        """
+
+        if client._deleted:
+            return
+
+        fresh_rows = await jobs_get()
+        if fresh_rows is None or client._deleted:
+            return
+
+        pending = [row for row in table.rows if row["id"] in pending_row_ids]
+        table.update_rows(pending + fresh_rows, clear_selection=False)
+
     # Upload to backend in a background task so the UI stays responsive
     async def _upload():
         for idx in range(len(file_items)):
@@ -1137,6 +1157,15 @@ async def handle_upload_with_feedback(files, dialog, table):
                             type="positive",
                             timeout=3000,
                         )
+                    # Swap this file's placeholder for the row the backend
+                    # now holds, rather than waiting for the whole batch.
+                    # The placeholder carries no uuid, and the status it
+                    # has just been given is exactly what draws the
+                    # Transcribe button and what bulk transcribe selects
+                    # on -- so between here and the end of the batch a
+                    # reader could start a transcription of a row with
+                    # nothing to start (KeyError: 'uuid').
+                    await _swap_in_real_rows(upload_row_ids[idx + 1 :])
             except Exception as e:
                 if not client._deleted:
                     for row in table.rows:
@@ -1156,11 +1185,9 @@ async def handle_upload_with_feedback(files, dialog, table):
                 file_items[idx] = (file_name, None)
                 file_upload = None
 
-        # Refresh with real data from backend
-        if not client._deleted:
-            fresh_rows = await jobs_get()
-            if fresh_rows is not None:
-                table.update_rows(fresh_rows, clear_selection=False)
+        # Refresh with real data from backend.  Nothing is pending by here,
+        # so every placeholder left (a failed upload) goes with it.
+        await _swap_in_real_rows([])
 
     # Not asyncio.create_task: the loop keeps only a weak reference, so an
     # upload could be collected part way through and its errors would never
@@ -1549,6 +1576,21 @@ def start_transcription(
 ) -> None:
     selected_language = language
     error = ""
+
+    # A row the backend has not answered for yet carries no uuid: the table
+    # draws a placeholder row of its own while a file uploads, and that row
+    # is marked "Uploaded" the moment the upload finishes -- a moment before
+    # the real row replaces it.  There is nothing to transcribe until then.
+    rows = [row for row in rows if row.get("uuid")]
+
+    if not rows:
+        ui.notify(
+            "That upload is still being registered. Try again in a moment.",
+            type="warning",
+            position="top",
+        )
+        dialog.close()
+        return
 
     if output_format == "Subtitles":
         output_format = "SRT"
