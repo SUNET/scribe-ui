@@ -201,8 +201,9 @@ class TestDevicePicker:
         assert "the default was used" in code
 
     def test_the_picker_is_locked_while_recording(self, code):
-        assert "devices.disabled = true" in code
-        assert code.count("devices.disabled = false") == 2
+        # Stated once, with the rest of what each state shows, rather than
+        # turned on and off from the two places a recording can end.
+        assert "devices.disabled = state === 'recording'" in code
 
     def test_the_devicechange_listener_is_taken_off_again(self, code):
         # It is registered on navigator.mediaDevices, which outlives the
@@ -232,7 +233,7 @@ class TestPreview:
         # A webm from MediaRecorder carries no duration, so the recorder's own
         # clock is what the waveform is scaled by -- the player's idea of the
         # length is never what the playhead is worked out from.
-        follow = code[code.index("const follow"):code.index("rec.addEventListener")]
+        follow = code[code.index("const follow"):code.index("startBtn.addEventListener")]
 
         assert "player.duration" not in follow
         assert "player.currentTime / seconds" in follow
@@ -296,26 +297,29 @@ class TestModes:
 
 class TestButtons:
     """
-    The recorder's buttons are built from two existing styles, one of which
-    carries a width and one of which does not.
+    One filled action at a time, and a row of pills that are peers.
     """
 
-    def test_every_button_carries_the_shared_width(self):
+    def test_every_button_is_one_of_the_three_tones(self):
         source = inspect.getsource(record_panel)
-        styled = re.findall(r'\.classes\("([^"]*style[^"]*)"\)', source)
+        tones = re.findall(r'_action\("[^"]+", "[^"]+", "([^"]+)"\)', source)
 
-        assert len(styled) == 4, "expected the record, stop, use and again buttons"
+        assert len(tones) == 5, "expected start, stop, play, use and again"
+        assert tones.count("recorder-filled") == 3, "start, stop and use"
+        assert tones.count("recorder-outline") == 1, "play, and only beside use"
+        assert tones.count("recorder-muted") == 1, "record again"
 
-        for classes in styled:
-            assert "recorder-action" in classes
+    def test_only_one_filled_action_is_ever_shown(self, code):
+        # The three filled buttons belong to three different states, so no two
+        # of them are ever visible together.
+        state = code[code.index("const setState"):code.index("const listDevices")]
 
-    def test_the_shared_width_beats_the_style_it_is_paired_with(self):
-        # Same specificity, so the stylesheet's own order is what decides:
-        # .recorder-action has to come after .cancel-style to take the width
-        # away from it.
-        assert default_styles.index(".cancel-style") < default_styles.index(
-            ".recorder-action"
-        )
+        for button, when in (
+            ("startBtn", "state === 'idle'"),
+            ("stopBtn", "state === 'recording'"),
+            ("useBtn", "state === 'review'"),
+        ):
+            assert f"show({button}, {when})" in state
 
     def test_a_button_cannot_restack_its_own_label(self):
         # Quasar wraps a q-btn's content when the label does not fit, which
@@ -323,3 +327,45 @@ class TestButtons:
         # height as well as a different shape.
         assert ".recorder-action .q-btn__content" in default_styles
         assert "flex-wrap: nowrap" in default_styles
+
+    def test_the_icon_and_the_label_are_children_not_props(self):
+        # Play becomes Pause in the page, which a q-btn icon prop would need a
+        # round trip for -- and a prop-set icon carries its own margin that a
+        # child does not, so mixing the two spaced one button differently.
+        source = inspect.getsource(record_panel)
+
+        assert "icon=" not in source
+        assert "playIcon.textContent" in SCRIPT
+        assert "playText.textContent" in SCRIPT
+
+
+class TestTheCard:
+    """
+    The waveform is the card, and the readouts sit inside it.
+    """
+
+    def test_the_clock_and_the_marker_have_a_ground_of_their_own(self):
+        # They are drawn over the waveform: without a ground the digits fall
+        # in among the bars and cannot be read.
+        rule = default_styles[default_styles.index(".recorder-clock,"):]
+        rule = rule[:rule.index("}")]
+
+        assert "background-color: var(--color-bg-surface)" in rule
+
+    def test_the_browser_player_is_never_shown(self):
+        player = default_styles[default_styles.index(".recorder-player {"):]
+        player = player[:player.index("}")]
+
+        assert "display: none" in player
+
+    def test_the_waveform_is_the_scrubber(self, code):
+        # There is no other one, the browser's own player having been the
+        # thing that made this card read as a form.
+        assert "canvas.addEventListener('click'" in code
+        assert "player.currentTime = Math.min(seconds" in code
+
+    def test_recording_is_the_one_place_red_means_in_progress(self, code):
+        # Paired with the word REC, which is what keeps it from reading as an
+        # error the way red does everywhere else in the app.
+        assert "--color-text-danger" in code
+        assert ">REC<" in inspect.getsource(record_panel) or 'ui.label("REC")' in inspect.getsource(record_panel)

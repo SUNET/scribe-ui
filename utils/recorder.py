@@ -24,6 +24,15 @@ and back is not that click any more.  A recording is finished by being handed
 to the same `ui.upload` a dropped file goes to, so progress, naming, the
 temporary table row and the upload itself all stay one code path.
 
+**The waveform is the card.**  It is tall enough to actually read, and the
+clock and the recording marker sit *inside* it rather than in a caption
+underneath, so there is one thing to look at rather than four.  The card shows
+**exactly one filled action at a time** -- Start recording, then Stop, then Use
+recording -- and everything else is a quiet control, so what the card is for is
+never in question.  There is no `<audio controls>`: the browser's own player
+was the loudest thing in the card and the least like the rest of the app, so
+play is a button of ours and the waveform is the scrubber.
+
 **The waveform is drawn from the live stream, never by decoding the
 recording.**  An AnalyserNode on the stream that is already open costs
 nothing, works for a recording of any length, and is the only thing on screen
@@ -46,22 +55,25 @@ from nicegui import ui
 # coarse enough that an hour is 36000 floats rather than a gigabyte of PCM.
 PEAK_MS = 100
 
-# The bars are drawn to fit whatever width the canvas has, so a long recording
-# is downsampled by taking the loudest peak in each column: a quiet bar drawn
-# over a loud one would say the passage was quiet.
 SCRIPT = """
-const rec = getHtmlElement(__RECORD__);
+const startBtn = getHtmlElement(__START__);
 const stopBtn = getHtmlElement(__STOP__);
+const playBtn = getHtmlElement(__PLAY__);
+const playIcon = getHtmlElement(__PLAY_ICON__);
+const playText = getHtmlElement(__PLAY_TEXT__);
 const useBtn = getHtmlElement(__USE__);
 const againBtn = getHtmlElement(__AGAIN__);
-const decide = getHtmlElement(__DECIDE__);
 const devices = getHtmlElement(__DEVICES__);
 const canvas = getHtmlElement(__CANVAS__);
+const hint = getHtmlElement(__HINT__);
+const clock = getHtmlElement(__CLOCK__);
+const live = getHtmlElement(__LIVE__);
 const player = getHtmlElement(__PLAYER__);
 const status = getHtmlElement(__STATUS__);
 const upl = getElement(__UPLOAD__);
-if (!rec || !stopBtn || !useBtn || !againBtn || !decide) return;
-if (!devices || !canvas || !player || !status || !upl) return;
+if (!startBtn || !stopBtn || !playBtn || !playIcon || !playText) return;
+if (!useBtn || !againBtn || !devices || !canvas) return;
+if (!hint || !clock || !live || !player || !status || !upl) return;
 
 const show = (el, on) => { el.style.display = on ? '' : 'none'; };
 const say = t => { status.textContent = t; };
@@ -73,13 +85,13 @@ const say = t => { status.textContent = t; };
 // apart on purpose: over https the answer is never "use https", and a message
 // that says so sends whoever reads it looking in the wrong place.
 if (window.isSecureContext === false) {
-  rec.disabled = true;
+  startBtn.disabled = true;
   say('Recording needs an https connection.');
   return;
 }
 if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia
     || typeof MediaRecorder === 'undefined') {
-  rec.disabled = true;
+  startBtn.disabled = true;
   say('This browser cannot record audio.');
   return;
 }
@@ -97,7 +109,7 @@ let chunks = [], peaks = [], sampler = null, frame = null;
 let started = 0, seconds = 0, take = null, url = null;
 let deviceId = '';
 
-const clock = s => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
+const time = s => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
 
 const colour = (name, fallback) => {
   const value = getComputedStyle(document.body).getPropertyValue(name).trim();
@@ -121,7 +133,14 @@ const draw = progress => {
   const step = Math.round(bar * 2);
   const columns = Math.max(1, Math.floor(width / step));
   const middle = height / 2;
-  const played = colour('--color-brand-primary', '#082954');
+  // While it runs the bars carry the same red as the REC marker beside them:
+  // the two are saying one thing, and this is the one place in the app where
+  // red means "in progress" rather than "wrong" -- which is why the word REC
+  // is there to say it in words as well.
+  const recording = progress === null;
+  const played = recording
+    ? colour('--color-text-danger', '#d32f2f')
+    : colour('--color-brand-primary', '#082954');
   const rest = colour('--color-text-muted', '#6b7280');
 
   for (let i = 0; i < columns; i++) {
@@ -129,57 +148,43 @@ const draw = progress => {
     // a quiet neighbour that happened to be sampled.
     const from = Math.floor((i / columns) * peaks.length);
     const to = Math.max(from + 1, Math.floor(((i + 1) / columns) * peaks.length));
+    if (from >= peaks.length) break;
     let peak = 0;
     for (let p = from; p < to && p < peaks.length; p++) {
       if (peaks[p] > peak) peak = peaks[p];
     }
-    if (from >= peaks.length) break;
 
-    const tall = Math.max(ratio, peak * (height - 2 * ratio));
-    c.fillStyle = (progress === null || (i / columns) <= progress) ? played : rest;
-    c.fillRect(i * step, middle - tall / 2, bar, tall);
+    const tall = Math.max(ratio, peak * (height - 4 * ratio));
+    c.fillStyle = (recording || (i / columns) <= progress) ? played : rest;
+    c.beginPath();
+    c.roundRect(i * step, middle - tall / 2, bar, tall, bar / 2);
+    c.fill();
   }
 
-  if (progress !== null && peaks.length) {
+  if (!recording && peaks.length) {
     c.fillStyle = played;
-    c.fillRect(Math.min(width - ratio, progress * width), 0, Math.max(1, ratio), height);
+    c.fillRect(Math.min(width - 2 * ratio, progress * width), 0, Math.max(1, 2 * ratio), height);
   }
 };
 
-const idle = () => {
-  show(rec, true);
-  show(stopBtn, false);
-  show(decide, false);
-  show(player, false);
-  show(canvas, false);
-};
-
-const release = () => {
-  if (sampler) { clearInterval(sampler); sampler = null; }
-  if (frame) { cancelAnimationFrame(frame); frame = null; }
-  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
-  // An AudioContext is a hardware resource of its own: left open, the browser
-  // goes on showing the tab as using the microphone after the tracks stop.
-  if (audio) { try { audio.close(); } catch (e) {} audio = null; }
-  analyser = null;
-  recorder = null;
-};
-
-const discard = () => {
-  if (url) { URL.revokeObjectURL(url); url = null; }
-  player.removeAttribute('src');
-  player.load();
-  take = null;
-  peaks = [];
-  seconds = 0;
-};
-
-// timeupdate fires about four times a second, which is visibly steppy under a
-// playhead this wide, so the frame loop draws while it is actually playing.
-const follow = () => {
-  const at = seconds > 0 ? Math.min(player.currentTime / seconds, 1) : 0;
-  draw(at);
-  frame = player.paused ? null : requestAnimationFrame(follow);
+// One filled action at a time, and one place that says which.  Everything the
+// card can show is named here rather than being hidden and shown from a dozen
+// places, so a state that forgets an element is a change to one function.
+const setState = state => {
+  show(hint, state === 'idle');
+  show(canvas, state !== 'idle');
+  show(clock, state !== 'idle');
+  show(live, state === 'recording');
+  show(startBtn, state === 'idle');
+  show(stopBtn, state === 'recording');
+  show(playBtn, state === 'review');
+  show(useBtn, state === 'review');
+  show(againBtn, state === 'review');
+  devices.disabled = state === 'recording';
+  if (state !== 'review') {
+    playIcon.textContent = 'play_arrow';
+    playText.textContent = 'Play';
+  }
 };
 
 // Which microphone, when there is a choice to be had.
@@ -190,9 +195,9 @@ const follow = () => {
 // is not a choice anyone can make -- and it reports one entry per input,
 // which on most machines is a single built-in microphone.  So the picker is
 // drawn only when the names are known *and* there is more than one of them;
-// the rest of the time the browser's own default is used, silently, exactly
-// as before.  It fills in by itself the moment the first recording is
-// granted, and again whenever a device is plugged in or taken away.
+// the rest of the time the browser's own default is used, silently.  It fills
+// in by itself the moment the first recording is granted, and again whenever
+// a device is plugged in or taken away.
 const listDevices = async () => {
   if (!navigator.mediaDevices.enumerateDevices) return;
   let found = [];
@@ -228,10 +233,40 @@ if (navigator.mediaDevices.addEventListener) {
   navigator.mediaDevices.addEventListener('devicechange', onDeviceChange);
 }
 
-rec.addEventListener('click', async () => {
+const release = () => {
+  if (sampler) { clearInterval(sampler); sampler = null; }
+  if (frame) { cancelAnimationFrame(frame); frame = null; }
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  // An AudioContext is a hardware resource of its own: left open, the browser
+  // goes on showing the tab as using the microphone after the tracks stop.
+  if (audio) { try { audio.close(); } catch (e) {} audio = null; }
+  analyser = null;
+  recorder = null;
+};
+
+const discard = () => {
+  if (url) { URL.revokeObjectURL(url); url = null; }
+  player.removeAttribute('src');
+  player.load();
+  take = null;
+  peaks = [];
+  seconds = 0;
+};
+
+// timeupdate fires about four times a second, which is visibly steppy under a
+// playhead this wide, so the frame loop draws while it is actually playing.
+const follow = () => {
+  const at = seconds > 0 ? Math.min(player.currentTime / seconds, 1) : 0;
+  draw(at);
+  clock.textContent = time(player.currentTime) + ' / ' + time(seconds);
+  frame = player.paused ? null : requestAnimationFrame(follow);
+};
+
+startBtn.addEventListener('click', async () => {
   if (recorder) return;
   discard();
   say('');
+
   const ask = want => navigator.mediaDevices.getUserMedia({audio: want});
   let failure = null;
   try {
@@ -284,9 +319,8 @@ rec.addEventListener('click', async () => {
     const blob = new Blob(chunks, {type: type});
     chunks = [];
     release();
-    devices.disabled = false;
     if (!blob.size) {
-      idle();
+      setState('idle');
       say('Nothing was recorded.');
       return;
     }
@@ -294,16 +328,12 @@ rec.addEventListener('click', async () => {
     const name = 'recording-' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate())
       + '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds())
       + ((kind && kind[1]) || '.webm');
-    devices.disabled = false;
     take = new File([blob], name, {type: type});
     url = URL.createObjectURL(blob);
     player.src = url;
-    show(rec, false);
-    show(stopBtn, false);
-    show(canvas, true);
-    show(player, true);
-    show(decide, true);
-    say(name + ' \\u2013 ' + clock(seconds));
+    setState('review');
+    clock.textContent = '0:00 / ' + time(seconds);
+    say(name);
     draw(0);
   };
 
@@ -333,7 +363,7 @@ rec.addEventListener('click', async () => {
       peaks.push(peak);
     }
     seconds = (Date.now() - started) / 1000;
-    say('Recording ' + clock(seconds));
+    clock.textContent = time(seconds);
     draw(null);
   }, __PEAK_MS__);
 
@@ -341,13 +371,9 @@ rec.addEventListener('click', async () => {
   // in memory is a tab that dies before it can be uploaded.
   recorder.start(1000);
   started = Date.now();
-  devices.disabled = true;
-  show(rec, false);
-  show(stopBtn, true);
-  show(canvas, true);
-  show(player, false);
-  show(decide, false);
-  say('Recording 0:00');
+  setState('recording');
+  clock.textContent = '0:00';
+  draw(null);
 });
 
 stopBtn.addEventListener('click', () => {
@@ -355,13 +381,28 @@ stopBtn.addEventListener('click', () => {
   if (recorder && recorder.state !== 'inactive') recorder.stop();
 });
 
+const drawTransport = () => {
+  playIcon.textContent = player.paused ? 'play_arrow' : 'pause';
+  playText.textContent = player.paused ? 'Play' : 'Pause';
+};
+
+playBtn.addEventListener('click', () => {
+  if (!take) return;
+  if (player.paused) { player.play(); } else { player.pause(); }
+});
+
+player.addEventListener('play', () => { drawTransport(); if (!frame) follow(); });
+player.addEventListener('pause', () => { drawTransport(); follow(); });
+player.addEventListener('ended', () => { drawTransport(); });
+
 // The waveform is the only place the recording is laid out in time, so it is
-// also where a moment in it can be pointed at.
+// also the scrubber -- there is no other one, the browser's own player having
+// been the thing that made this card read as a form.
 canvas.addEventListener('click', e => {
   if (!take || !seconds) return;
   const box = canvas.getBoundingClientRect();
   player.currentTime = Math.min(seconds, Math.max(0, (e.clientX - box.left) / box.width * seconds));
-  draw(player.currentTime / seconds);
+  follow();
 });
 
 // A webm straight out of MediaRecorder carries no duration, and Chrome
@@ -379,10 +420,6 @@ player.addEventListener('loadedmetadata', () => {
   };
 });
 
-player.addEventListener('play', () => { if (!frame) follow(); });
-player.addEventListener('timeupdate', () => { if (player.paused) follow(); });
-player.addEventListener('seeked', () => { if (player.paused) follow(); });
-
 useBtn.addEventListener('click', () => {
   if (!take) return;
   player.pause();
@@ -397,9 +434,9 @@ useBtn.addEventListener('click', () => {
 againBtn.addEventListener('click', () => {
   player.pause();
   discard();
-  idle();
+  setState('idle');
   say('');
-  rec.click();
+  startBtn.click();
 });
 
 upl._recordCleanup = () => {
@@ -415,9 +452,35 @@ upl._recordCleanup = () => {
   }
 };
 
-idle();
+setState('idle');
 listDevices();
+// The card is in a dialog and the dialog is in a window that can be resized
+// under it; the peaks are kept, so the picture can simply be drawn again.
+window.addEventListener('resize', () => { if (peaks.length) draw(take ? 0 : null); });
 """
+
+
+def _action(label: str, icon: str, tone: str):
+    """
+    One button of the card's action row.
+
+    The icon and the label are children rather than a `q-btn`'s own `icon`
+    prop, for two reasons: the page rewrites both of them when Play becomes
+    Pause, which a prop would need a round trip for, and a prop-set icon
+    carries its own margin while a child does not -- so mixing the two spaced
+    one button's icon differently from the rest.
+    """
+
+    # color=black flat, as every other button in the app is built: it is what
+    # keeps Quasar from painting the label in its own primary blue, and the
+    # stylesheet's .body--dark .q-btn--flat rule takes it from there.
+    with ui.button().props("color=black flat").classes(
+        f"recorder-action {tone}"
+    ) as button:
+        button.icon_element = ui.icon(icon)
+        button.text_element = ui.label(label)
+
+    return button
 
 
 def record_panel(upload) -> None:
@@ -430,54 +493,59 @@ def record_panel(upload) -> None:
     """
 
     with ui.column().classes("w-full items-center"):
-        # Drawn hidden and filled in from the page: a browser withholds device
-        # names until the microphone has been granted once, so there is
-        # nothing worth showing until then -- and on a machine with a single
-        # built-in microphone there never is.
-        devices = ui.element("select").classes("recorder-device q-mb-md")
-        devices.style("display: none;")
+        # The waveform is the card: the clock and the recording marker sit in
+        # it rather than in a caption underneath, so there is one thing to
+        # look at instead of four.
+        with ui.element("div").classes("recorder-hero"):
+            canvas = ui.element("canvas").classes("recorder-wave")
+            hint = ui.label("The waveform appears as you speak").classes(
+                "recorder-hint"
+            )
+            clock = ui.label("0:00").classes("recorder-clock")
+            with ui.element("div").classes("recorder-live") as live:
+                ui.element("span").classes("recorder-dot")
+                ui.label("REC")
 
-        with ui.row().classes("items-center").style("gap: 12px;"):
-            with ui.button("Record", icon="mic") as record_button:
-                record_button.props("color=black flat")
-                record_button.classes("default-style recorder-action")
-            with ui.button("Stop", icon="stop") as stop_button:
-                stop_button.props("color=black flat")
-                stop_button.classes("cancel-style recorder-action")
-                stop_button.style("display: none;")
+        # Exactly one filled action is ever visible: Start recording, then
+        # Stop, then Use recording.  Play is the only outlined button, and it
+        # only ever stands beside Use.
+        with ui.row().classes("items-center q-mt-md").style("gap: 10px;"):
+            start_button = _action("Start recording", "mic", "recorder-filled")
+            stop_button = _action("Stop", "stop", "recorder-filled")
+            play_button = _action("Play", "play_arrow", "recorder-outline")
+            use_button = _action("Use recording", "check", "recorder-filled")
 
-        # Hidden from the first frame rather than from the moment the script
-        # lands: the dialog is drawn a tenth of a second ahead of it, and a
-        # waveform and three buttons appearing and going away again reads as
-        # a fault rather than as a panel settling.
-        canvas = ui.element("canvas").classes("recorder-wave q-mt-md")
-        canvas.style("display: none;")
-        player = ui.element("audio").props("controls").classes("recorder-player q-mt-sm")
-        player.style("display: none;")
+        # Everything that is not the action of the moment.
+        with ui.row().classes("items-center q-mt-sm").style("gap: 14px;"):
+            again_button = _action("Record again", "refresh", "recorder-muted")
+            # Drawn hidden and filled in from the page: a browser withholds
+            # device names until the microphone has been granted once, so
+            # there is nothing worth showing until then -- and on a machine
+            # with a single built-in microphone there never is.
+            devices = ui.element("select").classes("recorder-device")
+            devices.style("display: none;")
 
-        with (
-            ui.row()
-            .classes("items-center q-mt-sm")
-            .style("gap: 12px; display: none;") as decide
-        ):
-            with ui.button("Use recording", icon="check") as use_button:
-                use_button.props("color=black flat")
-                use_button.classes("default-style recorder-action")
-            with ui.button("Record again", icon="refresh") as again_button:
-                again_button.props("color=black flat")
-                again_button.classes("cancel-style recorder-action")
+        # Hidden, and driven by the button above: the browser's own controls
+        # were the loudest thing in the card and the least like the rest of
+        # the app.
+        player = ui.element("audio").classes("recorder-player")
 
-        status = ui.label("").classes("text-caption q-mt-sm text-theme-muted")
+        status = ui.label("").classes("recorder-status")
 
     script = SCRIPT
     for token, value in (
-        ("__RECORD__", record_button.id),
+        ("__START__", start_button.id),
         ("__STOP__", stop_button.id),
+        ("__PLAY_ICON__", play_button.icon_element.id),
+        ("__PLAY_TEXT__", play_button.text_element.id),
+        ("__PLAY__", play_button.id),
         ("__USE__", use_button.id),
         ("__AGAIN__", again_button.id),
-        ("__DECIDE__", decide.id),
         ("__DEVICES__", devices.id),
         ("__CANVAS__", canvas.id),
+        ("__HINT__", hint.id),
+        ("__CLOCK__", clock.id),
+        ("__LIVE__", live.id),
         ("__PLAYER__", player.id),
         ("__STATUS__", status.id),
         ("__UPLOAD__", upload.id),

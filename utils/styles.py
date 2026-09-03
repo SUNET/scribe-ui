@@ -467,47 +467,134 @@ theme_styles = """
     }
 
     /* ── Microphone recorder ── */
-    /* The same width as the drop target: the two are the same dialog seen
-       two ways, and a recorder that laid out wider would read as a
-       different card. */
-    .recorder-wave {
+    /* The waveform is the card: tall enough to read, with the clock and the
+       recording marker inside it rather than in a caption underneath, so
+       there is one thing to look at instead of four. */
+    .recorder-hero {
+        position: relative;
         width: 384px;
-        height: 96px;
-        border-radius: 12px;
+        height: 120px;
+        border-radius: 14px;
+        overflow: hidden;
         background-color: var(--color-bg-surface-alt);
         border: 1px solid var(--color-border-subtle);
+    }
+    .recorder-wave {
+        display: block;
+        width: 100%;
+        height: 100%;
         cursor: pointer;
     }
-    .recorder-player {
-        width: 384px;
+    .recorder-hint {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.82rem;
+        color: var(--color-text-muted);
+        pointer-events: none;
     }
-
-    /* A native <select>: its options are written from the page as devices
-       come and go, which a QSelect (whose options live on the server) would
-       need a round trip for. */
-    .recorder-device {
-        width: 384px;
-        padding: 6px 8px;
-        border-radius: 8px;
+    /* Both readouts sit over the drawing, so each carries a ground of its
+       own; without one the digits fall in among the bars and cannot be read
+       at all. */
+    .recorder-clock,
+    .recorder-live {
+        position: absolute;
+        top: 8px;
+        border-radius: 999px;
         background-color: var(--color-bg-surface);
-        color: var(--color-text-primary);
-        border: 1px solid var(--color-border);
+        padding: 2px 9px;
+        pointer-events: none;
+    }
+    .recorder-clock {
+        left: 10px;
+        font-family: var(--font-mono);
+        font-size: 0.78rem;
+        color: var(--color-text-secondary);
+    }
+    .recorder-live {
+        right: 10px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        color: var(--color-text-danger);
+    }
+    .recorder-dot {
+        display: block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background-color: currentColor;
     }
 
-    /* One width for every button in the recorder.  .default-style carries no
-       width and .cancel-style carries 150px, so a pair built from the two
-       came out different sizes -- and the narrower one was too narrow for its
-       label, which is worse than it sounds: Quasar wraps a q-btn's content
-       when the label does not fit, so the icon went above the text and that
-       button became a two-line block of a different height as well.  This
-       rule follows both of those in the stylesheet, which is what lets it
-       take the width; nowrap is what stops the restacking outright, so a
-       longer label overflows visibly instead of silently changing shape. */
+    /* Pills, and content-width: these are a row of peers, and only one of
+       them is filled at any moment.  nowrap because Quasar wraps a q-btn's
+       content when the label does not fit, which puts the icon above the text
+       and makes that one button a different height as well as a different
+       shape. */
     .recorder-action {
-        width: 190px;
+        border-radius: 999px !important;
+        padding: 6px 18px;
     }
     .recorder-action .q-btn__content {
         flex-wrap: nowrap;
+        gap: 8px;
+    }
+    .recorder-filled {
+        background-color: var(--color-brand-accent);
+        color: var(--color-text-primary) !important;
+        border: 1px solid var(--color-border);
+    }
+    .recorder-outline {
+        background-color: var(--color-bg-surface);
+        color: var(--color-text-primary) !important;
+        border: 1px solid var(--color-border);
+    }
+    .recorder-muted {
+        color: var(--color-text-secondary) !important;
+        border: 1px solid transparent;
+    }
+    /* The global dark-mode rule gives every flat button a border; this one is
+       a quiet text control and must not grow one. */
+    .body--dark .recorder-muted {
+        border-color: transparent !important;
+    }
+
+    /* A native <select>, because its options are written from the page as
+       devices come and go and a QSelect's options live on the server -- but
+       stripped back to a line of text, since it is one of the quiet controls
+       and not a form field at the top of the card.  The browser keeps drawing
+       its own arrow, which is what says it opens. */
+    .recorder-device {
+        background: transparent;
+        border: none;
+        font-family: inherit;
+        font-size: 0.78rem;
+        color: var(--color-text-muted);
+        cursor: pointer;
+        max-width: 240px;
+    }
+    .recorder-device:disabled {
+        opacity: 0.55;
+        cursor: default;
+    }
+
+    /* Driven by the card's own Play button: the browser's controls were the
+       loudest thing here and the least like the rest of the app. */
+    .recorder-player {
+        display: none;
+    }
+    .recorder-status {
+        font-size: 0.75rem;
+        color: var(--color-text-muted);
+        margin-top: 10px;
+        text-align: center;
+        min-height: 1.1rem;
+        max-width: 384px;
     }
 
     /* ── Global dark mode button override ── */
