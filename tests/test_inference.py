@@ -218,7 +218,11 @@ def test_the_analyse_strip_uses_theme_tokens_not_fixed_colours():
 
             # Keywords that carry no colour of their own are theme-safe by
             # definition -- a transparent ground is whatever is behind it.
-            if value.strip() in ("transparent", "none", "inherit", "currentColor"):
+            # !important comes off first: Quasar paints these with its own
+            # !important rules, so ours have to answer in kind.
+            keyword = value.replace("!important", "").strip()
+
+            if keyword in ("transparent", "none", "inherit", "currentColor"):
                 continue
 
             assert "var(--color-" in value, f"{match.group(1)}: {declaration}"
@@ -812,8 +816,8 @@ class FakeElement:
 
 def strip_with_review(on_review=None):
     """
-    A strip whose elements are stand-ins, with a task pill and the Review
-    pill already in the row.
+    A strip whose elements are stand-ins, with a task pill and both
+    launchers already wired up.
     """
 
     panel = InferencePanel(
@@ -823,7 +827,11 @@ def strip_with_review(on_review=None):
     )
 
     panel.buttons = {"summary": FakeElement()}
+    panel.panel = FakeElement()
+    panel.launchers = FakeElement()
+    panel.analyse_button = FakeElement()
     panel.review_button = FakeElement()
+    panel.analyse_slot = FakeElement()
     panel.review_slot = FakeElement()
     panel.body = FakeElement()
     panel.status = FakeElement()
@@ -834,68 +842,102 @@ def strip_with_review(on_review=None):
     return panel
 
 
-class TestTheReviewPill:
+class TestNothingAtRest:
     """
-    A review is another thing asked of the same recording, so it is asked
-    for from the same row of pills -- not from the toolbar, and not into a
-    dialog of its own.
+    At rest the assistants are two icons in the corner of the video frame
+    and nothing else. They were a permanent row -- a mark, a pill per task,
+    Review, and a status line -- on screen whether or not anybody was using
+    them, in a pane the answer itself is trying to grow into.
     """
 
-    def test_it_is_a_pill_in_the_same_row_as_the_tasks(self):
+    def test_the_launchers_ride_the_switch_row(self):
         from pathlib import Path
 
+        page = Path("pages/srt.py").read_text()
         source = Path("utils/inference_panel.py").read_text()
 
-        # Drawn inside self.actions, and drawn last: after the tasks the
-        # hub named, since it is not one of them.
-        row = source.index("with self.actions:")
-        pill = source.index('ui.button(\n                    "Review"')
-        loop = source.index('for task in tasks:')
+        # The slot is made inside the switch row, because an element's
+        # place in the pane is where it was created. The icons go into it
+        # much later, once the panels they open exist.
+        row = page.index('with ui.row().classes("items-center gap-4 w-full"):')
+        slot = page.index('classes(\n                                        "inference-launcher-row"')
+        drawn = page.index("with launcher_slot:")
 
-        assert row < loop < pill
-        assert "inference-chip" in source[pill:pill + 400]
+        assert row < slot < drawn
+        assert drawn > page.index("inference.build()")
+        assert 'classes("inference-launchers")' in source
 
-    def test_it_is_hidden_until_the_hub_can_review(self):
-        # A hub with no worker connected names its domains all the same,
-        # and a pill that apologises one click later is worse than none.
+        # Held to the right end of the row rather than laying it out: they
+        # are one item of it, not its layout.
+        import re
+
+        from utils.styles import default_styles
+
+        css = re.sub(r"/\*.*?\*/", "", default_styles, flags=re.S)
+        rule = css[css.index(".inference-launcher-row {"):]
+
+        assert "margin-left: auto" in rule[: rule.index("}")]
+
+    def test_a_subtitle_editor_gets_no_slot_at_all(self):
+        # It has no assistants, so an empty row would be a row of nothing.
+        from pathlib import Path
+
+        page = Path("pages/srt.py").read_text()
+        slot = page.index('"inference-launcher-row"')
+
+        assert 'settings.INFERENCE_ENABLED and data_format != "srt"' in page[
+            slot - 300: slot
+        ]
+
+    def test_they_are_hidden_until_the_hub_says_what_it_can_do(self):
         panel = strip_with_review()
-
-        panel._sync_review()
-
-        assert panel.review_button.visible is False
+        panel.launchers.visible = False
 
         panel.set_review_available(True)
 
+        assert panel.launchers.visible is True
         assert panel.review_button.visible is True
 
-    def test_it_is_disabled_while_an_answer_is_generating(self):
-        panel = strip_with_review()
-        panel.set_review_available(True)
-
-        panel._set_running(True)
-
-        assert panel.review_button.enabled is False
-
-        panel._set_running(False)
-
-        assert panel.review_button.enabled is True
-
-    def test_a_hub_with_no_tasks_still_draws_the_strip_for_it(self):
-        # The hub's two review tasks carry offered=False, so a deployment
-        # offering nothing else has an empty task list and a Review pill.
+    def test_the_review_icon_alone_is_reason_enough_to_show_them(self):
+        # The hub's own two review tasks carry offered=False, so a
+        # deployment offering nothing else has an empty task list.
         from pathlib import Path
 
         source = Path("utils/inference_panel.py").read_text()
 
         assert "if not tasks and not self.review_available:" in source
 
+    def test_a_hub_with_no_worker_says_so_on_the_icons(self):
+        # Nothing else is on screen at rest to carry the reason, and a
+        # disabled icon without one reads as a fault in the page.
+        from pathlib import Path
 
-class TestTheReviewTakesTheAnswersPlace:
+        source = Path("utils/inference_panel.py").read_text()
+        gap = source[source.index("self.status.set_text(NO_WORKER)"):]
+
+        assert "ui.tooltip(NO_WORKER)" in gap[:900]
+
+    def test_the_closed_strip_takes_no_room(self):
+        # It is a flex item of the pane: left to grow, it holds the space
+        # it is not using away from the video.
+        import re
+
+        from utils.styles import default_styles
+
+        css = re.sub(r"/\*.*?\*/", "", default_styles, flags=re.S)
+        closed = css[css.index(".inference-panel {"):]
+        closed = closed[: closed.index("}")]
+        opened = css[css.index(".inference-panel.is-open {"):]
+        opened = opened[: opened.index("}")]
+
+        assert "flex: 0 0 auto" in closed
+        assert "flex: 1 1 0%" in opened
+
+
+class TestOnePanelAtATime:
     """
-    One of the two at a time. The review is drawn where an answer is
-    drawn -- which is what lets it be read against the transcription
-    instead of over it -- so the answer area steps aside and comes back
-    afterwards.
+    Both panels are drawn in the space under the video -- where the review
+    already lived -- so opening one closes the other.
     """
 
     def review(self, panel):
@@ -903,71 +945,97 @@ class TestTheReviewTakesTheAnswersPlace:
 
         asyncio.run(panel.start_review())
 
-    def test_the_answer_area_steps_aside_and_comes_back(self):
-        asked = []
+    def test_opening_the_assistant_shows_its_panel_and_nothing_else(self):
+        panel = strip_with_review()
 
+        panel.open_analyse()
+
+        assert panel.open_panel == "analyse"
+        assert panel.analyse_slot.visible is True
+        assert panel.review_slot.visible is False
+        assert "is-open" in panel.panel.marks
+
+    def test_opening_the_review_puts_the_assistant_away(self):
         async def open_review():
-            asked.append(True)
+            return None
 
         panel = strip_with_review(on_review=open_review)
-        panel.set_review_available(True)
-        panel.answer = "The summary."
+        panel.open_analyse()
 
         self.review(panel)
 
-        assert asked == [True]
-        assert panel.reviewing is True
-        assert panel.body.visible is False
+        assert panel.open_panel == "review"
+        assert panel.analyse_slot.visible is False
         assert panel.review_slot.visible is True
-        assert panel.status.text == REVIEW_HINT
 
+    def test_closing_leaves_the_pane_to_the_video(self):
+        panel = strip_with_review()
+        panel.open_analyse()
+
+        panel.close_analyse()
+
+        assert panel.open_panel is None
+        assert panel.analyse_slot.visible is False
+        assert "is-open" not in panel.panel.marks
+
+    def test_an_answer_survives_the_panel_being_closed(self):
+        # Generating it cost a GPU somebody paid for; closing a panel is
+        # not asking for it to be thrown away.
+        panel = strip_with_review()
+        panel.answer = "The summary."
+
+        panel.open_analyse()
+        panel.close_analyse()
+        panel.open_analyse()
+
+        assert panel.answer == "The summary."
+        assert panel.body.visible is True
+
+    def test_the_video_comes_back_when_the_panel_goes(self):
+        # Folded away for a long answer and then closed, the pane would
+        # otherwise be left with neither.
+        folded = []
+
+        panel = strip_with_review()
+        panel.on_expand = folded.append
+        panel.expand_button = FakeElement()
+        panel.expand_tooltip = FakeElement()
+
+        panel.open_analyse()
+        panel.toggle_expand()
+
+        assert folded == [False]
+
+        panel.close_analyse()
+
+        assert folded == [False, True]
+        assert panel.expanded is False
+
+    def test_a_review_in_progress_is_not_opened_over(self):
+        # Ending one properly is the assistant's own business: it has a
+        # request in flight and a queue of decisions behind it.
+        async def open_review():
+            return None
+
+        panel = strip_with_review(on_review=open_review)
+
+        self.review(panel)
+        panel.open_analyse()
+
+        assert panel.open_panel == "review"
+
+    def test_the_review_gives_the_space_back_when_it_ends(self):
+        async def open_review():
+            return None
+
+        panel = strip_with_review(on_review=open_review)
+
+        self.review(panel)
         panel.end_review()
 
         assert panel.reviewing is False
+        assert panel.open_panel is None
         assert panel.review_slot.visible is False
-        # The answer was not thrown away by the review standing in its
-        # place, so it is shown again as it was.
-        assert panel.body.visible is True
-        assert panel.status.text == panel._finished_line()
-
-    def test_an_unused_strip_goes_back_to_its_own_hint(self):
-        async def open_review():
-            return None
-
-        panel = strip_with_review(on_review=open_review)
-        panel.set_review_available(True)
-
-        self.review(panel)
-        panel.end_review()
-
-        assert panel.body.visible is False
-        assert panel.status.text == IDLE_HINT
-
-    def test_the_tasks_cannot_be_asked_for_while_reviewing(self):
-        # Pressing Summary mid-review would draw an answer over the
-        # suggestion being decided on, and throw away the decisions made
-        # so far with it.
-        async def open_review():
-            return None
-
-        panel = strip_with_review(on_review=open_review)
-        panel.set_review_available(True)
-        panel.answer = "The summary."
-
-        self.review(panel)
-
-        assert panel.buttons["summary"].enabled is False
-        assert panel.review_button.enabled is False
-        # Nothing to copy or download either: neither acts on what is on
-        # show.
-        assert panel.copy_button.visible is False
-        assert panel.download_button.visible is False
-
-        panel.end_review()
-
-        assert panel.buttons["summary"].enabled is True
-        assert panel.review_button.enabled is True
-        assert panel.copy_button.visible is True
 
     def test_the_page_lends_the_assistant_the_strips_slot_and_socket(self):
         # Neither exists before the strip is built, so the page puts the
@@ -981,3 +1049,93 @@ class TestTheReviewTakesTheAnswersPlace:
         assert "assistant.container = inference.review_slot" in page
         assert "assistant.on_close = inference.end_review" in page
         assert "on_review=assistant.open," in page
+
+
+class TestTheTasksInsideThePanel:
+    """
+    The tasks did not go away with the row: they are the row at the top of
+    the assistant's own panel, read when they are wanted.
+    """
+
+    def test_a_task_opens_the_panel_it_draws_into(self):
+        from pathlib import Path
+
+        source = Path("utils/inference_panel.py").read_text()
+        start = source.index("async def start(self, task: str)")
+        body = source[start: source.index("@contextmanager", start)]
+
+        assert 'self._set_open("analyse")' in body
+
+    def test_the_pills_are_quiet_rather_than_filled(self):
+        # Five solid near-black pills read as the loudest thing in the
+        # editor. None of them is the action of the page -- Save is.
+        import re
+
+        from utils.styles import default_styles
+
+        css = re.sub(r"/\*.*?\*/", "", default_styles, flags=re.S)
+        rule = css[css.index(".body--light .q-btn.inference-chip,"):]
+        rule = rule[: rule.index("}")]
+
+        assert "background-color: transparent" in rule
+        assert "var(--color-text-secondary)" in rule
+
+        hover = css[css.index(".body--light .q-btn.inference-chip:hover,"):]
+        hover = hover[: hover.index("}")]
+
+        assert "var(--color-bg-surface-hover)" in hover
+
+    def test_a_running_request_mutes_the_other_tasks(self):
+        panel = strip_with_review()
+
+        panel._set_running(True)
+
+        assert panel.buttons["summary"].enabled is False
+        assert panel.stop_button.visible is True
+
+        panel.answer = "Done."
+        panel._set_running(False)
+
+        assert panel.buttons["summary"].enabled is True
+        assert panel.copy_button.visible is True
+
+
+def test_no_button_in_the_strip_asks_for_a_colour():
+    """
+    NiceGUI colours a button "primary" unless told otherwise, and that puts
+    Quasar's own .text-primary class on it -- which carries !important, so a
+    stylesheet rule is not a reliable way to take it back off. The task
+    pills came out in the brand blue whatever .inference-chip said. Asking
+    for no colour leaves a button inheriting the page's own text colour,
+    which is what everything in this strip wants.
+    """
+
+    import ast
+
+    from pathlib import Path
+
+    tree = ast.parse(Path("utils/inference_panel.py").read_text())
+    buttons = 0
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+
+        target = node.func
+
+        if not (
+            isinstance(target, ast.Attribute)
+            and target.attr == "button"
+            and isinstance(target.value, ast.Name)
+            and target.value.id == "ui"
+        ):
+            continue
+
+        buttons += 1
+        colours = [word for word in node.keywords if word.arg == "color"]
+
+        assert colours, "every button in the strip has to say color=None"
+        assert isinstance(colours[0].value, ast.Constant)
+        assert colours[0].value.value is None
+
+    assert buttons >= 8

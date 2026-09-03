@@ -617,6 +617,14 @@ class ReviewAssistant:
                 ui.icon("rate_review").classes("review-mark")
                 ui.label("Review assistant").classes("review-title")
 
+                # The same ✕ the assistant's panel has, in the same corner:
+                # the two open in the same space and should close the same
+                # way. The footer's own Stop/Close still do it too.
+                ui.space()
+                ui.button(icon="close", on_click=self.close, color=None).props(
+                    "flat dense round"
+                ).classes("inference-icon-btn")
+
             self.body = ui.column().classes("review-body w-full")
             self.footer = ui.row().classes("review-footer items-center w-full")
 

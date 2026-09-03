@@ -702,75 +702,119 @@ theme_styles = """
            a pane with empty space under it. min-height: 0 because a flex
            item refuses to shrink below its content without it, and the
            answer's content is arbitrarily long. */
-        flex: 1 1 auto;
+        /* Nothing at all while both panels are closed: it is a flex item
+           of the pane, and a strip that grows into space it is not using
+           holds that space away from the video. Open, it takes everything
+           the video, the timeline and the switches leave. */
+        flex: 0 0 auto;
         min-height: 0;
+        padding-top: 0;
     }
-    /* Three cells, not a flex row: the mark on the left, the pills in the
-       middle, the copy and download buttons on the right. The outer two
-       are equal fractions so the middle one lands on the row's true
-       centre -- centring a flex item between its neighbours only centres
-       it in whatever space they leave over, which put the pills visibly
-       left of centre. */
-    .inference-bar {
-        display: grid;
-        grid-template-columns: 1fr auto 1fr;
-        align-items: center;
-        gap: 0.5rem;
+    .inference-panel.is-open {
+        flex: 1 1 0%;
+        padding-top: 0.35rem;
     }
-    .inference-tools {
-        justify-self: end;
+    /* The whole of this feature on screen at rest: two icons riding the
+       switch row, held to its right end. They were in the video frame's
+       top corner, which needed a translucent ground of its own to stay
+       readable over a moving picture; on the row they sit on the page's
+       own surface and need none, and they cost no row of the pane at all.
+       margin-left rather than justify-content, since they are one item of
+       that row and not its layout. */
+    .inference-launcher-row {
+        flex: 0 0 auto;
+        margin-left: auto;
+        gap: 0.1rem;
+    }
+    .inference-launchers {
+        gap: 0.1rem;
+    }
+    .body--light .q-btn.inference-launcher,
+    .body--dark .q-btn.inference-launcher,
+    .body--light .q-btn.inference-launcher .q-icon,
+    .body--dark .q-btn.inference-launcher .q-icon {
+        color: var(--color-text-secondary) !important;
+    }
+    .body--light .q-btn.inference-launcher:hover,
+    .body--dark .q-btn.inference-launcher:hover {
+        background-color: var(--color-bg-surface-hover) !important;
+        color: var(--color-text-primary) !important;
+    }
+    /* The panel's own head: what it is on the left, what can be done with
+       it on the right. Same shape the review's own header has, so the two
+       read as the same kind of thing opened in the same place. */
+    .inference-head {
         gap: 0.15rem;
         flex-wrap: nowrap;
     }
-    /* The one piece of chrome saying what the row is. A label said the same
-       thing in four times the width. */
+    .inference-open {
+        gap: 0.35rem;
+        flex: 1 1 0%;
+        min-height: 0;
+    }
+    .inference-title {
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: var(--color-text-primary);
+    }
     .inference-mark {
         font-size: 1.05rem;
         color: var(--color-text-tertiary);
     }
     .inference-actions {
-        justify-content: center;
-        gap: 0.35rem;
+        justify-content: flex-start;
+        align-items: center;
+        gap: 0.15rem;
         flex-wrap: wrap;
     }
-    /* Pills rather than buttons: they are four peers, none of them the
-       action of the page, and a row of filled buttons under the video
-       would shout louder than Save does in the toolbar. */
+    /* Pills rather than buttons: they are peers, none of them the action
+       of the page -- Save is -- and a row of filled buttons under the
+       video shouts louder than Save does in the toolbar. They *were*
+       filled in the near-black the transcription is set in, on the
+       reasoning that outlined pills read as disabled next to the switches
+       above them; with a fifth added for Review that came to five solid
+       blobs in a pane 40% of the window wide, wrapping onto two rows and
+       reading as the loudest thing in the editor. Quiet is also what the
+       row was meant to be. So: no fill and no border at rest, the page's
+       own text colour, and a soft ground on hover -- the same treatment
+       the icon buttons at the end of the row already have, so the whole
+       row reads as one set of controls instead of two. */
     .inference-chip {
         border-radius: 999px;
         font-size: 0.8125rem;
         font-weight: 500;
-        padding: 0.15rem 0.8rem;
+        padding: 0.15rem 0.6rem;
         transition: background 0.15s ease, color 0.15s ease;
     }
     .inference-chip .q-icon {
         font-size: 1rem;
+        /* Quasar spaces a prop-set icon for a filled button; unfilled and
+           at this size it sits too far from its own label. */
+        margin-right: 0.1rem;
     }
-    /* Filled, in the near-black the transcription itself is set in --
-       these are the one thing in this pane a reader presses, and outlined
-       pills read as disabled next to the switches above them. The colour
-       is a token rather than #000 so dark mode inverts it: the same rule
-       gives white pills on black there, where filling them with the
-       page's own colour would make them vanish. */
     .body--light .q-btn.inference-chip,
     .body--dark .q-btn.inference-chip {
-        background-color: var(--color-text-primary) !important;
+        background-color: transparent !important;
         border: none !important;
-        color: var(--color-bg-surface) !important;
+        color: var(--color-text-secondary) !important;
     }
     .body--light .q-btn.inference-chip .q-icon,
     .body--light .q-btn.inference-chip .q-btn__content,
     .body--dark .q-btn.inference-chip .q-icon,
     .body--dark .q-btn.inference-chip .q-btn__content {
-        color: var(--color-bg-surface) !important;
+        color: inherit !important;
     }
+    /* The hover is what says these are pressable, so it carries the
+       weight the fill used to: the page's own text colour on the lifted
+       surface. */
     .body--light .q-btn.inference-chip:hover,
     .body--dark .q-btn.inference-chip:hover {
-        background-color: var(--color-text-secondary) !important;
+        background-color: var(--color-bg-surface-hover) !important;
+        color: var(--color-text-primary) !important;
     }
     .body--light .q-btn.inference-chip[disabled],
     .body--dark .q-btn.inference-chip[disabled] {
-        opacity: 0.35;
+        opacity: 0.4;
     }
     /* The same near-black the pills are filled with, rather than Quasar's
        default primary -- blue icons beside black buttons read as a

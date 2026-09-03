@@ -16,10 +16,23 @@
 # limitations under the License.
 
 """
-The Analyse strip under the video: pick what to ask for, watch the answer
+The assistants under the video: pick what to ask for, watch the answer
 arrive.
 
-Two things about it are deliberate and should stay.
+At rest there is nothing here at all -- two quiet icons in the corner of
+the video frame, and no row of anything. Press one and its panel opens in
+the space under the video, filling the rest of the pane; close it and the
+space goes back to the recording. The two share that space, so one is open
+at a time.
+
+It was a permanent row: a mark, a pill per task, Review, and a status line
+under them, all on screen whether or not anybody was using them. That cost
+two rows of a pane the answer itself is trying to grow into, and the pills
+were the busiest thing in the editor. The tasks did not go away -- they are
+the row at the top of the assistant's own panel now, where they are read
+when they are wanted.
+
+Two more things about it are deliberate and should stay.
 
 The answer is not saved. It is generated from whatever the editor holds at
 that moment and lives in the page until it is closed -- no row, no file, no
@@ -385,17 +398,25 @@ class InferencePanel:
         self.copy_button = None
         self.download_button = None
 
+        # The two icons in the corner of the video frame, and the panel
+        # each of them opens. Which one is open -- None, "analyse" or
+        # "review" -- is the whole of the strip's state: they are drawn in
+        # the same space under the video, so it cannot be both.
+        self.launchers = None
+        self.analyse_button = None
+        self.analyse_slot = None
+        self.open_panel: Optional[str] = None
+
     # ------------------------------------------------------------------
     # Building
     # ------------------------------------------------------------------
 
     def build(self) -> None:
         """
-        Draw the strip in the current slot.
+        Draw the panels in the current slot, both closed.
 
-        It starts hidden and stays hidden unless the hub answers with
-        something to offer: a row of dead controls explaining that nothing
-        is available is worse than no row at all.
+        Nothing is on screen until one of the launchers is pressed -- see
+        build_launchers, which the page calls inside the video frame.
 
         Returns:
             None
@@ -411,37 +432,21 @@ class InferencePanel:
 
         with ui.column().classes("inference-panel w-full") as panel:
             self.panel = panel
-            panel.set_visibility(False)
 
-            with ui.row().classes("inference-bar w-full items-center"):
-                ui.icon("auto_awesome").classes("inference-mark")
+            # The assistant's own panel: everything that used to be the
+            # permanent row, now inside the thing it belongs to.
+            with ui.column().classes("inference-open w-full") as slot:
+                self.analyse_slot = slot
+                slot.set_visibility(False)
 
-                # One button per task, filled in once the hub says which
-                # tasks exist. A reader picks what they want in one click
-                # rather than choosing from a menu and then confirming.
-                self.actions = ui.row().classes("inference-actions")
+                with ui.row().classes("inference-head w-full items-center"):
+                    ui.icon("auto_awesome").classes("inference-mark")
+                    ui.label("AI assistant").classes("inference-title")
 
-                # Grouped so the row is three cells rather than six: the
-                # pills can then be centred on the row's true middle, with
-                # these held to the right of it.
-                with ui.row().classes("inference-tools"):
-                    # An answer is read, and the pane it shares with the
-                    # video leaves it a few lines. This gives it the whole
-                    # pane and puts everything back afterwards. The video
-                    # keeps playing while it is folded away -- a reader
-                    # listening to the recording and reading the notes at
-                    # the same time is the point of it being here.
-                    self.expand_button = (
-                        ui.button(icon="open_in_full")
-                        .props("flat dense round")
-                        .classes("inference-icon-btn")
-                        .on("click", self.toggle_expand)
-                    )
-                    with self.expand_button:
-                        self.expand_tooltip = ui.tooltip("Fill the pane")
+                    ui.space()
 
                     self.stop_button = (
-                        ui.button(icon="stop")
+                        ui.button(icon="stop", color=None)
                         .props("flat dense round")
                         .classes("inference-icon-btn")
                         .on("click", self.stop)
@@ -450,7 +455,7 @@ class InferencePanel:
                         ui.tooltip("Stop generating")
 
                     self.copy_button = (
-                        ui.button(icon="content_copy")
+                        ui.button(icon="content_copy", color=None)
                         .props("flat dense round")
                         .classes("inference-icon-btn")
                         .on("click", self.copy)
@@ -460,10 +465,10 @@ class InferencePanel:
 
                     # Two formats behind the one button. Plain text is what
                     # the feature request asks for and what opens anywhere;
-                    # Markdown keeps the headings and lists for anyone pasting
-                    # it somewhere that renders them.
+                    # Markdown keeps the headings and lists for anyone
+                    # pasting it somewhere that renders them.
                     self.download_button = (
-                        ui.button(icon="download")
+                        ui.button(icon="download", color=None)
                         .props("flat dense round")
                         .classes("inference-icon-btn")
                     )
@@ -478,32 +483,58 @@ class InferencePanel:
                                 "Markdown (.md)", lambda: self.download("md")
                             )
 
-            with ui.row().classes("inference-status w-full items-baseline"):
-                self.status = ui.label(IDLE_HINT).classes("inference-status-line")
+                    # An answer is read, and the pane it shares with the
+                    # video leaves it a few lines. This gives it the whole
+                    # pane and puts everything back afterwards. The video
+                    # keeps playing while it is folded away -- a reader
+                    # listening to the recording and reading the notes at
+                    # the same time is the point of it being here.
+                    self.expand_button = (
+                        ui.button(icon="open_in_full", color=None)
+                        .props("flat dense round")
+                        .classes("inference-icon-btn")
+                        .on("click", self.toggle_expand)
+                    )
+                    with self.expand_button:
+                        self.expand_tooltip = ui.tooltip("Fill the pane")
 
-                # What the answer cost. Otherwise invisible to everyone but
-                # an operator reading the usage table, and it is the
-                # reader's own question that ran the GPU.
-                self.usage_label = ui.label().classes("inference-usage")
+                    ui.button(icon="close", on_click=self.close_analyse, color=None).props(
+                        "flat dense round"
+                    ).classes("inference-icon-btn")
 
-            with ui.scroll_area().classes("inference-output") as body:
-                self.body = body
+                # One button per task, filled in once the hub says which
+                # tasks exist. A reader picks what they want in one click
+                # rather than choosing from a menu and then confirming --
+                # inside the panel now, not in a row of the pane.
+                self.actions = ui.row().classes("inference-actions")
 
-                # A container rather than one element: a finished answer is
-                # rebuilt into prose and diagrams (see split_answer), and
-                # while it is still arriving it is a single markdown element
-                # being appended to, which is far cheaper than rebuilding a
-                # tree several times a second.
-                self.parts = ui.column().classes("inference-answer w-full")
+                with ui.row().classes("inference-status w-full items-baseline"):
+                    self.status = ui.label(IDLE_HINT).classes(
+                        "inference-status-line"
+                    )
 
-                with self.parts:
-                    self.output = ui.markdown("", extras=MARKDOWN_EXTRAS)
+                    # What the answer cost. Otherwise invisible to everyone
+                    # but an operator reading the usage table, and it is
+                    # the reader's own question that ran the GPU.
+                    self.usage_label = ui.label().classes("inference-usage")
 
-            # Where the review assistant draws itself: the same place in
-            # the strip an answer appears, since a review is the same kind
-            # of thing asked of the same recording -- and one of the two is
-            # up at a time, so they can share the room. Empty and hidden
-            # until the Review pill is pressed.
+                with ui.scroll_area().classes("inference-output") as body:
+                    self.body = body
+
+                    # A container rather than one element: a finished
+                    # answer is rebuilt into prose and diagrams (see
+                    # split_answer), and while it is still arriving it is a
+                    # single markdown element being appended to, which is
+                    # far cheaper than rebuilding a tree several times a
+                    # second.
+                    self.parts = ui.column().classes("inference-answer w-full")
+
+                    with self.parts:
+                        self.output = ui.markdown("", extras=MARKDOWN_EXTRAS)
+
+            # Where the review assistant draws itself: the same space, so
+            # only one of the two is ever open. Empty and hidden until the
+            # Review launcher is pressed.
             self.review_slot = ui.column().classes("review-panel w-full")
             self.review_slot.set_visibility(False)
 
@@ -513,6 +544,48 @@ class InferencePanel:
         # The page handler is synchronous, so the hub is asked for its menu
         # on the first tick instead.
         ui.timer(0.1, self.load, once=True)
+
+    def build_launchers(self) -> None:
+        """
+        Draw the two icons that open the panels, in the current slot.
+
+        The page calls this inside the video frame, so they sit in its
+        corner: at rest that is the whole of this feature on screen, which
+        is the point -- a row of controls for something nobody is using
+        costs a row of a pane the answer itself wants. They are hidden
+        until the hub says what it can do.
+
+        Returns:
+            None
+        """
+
+        if getattr(self.editor, "data_format", "") == "srt":
+            return
+
+        with ui.row().classes("inference-launchers") as launchers:
+            self.launchers = launchers
+            launchers.set_visibility(False)
+
+            self.analyse_button = (
+                ui.button(icon="auto_awesome", on_click=self.open_analyse, color=None)
+                .props("flat dense round")
+                .classes("inference-launcher")
+            )
+
+            with self.analyse_button:
+                ui.tooltip("AI assistant — summary, key points and more")
+
+            self.review_button = (
+                ui.button(icon="rate_review", on_click=self.start_review, color=None)
+                .props("flat dense round")
+                .classes("inference-launcher")
+            )
+
+            with self.review_button:
+                ui.tooltip(
+                    "Review assistant — go through the transcription for "
+                    "likely mishearings"
+                )
 
     async def load(self) -> None:
         """
@@ -555,6 +628,16 @@ class InferencePanel:
                         task["label"],
                         icon=TASK_ICONS.get(name, "auto_awesome"),
                         on_click=lambda _, task_name=name: self.start(task_name),
+                        # No colour asked for, deliberately. NiceGUI
+                        # colours a button "primary" unless told
+                        # otherwise, which puts Quasar's own .text-primary
+                        # on it -- and that carries !important, so a
+                        # stylesheet rule of ours is not a reliable way to
+                        # take it back off: the pills came out in the
+                        # brand blue whatever .inference-chip said.
+                        # Asking for no colour leaves them inheriting the
+                        # page's own text colour, which is what they want.
+                        color=None,
                     )
                     .props("flat dense no-caps")
                     .classes("inference-chip")
@@ -565,35 +648,15 @@ class InferencePanel:
 
                 self.buttons[name] = button
 
-            # Last in the row, after the tasks the hub named. Not one of
-            # them: the hub's two review tasks are asked for in the
-            # assistant's own order (classify, confirm, then review), so
-            # they carry offered=False and never appear as pills of their
-            # own.
-            self.review_button = (
-                ui.button(
-                    "Review",
-                    icon="rate_review",
-                    on_click=self.start_review,
-                )
-                .props("flat dense no-caps")
-                .classes("inference-chip")
-            )
-
-            with self.review_button:
-                ui.tooltip(
-                    "Go through the transcription for likely mishearings, "
-                    "one suggestion at a time."
-                )
-
-        self._sync_review()
+        self._sync_launchers()
 
         # A hub with no tasks can still have domains to review against, so
-        # the strip is worth drawing for the Review pill alone.
+        # the review launcher alone is reason enough to show them.
         if not tasks and not self.review_available:
             return
 
-        self.panel.set_visibility(True)
+        if self.launchers is not None:
+            self.launchers.set_visibility(True)
 
         if not self.catalogue.get("models"):
             self.available = False
@@ -602,13 +665,21 @@ class InferencePanel:
             for button in self.buttons.values():
                 button.set_enabled(False)
 
-            self._sync_review()
+            self._sync_launchers()
+
+            # Nothing on screen at rest says this, so the icons do: a
+            # disabled icon with no reason on it reads as a fault.
+            for launcher in (self.analyse_button, self.review_button):
+                if launcher is not None:
+                    with launcher:
+                        ui.tooltip(NO_WORKER)
 
     def _show_answer(self, showing: bool) -> None:
         """
         Show or hide the answer area.
 
-        Hidden while empty, so the strip is one row at rest.
+        Hidden while empty, so an assistant nobody has asked anything of
+        yet is its task row and a line, not an empty box.
 
         Parameters:
             showing (bool): Whether there is something to show.
@@ -638,20 +709,18 @@ class InferencePanel:
         self.running = running
 
         for name, button in self.buttons.items():
-            button.set_enabled(self.available and not running and not self.reviewing)
+            button.set_enabled(self.available and not running)
 
             if running and name == self.current_task:
                 button.props("loading")
             else:
                 button.props(remove="loading")
 
-        self._sync_review()
+        self._sync_launchers()
 
         self.stop_button.set_visibility(running)
 
-        # Nothing to copy or download while a review is up: those act on
-        # the answer, which is not what is on show.
-        has_answer = bool(self.answer) and not running and not self.reviewing
+        has_answer = bool(self.answer) and not running
         self.copy_button.set_visibility(has_answer)
         self.download_button.set_visibility(has_answer)
 
@@ -663,12 +732,12 @@ class InferencePanel:
 
     def set_review_available(self, available: bool) -> None:
         """
-        Say whether the Review pill is worth offering.
+        Say whether the review launcher is worth offering.
 
         Decided by the page, which is what holds the assistant: the hub has
         to have named domains to review against *and* have a worker
-        connected, since a pill that apologises one click later is worse
-        than no pill.
+        connected, since an icon that apologises one click later is worse
+        than no icon.
 
         Parameters:
             available (bool): Whether a review can actually be run.
@@ -679,33 +748,108 @@ class InferencePanel:
 
         self.review_available = available
 
-        self._sync_review()
+        self._sync_launchers()
 
-        # Called from the catalogue handler, which runs before the pills
-        # are drawn -- so the flag is remembered and load() reveals the
-        # strip itself once it knows there is something in the row.
-        if available and self.panel is not None and self.review_button is not None:
-            self.panel.set_visibility(True)
+        # Called from the catalogue handler, which runs before the
+        # launchers are wired up -- so the flag is remembered and load()
+        # reveals them once it knows there is something behind them.
+        if available and self.launchers is not None:
+            self.launchers.set_visibility(True)
 
-    def _sync_review(self) -> None:
+    def _sync_launchers(self) -> None:
         """
-        Show and enable the Review pill on the same terms as the others.
+        Show and enable the two icons on the frame.
 
         Returns:
             None
         """
 
-        if self.review_button is None:
+        if self.review_button is not None:
+            self.review_button.set_visibility(self.review_available)
+            self.review_button.set_enabled(self.available and not self.running)
+
+        if self.analyse_button is not None:
+            self.analyse_button.set_enabled(self.available)
+
+    # ------------------------------------------------------------------
+    # Opening and closing. Both panels are drawn in the same space under
+    # the video, so opening one closes the other.
+    # ------------------------------------------------------------------
+
+    def _set_open(self, which: Optional[str]) -> None:
+        """
+        Show one panel, or neither.
+
+        Parameters:
+            which (Optional[str]): "analyse", "review", or None for
+                closed.
+
+        Returns:
+            None
+        """
+
+        self.open_panel = which
+
+        if self.analyse_slot is not None:
+            self.analyse_slot.set_visibility(which == "analyse")
+
+        if self.review_slot is not None:
+            self.review_slot.set_visibility(which == "review")
+
+        # Closed, the strip must take no room at all: it is a flex item of
+        # the pane, and left to grow it would hold the space it is not
+        # using away from the video.
+        if self.panel is not None:
+            if which is None:
+                self.panel.classes(remove="is-open")
+            else:
+                self.panel.classes(add="is-open")
+
+    def open_analyse(self) -> None:
+        """
+        Open the assistant's own panel.
+
+        Returns:
+            None
+        """
+
+        if self.panel is None:
             return
 
-        self.review_button.set_visibility(self.review_available)
-        self.review_button.set_enabled(
-            self.available and not self.running and not self.reviewing
-        )
+        # The review is drawn in the same space. Ending it properly is the
+        # assistant's own business -- it has a request in flight and a
+        # queue of decisions -- so this only ever opens over a review that
+        # is already finished with; while one is up, the launcher for it is
+        # what is pressed to come back.
+        if self.reviewing:
+            return
+
+        self._set_open("analyse")
+        self._show_answer(bool(self.answer))
+        self._set_running(self.running)
+
+    def close_analyse(self) -> None:
+        """
+        Close the assistant's panel, keeping whatever answer is in it.
+
+        Reopening shows the same answer again: generating it cost a GPU
+        somebody paid for, and closing a panel is not asking for it to be
+        thrown away.
+
+        Returns:
+            None
+        """
+
+        # Folded away, the video has to come back with the panel -- or the
+        # pane is left with neither.
+        if self.expanded:
+            self.toggle_expand()
+
+        self._set_open(None)
 
     async def start_review(self) -> None:
         """
-        Hand the answer area over to the review assistant.
+        Open the review assistant in the same space.
 
         Returns:
             None
@@ -716,23 +860,16 @@ class InferencePanel:
 
         self.reviewing = True
 
-        # One of the two at a time: the review is drawn where the answer
-        # is, and an answer already there is kept rather than thrown away
-        # -- end_review puts it back.
-        self._show_answer(False)
-        self.review_slot.set_visibility(True)
-        self.status.set_text(REVIEW_HINT)
+        self._set_open("review")
         self._set_running(False)
 
         await self.on_review()
 
     def end_review(self) -> None:
         """
-        Take the answer area back once the review is over.
+        Close the review once it is over.
 
-        The assistant empties the slot itself and then calls this, so
-        whatever answer was on show before the review is drawn again as it
-        was.
+        The assistant empties the slot itself and then calls this.
 
         Returns:
             None
@@ -743,9 +880,10 @@ class InferencePanel:
 
         self.reviewing = False
 
-        self.review_slot.set_visibility(False)
-        self._show_answer(bool(self.answer))
-        self.status.set_text(self._finished_line() if self.answer else IDLE_HINT)
+        if self.expanded:
+            self.toggle_expand()
+
+        self._set_open(None)
         self._set_running(False)
 
     def toggle_expand(self) -> None:
@@ -811,6 +949,7 @@ class InferencePanel:
             self.output = ui.markdown("", extras=MARKDOWN_EXTRAS)
 
         self.status.set_text("Waiting for a free worker...")
+        self._set_open("analyse")
         self._show_answer(True)
         self._set_running(True)
 

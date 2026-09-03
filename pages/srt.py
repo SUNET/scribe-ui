@@ -617,8 +617,17 @@ def create() -> None:
                             "editor-settings w-full"
                         )
 
+                        # The two icons that open the assistants ride the
+                        # switch row, held to its right. The icons are drawn
+                        # into this slot much further down, once the panels
+                        # they open exist -- an element's place in the pane
+                        # is where it was created, so the slot is made here.
+                        # A subtitle editor has no assistants and gets no
+                        # slot rather than an empty one.
+                        launcher_slot = None
+
                         with settings_column:
-                            with ui.row().classes("items-center gap-4"):
+                            with ui.row().classes("items-center gap-4 w-full"):
 
                                 def save_follow(event) -> None:
                                     value = bool(event.sender.value)
@@ -820,6 +829,11 @@ def create() -> None:
                                         )
                                         editor.set_flagged_count_element(flagged)
 
+                                if settings.INFERENCE_ENABLED and data_format != "srt":
+                                    launcher_slot = ui.row().classes(
+                                        "inference-launcher-row"
+                                    )
+
                         # Asking a model about what was transcribed --
                         # summary, study notes and the like. Under the video
                         # rather than behind a toolbar button because it is
@@ -905,6 +919,14 @@ def create() -> None:
                             )
                             inference.build()
                             inference.register_cleanup()
+
+                            # The two icons that open it, in their own row
+                            # under the video -- at rest the whole of this
+                            # feature on screen. Drawn after the panels,
+                            # since pressing one opens a panel that has to
+                            # exist by then.
+                            with launcher_slot:
+                                inference.build_launchers()
 
                             # Handed over after the strip is built, which is
                             # what owns both the socket the two of them talk
