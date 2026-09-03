@@ -42,10 +42,12 @@ from utils.inference import (
     transcript_text,
 )
 from utils.inference_panel import (
+    IDLE_HINT,
     JUMP_HINT,
     MARKDOWN_EXTRAS,
     NOT_FOUND,
     NOT_SAVED,
+    REVIEW_HINT,
     InferencePanel,
     is_diagram,
     prepare_answer,
@@ -772,3 +774,210 @@ class TestWhatAnAnswerCost:
             "output_tokens": 25,
             "gpu_seconds": 2.0,
         }
+
+
+class FakeElement:
+    """
+    Stands in for one of the strip's own elements. What is asked of these
+    is what ended up shown, enabled and said -- not how they are drawn.
+    """
+
+    def __init__(self):
+        self.visible = True
+        self.enabled = True
+        self.text = ""
+        self.marks = set()
+
+    def set_visibility(self, visible):
+        self.visible = visible
+
+    def set_enabled(self, enabled):
+        self.enabled = enabled
+
+    def set_text(self, text):
+        self.text = text
+
+    def props(self, *args, **kwargs):
+        return self
+
+    def classes(self, add=None, remove=None):
+        if add:
+            self.marks.update(add.split())
+
+        if remove:
+            self.marks.difference_update(remove.split())
+
+        return self
+
+
+def strip_with_review(on_review=None):
+    """
+    A strip whose elements are stand-ins, with a task pill and the Review
+    pill already in the row.
+    """
+
+    panel = InferencePanel(
+        editor=editor("txt", caption(1, "A line.")),
+        filename="lecture.mp4",
+        on_review=on_review,
+    )
+
+    panel.buttons = {"summary": FakeElement()}
+    panel.review_button = FakeElement()
+    panel.review_slot = FakeElement()
+    panel.body = FakeElement()
+    panel.status = FakeElement()
+    panel.stop_button = FakeElement()
+    panel.copy_button = FakeElement()
+    panel.download_button = FakeElement()
+
+    return panel
+
+
+class TestTheReviewPill:
+    """
+    A review is another thing asked of the same recording, so it is asked
+    for from the same row of pills -- not from the toolbar, and not into a
+    dialog of its own.
+    """
+
+    def test_it_is_a_pill_in_the_same_row_as_the_tasks(self):
+        from pathlib import Path
+
+        source = Path("utils/inference_panel.py").read_text()
+
+        # Drawn inside self.actions, and drawn last: after the tasks the
+        # hub named, since it is not one of them.
+        row = source.index("with self.actions:")
+        pill = source.index('ui.button(\n                    "Review"')
+        loop = source.index('for task in tasks:')
+
+        assert row < loop < pill
+        assert "inference-chip" in source[pill:pill + 400]
+
+    def test_it_is_hidden_until_the_hub_can_review(self):
+        # A hub with no worker connected names its domains all the same,
+        # and a pill that apologises one click later is worse than none.
+        panel = strip_with_review()
+
+        panel._sync_review()
+
+        assert panel.review_button.visible is False
+
+        panel.set_review_available(True)
+
+        assert panel.review_button.visible is True
+
+    def test_it_is_disabled_while_an_answer_is_generating(self):
+        panel = strip_with_review()
+        panel.set_review_available(True)
+
+        panel._set_running(True)
+
+        assert panel.review_button.enabled is False
+
+        panel._set_running(False)
+
+        assert panel.review_button.enabled is True
+
+    def test_a_hub_with_no_tasks_still_draws_the_strip_for_it(self):
+        # The hub's two review tasks carry offered=False, so a deployment
+        # offering nothing else has an empty task list and a Review pill.
+        from pathlib import Path
+
+        source = Path("utils/inference_panel.py").read_text()
+
+        assert "if not tasks and not self.review_available:" in source
+
+
+class TestTheReviewTakesTheAnswersPlace:
+    """
+    One of the two at a time. The review is drawn where an answer is
+    drawn -- which is what lets it be read against the transcription
+    instead of over it -- so the answer area steps aside and comes back
+    afterwards.
+    """
+
+    def review(self, panel):
+        import asyncio
+
+        asyncio.run(panel.start_review())
+
+    def test_the_answer_area_steps_aside_and_comes_back(self):
+        asked = []
+
+        async def open_review():
+            asked.append(True)
+
+        panel = strip_with_review(on_review=open_review)
+        panel.set_review_available(True)
+        panel.answer = "The summary."
+
+        self.review(panel)
+
+        assert asked == [True]
+        assert panel.reviewing is True
+        assert panel.body.visible is False
+        assert panel.review_slot.visible is True
+        assert panel.status.text == REVIEW_HINT
+
+        panel.end_review()
+
+        assert panel.reviewing is False
+        assert panel.review_slot.visible is False
+        # The answer was not thrown away by the review standing in its
+        # place, so it is shown again as it was.
+        assert panel.body.visible is True
+        assert panel.status.text == panel._finished_line()
+
+    def test_an_unused_strip_goes_back_to_its_own_hint(self):
+        async def open_review():
+            return None
+
+        panel = strip_with_review(on_review=open_review)
+        panel.set_review_available(True)
+
+        self.review(panel)
+        panel.end_review()
+
+        assert panel.body.visible is False
+        assert panel.status.text == IDLE_HINT
+
+    def test_the_tasks_cannot_be_asked_for_while_reviewing(self):
+        # Pressing Summary mid-review would draw an answer over the
+        # suggestion being decided on, and throw away the decisions made
+        # so far with it.
+        async def open_review():
+            return None
+
+        panel = strip_with_review(on_review=open_review)
+        panel.set_review_available(True)
+        panel.answer = "The summary."
+
+        self.review(panel)
+
+        assert panel.buttons["summary"].enabled is False
+        assert panel.review_button.enabled is False
+        # Nothing to copy or download either: neither acts on what is on
+        # show.
+        assert panel.copy_button.visible is False
+        assert panel.download_button.visible is False
+
+        panel.end_review()
+
+        assert panel.buttons["summary"].enabled is True
+        assert panel.review_button.enabled is True
+        assert panel.copy_button.visible is True
+
+    def test_the_page_lends_the_assistant_the_strips_slot_and_socket(self):
+        # Neither exists before the strip is built, so the page puts the
+        # two together afterwards -- and the assistant hands the slot back
+        # when the review ends.
+        from pathlib import Path
+
+        page = Path("pages/srt.py").read_text()
+
+        assert "assistant.client = inference.client" in page
+        assert "assistant.container = inference.review_slot" in page
+        assert "assistant.on_close = inference.end_review" in page
+        assert "on_review=assistant.open," in page

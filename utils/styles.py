@@ -959,69 +959,65 @@ theme_styles = """
     }
 
     /* ── Review assistant ───────────────────────────────────────────────
-       One suggestion at a time, in a dialog: a pass through the whole
-       transcription with a beginning and an end, and the only thing the
-       reader is doing while it is open. Wide enough for a sentence of a
-       transcript to be read without wrapping three times, no wider. */
-    .review-dialog {
-        /* Wide enough that a suggestion's own sentence, and the caption it
-           came out of, are read on two or three lines rather than five --
-           the card is a passage of somebody's speech, not a form. Still
-           capped against the window, so a narrow one is not overrun. */
-        width: 46rem;
-        max-width: 92vw;
-        padding: 1rem 1.25rem 0.85rem;
-        display: flex;
-        flex-direction: column;
+       One suggestion at a time, in the Analyse strip's own answer area: a
+       review is another thing asked of the same recording, so it is asked
+       for from the same row of pills and read where an answer is read. It
+       used to be a dialog, which meant a card standing over the very text
+       a suggestion is judged against -- hence the seamless dialog, the
+       drag handle and the clamping that kept it on screen, all of which
+       the strip does away with. */
+    .review-panel {
         gap: 0.5rem;
-        /* The dialog is seamless -- no backdrop, since the transcription
-           under it is what a suggestion is judged against and a dimmed,
-           locked page cannot be read or scrolled. Nothing separates the
-           card from the text behind it, then, so it says where its own
-           edges are. */
-        box-shadow: 0 0.75rem 2.5rem rgba(0, 0, 0, 0.28);
-        border: 1px solid var(--color-border-subtle);
+        /* Fills whatever the video, the timeline and the switches leave,
+           down to the foot of the pane -- the same room the answer area
+           takes, since the two stand in the same place and only one is up
+           at a time. The basis is 0 rather than auto so the height comes
+           from the pane and not from the suggestion being shown: a short
+           card must still reach the bottom, and a long one must not push
+           past it. min-height: 0 so the body inside can scroll rather than
+           growing the panel out of the pane. */
+        flex: 1 1 0%;
+        min-height: 0;
     }
-    /* The header is the handle: the card can be pushed aside to read the
-       passage underneath it. Not the card itself -- it holds the
-       replacement box and the excerpt, and a drag begun on either of those
-       is a text selection the reader meant. */
+    /* Says which of the pills beside Review produced what is in the slot.
+       No longer a drag handle: there is nothing to drag it off. */
     .review-header {
-        cursor: move;
-        user-select: none;
+        gap: 0.4rem;
     }
-    .review-header .q-btn {
-        cursor: pointer;
-    }
-    .review-grip {
-        color: var(--color-text-muted);
+    .review-mark {
+        font-size: 1.05rem;
+        color: var(--color-text-tertiary);
     }
     .review-title {
-        font-size: 1rem;
+        font-size: 0.9rem;
         font-weight: 600;
         color: var(--color-text-primary);
     }
-    /* A fixed height, not a floor. Accept, Dismiss and Skip are pressed
-       dozens of times in a row, and a card that grew with a long
-       explanation would move all three out from under the pointer between
-       one suggestion and the next. A suggestion longer than the box
-       scrolls inside it instead -- but 13rem was short enough that the
-       ordinary case scrolled too: the meta row, the two-line change box,
-       the model's sentence and the caption it came out of come to a good
-       19rem together, and a card that has to be scrolled to be read is a
-       card that is read wrong. The window still wins where it is shorter
-       than that, minus the header, footer and padding around this box, so
-       the dialog can never grow past the screen it is on. */
+    /* Height from the pane, never from what is in it. Accept, Dismiss and
+       Skip are pressed dozens of times in a row, and a box that grew with
+       a long explanation would move all three out from under the pointer
+       between one suggestion and the next. A suggestion longer than the
+       box scrolls inside it instead. The tinted surface is the answer
+       area's own (see .inference-output): the review stands in the same
+       place and should look like it belongs there. */
     .review-body {
         gap: 0.6rem;
-        height: min(19rem, calc(100vh - 12rem));
+        /* Everything the header and the footer leave, so the footer sits
+           at the foot of the pane and the suggestion scrolls between them
+           rather than under them. Basis 0 for the same reason the panel's
+           is: what is on the card must not decide how tall it is. */
+        flex: 1 1 0%;
+        min-height: 7rem;
         overflow-y: auto;
-        flex: 0 0 auto;
+        border-radius: 0.75rem;
+        background: var(--color-bg-surface-alt);
+        padding: 0.55rem 0.85rem;
     }
     .review-footer {
         gap: 0.4rem;
         padding-top: 0.35rem;
         border-top: 1px solid var(--color-border-subtle);
+        flex: 0 0 auto;
     }
     /* Waiting for the hub. It fills the card and sits in the middle of it:
        nothing else is on the card while this is up, and a spinner in the
@@ -1078,9 +1074,15 @@ theme_styles = """
         border-radius: 0.6rem;
         background-color: var(--color-bg-surface-alt);
     }
+    /* Full width, explicitly: the row sits in a NiceGUI column, which
+       sets align-items: flex-start, so without this the row is sized to
+       its own content and the replacement box never gets more than its
+       flex basis -- the suggested text was cut off mid-word with empty
+       card to the right of it. */
     .review-change-row {
         gap: 0.6rem;
         flex-wrap: wrap;
+        width: 100%;
     }
     .review-change-label {
         min-width: 7rem;
@@ -1105,7 +1107,10 @@ theme_styles = """
        in the middle of a sentence. A quiet underline is what says it can be
        typed into; it strengthens on focus. */
     .review-replacement-input {
-        flex: 1 1 12rem;
+        /* Everything the label leaves. A suggestion can be a phrase, not
+           only a word, and it is the one thing on the card the reader
+           types into. */
+        flex: 1 1 auto;
         min-width: 8rem;
     }
     .review-replacement-input .q-field__control,
@@ -1453,6 +1458,15 @@ theme_styles = """
        are the page's own content, not something floating over it, so they
        carry neither a drop shadow nor a rule around them. Just a radius,
        and the splitter's own handle between them. */
+    /* Both panes, the same height, measured in the page rather than
+       guessed at: --editor-height is what is left of the window under
+       whatever chrome is above them (see the script in pages/srt.py). The
+       fallback is the expression this replaces, so a pane is never
+       height-less between the first paint and the first measurement --
+       it just leaves the band of empty page the measurement takes away. */
+    .editor-panes .editor-panel {
+        height: var(--editor-height, calc(90vh - 100px));
+    }
     .editor-panel {
         background-color: var(--color-bg-surface);
         border: none !important;
@@ -2520,8 +2534,10 @@ theme_styles = """
     }
 
     /* ── SRT editor controls under the video ── */
-    /* The switches on one row, what they mark under it -- grouped by what
-       each control affects, without a heading naming each group. */
+    /* One row: the switches and, as a group of its own, the sensitivity
+       selector that used to sit on a second row behind a separator. Still
+       a column, because that row is what show_player() folds away with the
+       video, and because a narrow pane wraps it into more than one. */
     .editor-settings {
         display: flex;
         flex-direction: column;

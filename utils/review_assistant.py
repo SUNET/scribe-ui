@@ -39,7 +39,7 @@ Three things follow from that and should stay:
     the ones queued behind it were written against the transcript as it was.
 
   * Accepting is one undo step and saves nothing. The reader leaves the
-    dialog with unsaved changes, and is told so.
+    review with unsaved changes, and is told so.
 
 The assistant's own sentences are in the language of the recording (the
 hub is told which); every label, button and heading here stays in English,
@@ -89,100 +89,8 @@ DOMAIN_NOTE = (
 )
 REVIEWING = "Looking for possible corrections..."
 NOTHING_FOUND = "No corrections to suggest. The transcription looks sound."
-NOT_SAVED = "Nothing has been saved. Close the assistant and press Save to keep what you accepted."
+NOT_SAVED = "Nothing has been saved. Press Save in the toolbar to keep what you accepted."
 STALE_NOTE = "This text is no longer in the transcription -- it was probably changed by an earlier suggestion."
-
-
-# Moving the card is done in the page. A drag is a pointer moving several
-# times a second, and a round trip per move to shift a card two pixels is
-# not one worth taking -- see ReviewAssistant._make_draggable, which fills
-# in the id of the row that acts as the handle.
-DRAG_SCRIPT = """
-(() => {
-    // The dialog is drawn from the server, so the row this is about may
-    // not be in the page yet when the script arrives. Wait for it rather
-    // than miss it.
-    const wire = (handle, card) => {
-        let offsetX = 0;
-        let offsetY = 0;
-        let startX = 0;
-        let startY = 0;
-        let limits = null;
-
-        const clamp = (value, low, high) =>
-            Math.min(Math.max(value, low), high);
-
-        const move = (event) => {
-            if (!limits) {
-                return;
-            }
-
-            const dx = clamp(event.clientX - startX, limits.minX, limits.maxX);
-            const dy = clamp(event.clientY - startY, limits.minY, limits.maxY);
-
-            card.style.transform =
-                'translate(' + (offsetX + dx) + 'px, ' + (offsetY + dy) + 'px)';
-        };
-
-        const up = (event) => {
-            if (!limits) {
-                return;
-            }
-
-            offsetX += clamp(event.clientX - startX, limits.minX, limits.maxX);
-            offsetY += clamp(event.clientY - startY, limits.minY, limits.maxY);
-            limits = null;
-
-            window.removeEventListener('pointermove', move);
-            window.removeEventListener('pointerup', up);
-        };
-
-        handle.addEventListener('pointerdown', (event) => {
-            // The close button rides the same row.
-            if (event.button !== 0 || event.target.closest('button')) {
-                return;
-            }
-
-            const box = card.getBoundingClientRect();
-
-            startX = event.clientX;
-            startY = event.clientY;
-            limits = {
-                minX: -box.left,
-                maxX: window.innerWidth - box.right,
-                minY: -box.top,
-                maxY: window.innerHeight - box.bottom,
-            };
-
-            event.preventDefault();
-            window.addEventListener('pointermove', move);
-            window.addEventListener('pointerup', up);
-        });
-    };
-
-    const attach = (tries) => {
-        const handle = document.getElementById('c%d');
-        const card = handle && handle.closest('.review-dialog');
-
-        if (!card) {
-            if (tries > 0) {
-                requestAnimationFrame(() => attach(tries - 1));
-            }
-
-            return;
-        }
-
-        if (card.dataset.reviewDrag) {
-            return;
-        }
-
-        card.dataset.reviewDrag = '1';
-        wire(handle, card);
-    };
-
-    attach(60);
-})()
-"""
 
 
 @dataclass
@@ -515,12 +423,17 @@ def read_domain_code(answer: str, codes: list[str]) -> Optional[str]:
 
 class ReviewAssistant:
     """
-    The dialog: work out the domain, let the reader confirm it, then go
-    through the suggestions one at a time.
+    Work out the domain, let the reader confirm it, then go through the
+    suggestions one at a time.
 
-    A dialog rather than a strip in the pane, unlike Analyse: this is a
-    pass through the whole transcription with a beginning and an end, and
-    it is the only thing the reader is doing while it is open.
+    It is drawn in the Analyse strip's own answer area rather than in a
+    dialog of its own: a review is another thing to ask of the same
+    recording, so it is asked for from the same row of pills, and it is
+    read where an answer is read. That is also what settles the problem the
+    dialog had -- a card over the transcription is a card over the very
+    text a suggestion is judged against, which is why it had to be
+    seamless, and draggable, and kept inside the window. In the strip
+    nothing covers the text, and the card cannot be in the way of it.
 
     Parameters:
         editor (SRTEditor): The open editor. Its captions are what is
@@ -531,6 +444,11 @@ class ReviewAssistant:
             with the Analyse strip -- one socket per open editor.
         on_jump (Optional[Callable]): Called with a caption to move the
             transcription to it, so a suggestion can be seen in place.
+        container: The slot to draw into -- the strip's own review slot.
+            Assigned after the strip is built, alongside the client, since
+            neither exists until then.
+        on_close (Optional[Callable]): Called when the review ends, so the
+            strip can have its answer area back.
     """
 
     def __init__(
@@ -539,16 +457,19 @@ class ReviewAssistant:
         language: str = "",
         client=None,
         on_jump: Optional[Callable] = None,
+        container=None,
+        on_close: Optional[Callable] = None,
     ) -> None:
         self.editor = editor
         self.language = language
         self.client = client
         self.on_jump = on_jump
+        self.container = container
+        self.on_close = on_close
 
         self.domains: list[dict] = []
         self.domain: Optional[str] = None
 
-        self.dialog = None
         self.body = None
         self.footer = None
         self.continue_button = None
@@ -590,10 +511,6 @@ class ReviewAssistant:
         self.last_changed = 0
         self.undo_button = None
 
-        # The card's own drag handle, wired up in the page once the dialog
-        # is open (see _make_draggable).
-        self.header = None
-
         # Accept, kept as a reference for the same reason the counter is:
         # the footer is drawn once for the whole review, and the reader can
         # edit the replacement on the card -- emptying the box, or typing
@@ -623,10 +540,16 @@ class ReviewAssistant:
         Whether the assistant can be offered at all.
 
         Returns:
-            bool: True when the hub named some domains to review against.
+            bool: True when the hub named some domains to review against,
+                and the strip has given the assistant a socket and
+                somewhere to draw.
         """
 
-        return bool(self.domains) and self.client is not None
+        return (
+            bool(self.domains)
+            and self.client is not None
+            and self.container is not None
+        )
 
     def domain_label(self, code: Optional[str]) -> str:
         """
@@ -651,7 +574,7 @@ class ReviewAssistant:
 
     async def open(self) -> None:
         """
-        Start a review: build the dialog and ask what the recording is about.
+        Start a review: draw the panel and ask what the recording is about.
 
         Returns:
             None
@@ -673,72 +596,52 @@ class ReviewAssistant:
         self.outcome = Outcome()
 
         self._build()
-        self.dialog.open()
-        self._make_draggable()
 
         await self._ask_domain()
 
     def _build(self) -> None:
         """
-        Draw the dialog, empty.
+        Draw the panel, empty, in the strip's own review slot.
 
         Returns:
             None
         """
 
-        # seamless: no backdrop, and the page behind stays live. A
-        # suggestion is judged against the transcription it came out of,
-        # and the card sits over that very text -- the excerpt on the card
-        # is a sentence, while what settles a mishearing is often the
-        # paragraph around it. Dimmed and locked, the reader could not read
-        # it, scroll it, or play the recording to hear the word again
-        # without closing the review and losing their place in it.
-        with ui.dialog().props("persistent seamless") as dialog, ui.card().classes(
-            "review-dialog"
-        ):
-            self.dialog = dialog
+        self.container.clear()
 
-            # The header is the handle. Not the card itself: the card holds
-            # the replacement box and the excerpt, and a drag begun on
-            # either of those is a text selection the reader meant.
-            with ui.row().classes("review-header items-center w-full") as header:
-                self.header = header
-
-                ui.icon("drag_indicator").classes("review-grip")
-                ui.label("Review Assistant").classes("review-title")
-                ui.tooltip("Drag to move the assistant off the text.")
-                ui.space()
-                ui.button(icon="close", on_click=self.close, color=None).props(
-                    "flat dense round"
-                )
+        with self.container:
+            # A heading, because the slot it is drawn in is where an
+            # answer to one of the pills beside Review normally appears --
+            # so it says which of them produced what is in it.
+            with ui.row().classes("review-header items-center w-full"):
+                ui.icon("rate_review").classes("review-mark")
+                ui.label("Review assistant").classes("review-title")
 
             self.body = ui.column().classes("review-body w-full")
             self.footer = ui.row().classes("review-footer items-center w-full")
 
-    def _make_draggable(self) -> None:
+    def _open(self) -> bool:
         """
-        Let the card be pushed aside by its header.
+        Whether there is still a review on the page to draw into.
 
-        Done in the page rather than through the server: a drag is a
-        pointer moving several times a second, and a round trip per move to
-        shift a card two pixels is not one worth taking. The listeners live
-        on the window, so a fast drag that outruns the header keeps working,
-        and the card is kept inside the window -- one dragged off the bottom
-        of the screen could not be dragged back, since the handle went with
-        it.
+        The hub can answer after the review has been closed -- a cancel
+        races whatever is already on the wire -- and close() empties the
+        slot on the way out. Nothing that draws may assume the panel it was
+        called about is still there.
 
         Returns:
-            None
+            bool: True while the panel is built and on the page.
         """
 
-        if self.header is None:
-            return
-
-        ui.run_javascript(DRAG_SCRIPT % self.header.id)
+        return self.body is not None and self.footer is not None
 
     async def close(self) -> None:
         """
-        Shut the dialog, stopping anything still generating.
+        End the review, stopping anything still generating.
+
+        The slot is emptied and handed back: the strip's answer area lives
+        in the same place, and a finished review left standing there would
+        keep it hidden.
 
         Returns:
             None
@@ -748,8 +651,16 @@ class ReviewAssistant:
             await self.client.cancel(self.request_id)
             self.request_id = None
 
-        if self.dialog is not None:
-            self.dialog.close()
+        if self.container is not None:
+            self.container.clear()
+
+        self.body = None
+        self.footer = None
+        self.deciding = False
+        self.accept_button = None
+
+        if self.on_close is not None:
+            self.on_close()
 
     # ------------------------------------------------------------------
     # Step one: what is this recording about
@@ -892,6 +803,9 @@ class ReviewAssistant:
         Returns:
             None
         """
+
+        if not self._open():
+            return
 
         self.body.clear()
         self.footer.clear()
@@ -1059,6 +973,9 @@ class ReviewAssistant:
             None
         """
 
+        if not self._open():
+            return
+
         suggestion = self._current()
 
         if suggestion is None:
@@ -1128,7 +1045,8 @@ class ReviewAssistant:
         # and Skip are pressed dozens of times in a row, and a button that
         # is rebuilt -- or that moves because the card above it grew -- is
         # a button the reader has to find again every time. See
-        # _review_footer and .review-body's own fixed height.
+        # _review_footer, and .review-body, which takes its height from the
+        # pane rather than from what is in it for the same reason.
         if not self.deciding:
             self._review_footer()
 
@@ -1227,7 +1145,7 @@ class ReviewAssistant:
         self.deciding = True
 
         # color=None on every button here, and everywhere else in this
-        # dialog. NiceGUI colours a button "primary" unless told otherwise,
+        # panel. NiceGUI colours a button "primary" unless told otherwise,
         # which puts Quasar's own text-primary class on it -- and that
         # class carries !important, so a stylesheet rule of ours is not a
         # reliable way to take it off again. Asking for no colour at all
@@ -1453,6 +1371,9 @@ class ReviewAssistant:
             entry.state == "pending" for entry in self.queue
         )
 
+        if not self._open():
+            return
+
         self.body.clear()
         self.footer.clear()
         self.deciding = False
@@ -1526,6 +1447,9 @@ class ReviewAssistant:
             None
         """
 
+        if not self._open():
+            return
+
         self.body.clear()
         self.footer.clear()
         self.deciding = False
@@ -1563,6 +1487,9 @@ class ReviewAssistant:
             None
         """
 
+        if not self._open():
+            return
+
         self.body.clear()
         self.footer.clear()
         self.deciding = False
@@ -1596,15 +1523,16 @@ class ReviewAssistant:
 
     def _on_the_page(self):
         """
-        Enter the dialog's own slot.
+        Enter the review's own slot.
 
         Everything the hub sends back arrives on a background task, which
         has no slot stack -- NiceGUI cannot tell which client an element
-        belongs to and raises rather than guessing. The dialog's own slot
-        answers both questions, since the client is read from its parent.
+        belongs to and raises rather than guessing. The slot the review is
+        drawn in answers both questions, since the client is read from its
+        parent.
 
         Returns:
-            The dialog, as a context manager.
+            The slot, as a context manager.
         """
 
-        return self.dialog if self.dialog is not None else nullcontext()
+        return self.container if self.container is not None else nullcontext()

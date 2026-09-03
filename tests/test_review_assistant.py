@@ -30,7 +30,6 @@ import pytest
 from utils.caption import SRTCaption
 from utils.review_assistant import (
     CONTEXT_CHARS,
-    DRAG_SCRIPT,
     MAX_SUGGESTIONS,
     ReviewAssistant,
     Suggestion,
@@ -292,7 +291,9 @@ class TestSteppingThrough:
         assert assistant.outcome.stale == 1
 
     def test_it_is_not_offered_without_a_domain_list(self, editor):
-        assistant = ReviewAssistant(editor, language="Swedish", client=object())
+        assistant = ReviewAssistant(
+            editor, language="Swedish", client=object(), container=object()
+        )
 
         assert assistant.available is False
 
@@ -315,8 +316,31 @@ class TestSteppingThrough:
             == "Medical and health sciences — Clinical medicine"
         )
 
+    def test_it_is_not_offered_without_somewhere_to_draw(self, editor):
+        # The strip owns the slot the review is drawn in and hands it over
+        # once it is built. Until then there is nothing to open into.
+        assistant = ReviewAssistant(editor, language="Swedish", client=object())
+        assistant.set_catalogue(
+            {
+                "domains": [
+                    {
+                        "code": "3.2",
+                        "label": "Clinical medicine",
+                        "group": "3",
+                        "group_label": "Medical and health sciences",
+                    }
+                ]
+            }
+        )
 
-class TestTheDialogsOwnShape:
+        assert assistant.available is False
+
+        assistant.container = object()
+
+        assert assistant.available is True
+
+
+class TestTheCardsOwnShape:
     """
     Accept, Dismiss and Skip are pressed dozens of times in a row. Where
     they are, and what colour they are, is part of whether the review can
@@ -338,15 +362,6 @@ class TestTheDialogsOwnShape:
                 return match.group(2)
 
         raise AssertionError(f"no rule for {selector}")
-
-    def test_the_card_does_not_grow_with_the_suggestion(self):
-        # A card that resized with a long explanation would move all three
-        # buttons out from under the pointer between one suggestion and the
-        # next. A long one scrolls inside the box instead.
-        body = self.rule(".review-body")
-
-        assert "height: min(19rem, calc(100vh - 12rem))" in body
-        assert "overflow-y: auto" in body
 
     def test_the_spinner_sits_in_the_middle_of_the_card(self):
         # Nothing else is on the card while it is up, and a spinner in the
@@ -517,10 +532,12 @@ class TestArrivingWhileStillGenerating:
         assert assistant._progress_text() == "Last suggestion"
 
 
-class TestGettingOutOfTheWay:
+class TestWhereTheReviewIsDrawn:
     """
-    A suggestion is judged against the transcription it came out of, and the
-    card sits over that very text.
+    A suggestion is judged against the transcription it came out of, so
+    nothing may stand over that text. The review is drawn in the Analyse
+    strip's own answer area instead of in a dialog, which is what settles
+    it: there is no card over the transcription to get out of the way of.
     """
 
     def css(self) -> str:
@@ -539,38 +556,66 @@ class TestGettingOutOfTheWay:
 
         raise AssertionError(f"no rule for {selector}")
 
-    def test_the_page_behind_stays_readable(self):
-        # seamless: no backdrop and no scroll lock, so the reader can read
-        # the paragraph around the word, scroll, and play the recording
-        # again without closing the review and losing their place in it.
+    def test_nothing_is_drawn_over_the_transcription(self):
+        # No dialog at all: the review is drawn into the slot the strip
+        # lends it, which is beside the transcription rather than on top
+        # of it. The reader can read the paragraph around the word, scroll
+        # it, and play the recording again without leaving the review.
         source = open("utils/review_assistant.py").read()
 
-        assert 'ui.dialog().props("persistent seamless")' in source
+        assert "ui.dialog" not in source
+        assert "self.container.clear()" in source
 
-    def test_the_header_is_the_handle(self):
-        header = self.rule(".review-header")
+    def test_the_review_takes_its_height_from_the_pane(self):
+        # Not from what is in it. Accept, Dismiss and Skip are pressed
+        # dozens of times in a row, and a box that grew with a long
+        # explanation would move all three out from under the pointer.
+        body = self.rule(".review-body")
 
-        assert "cursor: move" in header
+        assert "overflow-y: auto" in body
+        assert "height: min(" not in body
 
-        # Not the card itself: a drag begun on the excerpt or in the
-        # replacement box is a text selection the reader meant.
-        assert "cursor: move" not in self.rule(".review-dialog")
+        # Basis 0, not auto: the height comes from the pane, so a short
+        # suggestion still reaches the bottom of it and a long one scrolls
+        # between the header and the footer rather than under them.
+        assert "flex: 1 1 0%" in body
 
-    def test_the_close_button_is_not_a_handle(self):
-        assert "cursor: pointer" in self.rule(".review-header .q-btn")
+        panel = self.rule(".review-panel")
 
-    def test_the_card_cannot_be_dragged_off_the_screen(self):
-        # One dragged past the bottom could not be dragged back, since the
-        # handle went with it.
-        assert "window.innerHeight - box.bottom" in DRAG_SCRIPT
-        assert "window.innerWidth - box.right" in DRAG_SCRIPT
-        assert "clamp" in DRAG_SCRIPT
+        # The panel fills the pane downwards, and is allowed to shrink --
+        # without which the body grows the whole thing past the foot of
+        # the pane instead of scrolling inside it.
+        assert "flex: 1 1 0%" in panel
+        assert "min-height: 0" in panel
 
-    def test_the_drag_is_not_a_round_trip_per_pixel(self):
-        # The listeners are the page's own, on the window so a fast drag
-        # that outruns the header keeps working.
-        assert "window.addEventListener('pointermove'" in DRAG_SCRIPT
-        assert "handle.addEventListener('pointerdown'" in DRAG_SCRIPT
+    def test_an_answer_arriving_after_it_closes_draws_nothing(self, editor):
+        # Closing cancels the request, but a cancel races whatever is
+        # already on the wire -- and closing empties the slot the review
+        # was drawn in. A late batch must not try to draw into it.
+        assistant = ReviewAssistant(editor, language="Swedish")
+        assistant.streaming = True
+        assistant._on_the_page = lambda: __import__("contextlib").nullcontext()
+
+        assistant._collect('{"find": "dos", "replace": "dose"}\n')
+
+        assert [entry.find for entry in assistant.queue] == ["dos"]
+        assert assistant._open() is False
+
+    def test_the_suggested_text_is_not_cut_off(self):
+        # The row sits in a NiceGUI column, which sets align-items:
+        # flex-start -- so without a width of its own it is sized to its
+        # content and the box the reader types into gets only its flex
+        # basis, cutting a phrase off mid-word with empty card beside it.
+        assert "width: 100%" in self.rule(".review-change-row")
+        assert "flex: 1 1 auto" in self.rule(".review-replacement-input")
+
+    def test_it_stands_where_an_answer_stands(self):
+        # The same tinted surface the answer area has: the review is in
+        # its place, and should look as though it belongs there.
+        assert (
+            "background: var(--color-bg-surface-alt)"
+            in self.rule(".review-body")
+        )
 
 
 class TestRewordingASuggestion:

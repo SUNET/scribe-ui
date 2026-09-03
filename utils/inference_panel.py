@@ -71,6 +71,10 @@ JUMP_HINT = "Click a line to go to where it was said."
 NOT_FOUND = "That line could not be placed in the transcription."
 IDLE_HINT = "Ask about this transcription. Answers are not saved."
 NO_WORKER = "No model is available right now. Try again in a moment."
+# While the review is up. It is drawn in the answer area, so the line above
+# it has to say what is going on there instead of offering the answer's own
+# note about not being saved -- the review says that itself, at the end.
+REVIEW_HINT = "Going through the transcription. Nothing is changed unless you accept it."
 
 # An icon per task, so the row reads at a glance rather than as four
 # similar words. Anything the hub offers that is not listed here still gets
@@ -305,6 +309,7 @@ class InferencePanel:
         on_expand=None,
         on_jump=None,
         on_catalogue=None,
+        on_review=None,
     ) -> None:
         self.editor = editor
         self.filename = filename
@@ -337,6 +342,24 @@ class InferencePanel:
         # domain list rides along in it -- so it is handed on rather than
         # fetched a second time.
         self.on_catalogue = on_catalogue
+
+        # Called when the Review pill is pressed. The review assistant is
+        # another thing to ask of the same recording, so it is asked for
+        # from this row rather than from the toolbar, and it is drawn in
+        # this strip's own answer area rather than in a dialog over the
+        # transcription -- see utils/review_assistant.py. The strip does
+        # not own it: it lends it the slot and its socket, and the page
+        # puts the two together.
+        self.on_review = on_review
+        self.review_button = None
+        self.review_slot = None
+        self.review_available = False
+        self.reviewing = False
+
+        # Whether a request of the strip's own is in flight, remembered so
+        # the Review pill can be enabled on the same terms as the others
+        # without _set_running having to reach it separately.
+        self.running = False
 
         self.client = InferenceClient()
         self.catalogue: dict = {}
@@ -476,6 +499,14 @@ class InferencePanel:
                 with self.parts:
                     self.output = ui.markdown("", extras=MARKDOWN_EXTRAS)
 
+            # Where the review assistant draws itself: the same place in
+            # the strip an answer appears, since a review is the same kind
+            # of thing asked of the same recording -- and one of the two is
+            # up at a time, so they can share the room. Empty and hidden
+            # until the Review pill is pressed.
+            self.review_slot = ui.column().classes("review-panel w-full")
+            self.review_slot.set_visibility(False)
+
         self._set_running(False)
         self._show_answer(False)
 
@@ -512,7 +543,7 @@ class InferencePanel:
         # no worker connected is a different case -- the buttons are drawn
         # and disabled, with the reason on the line under them, because a
         # feature that silently vanishes reads as a fault in the page.
-        if not self.catalogue.get("enabled") or not tasks:
+        if not self.catalogue.get("enabled"):
             return
 
         with self.actions:
@@ -534,6 +565,34 @@ class InferencePanel:
 
                 self.buttons[name] = button
 
+            # Last in the row, after the tasks the hub named. Not one of
+            # them: the hub's two review tasks are asked for in the
+            # assistant's own order (classify, confirm, then review), so
+            # they carry offered=False and never appear as pills of their
+            # own.
+            self.review_button = (
+                ui.button(
+                    "Review",
+                    icon="rate_review",
+                    on_click=self.start_review,
+                )
+                .props("flat dense no-caps")
+                .classes("inference-chip")
+            )
+
+            with self.review_button:
+                ui.tooltip(
+                    "Go through the transcription for likely mishearings, "
+                    "one suggestion at a time."
+                )
+
+        self._sync_review()
+
+        # A hub with no tasks can still have domains to review against, so
+        # the strip is worth drawing for the Review pill alone.
+        if not tasks and not self.review_available:
+            return
+
         self.panel.set_visibility(True)
 
         if not self.catalogue.get("models"):
@@ -542,6 +601,8 @@ class InferencePanel:
 
             for button in self.buttons.values():
                 button.set_enabled(False)
+
+            self._sync_review()
 
     def _show_answer(self, showing: bool) -> None:
         """
@@ -574,17 +635,23 @@ class InferencePanel:
             None
         """
 
+        self.running = running
+
         for name, button in self.buttons.items():
-            button.set_enabled(self.available and not running)
+            button.set_enabled(self.available and not running and not self.reviewing)
 
             if running and name == self.current_task:
                 button.props("loading")
             else:
                 button.props(remove="loading")
 
+        self._sync_review()
+
         self.stop_button.set_visibility(running)
 
-        has_answer = bool(self.answer) and not running
+        # Nothing to copy or download while a review is up: those act on
+        # the answer, which is not what is on show.
+        has_answer = bool(self.answer) and not running and not self.reviewing
         self.copy_button.set_visibility(has_answer)
         self.download_button.set_visibility(has_answer)
 
@@ -593,6 +660,93 @@ class InferencePanel:
                 self.body.classes(add="is-generating")
             else:
                 self.body.classes(remove="is-generating")
+
+    def set_review_available(self, available: bool) -> None:
+        """
+        Say whether the Review pill is worth offering.
+
+        Decided by the page, which is what holds the assistant: the hub has
+        to have named domains to review against *and* have a worker
+        connected, since a pill that apologises one click later is worse
+        than no pill.
+
+        Parameters:
+            available (bool): Whether a review can actually be run.
+
+        Returns:
+            None
+        """
+
+        self.review_available = available
+
+        self._sync_review()
+
+        # Called from the catalogue handler, which runs before the pills
+        # are drawn -- so the flag is remembered and load() reveals the
+        # strip itself once it knows there is something in the row.
+        if available and self.panel is not None and self.review_button is not None:
+            self.panel.set_visibility(True)
+
+    def _sync_review(self) -> None:
+        """
+        Show and enable the Review pill on the same terms as the others.
+
+        Returns:
+            None
+        """
+
+        if self.review_button is None:
+            return
+
+        self.review_button.set_visibility(self.review_available)
+        self.review_button.set_enabled(
+            self.available and not self.running and not self.reviewing
+        )
+
+    async def start_review(self) -> None:
+        """
+        Hand the answer area over to the review assistant.
+
+        Returns:
+            None
+        """
+
+        if self.on_review is None or self.reviewing:
+            return
+
+        self.reviewing = True
+
+        # One of the two at a time: the review is drawn where the answer
+        # is, and an answer already there is kept rather than thrown away
+        # -- end_review puts it back.
+        self._show_answer(False)
+        self.review_slot.set_visibility(True)
+        self.status.set_text(REVIEW_HINT)
+        self._set_running(False)
+
+        await self.on_review()
+
+    def end_review(self) -> None:
+        """
+        Take the answer area back once the review is over.
+
+        The assistant empties the slot itself and then calls this, so
+        whatever answer was on show before the review is drawn again as it
+        was.
+
+        Returns:
+            None
+        """
+
+        if not self.reviewing:
+            return
+
+        self.reviewing = False
+
+        self.review_slot.set_visibility(False)
+        self._show_answer(bool(self.answer))
+        self.status.set_text(self._finished_line() if self.answer else IDLE_HINT)
+        self._set_running(False)
 
     def toggle_expand(self) -> None:
         """

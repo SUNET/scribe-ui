@@ -328,23 +328,6 @@ def create() -> None:
                         "editor-btn editor-toolbar-btn"
                     ).on("click", info_dialog.open)
 
-                    # Going through the transcription looking for likely
-                    # mishearings, one suggestion at a time -- see
-                    # utils/review_assistant.py. Drawn hidden and revealed
-                    # only once the hub has said it can do it: a button
-                    # that explains it does not work is worse than no
-                    # button. Its handler is attached further down, where
-                    # the assistant itself is built -- it needs the
-                    # transcript view and the hub connection, and neither
-                    # exists yet up here.
-                    review_button = (
-                        ui.button("Review assistant", icon="rate_review")
-                        .props("flat")
-                        .classes("editor-btn editor-toolbar-btn")
-                    )
-                    review_button.set_visibility(False)
-
-
             with ui.button("Close editor", icon="close").props(
                 "flat"
             ).classes("editor-btn editor-toolbar-btn") as close_button:
@@ -355,10 +338,96 @@ def create() -> None:
         # for a length guideline and a per-caption delete action.
         transcript = TranscriptEditor(editor)
 
-        with ui.splitter(value=60).classes("w-full h-full") as splitter:
+        # How tall the two panes are, measured rather than guessed. They
+        # used to be calc(90vh - 100px), which matches no actual piece of
+        # chrome -- a tenth of the window plus a hundred pixels -- and so
+        # left a band of empty page under both of them, more of it the
+        # taller the window. What decides it is where the panes begin: the
+        # rail, the top bar and however many rows the toolbar has wrapped
+        # into on this window. That is a number only the browser has, so
+        # the page measures it and puts it in --editor-height, which both
+        # cards read (see .editor-panes .editor-panel). Remeasured on
+        # resize and whenever anything above them changes size, since the
+        # toolbar wraps.
+        #
+        # The old expression stays as the fallback in the stylesheet, so a
+        # pane is never height-less before the first measurement.
+        ui.add_head_html(
+            """
+            <script>
+            (function () {
+              // A little air under the panes, so they do not sit flush
+              // against the bottom of the window.
+              const FOOT = 12;
+              // Below this a pane is not worth drawing anyway, and a
+              // window this short means something else has gone wrong.
+              const FLOOR = 240;
+
+              function fit() {
+                const panes = document.querySelector(".editor-panes");
+
+                if (!panes) return false;
+
+                // Document-relative, not viewport-relative: the two agree
+                // only while the page is not scrolled, and the very point
+                // of this is that it should not be.
+                const top =
+                  panes.getBoundingClientRect().top + window.scrollY;
+                const height = Math.max(
+                  FLOOR, window.innerHeight - top - FOOT
+                );
+
+                panes.style.setProperty("--editor-height", height + "px");
+
+                return true;
+              }
+
+              function wire(tries) {
+                if (!fit()) {
+                  if (tries > 0) {
+                    requestAnimationFrame(() => wire(tries - 1));
+                  }
+
+                  return;
+                }
+
+                window.addEventListener("resize", fit);
+
+                // The toolbar above the panes wraps on a narrow window,
+                // which moves where they start without the window itself
+                // changing size.
+                if (window.ResizeObserver) {
+                  const watch = new ResizeObserver(fit);
+                  const content = document.querySelector(".nicegui-content");
+
+                  if (content) watch.observe(content);
+                }
+              }
+
+              wire(120);
+            })();
+            </script>
+            """
+        )
+
+        with ui.splitter(value=60).classes("editor-panes w-full h-full") as splitter:
             with splitter.before:
-                with ui.card().classes("editor-panel w-full h-full"):
-                    with ui.scroll_area().style("height: calc(90vh - 100px);"):
+                # The height belongs to the card, not to the scroll area
+                # inside it -- the two panes are what sit side by side, and
+                # a NiceGUI card has a padding of its own, so giving the
+                # inner element the height made this card that padding
+                # taller than the one across the splitter and left the two
+                # ending at different points down the page. h-full is not
+                # what does it: a splitter panel is sized by its content,
+                # so a percentage inside one resolves to auto (see the same
+                # note on the other side).
+                with ui.card().classes("editor-panel w-full"):
+                    # Everything the card's padding leaves. height: auto
+                    # takes off NiceGUI's own 16rem, and min-height: 0 is
+                    # what lets it scroll rather than grow the card.
+                    with ui.scroll_area().classes("w-full").style(
+                        "flex: 1 1 0%; height: auto; min-height: 0;"
+                    ):
                         if data_format == "srt":
                             editor.parse_srt(data["result"])
                         else:
@@ -372,16 +441,16 @@ def create() -> None:
                         transcript.body.set_show_edits(editor.show_my_edits)
 
                 with splitter.after:
-                    # The same height the transcript's own scroll area is
-                    # given on the other side of the splitter. h-full alone
-                    # measures nothing here -- the splitter panel is sized by
-                    # its content, so a percentage of it resolves to auto and
-                    # the pane ends wherever the switches happen to stop.
-                    # With a definite height the Analyse strip at the foot
-                    # can take what the video and the controls leave.
-                    with ui.card().classes("editor-panel w-full h-full").style(
-                        "height: calc(90vh - 100px);"
-                    ):
+                    # The same height the transcript's card is given on the
+                    # other side of the splitter, so the two end level --
+                    # both take it from --editor-height (see above).
+                    # h-full alone measures nothing here: a splitter panel
+                    # is sized by its content, so a percentage of it
+                    # resolves to auto and the pane ends wherever the
+                    # switches happen to stop. With a definite height the
+                    # Analyse strip at the foot can take what the video and
+                    # the controls leave.
+                    with ui.card().classes("editor-panel w-full"):
                         # Not h-full: the frame takes the height the picture
                         # needs, so what is left of the pane goes to the
                         # Analyse strip at the foot of it.
@@ -532,11 +601,18 @@ def create() -> None:
                         # a preview of what a viewer sees, not tied to it.
                         video.on("timeupdate", transcript.follow_video)
 
-                        # The controls under the video are grouped by what
-                        # each one affects -- following the recording, and
-                        # what the editor marks in the text -- rather than
-                        # left as one undifferentiated row of switches with
-                        # the sensitivity selector orphaned below them.
+                        # The controls under the video, on one row. The
+                        # sensitivity selector was on a second row of its
+                        # own behind a separator, on the reasoning that it
+                        # is a different kind of control from a switch;
+                        # what it actually did was put two of the four
+                        # things that mark the text ("My edits" and the
+                        # flagged words) in two different places, and cost
+                        # a row of a pane the answer area is trying to grow
+                        # into. It rides the same row now, as a group of its
+                        # own (label, selector, count, on their own tighter
+                        # gap) so that a narrow pane wraps it as one piece
+                        # rather than splitting the label off its selector.
                         settings_column = ui.column().classes(
                             "editor-settings w-full"
                         )
@@ -640,110 +716,109 @@ def create() -> None:
                                             "changed"
                                         )
 
-                            # One control rather than a switch plus a level:
-                            # "off" is just the lowest setting of the same
-                            # thing, and splitting them meant two places to
-                            # look to find out whether anything was being
-                            # flagged at all. Only offered when the result
-                            # carries confidence scores; older jobs have none
-                            # to show.
-                            if editor.has_confidence:
-                                ui.separator().classes("my-1")
+                                # One control rather than a switch plus a
+                                # level: "off" is just the lowest setting of
+                                # the same thing, and splitting them meant
+                                # two places to look to find out whether
+                                # anything was being flagged at all. Only
+                                # offered when the result carries confidence
+                                # scores; older jobs have none to show.
+                                if editor.has_confidence:
+                                    with ui.row().classes("items-center gap-2"):
+                                        ui.label("Uncertain words:").classes(
+                                            "text-sm text-theme-secondary"
+                                        )
 
-                                with ui.row().classes("items-center gap-2"):
-                                    ui.label("Uncertain words:").classes(
-                                        "text-sm text-theme-secondary"
-                                    )
+                                        def paint_sensitivity(choice) -> None:
+                                            """
+                                            The review violet belongs to the
+                                            levels, not to "Off" -- one
+                                            toggle-color paints whichever
+                                            segment is selected, which made the
+                                            loudest thing in the panel the
+                                            setting that marks nothing at all.
+                                            """
 
-                                    def paint_sensitivity(choice) -> None:
-                                        """
-                                        The review violet belongs to the
-                                        levels, not to "Off" -- one
-                                        toggle-color paints whichever
-                                        segment is selected, which made the
-                                        loudest thing in the panel the
-                                        setting that marks nothing at all.
-                                        """
+                                            off = choice == "off"
 
-                                        off = choice == "off"
-
-                                        sensitivity.props(
-                                            remove=(
+                                            sensitivity.props(
+                                                remove=(
+                                                    "toggle-color=toggle-off "
+                                                    "toggle-text-color=toggle-off-fg"
+                                                    if not off
+                                                    else "toggle-color=review-accent "
+                                                    "toggle-text-color=review-accent-fg"
+                                                )
+                                            )
+                                            sensitivity.props(
                                                 "toggle-color=toggle-off "
                                                 "toggle-text-color=toggle-off-fg"
-                                                if not off
+                                                if off
                                                 else "toggle-color=review-accent "
                                                 "toggle-text-color=review-accent-fg"
                                             )
-                                        )
-                                        sensitivity.props(
-                                            "toggle-color=toggle-off "
-                                            "toggle-text-color=toggle-off-fg"
-                                            if off
-                                            else "toggle-color=review-accent "
-                                            "toggle-text-color=review-accent-fg"
-                                        )
 
-                                    def save_sensitivity(event) -> None:
-                                        choice = event.sender.value
+                                        def save_sensitivity(event) -> None:
+                                            choice = event.sender.value
 
-                                        paint_sensitivity(choice)
+                                            paint_sensitivity(choice)
 
-                                        # "off" is not one of the editor's own
-                                        # sensitivities -- it is the marking
-                                        # turned off, with whatever level was
-                                        # last chosen left untouched underneath
-                                        # so that coming back lands where the
-                                        # reader left it.
-                                        editor.set_show_uncertain_words(
-                                            choice != "off"
-                                        )
-                                        app.storage.user[REVIEW_SHOW_KEY] = (
-                                            choice != "off"
-                                        )
+                                            # "off" is not one of the
+                                            # editor's own sensitivities --
+                                            # it is the marking turned off,
+                                            # with whatever level was last
+                                            # chosen left untouched
+                                            # underneath, so coming back
+                                            # lands where the reader left it.
+                                            editor.set_show_uncertain_words(
+                                                choice != "off"
+                                            )
+                                            app.storage.user[REVIEW_SHOW_KEY] = (
+                                                choice != "off"
+                                            )
 
-                                        if choice == "off":
-                                            return
+                                            if choice == "off":
+                                                return
 
-                                        editor.set_review_sensitivity(choice)
-                                        # Persist what the editor accepted, so
-                                        # an unrecognised value cannot be
-                                        # stored.
-                                        app.storage.user[REVIEW_SENSITIVITY_KEY] = (
-                                            editor.review_sensitivity
-                                        )
+                                            editor.set_review_sensitivity(choice)
+                                            # Persist what the editor
+                                            # accepted, so an unrecognised
+                                            # value cannot be stored.
+                                            app.storage.user[REVIEW_SENSITIVITY_KEY] = (
+                                                editor.review_sensitivity
+                                            )
 
-                                    sensitivity = ui.toggle(
-                                        {
-                                            "off": "Off",
-                                            "low": "Low",
-                                            "medium": "Medium",
-                                            "high": "High",
-                                        },
-                                        value=(
+                                        sensitivity = ui.toggle(
+                                            {
+                                                "off": "Off",
+                                                "low": "Low",
+                                                "medium": "Medium",
+                                                "high": "High",
+                                            },
+                                            value=(
+                                                editor.review_sensitivity
+                                                if editor.show_uncertain_words
+                                                else "off"
+                                            ),
+                                        ).props("dense unelevated no-caps")
+                                        paint_sensitivity(
                                             editor.review_sensitivity
                                             if editor.show_uncertain_words
                                             else "off"
-                                        ),
-                                    ).props("dense unelevated no-caps")
-                                    paint_sensitivity(
-                                        editor.review_sensitivity
-                                        if editor.show_uncertain_words
-                                        else "off"
-                                    )
-                                    sensitivity.on(
-                                        "update:model-value", save_sensitivity
-                                    )
-                                    with sensitivity:
-                                        ui.tooltip(
-                                            "Higher levels also highlight words "
-                                            "the model is more certain about."
                                         )
+                                        sensitivity.on(
+                                            "update:model-value", save_sensitivity
+                                        )
+                                        with sensitivity:
+                                            ui.tooltip(
+                                                "Higher levels also highlight words "
+                                                "the model is more certain about."
+                                            )
 
-                                    flagged = ui.label().classes(
-                                        "text-sm text-theme-muted review-count"
-                                    )
-                                    editor.set_flagged_count_element(flagged)
+                                        flagged = ui.label().classes(
+                                            "text-sm text-theme-muted review-count"
+                                        )
+                                        editor.set_flagged_count_element(flagged)
 
                         # Asking a model about what was transcribed --
                         # summary, study notes and the like. Under the video
@@ -798,21 +873,20 @@ def create() -> None:
 
                             def offer_review(catalogue: dict) -> None:
                                 """
-                                Reveal the toolbar button, if the hub can
+                                Reveal the Review pill, if the hub can
                                 actually review anything.
 
                                 A hub with no worker connected names its
-                                domains all the same, and a button that
-                                only produces an apology one click later is
-                                worse than no button.
+                                domains all the same, and a pill that only
+                                produces an apology one click later is
+                                worse than no pill.
                                 """
 
                                 assistant.set_catalogue(catalogue)
-
-                                if assistant.available and catalogue.get("models"):
-                                    review_button.set_visibility(True)
-
-                            review_button.on("click", assistant.open)
+                                inference.set_review_available(
+                                    assistant.available
+                                    and bool(catalogue.get("models"))
+                                )
 
                             inference = InferencePanel(
                                 editor,
@@ -827,10 +901,16 @@ def create() -> None:
                                 # passage by hand is the tedious half of
                                 # that.
                                 on_jump=transcript.go_to,
+                                on_review=assistant.open,
                             )
                             inference.build()
                             inference.register_cleanup()
 
-                            # Built after the strip, which is what owns the
-                            # socket both of them talk over.
+                            # Handed over after the strip is built, which is
+                            # what owns both the socket the two of them talk
+                            # over and the slot the review is drawn in --
+                            # neither exists before build(). The assistant
+                            # gives the slot back when the review ends.
                             assistant.client = inference.client
+                            assistant.container = inference.review_slot
+                            assistant.on_close = inference.end_review

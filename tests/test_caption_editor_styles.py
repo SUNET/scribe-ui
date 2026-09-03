@@ -509,3 +509,61 @@ class TestJumpMark:
         assert reduced is not None
         assert ".transcript-cell-found" in reduced.group(1)
         assert "box-shadow" in reduced.group(1)
+
+
+class TestTheTwoPanesEndLevel:
+    """
+    The transcript and the video sit in two cards either side of the
+    splitter, and the two have to end at the same point down the page --
+    which the review made visible, its footer stopping short of the
+    transcript's last line.
+    """
+
+    def page(self) -> str:
+        from pathlib import Path
+
+        return Path("pages/srt.py").read_text()
+
+    def rule(self, selector: str) -> str:
+        from utils.styles import default_styles
+
+        rule = default_styles[default_styles.index(f"{selector} {{"):]
+
+        return rule[: rule.index("}")]
+
+    def test_the_height_is_on_both_cards(self):
+        # A NiceGUI card has a 1rem padding of its own, so a height given
+        # to something inside one makes that card 2rem taller than a card
+        # carrying the height itself. One rule, both cards, so the two
+        # cannot drift apart again.
+        assert self.page().count('ui.card().classes("editor-panel w-full")') == 2
+        assert "var(--editor-height" in self.rule(
+            ".editor-panes .editor-panel"
+        )
+
+    def test_the_height_is_measured_and_not_guessed(self):
+        # calc(90vh - 100px) matches no actual piece of chrome -- a tenth
+        # of the window plus a hundred pixels -- and left a band of empty
+        # page under both panes, more of it the taller the window. What
+        # decides it is where the panes start, which only the browser
+        # knows.
+        page = self.page()
+
+        assert 'panes.style.setProperty("--editor-height"' in page
+        assert "window.innerHeight - top - FOOT" in page
+
+        # Remeasured when the window changes, and when the toolbar above
+        # the panes wraps without it.
+        assert 'window.addEventListener("resize", fit)' in page
+        assert "new ResizeObserver(fit)" in page
+
+    def test_a_pane_is_never_height_less_before_the_measurement(self):
+        assert "calc(90vh - 100px)" in self.rule(".editor-panes .editor-panel")
+
+    def test_the_transcript_scrolls_inside_its_card(self):
+        # Everything the padding leaves, and no more: height: auto sheds
+        # NiceGUI's own 16rem on a scroll area, and min-height: 0 is what
+        # lets it scroll rather than grow the card past the pane.
+        assert (
+            '"flex: 1 1 0%; height: auto; min-height: 0;"' in self.page()
+        )
