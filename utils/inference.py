@@ -43,6 +43,9 @@ import websockets
 
 from nicegui import app, background_tasks
 
+from utils.docx_export import build_docx
+from utils.latex_export import build_latex
+from utils.markdown_blocks import BREAK, TAGS, plain
 from utils.settings import get_settings
 from utils.token import get_auth_header
 
@@ -512,6 +515,13 @@ def _landing(shares: list, start: int, end: int) -> int:
     return start
 
 
+# What a sub- or superscript becomes with no typesetting to do it with,
+# and the tags that are worth nothing at all here.
+SUBSCRIPT = re.compile(r"<sub>(.+?)</sub>", re.DOTALL)
+SUPERSCRIPT = re.compile(r"<sup>(.+?)</sup>", re.DOTALL)
+STRAY_TAG = re.compile(rf"</?(?:b|strong|i|em|{'|'.join(TAGS)})\s*/?>")
+
+
 def plain_text(text: str) -> str:
     """
     A model's Markdown answer as plain text.
@@ -521,6 +531,13 @@ def plain_text(text: str) -> str:
     instructions to a renderer, not something anyone wants to see. Headings
     keep their words, emphasis loses its asterisks, and bullets are
     normalised to one dash so a list still reads as a list.
+
+    The inline HTML a model writes among its Markdown is read here too:
+    plain text has no subscript to fall back on, so a sub or a
+    superscript is written the way it would be typed on one line --
+    `R_H`, `10^-18` -- which is how anybody reading it would have written
+    it themselves. The rest of the tags carry nothing plain text can act
+    on and are dropped rather than printed.
 
     Parameters:
         text (str): The answer, in Markdown.
@@ -546,6 +563,12 @@ def plain_text(text: str) -> str:
             lines.append(line.rstrip())
             continue
 
+        line = SUBSCRIPT.sub(r"_\1", line)
+        line = SUPERSCRIPT.sub(r"^\1", line)
+        line = BREAK.sub(" ", line)
+        line = STRAY_TAG.sub("", line)
+        line = plain(line)
+
         line = re.sub(r"^\s{0,3}#{1,6}\s*", "", line)
         line = re.sub(r"^(\s*)[-*+]\s+", r"\1- ", line)
         line = re.sub(r"\*\*(.+?)\*\*", r"\1", line)
@@ -555,6 +578,74 @@ def plain_text(text: str) -> str:
         lines.append(line.rstrip())
 
     return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip() + "\n"
+
+
+def export_title(task_label: str, filename: str) -> str:
+    """
+    What an exported file calls itself, at the top of its first page.
+
+    Parameters:
+        task_label (str): What was asked for, e.g. "Study notes".
+        filename (str): The media file the transcription came from.
+
+    Returns:
+        str: The title.
+    """
+
+    return f"{task_label} — {filename}" if filename else task_label
+
+
+def export_word(task_label: str, filename: str, answer: str) -> bytes:
+    """
+    The same file as a Word document, formulae and all.
+
+    Notes and summaries are handed in, pasted into a course page or marked
+    up by somebody who does not have Scribe open, and .docx is what those
+    readers have. It is the one export that keeps a formula *as* a formula
+    -- an OMML equation Word draws, edits and searches -- rather than as a
+    line of LaTeX nobody outside a physics department reads.
+
+    Parameters:
+        task_label (str): What was asked for, e.g. "Study notes".
+        filename (str): The media file the transcription came from.
+        answer (str): The model's answer, in Markdown.
+
+    Returns:
+        bytes: The .docx file.
+    """
+
+    return build_docx(
+        title=export_title(task_label, filename),
+        note=EXPORT_NOTE.format(product=settings.TAB_TITLE),
+        answer=answer,
+    )
+
+
+def export_latex(task_label: str, filename: str, answer: str) -> str:
+    """
+    The same file as LaTeX source.
+
+    For the reader at the other end from the Word one: notes going into a
+    document somebody is already writing in LaTeX, or formulae to be
+    typeset rather than read on a screen. The mathematics needs no
+    conversion here -- the model writes it in LaTeX already -- but the
+    prose around it does, since a single unescaped per cent sign is a
+    document that will not build.
+
+    Parameters:
+        task_label (str): What was asked for, e.g. "Study notes".
+        filename (str): The media file the transcription came from.
+        answer (str): The model's answer, in Markdown.
+
+    Returns:
+        str: A whole .tex document.
+    """
+
+    return build_latex(
+        title=export_title(task_label, filename),
+        note=EXPORT_NOTE.format(product=settings.TAB_TITLE),
+        answer=answer,
+    )
 
 
 def export_document(
@@ -573,7 +664,7 @@ def export_document(
         str: The file's contents.
     """
 
-    title = f"{task_label} — {filename}" if filename else task_label
+    title = export_title(task_label, filename)
     note = EXPORT_NOTE.format(product=settings.TAB_TITLE)
 
     if plain:

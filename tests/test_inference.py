@@ -1139,3 +1139,12 @@ def test_no_button_in_the_strip_asks_for_a_colour():
         assert colours[0].value.value is None
 
     assert buttons >= 8
+
+
+def test_plain_text_writes_a_subscript_the_way_it_would_be_typed():
+    # Plain text has no subscript to fall back on, and printing the tags
+    # is worse than either.
+    written = plain_text("R<sub>H</sub> = 2.18 x 10<sup>-18</sup> J &amp; more")
+
+    assert "R_H = 2.18 x 10^-18 J & more" in written
+    assert "<sub>" not in written

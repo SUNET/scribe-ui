@@ -65,6 +65,8 @@ from utils.inference import (
     add_usage,
     answer_language,
     export_document,
+    export_latex,
+    export_word,
     fetch_tasks,
     locate_caption,
     transcript_text,
@@ -463,10 +465,15 @@ class InferencePanel:
                     with self.copy_button:
                         ui.tooltip("Copy")
 
-                    # Two formats behind the one button. Plain text is what
-                    # the feature request asks for and what opens anywhere;
-                    # Markdown keeps the headings and lists for anyone
-                    # pasting it somewhere that renders them.
+                    # Four formats behind the one button. Plain text is
+                    # what the feature request asks for and what opens
+                    # anywhere; Markdown keeps the headings and lists for
+                    # anyone pasting it somewhere that renders them; Word
+                    # is what an answer handed to somebody else arrives
+                    # as; and LaTeX is for the reader who is going to
+                    # typeset it. The last two are the ones that keep a
+                    # formula a formula -- Word as an equation it can
+                    # edit, LaTeX as the source the model wrote.
                     self.download_button = (
                         ui.button(icon="download", color=None)
                         .props("flat dense round")
@@ -481,6 +488,12 @@ class InferencePanel:
                             )
                             ui.menu_item(
                                 "Markdown (.md)", lambda: self.download("md")
+                            )
+                            ui.menu_item(
+                                "Word (.docx)", lambda: self.download("docx")
+                            )
+                            ui.menu_item(
+                                "LaTeX (.tex)", lambda: self.download("tex")
                             )
 
                     # An answer is read, and the pane it shares with the
@@ -1305,13 +1318,43 @@ class InferencePanel:
         Hand the answer to the reader as a file.
 
         Parameters:
-            extension (str): "txt" for plain text, "md" for Markdown.
+            extension (str): "txt" for plain text, "md" for Markdown,
+                "docx" for Word, "tex" for LaTeX.
 
         Returns:
             None
         """
 
         if not self.answer:
+            return
+
+        if extension == "docx":
+            ui.download.content(
+                export_word(
+                    task_label=self._task_label(),
+                    filename=self.filename,
+                    answer=self.answer,
+                ),
+                filename=self._download_name(extension),
+                media_type=(
+                    "application/vnd.openxmlformats-officedocument"
+                    ".wordprocessingml.document"
+                ),
+            )
+
+            return
+
+        if extension == "tex":
+            ui.download.content(
+                export_latex(
+                    task_label=self._task_label(),
+                    filename=self.filename,
+                    answer=self.answer,
+                ),
+                filename=self._download_name(extension),
+                media_type="application/x-tex",
+            )
+
             return
 
         document = export_document(
