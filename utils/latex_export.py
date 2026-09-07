@@ -46,6 +46,7 @@ from utils.markdown_blocks import (
     INLINE,
     MAX_HEADING,
     Block,
+    display_formulas,
     emphasised,
     link_of,
     parse_markdown,
@@ -145,7 +146,7 @@ def inline_latex(text: str) -> str:
                 parts.append(rf"\textit{{{inline_latex(emphasised(body))}}}")
             case "line":
                 parts.append("\\\\\n")
-            case "tag":
+            case "tag" | "empty":
                 pass
             case "link":
                 label, address = link_of(body)
@@ -173,13 +174,13 @@ def _display(text: str) -> str:
         text (str): The paragraph's Markdown.
 
     Returns:
-        str: The displayed formula, or "" when it holds more than one.
+        str: One display environment per formula, or "" when the paragraph
+            holds anything besides them.
     """
 
-    if not (only := re.match(r"^\s*\$\$(.+?)\$\$\s*$", text, re.DOTALL)):
-        return ""
-
-    return f"\\[\n{only.group(1).strip()}\n\\]"
+    return "\n\n".join(
+        f"\\[\n{formula}\n\\]" for formula in display_formulas(text)
+    )
 
 
 def _table(rows: list) -> str:
@@ -215,7 +216,9 @@ def _table(rows: list) -> str:
     return "\n".join(drawn)
 
 
-def _list_environment(blocks: list[Block], at: int) -> tuple[str, int]:
+def _list_environment(
+    blocks: list[Block], at: int, resume: int = 0
+) -> tuple[str, int, int]:
     """
     A list, and everything nested inside it.
 
@@ -226,9 +229,16 @@ def _list_environment(blocks: list[Block], at: int) -> tuple[str, int]:
     Parameters:
         blocks (list[Block]): The whole answer.
         at (int): The first item of the list.
+        resume (int): How many items of this list have already been
+            written. A list interrupted by something that is not a list --
+            a displayed formula under each step of a derivation -- comes
+            back as a second environment, and an enumerate started afresh
+            numbers the fourth step 1. ``\\setcounter`` rather than
+            enumitem's ``[resume]``, which would be a package to install.
 
     Returns:
-        tuple: The environment, and the block to carry on from.
+        tuple: The environment, the block to carry on from, and how many
+            items it wrote.
     """
 
     kind = blocks[at].kind
@@ -236,6 +246,10 @@ def _list_environment(blocks: list[Block], at: int) -> tuple[str, int]:
     number = blocks[at].number
     environment = "itemize" if kind == "bullet" else "enumerate"
     lines = [rf"\begin{{{environment}}}"]
+    written = 0
+
+    if resume and environment == "enumerate":
+        lines.append(rf"\setcounter{{enumi}}{{{resume}}}")
 
     while at < len(blocks):
         block = blocks[at]
@@ -247,7 +261,7 @@ def _list_environment(blocks: list[Block], at: int) -> tuple[str, int]:
             break
 
         if block.level > level:
-            nested, at = _list_environment(blocks, at)
+            nested, at, _ = _list_environment(blocks, at)
             lines.append(nested)
 
             continue
@@ -256,11 +270,12 @@ def _list_environment(blocks: list[Block], at: int) -> tuple[str, int]:
             break
 
         lines.append(rf"  \item {inline_latex(block.text)}")
+        written += 1
         at += 1
 
     lines.append(rf"\end{{{environment}}}")
 
-    return "\n".join(lines), at
+    return "\n".join(lines), at, written
 
 
 def body_latex(blocks: list[Block]) -> str:
@@ -275,6 +290,7 @@ def body_latex(blocks: list[Block]) -> str:
     """
 
     parts = []
+    counted: dict[int, int] = {}
     at = 0
 
     while at < len(blocks):
@@ -303,7 +319,11 @@ def body_latex(blocks: list[Block]) -> str:
             case "table":
                 parts.append(_table(block.rows))
             case "bullet" | "ordered":
-                environment, at = _list_environment(blocks, at)
+                belongs = block.number
+                environment, at, written = _list_environment(
+                    blocks, at, counted.get(belongs, 0)
+                )
+                counted[belongs] = counted.get(belongs, 0) + written
                 parts.append(environment)
 
                 continue

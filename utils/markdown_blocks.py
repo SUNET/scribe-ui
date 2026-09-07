@@ -41,8 +41,10 @@ MAX_HEADING = 4
 
 # The shape of the answer, line by line.
 HEADING = re.compile(r"^(#{1,6})\s+(.*)$")
-BULLET = re.compile(r"^(\s*)[-*+]\s+(.*)$")
-ORDERED = re.compile(r"^(\s*)\d+[.)]\s+(.*)$")
+BULLET = re.compile(r"^(?P<indent>\s*)[-*+]\s+(?P<text>.*)$")
+# The number an item gives itself is worth keeping: it is what says
+# whether a list carries on across whatever came between its items.
+ORDERED = re.compile(r"^(?P<indent>\s*)(?P<value>\d+)[.)]\s+(?P<text>.*)$")
 QUOTE = re.compile(r"^\s*>\s?(.*)$")
 FENCE = re.compile(r"^\s*```\s*(\S*)\s*$")
 RULE = re.compile(r"^\s*(?:[-*_]\s*){3,}$")
@@ -82,6 +84,7 @@ BREAK = re.compile(r"<br\s*/?>")
 # would otherwise take the first two dollars of it as an empty formula.
 INLINE = re.compile(
     r"(?P<code>`+[^`]+`+)"
+    r"|(?P<empty>\$\$\s*\$\$)"
     r"|(?P<display>\$\$.+?\$\$)"
     r"|(?P<math>\$(?!\s)[^$\n]+?(?<!\s)\$)"
     rf"|(?P<sub><{SUB}>.+?</{SUB}>)"
@@ -93,6 +96,36 @@ INLINE = re.compile(
     rf"|(?P<tag></?(?:{'|'.join(TAGS)})\s*/?>)",
     re.DOTALL,
 )
+
+# A displayed formula, wherever it stands.
+DISPLAY = re.compile(r"\$\$(.+?)\$\$", re.DOTALL)
+
+
+def display_formulas(text: str) -> list[str]:
+    """
+    The formulae a paragraph is made of, when it is made of nothing else.
+
+    A model writing a derivation closes and reopens a display fence in the
+    middle of it -- `$$ ... $$$$ ... $$` -- meaning the next line of the
+    same working. Read as one formula reaching from the first fence to the
+    last, the `$$$$` in the middle is four characters of *mathematics*,
+    which is exactly how it came out in the exported document.
+
+    Parameters:
+        text (str): The paragraph's Markdown.
+
+    Returns:
+        list[str]: One entry per formula, or an empty list when the
+            paragraph holds anything besides them.
+    """
+
+    formulas = [found.strip() for found in DISPLAY.findall(text)]
+
+    if not formulas or DISPLAY.sub("", text).strip():
+        return []
+
+    return [formula for formula in formulas if formula]
+
 
 # Read back out of a link once the tokenizer has found one, rather than by
 # the group's number: the numbering shifts every time something is added
@@ -221,6 +254,7 @@ def parse_markdown(text: str) -> list[Block]:
     lines = text.replace("\r\n", "\n").split("\n")
     paragraph: list[str] = []
     lists = 0
+    ordered = None
     at = 0
 
     def flush() -> None:
@@ -302,12 +336,27 @@ def parse_markdown(text: str) -> list[Block]:
         for pattern, kind in ((BULLET, "bullet"), (ORDERED, "ordered")):
             if item := pattern.match(line):
                 flush()
+                belongs = lists
+
+                if kind == "ordered":
+                    # An item that numbers itself 2 means the list it just
+                    # wrote, whatever stands between them -- a model puts
+                    # a displayed formula under each step of a derivation,
+                    # and treating every break as a new list numbered the
+                    # three steps of it 1, 1 and 1.
+                    if int(item.group("value")) > 1 and ordered is not None:
+                        belongs = ordered
+                    else:
+                        ordered = belongs
+
                 blocks.append(
                     Block(
                         kind,
-                        item.group(2).strip(),
-                        level=min(len(item.group(1).expandtabs(4)) // 2, 4),
-                        number=lists,
+                        item.group("text").strip(),
+                        level=min(
+                            len(item.group("indent").expandtabs(4)) // 2, 4
+                        ),
+                        number=belongs,
                     )
                 )
 

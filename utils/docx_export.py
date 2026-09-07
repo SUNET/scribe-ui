@@ -44,6 +44,7 @@ from utils.markdown_blocks import (
     INLINE,
     MAX_HEADING,
     Block,
+    display_formulas,
     emphasised,
     link_of,
     parse_markdown,
@@ -118,67 +119,97 @@ def _run(
     return f"<w:r>{properties}{body}</w:r>"
 
 
-def inline_runs(text: str) -> str:
+def inline_runs(
+    text: str, bold: bool = False, italic: bool = False, script: str = ""
+) -> str:
     """
     A line of Markdown as the runs and equations it is made of.
 
+    Emphasis is read by calling this again on what is inside it rather
+    than by taking that as plain text: "**Integrera $z$:**" is a bold
+    heading with a formula in it, and flattening it printed the dollars.
+    Formatting travels down the call as arguments, so a formula nested in
+    a bold bullet is still an equation and the words around it are still
+    bold.
+
     Parameters:
         text (str): The line.
+        bold (bool): Whether this stretch is inside an emphasis.
+        italic (bool): Whether it is inside an italic one.
+        script (str): "subscript", "superscript", or "" for neither.
 
     Returns:
         str: WordprocessingML, ready to go inside a paragraph.
     """
+
+    def written(part: str, **marks) -> str:
+        return _run(
+            part,
+            bold=bold or marks.get("bold", False),
+            italic=italic or marks.get("italic", False),
+            code=marks.get("code", False),
+            script=script or marks.get("script", ""),
+        )
 
     parts = []
     position = 0
 
     for match in INLINE.finditer(text):
         if before := text[position : match.start()]:
-            parts.append(_run(plain(before)))
+            parts.append(written(plain(before)))
 
         found = match.lastgroup
         body = match.group()
 
         match found:
             case "code":
-                parts.append(_run(body.strip("`"), code=True))
+                parts.append(written(body.strip("`"), code=True))
             case "display":
                 parts.append(latex_to_omml(body[2:-2]))
             case "math":
                 parts.append(latex_to_omml(body[1:-1]))
             case "sub":
-                parts.append(_run(plain(scripted(body)), script="subscript"))
+                parts.append(
+                    inline_runs(
+                        scripted(body), bold, italic, script="subscript"
+                    )
+                )
             case "sup":
-                parts.append(_run(plain(scripted(body)), script="superscript"))
+                parts.append(
+                    inline_runs(
+                        scripted(body), bold, italic, script="superscript"
+                    )
+                )
             case "bold":
-                parts.append(_run(plain(emphasised(body)), bold=True))
+                parts.append(
+                    inline_runs(emphasised(body), True, italic, script)
+                )
             case "italic":
-                parts.append(_run(plain(emphasised(body)), italic=True))
+                parts.append(
+                    inline_runs(emphasised(body), bold, True, script)
+                )
             case "line":
-                parts.append(_run("\n"))
-            case "tag":
-                # Markup with nothing an export can do with it. Dropped
-                # rather than printed: the tag itself is not what the
-                # model meant to say.
+                parts.append(written("\n"))
+            case "tag" | "empty":
+                # Markup with nothing an export can do with it, or a
+                # display fence with no formula in it. Dropped rather than
+                # printed: neither is what the model meant to say.
                 pass
             case "link":
                 # The address is worth keeping and is not worth a
                 # relationship of its own: a reader can see it and copy it.
                 label, address = link_of(body)
-                parts.append(_run(plain(label) or address))
+                parts.append(written(plain(label) or address))
 
                 if label and label != address:
-                    parts.append(_run(f" ({address})"))
+                    parts.append(written(f" ({address})"))
 
         position = match.end()
 
     if rest := text[position:]:
-        parts.append(_run(plain(rest)))
+        parts.append(written(plain(rest)))
 
     return "".join(parts)
-
-
-DISPLAY_ONLY = re.compile(r"^\s*\$\$(.+?)\$\$\s*$", re.DOTALL)
 
 
 def _display(text: str) -> str:
@@ -194,15 +225,17 @@ def _display(text: str) -> str:
         text (str): The paragraph's Markdown.
 
     Returns:
-        str: The paragraph, or "" when it holds more than a formula.
+        str: One equation paragraph per formula, or "" when the paragraph
+            holds anything besides them.
     """
 
-    if not (only := DISPLAY_ONLY.match(text)):
-        return ""
+    equations = [
+        latex_to_omml(formula) for formula in display_formulas(text)
+    ]
 
-    equation = latex_to_omml(only.group(1))
-
-    if not equation.startswith("<m:oMath>"):
+    if not all(
+        equation.startswith("<m:oMath>") for equation in equations
+    ) or not equations:
         return ""
 
     # Inside a <w:p>, not beside one. Word refuses a document whose
@@ -211,10 +244,11 @@ def _display(text: str) -> str:
     # part of the file perfectly good. An answer whose formulae are all
     # inline is unaffected, which is what made this look like a problem
     # with a particular answer rather than with displayed maths as such.
-    return (
+    return "".join(
         "<w:p><m:oMathPara><m:oMathParaPr>"
         '<m:jc m:val="center"/></m:oMathParaPr>'
         f"{equation}</m:oMathPara></w:p>"
+        for equation in equations
     )
 
 

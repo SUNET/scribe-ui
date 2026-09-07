@@ -284,3 +284,58 @@ def test_an_entity_becomes_the_character_it_stands_for():
 
     assert "Salt &amp; pepper &lt;here&gt;" in runs
     assert "amp;amp;" not in runs
+
+
+def test_a_formula_inside_emphasis_is_still_a_formula():
+    # "**Integrera $z$:**" is a bold heading with a formula in it. Taking
+    # what is inside the emphasis as plain text printed the dollars.
+    runs = inline_runs("**Integrera $z$:**")
+
+    assert "<m:oMath>" in runs
+    assert "$" not in runs
+    assert runs.count("<w:b/>") == 2
+
+
+def test_formatting_travels_into_what_it_encloses():
+    runs = inline_runs("A *word with H<sub>2</sub>O in it*")
+
+    # The subscript is italic too: it is inside the emphasis.
+    assert '<w:i/><w:vertAlign w:val="subscript"/>' in runs
+
+
+def test_a_list_broken_by_a_formula_keeps_counting():
+    # A model puts a displayed formula under each step of a derivation.
+    # Treating every break as a new list numbered the three steps of it
+    # 1, 1 and 1 in Word.
+    answer = (
+        "1. **Integrera $z$:**\n\n$$a = 1$$\n\n"
+        "2. **Integrera $y$:**\n\n$$b = 2$$\n\n"
+        "3. **Integrera $x$:**\n"
+    )
+    _, lists = body_xml(parse_markdown(answer))
+
+    assert len(lists) == 1
+
+
+def test_a_list_that_starts_over_is_a_new_list():
+    _, lists = body_xml(parse_markdown("1. a\n2. b\n\nProse.\n\n1. c\n2. d\n"))
+
+    assert len(lists) == 2
+
+
+def test_a_reopened_display_fence_is_two_equations_and_not_four_dollars():
+    # A model writing a derivation closes and reopens the fence mid-way:
+    # "$$ ... $$$$ ... $$". Read as one formula from the first fence to
+    # the last, the $$$$ in the middle became four characters of
+    # mathematics inside the equation.
+    document = document_of("$$[ey]_{y=0}^{1-x}$$$$ = e(1 - x)$$")
+
+    assert document.count("<m:oMathPara>") == 2
+    assert "$" not in document
+
+
+def test_a_display_fence_with_nothing_in_it_is_dropped():
+    runs = inline_runs("The working continues $$$$ here.")
+
+    assert "$" not in runs
+    assert "The working continues " in runs

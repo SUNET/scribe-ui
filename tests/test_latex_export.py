@@ -187,3 +187,36 @@ def test_an_entity_becomes_the_character_it_stands_for_and_is_then_escaped():
     latex = inline_latex("Salt &amp; pepper")
 
     assert latex == r"Salt \& pepper"
+
+
+def test_a_list_broken_by_a_formula_resumes_its_numbering():
+    # LaTeX has to be told: a second enumerate starts at 1 however the
+    # blocks were numbered. \setcounter rather than enumitem's [resume],
+    # which would be a package the reader has to have.
+    document = body_latex(
+        parse_markdown(
+            "1. First\n\n$$a = 1$$\n\n2. Second\n\n$$b = 2$$\n\n3. Third\n"
+        )
+    )
+
+    assert r"\setcounter{enumi}{1}" in document
+    assert r"\setcounter{enumi}{2}" in document
+
+
+def test_a_list_that_starts_over_is_not_resumed():
+    document = body_latex(parse_markdown("1. a\n2. b\n\nProse.\n\n1. c\n"))
+
+    assert r"\setcounter" not in document
+
+
+def test_a_reopened_display_fence_is_two_formulas():
+    document = body_latex(parse_markdown("$$[ey]_{y=0}^{1-x}$$$$ = e(1 - x)$$"))
+
+    assert document.count(r"\[") == 2
+    assert "$$" not in document
+
+
+def test_a_display_fence_with_nothing_in_it_is_dropped():
+    latex = inline_latex("The working continues $$$$ here.")
+
+    assert "$" not in latex
