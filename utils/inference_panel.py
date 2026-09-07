@@ -51,6 +51,7 @@ be shown at all: escaping every `<` and `&` made a formula and a mermaid
 arrow (`-->`) unrenderable along with the markup it was defending against.
 """
 
+import logging
 import re
 
 from contextlib import contextmanager
@@ -75,6 +76,7 @@ from utils.inference import (
 from utils.settings import get_settings
 
 settings = get_settings()
+log = logging.getLogger(__name__)
 
 # What the reader is told, in the line under the buttons.
 NOT_SAVED = "Generated from the transcription as it stands now. Not saved — download it to keep it."
@@ -1328,43 +1330,68 @@ class InferencePanel:
         if not self.answer:
             return
 
-        if extension == "docx":
-            ui.download.content(
-                export_word(
-                    task_label=self._task_label(),
-                    filename=self.filename,
-                    answer=self.answer,
-                ),
-                filename=self._download_name(extension),
-                media_type=(
-                    "application/vnd.openxmlformats-officedocument"
-                    ".wordprocessingml.document"
-                ),
+        # An export that goes wrong must say so. The answer itself is not
+        # saved anywhere, so a download that quietly does nothing is the
+        # reader losing it -- and a failure in here reaches a NiceGUI
+        # event handler, which shows nothing and writes a traceback to a
+        # log the reader is not reading.
+        try:
+            document, media_type = self._exported(extension)
+        except Exception:
+            log.exception("Could not export an answer as .%s", extension)
+            ui.notify(
+                f"Could not write the {extension.upper()} file.", type="negative"
             )
 
             return
 
-        if extension == "tex":
-            ui.download.content(
-                export_latex(
-                    task_label=self._task_label(),
-                    filename=self.filename,
-                    answer=self.answer,
-                ),
-                filename=self._download_name(extension),
-                media_type="application/x-tex",
-            )
-
-            return
-
-        document = export_document(
-            task_label=self._task_label(),
-            filename=self.filename,
-            answer=self.answer,
-            plain=extension == "txt",
+        ui.download.content(
+            document,
+            filename=self._download_name(extension),
+            media_type=media_type,
         )
 
-        ui.download.content(document, filename=self._download_name(extension))
+    def _exported(self, extension: str) -> tuple:
+        """
+        The file itself, and what it should be served as.
+
+        Parameters:
+            extension (str): "txt", "md", "docx" or "tex".
+
+        Returns:
+            tuple: The contents, and the media type.
+        """
+
+        match extension:
+            case "docx":
+                return (
+                    export_word(
+                        task_label=self._task_label(),
+                        filename=self.filename,
+                        answer=self.answer,
+                    ),
+                    "application/vnd.openxmlformats-officedocument"
+                    ".wordprocessingml.document",
+                )
+            case "tex":
+                return (
+                    export_latex(
+                        task_label=self._task_label(),
+                        filename=self.filename,
+                        answer=self.answer,
+                    ),
+                    "application/x-tex",
+                )
+
+        return (
+            export_document(
+                task_label=self._task_label(),
+                filename=self.filename,
+                answer=self.answer,
+                plain=extension == "txt",
+            ),
+            "text/markdown" if extension == "md" else "text/plain",
+        )
 
     async def close(self) -> None:
         """

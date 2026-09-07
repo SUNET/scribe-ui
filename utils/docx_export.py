@@ -205,13 +205,16 @@ def _display(text: str) -> str:
     if not equation.startswith("<m:oMath>"):
         return ""
 
-    # Not wrapped in a <w:p>: an equation paragraph is a block in its own
-    # right, a sibling of the paragraphs rather than something inside one.
-    # Only inline equations go in a paragraph.
+    # Inside a <w:p>, not beside one. Word refuses a document whose
+    # equation paragraph stands at body level -- it opens as "there is a
+    # problem with the contents" and no more than that, with every other
+    # part of the file perfectly good. An answer whose formulae are all
+    # inline is unaffected, which is what made this look like a problem
+    # with a particular answer rather than with displayed maths as such.
     return (
-        "<m:oMathPara><m:oMathParaPr>"
+        "<w:p><m:oMathPara><m:oMathParaPr>"
         '<m:jc m:val="center"/></m:oMathParaPr>'
-        f"{equation}</m:oMathPara>"
+        f"{equation}</m:oMathPara></w:p>"
     )
 
 

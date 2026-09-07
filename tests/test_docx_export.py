@@ -132,6 +132,28 @@ def test_a_displayed_formula_stands_on_its_own():
     assert "<m:sSup>" in document
 
 
+def test_an_equation_paragraph_is_inside_a_paragraph():
+    # Word refuses the whole document -- "there is a problem with the
+    # contents", and nothing more -- when an equation paragraph stands at
+    # body level rather than in a <w:p>. Nothing else in the file has to
+    # be wrong, and an answer whose formulae are all inline opens fine,
+    # which is what made it look like a problem with one answer.
+    document = document_of("$$E = mc^2$$")
+
+    assert "<w:p><m:oMathPara>" in document
+    assert "</m:oMathPara></w:p>" in document
+    assert "</w:p><m:oMathPara>" not in document
+
+
+def test_no_empty_control_properties_are_written():
+    # An empty <m:ctrlPr/> says nothing, and what Word accepts is decided
+    # by what Word accepts: pandoc, whose output it has taken for years,
+    # writes none at all.
+    document = document_of("$$\\sum_{i=1}^{n} \\frac{a_i}{2}$$ and $\\sqrt{x}$")
+
+    assert "m:ctrlPr" not in document
+
+
 def test_a_formula_inside_a_code_span_is_left_alone():
     runs = inline_runs("Write `$x^2$` for it.")
 

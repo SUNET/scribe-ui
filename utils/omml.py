@@ -45,6 +45,11 @@ log = logging.getLogger(__name__)
 
 MATHML = "{http://www.w3.org/1998/Math/MathML}"
 
+# No <m:ctrlPr> is written anywhere below. It carries the formatting of an
+# object's own control characters, an empty one says nothing, and what
+# Word accepts is decided by what Word accepts: pandoc, whose .docx output
+# it has taken for years, writes none.
+
 class Tag:
     """
     The MathML element names, spelled out.
@@ -233,7 +238,7 @@ def _delimiter(nodes: list) -> str:
 
     properties = (
         f'<m:dPr><m:begChr m:val="{escape(opening)}"/>'
-        f'<m:endChr m:val="{escape(closing)}"/><m:ctrlPr/></m:dPr>'
+        f'<m:endChr m:val="{escape(closing)}"/></m:dPr>'
     )
 
     inside = _children(nodes[1:-1] if closing else nodes[1:])
@@ -314,7 +319,7 @@ def _nary(node, rest: list) -> str:
         f'<m:naryPr><m:chr m:val="{escape(character)}"/>'
         f'<m:limLoc m:val="{location}"/>'
         f'<m:subHide m:val="{0 if lower else 1}"/>'
-        f'<m:supHide m:val="{0 if upper else 1}"/><m:ctrlPr/></m:naryPr>'
+        f'<m:supHide m:val="{0 if upper else 1}"/></m:naryPr>'
     )
 
     return (
@@ -346,25 +351,25 @@ def _script(node, parts: list) -> str:
         case Tag.MSUB:
             if word:
                 return (
-                    "<m:limLow><m:limLowPr><m:ctrlPr/></m:limLowPr>"
+                    "<m:limLow>"
                     f"{_wrap('m:e', base)}"
                     f"{_wrap('m:lim', convert_element(parts[1]))}</m:limLow>"
                 )
 
             return (
-                "<m:sSub><m:sSubPr><m:ctrlPr/></m:sSubPr>"
+                "<m:sSub>"
                 f"{_wrap('m:e', base)}"
                 f"{_wrap('m:sub', convert_element(parts[1]))}</m:sSub>"
             )
         case Tag.MSUP:
             return (
-                "<m:sSup><m:sSupPr><m:ctrlPr/></m:sSupPr>"
+                "<m:sSup>"
                 f"{_wrap('m:e', base)}"
                 f"{_wrap('m:sup', convert_element(parts[1]))}</m:sSup>"
             )
 
     return (
-        "<m:sSubSup><m:sSubSupPr><m:ctrlPr/></m:sSubSupPr>"
+        "<m:sSubSup>"
         f"{_wrap('m:e', base)}"
         f"{_wrap('m:sub', convert_element(parts[1]))}"
         f"{_wrap('m:sup', convert_element(parts[2]))}</m:sSubSup>"
@@ -390,7 +395,7 @@ def _over_under(node, parts: list) -> str:
     if node.tag == Tag.MOVER:
         if mark in BAR:
             return (
-                '<m:bar><m:barPr><m:pos m:val="top"/><m:ctrlPr/></m:barPr>'
+                '<m:bar><m:barPr><m:pos m:val="top"/></m:barPr>'
                 f"{_wrap('m:e', base)}</m:bar>"
             )
 
@@ -399,11 +404,11 @@ def _over_under(node, parts: list) -> str:
 
             return (
                 f'<m:acc><m:accPr><m:chr m:val="{escape(character)}"/>'
-                f"<m:ctrlPr/></m:accPr>{_wrap('m:e', base)}</m:acc>"
+                f"</m:accPr>{_wrap('m:e', base)}</m:acc>"
             )
 
         return (
-            "<m:limUpp><m:limUppPr><m:ctrlPr/></m:limUppPr>"
+            "<m:limUpp>"
             f"{_wrap('m:e', base)}{_wrap('m:lim', convert_element(parts[1]))}"
             "</m:limUpp>"
         )
@@ -411,24 +416,24 @@ def _over_under(node, parts: list) -> str:
     if node.tag == Tag.MUNDER:
         if mark in BAR:
             return (
-                '<m:bar><m:barPr><m:pos m:val="bot"/><m:ctrlPr/></m:barPr>'
+                '<m:bar><m:barPr><m:pos m:val="bot"/></m:barPr>'
                 f"{_wrap('m:e', base)}</m:bar>"
             )
 
         return (
-            "<m:limLow><m:limLowPr><m:ctrlPr/></m:limLowPr>"
+            "<m:limLow>"
             f"{_wrap('m:e', base)}{_wrap('m:lim', convert_element(parts[1]))}"
             "</m:limLow>"
         )
 
     lower = (
-        "<m:limLow><m:limLowPr><m:ctrlPr/></m:limLowPr>"
+        "<m:limLow>"
         f"{_wrap('m:e', base)}{_wrap('m:lim', convert_element(parts[1]))}"
         "</m:limLow>"
     )
 
     return (
-        "<m:limUpp><m:limUppPr><m:ctrlPr/></m:limUppPr>"
+        "<m:limUpp>"
         f"{_wrap('m:e', lower)}{_wrap('m:lim', convert_element(parts[2]))}"
         "</m:limUpp>"
     )
@@ -450,7 +455,7 @@ def _matrix(node) -> str:
 
     properties = (
         f'<m:mPr><m:mcs><m:mc><m:mcPr><m:count m:val="{columns}"/>'
-        '<m:mcJc m:val="center"/></m:mcPr></m:mc></m:mcs><m:ctrlPr/></m:mPr>'
+        '<m:mcJc m:val="center"/></m:mcPr></m:mc></m:mcs></m:mPr>'
     )
 
     drawn = []
@@ -488,18 +493,18 @@ def convert_element(node) -> str:
             return _run(" ", plain=True)
         case Tag.MFRAC:
             return (
-                "<m:f><m:fPr><m:ctrlPr/></m:fPr>"
+                "<m:f>"
                 f"{_wrap('m:num', convert_element(parts[0]))}"
                 f"{_wrap('m:den', convert_element(parts[1]))}</m:f>"
             )
         case Tag.MSQRT:
             return (
-                '<m:rad><m:radPr><m:degHide m:val="1"/><m:ctrlPr/></m:radPr>'
+                '<m:rad><m:radPr><m:degHide m:val="1"/></m:radPr>'
                 f"{_wrap('m:deg', '')}{_wrap('m:e', _children(parts))}</m:rad>"
             )
         case Tag.MROOT:
             return (
-                '<m:rad><m:radPr><m:degHide m:val="0"/><m:ctrlPr/></m:radPr>'
+                '<m:rad><m:radPr><m:degHide m:val="0"/></m:radPr>'
                 f"{_wrap('m:deg', convert_element(parts[1]))}"
                 f"{_wrap('m:e', convert_element(parts[0]))}</m:rad>"
             )
@@ -517,7 +522,7 @@ def convert_element(node) -> str:
                 f'<m:dPr><m:begChr m:val="{escape(opening)}"/>'
                 f'<m:sepChr m:val="{escape(separator[:1])}"/>'
                 f'<m:endChr m:val="{escape(closing)}"/>'
-                "<m:ctrlPr/></m:dPr>"
+                "</m:dPr>"
             )
             inside = "".join(_wrap("m:e", convert_element(part)) for part in parts)
 
