@@ -932,8 +932,8 @@ theme_styles = """
         margin: 0.5rem 0;
         padding-bottom: 0.15rem;
     }
-    /* The finished answer: prose and diagrams stacked in the order the
-       model wrote them. */
+    /* The finished answer: its passages stacked in the order the model
+       wrote them. */
     .inference-answer {
         gap: 0.25rem;
         width: 100%;
@@ -976,25 +976,6 @@ theme_styles = """
     }
     .inference-passage .nicegui-markdown > *:last-child {
         margin-bottom: 0;
-    }
-    /* Diagrams. Centred, held inside the box's width, and given a ground of
-       their own in dark mode -- mermaid draws in its own palette, and its
-       dark text on the near-black answer surface cannot be read. */
-    .inference-diagram {
-        width: 100%;
-        display: flex;
-        justify-content: center;
-        overflow-x: auto;
-        margin: 0.4rem 0;
-    }
-    .inference-diagram svg {
-        max-width: 100%;
-        height: auto;
-    }
-    .body--dark .inference-diagram {
-        background: var(--color-bg-surface);
-        border-radius: 0.5rem;
-        padding: 0.5rem 0;
     }
     .inference-output .nicegui-markdown ul,
     .inference-output .nicegui-markdown ol {

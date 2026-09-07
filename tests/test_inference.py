@@ -49,9 +49,6 @@ from utils.inference_panel import (
     NOT_SAVED,
     REVIEW_HINT,
     InferencePanel,
-    is_diagram,
-    prepare_answer,
-    split_answer,
     text_blocks,
 )
 from utils.settings import get_settings
@@ -155,41 +152,13 @@ def test_configured_hub_url_wins(monkeypatch):
     assert hub_url() == "wss://hub.example.se/ws"
 
 
-def test_a_mermaid_click_directive_is_dropped():
-    # Mermaid can bind a node to a Javascript call. It needs mermaid to be
-    # initialised with securityLevel "loose", which it is not -- but the
-    # answer is written by a model reading somebody else's speech, and a
-    # directive that only fails to run because of a setting somewhere else
-    # is not a defence.
-    answer = prepare_answer(
-        "```mermaid\ngraph LR\n  A --> B\n  click A \"javascript:alert(1)\"\n```"
-    )
-
-    assert "click A" not in answer
-    assert "A --> B" in answer
-
-
-def test_the_diagram_itself_survives():
-    # The arrows are the diagram. Escaping them, which is what this code
-    # used to do to every angle bracket, left mermaid nothing to draw.
-    answer = prepare_answer("```mermaid\ngraph TD\n  A[Start] --> B[End]\n```")
-
-    assert "-->" in answer
-    assert "&gt;" not in answer
-
-
-def test_mathematics_is_left_alone():
-    answer = prepare_answer("The bound is $a < b$ and $$\\int_0^1 x^2\\,dx$$")
-
-    assert "$a < b$" in answer
-    assert "\\int_0^1" in answer
-
-
-def test_the_renderer_is_asked_for_maths_and_diagrams():
-    # Without these extras the answer shows the LaTeX and the mermaid
-    # source as text, which is worse than not offering them at all.
+def test_the_renderer_is_asked_for_maths_and_not_for_diagrams():
+    # Without the latex extra a formula shows as its own LaTeX, which is
+    # worse than not offering mathematics at all. Diagrams are the other
+    # way round: nothing asks a model for one any more, and a fence that
+    # arrives anyway is a code block like any other.
     assert "latex" in MARKDOWN_EXTRAS
-    assert "mermaid" in MARKDOWN_EXTRAS
+    assert "mermaid" not in MARKDOWN_EXTRAS
 
 
 def test_the_analyse_strip_uses_theme_tokens_not_fixed_colours():
@@ -315,45 +284,15 @@ def test_the_export_says_what_it_is():
         assert "Book the room" in document
 
 
-def test_a_diagram_is_taken_out_of_the_prose():
-    # They are drawn by different things: prose by ui.markdown, which
-    # sanitises the HTML it produces, and a diagram by ui.mermaid, which
-    # never becomes HTML on this side at all.
-    parts = split_answer(
-        "Before.\n\n```mermaid\ngraph LR\n  A --> B\n```\n\nAfter."
-    )
-
-    assert parts == [
-        ("text", "Before."),
-        ("mermaid", "graph LR\n  A --> B"),
-        ("text", "After."),
-    ]
-
-
-def test_prose_in_a_mermaid_fence_stays_prose():
-    # A model writing sentences into a mermaid fence gets an error box
-    # where the diagram should be. Shown as the code block it really is.
-    answer = "```mermaid\nThe speaker explains the process\n```"
-
-    assert split_answer(answer) == [("text", answer)]
-    assert is_diagram("The speaker explains the process") is False
-    assert is_diagram("sequenceDiagram\n  A->>B: hi") is True
-
-
-def test_an_answer_with_no_diagram_is_left_whole():
-    assert split_answer("Just prose.") == [("text", "Just prose.")]
-
-
-def test_a_diagram_survives_the_text_export():
-    # The source is the diagram. Stripping what looks like markup out of it
-    # exports something that no longer draws -- and the reader downloaded it
-    # precisely to keep what they saw.
+def test_a_code_block_survives_the_text_export():
+    # Stripping what looks like markup out of a fence exports something
+    # that no longer runs -- and its blank lines are part of it.
     text = plain_text(
-        "**Process:**\n\n```mermaid\ngraph LR\n  A[Start] --> B[End]\n```\n"
+        "**Process:**\n\n```python\nvalue = a ** 2\n```\n"
     )
 
-    assert "```mermaid" in text
-    assert "A[Start] --> B[End]" in text
+    assert "```python" in text
+    assert "value = a ** 2" in text
     assert "**Process:**" not in text
 
 

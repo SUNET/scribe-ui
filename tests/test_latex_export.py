@@ -126,12 +126,13 @@ def test_a_table_becomes_a_tabular_with_a_column_per_cell():
 
 def test_a_code_block_is_verbatim_and_not_escaped():
     document = body_latex(
-        parse_markdown("```mermaid\nflowchart TD\n  A --> B\n```\n")
+        parse_markdown("```python\nvalue = {a: 100 % b}\n```\n")
     )
 
     assert r"\begin{verbatim}" in document
-    assert "A --> B" in document
+    assert "value = {a: 100 % b}" in document
     assert r"\textbackslash" not in document
+    assert r"\%" not in document
 
 
 def test_emphasis_and_links_are_carried_over():

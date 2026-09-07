@@ -293,8 +293,8 @@ def body_latex(blocks: list[Block]) -> str:
                     "\\end{quote}"
                 )
             case "code":
-                # verbatim, so a diagram's own arrows and a program's
-                # backslashes are left exactly as the model wrote them.
+                # verbatim, so a program's own backslashes and braces are
+                # left exactly as the model wrote them.
                 parts.append(
                     "\\begin{verbatim}\n" + block.text + "\n\\end{verbatim}"
                 )

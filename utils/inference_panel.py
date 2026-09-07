@@ -46,9 +46,20 @@ anything, including an attempt to get something rendered into this page.
 It is `ui.markdown`'s own sanitiser that stops that -- `sanitize=True` runs
 the browser's `setHTML`, or DOMPurify where that is missing, over the
 rendered HTML before it is inserted. That is a real sanitiser rather than
-the character escaping this used to do, which is why maths and diagrams can
-be shown at all: escaping every `<` and `&` made a formula and a mermaid
-arrow (`-->`) unrenderable along with the markup it was defending against.
+the character escaping this used to do, which is why mathematics can be
+shown at all: escaping every `<` and `&` made a formula unrenderable along
+with the markup it was defending against.
+
+**No diagrams.** An answer's ```mermaid fence was once drawn as a diagram
+by the copy of mermaid NiceGUI ships, and a good deal followed from that:
+prose and fences had to be split apart (the sanitiser strips the class
+mermaid keys on, so a diagram inside markdown renders as its own source),
+a fence had to be checked for a diagram type mermaid knows before it was
+handed over, click directives binding a node to a script had to be cut out
+of it, and an export had to have the browser rasterise the picture because
+nothing on this side can draw one. None of that is here any more: a fence
+is a code block like any other. The models were not good at diagrams, and
+the answer is not the place to find out.
 """
 
 import logging
@@ -105,110 +116,10 @@ TASK_ICONS = {
 
 
 # What the answer may contain. Mathematics is turned into MathML on this
-# side (markdown2's latex extra, via latex2mathml) and drawn by the browser
-# itself; mermaid fences become diagrams drawn by the copy of mermaid
-# NiceGUI already ships. Neither costs us a line of Javascript.
-MARKDOWN_EXTRAS = ["fenced-code-blocks", "tables", "latex", "mermaid"]
-
-# A mermaid diagram can bind a click on a node to a Javascript call. It only
-# works when mermaid is initialised with securityLevel "loose" -- which it
-# is not here -- but the answer is written by a model reading somebody
-# else's speech, and a directive that only fails to run because of a
-# setting elsewhere is not a defence. They are dropped.
-MERMAID_CLICK = re.compile(r"^\s*click\s+\S+.*$", re.MULTILINE)
-
-# A fenced mermaid block in the answer.
-MERMAID_FENCE = re.compile(r"```mermaid[ \t]*\n(.*?)(?:```|\Z)", re.DOTALL)
-
-# What a mermaid diagram may start with. Anything else is a model writing
-# prose into a mermaid fence, and mermaid answers that with an error box
-# where the diagram should be -- so it is shown as the code block it really
-# is instead.
-MERMAID_KINDS = (
-    "architecture",
-    "block",
-    "c4context",
-    "classDiagram",
-    "erDiagram",
-    "flowchart",
-    "gantt",
-    "gitGraph",
-    "graph",
-    "journey",
-    "mindmap",
-    "pie",
-    "quadrantChart",
-    "requirementDiagram",
-    "sankey",
-    "sequenceDiagram",
-    "stateDiagram",
-    "timeline",
-    "xychart",
-)
-
-
-def is_diagram(source: str) -> bool:
-    """
-    Whether a mermaid fence holds something mermaid can actually draw.
-
-    Parameters:
-        source (str): The contents of the fence.
-
-    Returns:
-        bool: True when it opens with a diagram type mermaid knows.
-    """
-
-    for line in source.strip().splitlines():
-        line = line.strip()
-
-        if not line or line.startswith("%%"):
-            continue
-
-        return line.lower().startswith(tuple(k.lower() for k in MERMAID_KINDS))
-
-    return False
-
-
-def split_answer(text: str) -> list[tuple[str, str]]:
-    """
-    An answer broken into prose and diagrams, in order.
-
-    They are drawn by different things. Prose goes through ui.markdown,
-    which sanitises the HTML it produces before the browser inserts it; a
-    diagram goes to ui.mermaid, which takes the source as a prop and never
-    becomes HTML on this side at all. They cannot be one element: the
-    sanitiser strips the class attribute that markdown's own mermaid
-    support looks for, so a diagram written inside markdown is rendered as
-    its own source code and nothing else.
-
-    Parameters:
-        text (str): The model's answer.
-
-    Returns:
-        list[tuple[str, str]]: ("text", markdown) and ("mermaid", source)
-            pairs, in the order they appeared.
-    """
-
-    parts: list[tuple[str, str]] = []
-    position = 0
-
-    for match in MERMAID_FENCE.finditer(text):
-        source = match.group(1).strip()
-
-        if not is_diagram(source):
-            continue
-
-        if before := text[position:match.start()].strip():
-            parts.append(("text", before))
-
-        parts.append(("mermaid", source))
-        position = match.end()
-
-    if rest := text[position:].strip():
-        parts.append(("text", rest))
-
-    return parts
-
+# side (markdown2's latex extra, via latex2mathml) and drawn by the
+# browser itself, at no cost of a line of Javascript to us. No mermaid
+# extra: see "No diagrams" above.
+MARKDOWN_EXTRAS = ["fenced-code-blocks", "tables", "latex"]
 
 # A line of Markdown that stands on its own: a heading, or an item of a
 # list. Either one starts a new passage even without a blank line before
@@ -228,7 +139,7 @@ def text_blocks(text: str) -> list[str]:
     since its blank lines are part of it.
 
     Parameters:
-        text (str): Markdown, with no diagram fences left in it.
+        text (str): The answer, in Markdown.
 
     Returns:
         list[str]: The passages, in order, as Markdown.
@@ -278,26 +189,6 @@ def text_blocks(text: str) -> list[str]:
     flush()
 
     return blocks
-
-
-def prepare_answer(text: str) -> str:
-    """
-    A model's answer, ready to be rendered.
-
-    The rendering itself is what is defended: ui.markdown sanitises the HTML
-    it produces in the browser before inserting it, which is why nothing is
-    escaped here. What this does remove is the one construct a sanitiser
-    would let through because it is legitimate mermaid -- a click directive
-    binding a node to a script.
-
-    Parameters:
-        text (str): The model's answer.
-
-    Returns:
-        str: The answer, ready for ui.markdown.
-    """
-
-    return MERMAID_CLICK.sub("", text)
 
 
 class InferencePanel:
@@ -537,10 +428,10 @@ class InferencePanel:
                     self.body = body
 
                     # A container rather than one element: a finished
-                    # answer is rebuilt into prose and diagrams (see
-                    # split_answer), and while it is still arriving it is a
-                    # single markdown element being appended to, which is
-                    # far cheaper than rebuilding a tree several times a
+                    # answer is rebuilt into the passages a reader clicks,
+                    # and while it is still arriving it is a single
+                    # markdown element being appended to, which is far
+                    # cheaper than rebuilding a tree several times a
                     # second.
                     self.parts = ui.column().classes("inference-answer w-full")
 
@@ -1036,8 +927,8 @@ class InferencePanel:
         self.answer += text
 
         with self._on_the_page():
-            # A finished answer is rebuilt into passages and diagrams, and
-            # the one element being streamed into is dropped. A batch
+            # A finished answer is rebuilt into passages, and the one
+            # element being streamed into is dropped. A batch
             # arriving after that -- the hub is still sending when a reader
             # presses Stop -- goes back to the streaming element rather
             # than being lost, since the passages it would be appended to
@@ -1048,15 +939,15 @@ class InferencePanel:
                 with self.parts:
                     self.output = ui.markdown("", extras=MARKDOWN_EXTRAS)
 
-            self.output.set_content(prepare_answer(self.answer))
+            self.output.set_content(self.answer)
 
     def _render_answer(self) -> None:
         """
-        Draw the finished answer: prose as markdown, diagrams as diagrams.
+        Draw the finished answer as the passages a reader can click.
 
-        Only once it is finished. A fence half-arrived is not a diagram
-        yet, and redrawing the tree on every batch would flicker for the
-        whole length of an answer.
+        Only once it is finished: redrawing the tree on every batch would
+        flicker for the whole length of an answer, and half a paragraph is
+        not a passage worth following back to the recording yet.
 
         Returns:
             None
@@ -1065,20 +956,13 @@ class InferencePanel:
         if not self.answer:
             return
 
-        parts = split_answer(prepare_answer(self.answer))
-
         self.parts.clear()
         self.passages = []
         self.followed = None
 
         with self.parts:
-            for kind, payload in parts:
-                if kind == "mermaid":
-                    ui.mermaid(payload).classes("inference-diagram")
-                    continue
-
-                for block in text_blocks(payload):
-                    self._passage(block)
+            for block in text_blocks(self.answer):
+                self._passage(block)
 
         self.output = None
 

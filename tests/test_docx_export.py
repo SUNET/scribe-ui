@@ -227,11 +227,11 @@ def test_the_answers_text_is_escaped():
     assert "<b>" not in document
 
 
-def test_a_mermaid_fence_is_kept_as_a_code_block():
-    blocks = parse_markdown("```mermaid\nflowchart TD\n  A --> B\n```\n")
+def test_a_fence_is_kept_whole_as_a_code_block():
+    blocks = parse_markdown("```python\nfor row in rows:\n    print(row)\n```\n")
 
     assert [block.kind for block in blocks] == ["code"]
-    assert "A --> B" in blocks[0].text
+    assert "    print(row)" in blocks[0].text
 
 
 def test_run_properties_are_written_in_the_schemas_order():

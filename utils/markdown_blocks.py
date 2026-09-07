@@ -234,7 +234,7 @@ def parse_markdown(text: str) -> list[Block]:
     while at < len(lines):
         line = lines[at]
 
-        if fence := FENCE.match(line):
+        if FENCE.match(line):
             flush()
             at += 1
             body = []

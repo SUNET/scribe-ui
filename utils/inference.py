@@ -551,9 +551,9 @@ def plain_text(text: str) -> str:
 
     for line in text.splitlines():
         # A code fence, and everything inside it, is left exactly as it
-        # was: a mermaid diagram's source is the diagram, and stripping
-        # what looks like markup out of it would export something that no
-        # longer draws.
+        # was: stripping what looks like markup out of a program exports
+        # something that no longer runs, and its blank lines are part of
+        # it.
         if line.lstrip().startswith("```"):
             fenced = not fenced
             lines.append(line.rstrip())
