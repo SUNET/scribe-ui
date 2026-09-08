@@ -98,6 +98,58 @@ def create() -> None:
         )
         table.props(":selected-rows-label=\"(n) => n + ' files selected'\"")
 
+        # On a phone the seven columns are unreadable and the row's own
+        # action -- Transcribe, or Edit -- is the only part of it anyone
+        # came for. Quasar's own grid mode draws each row as a card
+        # instead; `item` below is what fills them in. Decided here rather
+        # than by a media query because it changes what is rendered, not
+        # how it looks -- and the width it is decided on is the phone
+        # breakpoint the stylesheet uses, so the cards and the rules that
+        # style them appear together.
+        #
+        # `window.innerWidth`, not `$q.screen`: NiceGUI evaluates a `:`
+        # prop with `eval()` in the page's own scope, where Quasar's `$q`
+        # -- a component property -- does not exist, and a prop that
+        # throws is dropped without a word. Read once, when the table is
+        # rendered, which is what a phone needs; a desktop window dragged
+        # across 700px keeps its columns until the page is opened again.
+        table.props(':grid="window.innerWidth < 700"')
+        table.add_slot(
+            "item",
+            """
+            <div class="q-pa-xs col-12">
+                <q-card flat bordered class="jobs-card">
+                    <div class="row items-start no-wrap">
+                        <q-checkbox v-model="props.selected" class="q-mr-sm" />
+                        <div class="col">
+                            <div class="jobs-card-name">{{ props.row.filename }}</div>
+                            <div class="jobs-card-meta">
+                                {{ props.row.job_type }} · {{ props.row.status }}
+                            </div>
+                            <div class="jobs-card-meta">
+                                Created {{ props.row.created_at }}
+                            </div>
+                            <div
+                                class="jobs-card-meta"
+                                :class="props.row.deletion_approaching ? 'deletion-warning' : ''"
+                            >
+                                Deleted {{ props.row.deletion_date }}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="jobs-card-action">
+                        <q-btn
+                            v-if="props.row.status === 'Uploaded' || props.row.status === 'Completed'"
+                            :label="props.row.status === 'Completed' ? 'Edit' : 'Transcribe'"
+                            :class="props.row.status === 'Completed' ? 'table-btn-edit' : 'table-btn-transcribe'"
+                            @click="$parent.$emit('table_handle_row_click', props.row)"
+                        />
+                    </div>
+                </q-card>
+            </div>
+            """,
+        )
+
         # Custom header checkbox that selects/deselects ALL rows across all pages
         table.add_slot(
             "header-selection",
@@ -177,10 +229,10 @@ def create() -> None:
         table.on("table_handle_row_click", table_handle_row_click)
 
         with table.add_slot("top-left"):
-            ui.label("My files").classes("text-3xl font-bold")
+            ui.label("My files").classes("text-3xl font-bold page-title")
 
         with table.add_slot("top-right"):
-            with ui.row().classes("items-center"):
+            with ui.row().classes("items-center jobs-actions"):
                 with ui.button("Delete", icon="delete") as delete:
                     delete.props("color=black flat")
                     delete.classes("delete-style")

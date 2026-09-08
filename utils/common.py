@@ -582,7 +582,7 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                     "q-mr-sm logo-dark"
                 ).style("height: 30px; width: 30px;")
                 ui.label(settings.TOPBAR_TEXT + header_text).classes(
-                    "text-h6 text-theme-primary"
+                    "text-h6 text-theme-primary topbar-text"
                 )
 
             with ui.element("div").style("display: flex; gap: 0px;"):
@@ -627,7 +627,7 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                     "q-mr-sm logo-dark"
                 ).style("height: 30px; width: 30px;")
                 ui.label(settings.TOPBAR_TEXT + header_text).classes(
-                    "text-h6 text-theme-primary"
+                    "text-h6 text-theme-primary topbar-text"
                 )
 
             with ui.element("div").style("display: flex; gap: 0px;"):
@@ -995,7 +995,12 @@ def table_upload(table, mode: str = "files") -> None:
     ui.add_head_html(default_styles)
 
     with ui.dialog() as dialog:
-        with ui.card().style("min-width: 400px; padding: 32px;"):
+        # 400px is wider than a phone. It stays the width this wants to be
+        # wherever there is room for it, and gives way where there is not.
+        with ui.card().style(
+            "width: 100%; max-width: 480px; min-width: min(400px, 100%);"
+            " padding: 32px;"
+        ):
             with ui.column().classes("w-full items-center") as status_column:
                 ui.label("Uploading files").classes("text-h6 q-mb-sm")
                 status_label = ui.label("Please wait...").classes(
@@ -1203,7 +1208,8 @@ def table_transcribe(selected_row, on_complete=None) -> None:
         with (
             ui.card()
             .style(
-                "background-color: var(--color-bg-surface); align-self: center; border: 0; width: 80%;"
+                "background-color: var(--color-bg-surface); align-self: center;"
+                " border: 0; width: 80%; min-width: min(320px, 100%);"
             )
             .classes("w-full no-shadow no-border")
         ):
@@ -1308,7 +1314,8 @@ def table_bulk_transcribe(table: ui.table, on_complete=None) -> None:
         with (
             ui.card()
             .style(
-                "background-color: var(--color-bg-surface); align-self: center; border: 0; width: 80%;"
+                "background-color: var(--color-bg-surface); align-self: center;"
+                " border: 0; width: 80%; min-width: min(320px, 100%);"
             )
             .classes("w-full no-shadow no-border")
         ):

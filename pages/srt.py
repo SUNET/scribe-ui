@@ -410,6 +410,27 @@ def create() -> None:
             """
         )
 
+        # Said on a phone instead of the editor, which is a caption list, a
+        # video and a timeline side by side and wants a desk. A sentence
+        # rather than a redirect: a reader who followed a link here should
+        # be told what to do, not bounced back to where they came from.
+        # The stylesheet decides which of the two is on screen -- the
+        # server cannot know how wide a phone is, and a reader who turns
+        # the tablet in their hands should not have to reload.
+        with ui.element("div").classes("editor-too-small w-full"):
+            ui.icon("desktop_windows").style("font-size: 2.5rem;")
+            ui.label("Editing needs a bigger screen").classes(
+                "editor-too-small-title"
+            )
+            ui.label(
+                "The editor puts the recording, the captions and the "
+                "timeline side by side. Open this transcription on a "
+                "computer to edit it."
+            )
+            ui.button(
+                "Back to my files", on_click=lambda: ui.navigate.to("/home")
+            ).props("flat color=black")
+
         with ui.splitter(value=60).classes("editor-panes w-full h-full") as splitter:
             with splitter.before:
                 # The height belongs to the card, not to the scroll area
