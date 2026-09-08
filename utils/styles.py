@@ -2787,12 +2787,26 @@ theme_styles = """
     }
     /* Sticky, because the whole point of tapping a passage is hearing it:
        the player has to stay reachable however far down the text the
-       reader has scrolled. */
+       reader has scrolled.
+
+       It sticks *below the header*, not at the top of the window: the
+       header is `position: fixed`, so a sticky element stopping at 0
+       parks itself underneath it and loses its top to it. The height is
+       measured in the page (see VIDEO_TOP_SCRIPT) rather than written
+       here as a number -- the header carries the announcement banners,
+       so how tall it is is not known until they are drawn, and it
+       changes when one is dismissed. The fallback is the header's own
+       minimum plus its padding, so the video is never under it even
+       before the first measurement. */
     .view-video {
         position: sticky;
-        top: 0;
+        top: var(--view-header, 58px);
         z-index: 2;
         background-color: var(--color-bg-page);
+        /* Its own ground, top and bottom: the text scrolls underneath
+           it, and a picture flush against the header reads as part of
+           it. */
+        padding-top: 0.5rem;
         padding-bottom: 0.5rem;
     }
     .view-video video {

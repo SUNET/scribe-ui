@@ -100,6 +100,49 @@ FOLLOW_SCRIPT = """
 """
 
 
+# Where the sticky player has to stop. The header is fixed, so a sticky
+# element that stops at the top of the window parks under it and loses its
+# top edge to it -- half the picture, on a phone. How tall the header is
+# is not a number this page can know: it carries the announcement banners,
+# and dismissing one changes it while the page is open, so it is measured
+# and remeasured rather than written down.
+VIDEO_TOP_SCRIPT = """
+<script>
+(function () {
+  function fit() {
+    const header = document.querySelector(".q-header");
+
+    if (!header) return false;
+
+    document.documentElement.style.setProperty(
+      "--view-header", header.getBoundingClientRect().height + "px"
+    );
+
+    return true;
+  }
+
+  function wire(tries) {
+    if (!fit()) {
+      if (tries > 0) requestAnimationFrame(() => wire(tries - 1));
+
+      return;
+    }
+
+    window.addEventListener("resize", fit);
+
+    // A dismissed banner makes the header shorter without the window
+    // changing size at all.
+    if (window.ResizeObserver) {
+      new ResizeObserver(fit).observe(document.querySelector(".q-header"));
+    }
+  }
+
+  wire(120);
+})();
+</script>
+"""
+
+
 def create() -> None:
     @ui.page("/view")
     def view(
@@ -220,6 +263,7 @@ def create() -> None:
         # The switch starts on, so the class it toggles has to start on
         # with it -- the page is drawn before any change event fires.
         ui.add_head_html(FOLLOW_SCRIPT)
+        ui.add_head_html(VIDEO_TOP_SCRIPT)
         ui.add_body_html(
             "<script>document.body.classList.add('view-follow');</script>"
         )
