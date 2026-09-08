@@ -496,7 +496,13 @@ def create() -> None:
                                 loop=False,
                             ).classes("w-full h-full")
                             editor.set_video_player(video)
-                            video.props("preload='auto'")
+                            # playsinline: iOS plays a video fullscreen
+                            # without it, which takes the captions off
+                            # the screen every time the reader presses
+                            # play on a tablet.
+                            video.props(
+                                "playsinline webkit-playsinline preload='auto'"
+                            )
 
                             # Subtitles only -- a transcription's own
                             # blocks are a speaker's whole turn, not a

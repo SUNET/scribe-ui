@@ -162,9 +162,17 @@ def create() -> None:
                 ui.label(filename).classes("view-title")
 
             with ui.element("div").classes("view-video w-full"):
+                # playsinline, or iOS plays every video fullscreen --
+                # which on this page means the transcription disappears
+                # the moment a passage is tapped, since tapping one plays
+                # it. webkit-playsinline is the same thing for older
+                # iOS. Both are attributes on the <video> itself; NiceGUI
+                # passes anything it does not know as a fallthrough attr.
                 ui.video(
                     f"/video/{uuid}", controls=True, autoplay=False, loop=False
-                ).classes("w-full").props("preload='auto'")
+                ).classes("w-full").props(
+                    "playsinline webkit-playsinline preload='auto'"
+                )
 
             with ui.row().classes("view-controls w-full items-center"):
                 follow = ui.switch("Follow audio", value=True)
