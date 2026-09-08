@@ -2670,14 +2670,24 @@ theme_styles = """
         .q-table__top .q-table__control {
             width: 100%;
         }
+        /* The four actions are peers -- none of them is the action of
+           the page -- so they are drawn as peers: a two by two grid of
+           identical cells rather than four buttons each as wide as its
+           own label happens to be, which put Delete and Upload on one
+           row and Transcribe alone on the next. A grid rather than
+           `flex: 1 1 0`, because four across a 390px screen leaves no
+           room for "Transcribe" to be read. The height is the same tap
+           target the card's own action has. */
         .jobs-actions {
             width: 100%;
-            flex-wrap: wrap;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
             gap: 0.35rem !important;
         }
         .jobs-actions .q-btn {
-            flex: 1 1 auto;
+            width: 100%;
             min-width: 0;
+            min-height: 44px;
         }
 
         /* Rows are cards here (see the table's `grid` prop), so the strip
