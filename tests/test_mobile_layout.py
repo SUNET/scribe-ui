@@ -63,7 +63,41 @@ def test_the_rows_become_cards_rather_than_seven_columns():
     # is the whole of what a phone came to the list for.
     item = HOME[HOME.index('"item"') : HOME.index('with table.add_slot("top-left")')]
     assert "table_handle_row_click" in item
-    assert "props.row.status === 'Completed' ? 'Edit' : 'Transcribe'" in item
+    assert "props.row.status === 'Completed' ? 'View' : 'Transcribe'" in item
+
+
+def test_a_finished_job_is_viewed_rather_than_edited_on_a_phone():
+    # The editor wants a desk, so the card offers the one thing a phone
+    # can actually do with a finished job: read it back. The desktop row
+    # is untouched and still opens the editor.
+    item = HOME[HOME.index('"item"') : HOME.index('with table.add_slot("top-left")')]
+    cell = HOME[HOME.index('"body-cell-status"') :]
+
+    assert "table_handle_row_view" in item
+    assert "table_handle_row_view" in HOME[HOME.index("def table_handle_row_view") :]
+    assert "props.row.status === 'Completed' ? 'Edit' : 'Transcribe'" in cell
+
+
+def test_the_view_page_shows_a_transcription_without_offering_to_change_it():
+    view = pathlib.Path("pages/view.py").read_text()
+
+    # It is the same fetch and the same parsing the editor does -- what a
+    # caption is must not be decided twice.
+    assert "SRTEditor" in view
+    assert "parse_srt" in view and "parse_txt" in view
+
+    # And nothing that writes: no save, no export, no editor on the
+    # server behind it.
+    assert "save_srt_changes" not in view
+    assert "contenteditable" not in view
+    assert "TranscriptEditor" not in view
+
+    # Somebody's speech is drawn as a label, never as markup.
+    assert "ui.html(" not in view
+
+    # The notice in the editor offers the same page rather than only
+    # turning a phone away.
+    assert "/view?uuid=" in SRT
 
 
 def test_the_menu_rail_gives_its_width_back_on_a_phone():

@@ -427,6 +427,17 @@ def create() -> None:
                 "timeline side by side. Open this transcription on a "
                 "computer to edit it."
             )
+
+            # Reading it back does fit a phone, so the notice offers that
+            # rather than only turning the reader away -- the same page
+            # the jobs list's own card opens.
+            ui.button(
+                "View transcription",
+                on_click=lambda: ui.navigate.to(
+                    f"/view?uuid={uuid}&filename={filename}&model={model}"
+                    f"&language={language}&data_format={data_format}"
+                ),
+            ).props("flat color=black")
             ui.button(
                 "Back to my files", on_click=lambda: ui.navigate.to("/home")
             ).props("flat color=black")

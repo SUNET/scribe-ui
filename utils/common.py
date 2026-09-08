@@ -787,9 +787,15 @@ async def jobs_get() -> list | None:
     return jobs
 
 
-def table_click(event) -> None:
+def open_result(event, page: str) -> None:
     """
-    Handle the click event on the table rows.
+    Open a completed job on one of the two pages that can show it.
+
+    The editor and the read-only view take the same job in the same query
+    and differ in nothing else, so which of them a row opens is the
+    caller's decision -- the phone's card asks for the view, the desktop
+    table for the editor -- rather than something worked out again here
+    from the width of the screen.
     """
 
     status = event.args["status"].lower()
@@ -802,14 +808,28 @@ def table_click(event) -> None:
     if status != "completed":
         return
 
-    if output_format == "TXT":
-        ui.navigate.to(
-            f"/srt?uuid={uuid}&filename={filename}&model={model_type}&language={language}&data_format=txt"
-        )
-    else:
-        ui.navigate.to(
-            f"/srt?uuid={uuid}&filename={filename}&model={model_type}&language={language}&data_format=srt"
-        )
+    data_format = "txt" if output_format == "TXT" else "srt"
+
+    ui.navigate.to(
+        f"{page}?uuid={uuid}&filename={filename}&model={model_type}"
+        f"&language={language}&data_format={data_format}"
+    )
+
+
+def table_click(event) -> None:
+    """
+    Handle the click event on the table rows.
+    """
+
+    open_result(event, "/srt")
+
+
+def table_view(event) -> None:
+    """
+    Open a completed job read-only, which is what a phone offers.
+    """
+
+    open_result(event, "/view")
 
 
 async def post_file(

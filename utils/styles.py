@@ -2751,6 +2751,83 @@ theme_styles = """
         }
     }
 
+    /* ══════════════════════════════════════════════════════════════════
+       Reading a transcription (/view)
+       ══════════════════════════════════════════════════════════════════
+       The read-only page a phone's card opens: the recording, the text
+       under it, and the passage being played marked. It is a column at
+       any width -- there is nothing beside anything here -- so it is not
+       inside the phone media query; on a desktop it simply stops growing
+       once a line is as long as anyone wants to read. */
+    .view-page {
+        max-width: 760px;
+        margin: 0 auto;
+        gap: 0.75rem;
+    }
+    .view-header {
+        gap: 0.5rem;
+        flex-wrap: nowrap;
+    }
+    .view-title {
+        font-size: 1.1rem;
+        font-weight: 600;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    /* Sticky, because the whole point of tapping a passage is hearing it:
+       the player has to stay reachable however far down the text the
+       reader has scrolled. */
+    .view-video {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        background-color: var(--color-bg-page);
+        padding-bottom: 0.5rem;
+    }
+    .view-video video {
+        max-height: 40vh;
+        background-color: black;
+    }
+    .view-controls {
+        gap: 0.75rem;
+        flex-wrap: wrap;
+    }
+    .view-note {
+        font-size: 0.8rem;
+        color: var(--color-text-muted);
+    }
+    .view-captions {
+        gap: 0.25rem;
+        padding-bottom: 4rem;
+    }
+    /* A passage, not a filled cell -- the same rule the editor's own
+       captions follow. The pointer says it can be tapped; the marking
+       says which one is being played. */
+    .view-caption {
+        padding: 0.5rem 0.6rem;
+        border-radius: 6px;
+        cursor: pointer;
+        border-left: 3px solid transparent;
+    }
+    .view-caption:hover {
+        background-color: var(--color-bg-surface-hover);
+    }
+    .view-caption.is-playing {
+        border-left-color: var(--color-brand-primary);
+        background-color: var(--color-bg-surface-hover);
+    }
+    .view-caption-meta {
+        font-size: 0.75rem;
+        color: var(--color-text-muted);
+    }
+    /* The editor's own line breaks are part of a caption, so they are
+       kept rather than reflowed. */
+    .view-caption-text {
+        white-space: pre-line;
+        overflow-wrap: anywhere;
+    }
+
     /* Said by the editor about itself, and only where it applies: a
        caption list, a video and a timeline side by side need a desk. It
        is a plain sentence rather than a redirect, because a reader who

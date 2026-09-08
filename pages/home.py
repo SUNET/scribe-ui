@@ -23,6 +23,7 @@ from utils.common import (
     table_upload,
     table_delete,
     table_transcribe,
+    table_view,
     table_bulk_export,
     table_bulk_transcribe,
 )
@@ -99,7 +100,7 @@ def create() -> None:
         table.props(":selected-rows-label=\"(n) => n + ' files selected'\"")
 
         # On a phone the seven columns are unreadable and the row's own
-        # action -- Transcribe, or Edit -- is the only part of it anyone
+        # action -- Transcribe, or View -- is the only part of it anyone
         # came for. Quasar's own grid mode draws each row as a card
         # instead; `item` below is what fills them in. Decided here rather
         # than by a media query because it changes what is rendered, not
@@ -140,9 +141,9 @@ def create() -> None:
                     <div class="jobs-card-action">
                         <q-btn
                             v-if="props.row.status === 'Uploaded' || props.row.status === 'Completed'"
-                            :label="props.row.status === 'Completed' ? 'Edit' : 'Transcribe'"
+                            :label="props.row.status === 'Completed' ? 'View' : 'Transcribe'"
                             :class="props.row.status === 'Completed' ? 'table-btn-edit' : 'table-btn-transcribe'"
-                            @click="$parent.$emit('table_handle_row_click', props.row)"
+                            @click="$parent.$emit(props.row.status === 'Completed' ? 'table_handle_row_view' : 'table_handle_row_click', props.row)"
                         />
                     </div>
                 </q-card>
@@ -227,6 +228,24 @@ def create() -> None:
             """,
         )
         table.on("table_handle_row_click", table_handle_row_click)
+
+        def table_handle_row_view(e: events.GenericEventArguments) -> None:
+            # What the card offers on a phone. Same row, same job, read
+            # only: the editor puts a recording, a caption list and a
+            # timeline side by side and wants a desk, while reading a
+            # transcription back -- which is what anyone opens one for on
+            # a phone -- needs none of that.
+            if not e.args.get("uuid"):
+                ui.notify(
+                    "That upload is still being registered. "
+                    "Try again in a moment.",
+                    type="warning",
+                    position="top",
+                )
+            else:
+                table_view(e)
+
+        table.on("table_handle_row_view", table_handle_row_view)
 
         with table.add_slot("top-left"):
             ui.label("My files").classes("text-3xl font-bold page-title")
