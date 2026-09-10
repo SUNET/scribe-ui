@@ -421,17 +421,6 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
 
         menu_btn_tooltip_ref = None
 
-        # NiceGUI renders <main class="q-page"> but without an id. The skip
-        # link needs a target, so the id is set once after the page renders.
-        ui.timer(
-            0.1,
-            lambda: ui.run_javascript(
-                "const m=document.querySelector('main.q-page');"
-                "if(m && !m.id) m.id='main-content';"
-            ),
-            once=True,
-        )
-
         # menu_item_style, menu_active_style imported from utils.styles
 
         def menu_style(path: str) -> str:
@@ -565,16 +554,7 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                 # Skip to content. The first focusable element on the page.
                 # Without it the main menu entries would precede the page content
                 # in the tab order on every page load (WCAG 2.4.1).
-                skip = ui.link("Skip to content", "#main-content").classes(
-                    "skip-link"
-                )
-                skip.on(
-                    "click",
-                    lambda: ui.run_javascript(
-                        "const m=document.querySelector('main.q-page');"
-                        "if(m){m.setAttribute('tabindex','-1');m.focus();}"
-                    ),
-                )
+                ui.link("Skip to content", "#main-content").classes("skip-link")
 
                 with ui.button(
                     icon="close" if drawer_open else "menu",
@@ -706,6 +686,20 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                     on_click=lambda: ui.navigate.to("/logout"),
                 ).props("flat").classes("header-btn"):
                     ui.tooltip("Logout")
+
+    # Target for the skip link, and the first element in the page content.
+    #
+    # NiceGUI already gives <main class="q-page"> an id of its own (c2, c7, ...)
+    # and uses it to address the element when patching the DOM, so that id must
+    # not be overwritten. A dedicated empty anchor is used instead. tabindex=-1
+    # lets it receive focus from the fragment jump without being a tab stop of
+    # its own; the next Tab continues from here into the page content.
+    #
+    # It is placed before the announcement banners on purpose, so that skipping
+    # the navigation does not also skip a service message.
+    ui.element("div").props('id=main-content tabindex=-1').style(
+        "position: absolute; width: 0; height: 0; overflow: hidden;"
+    )
 
     _show_announcement_banners()
 
