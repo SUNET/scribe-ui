@@ -915,10 +915,30 @@ def format_size(bytes_val) -> str:
         return f"{bytes_val / (1024 * 1024 * 1024):.1f} GB"
 
 
-def toggle_upload_status(upload_column, status_column, dialog):
+def toggle_upload_status(upload_column, status_column, dialog, abort_button=None):
+    # Hiding upload_column also hides the Cancel button, which lives inside it,
+    # and dialog.props("persistent") disables Esc and backdrop dismissal at the
+    # same moment. Together that left a modal with no focusable element and no
+    # way out for the duration of the upload - up to 4 GB per the dialog's own
+    # text. That is a keyboard trap, WCAG 2.1.2 (level A).
+    #
+    # persistent is kept on purpose: a stray backdrop click should not abandon a
+    # large upload. The way out is an explicit, focusable Cancel button that
+    # status_column now carries.
     upload_column.visible = False
     status_column.visible = True
     dialog.props("persistent")
+
+    # The element that had focus is being hidden underneath the user, which
+    # drops focus to the document body: the keyboard user is left with nothing
+    # selected and no indication that the dialog changed. Move focus to the one
+    # control that is now visible. WCAG 2.4.3.
+    if abort_button is not None:
+        ui.run_javascript(
+            f"const b = getElement({abort_button.id});"
+            "const el = b && (b.$el || b);"
+            "if (el && el.focus) el.focus();"
+        )
 
 
 def table_upload(table) -> None:
@@ -932,16 +952,30 @@ def table_upload(table) -> None:
         with ui.card().style("min-width: 400px; padding: 32px;"):
             with ui.column().classes("w-full items-center") as status_column:
                 ui.label("Uploading files").classes("text-h6 q-mb-sm")
-                status_label = ui.label("Please wait...").classes(
-                    "text-body1 q-mb-lg text-theme-muted"
+                # role=status so the byte counter is announced as it changes
+                # instead of updating silently. WCAG 4.1.3.
+                status_label = (
+                    ui.label("Please wait...")
+                    .classes("text-body1 q-mb-lg text-theme-muted")
+                    .props('role=status aria-live=polite')
                 )
-                ui.spinner(size="50px")
+                # The spinner is decorative; the text above carries the state.
+                ui.spinner(size="50px").props("aria-hidden=true")
+                # The keyboard way out of the upload. See toggle_upload_status.
+                abort_button = ui.button("Cancel upload", icon="cancel").props(
+                    'color=black flat aria-label="Cancel upload"'
+                )
+                abort_button.classes("cancel-style")
                 status_column.visible = False
 
             with ui.column().classes("w-full items-center mt-10") as upload_column:
                 upload = (
                     ui.upload(
-                        label="hidden",
+                        # The label is rendered into the uploader header, which
+                        # sits inside the opacity:0 wrapper below. The literal
+                        # string "hidden" was therefore exposed to screen
+                        # readers as the uploader's text.
+                        label="",
                         on_multi_upload=lambda e: handle_upload_with_feedback(
                             e, dialog, table
                         ),
@@ -960,7 +994,7 @@ def table_upload(table) -> None:
                 upload.on(
                     "start",
                     lambda _: toggle_upload_status(
-                        upload_column, status_column, dialog
+                        upload_column, status_column, dialog, abort_button
                     ),
                 )
 
@@ -977,6 +1011,9 @@ def table_upload(table) -> None:
                     dialog.delete()
 
                 upload.on("finish", lambda _: _cleanup_dialog())
+                # _cleanup_dialog clears the progress interval, resets the
+                # uploader and closes the dialog, so it is a real abort.
+                abort_button.on_click(lambda: _cleanup_dialog())
 
                 def on_byte_progress(e):
                     uploaded = e.args.get("uploaded", 0)
@@ -988,11 +1025,23 @@ def table_upload(table) -> None:
 
                 upload.on("byte_progress", on_byte_progress)
 
+                # The dropzone is the only thing that looks clickable, and the
+                # instruction text points at it, but it used to be a plain div
+                # with its click handler bound in JavaScript: not focusable, no
+                # role, no accessible name. The file picker was reachable only
+                # through a 34x34 anchor inside the opacity:0 uploader below,
+                # which is invisible - focus went somewhere the user cannot see.
+                #
+                # role=button plus tabindex=0 makes the visible affordance the
+                # focusable control, and the keydown handler further down gives
+                # it Enter and Space. WCAG 2.1.1, 4.1.2 (level A).
                 dropzone = ui.html(
                     """
                     <div class="w-96 h-40 flex items-center justify-center
                                 border-2 border-dashed rounded-2xl cursor-pointer
-                                dropzone-area">
+                                dropzone-area"
+                         role="button" tabindex="0"
+                         aria-label="Choose audio or video files to upload">
                         Drag & drop files here or click to upload.
                         <br/><br/>
                         5 files at a maximum of 4GB can be uploaded at once.
@@ -1010,6 +1059,15 @@ def table_upload(table) -> None:
                         "const upl = getElement(" + str(upload_id) + ");"
                         "if (!dz || !upl) return;"
                         "dz.addEventListener('click', () => upl.$refs.qRef.pickFiles());"
+                        # Enter and Space activate the dropzone, the way any
+                        # role=button must. preventDefault stops Space from
+                        # scrolling the page instead.
+                        "dz.addEventListener('keydown', e => {"
+                        "  if (e.key === 'Enter' || e.key === ' ' || e.code === 'Space') {"
+                        "    e.preventDefault();"
+                        "    upl.$refs.qRef.pickFiles();"
+                        "  }"
+                        "});"
                         "dz.addEventListener('dragover', e => {"
                         "  e.preventDefault();"
                         "  dz.querySelector('div').classList.add('dropzone-drag');"
@@ -1044,6 +1102,25 @@ def table_upload(table) -> None:
                         "  const qRef = upl.$refs.qRef;"
                         "  if (qRef) { try { qRef.reset(); } catch (e) {} }"
                         "};"
+                        # The uploader is hidden with opacity: 0, but its own
+                        # pick-files anchor stayed in the tab order - an
+                        # invisible focus stop on the primary upload path
+                        # (finding F-49). Take its focusable descendants out of
+                        # the tab order; the dropzone above is the control now.
+                        #
+                        # getElement() returns the Vue component, not a DOM
+                        # node, so the element has to be reached through $el.
+                        # This runs last and is guarded: if it ever fails it
+                        # must not take the drag-and-drop listeners or the
+                        # progress interval above down with it.
+                        "try {"
+                        "  const uplEl = upl.$el ||"
+                        "    (upl.$refs && upl.$refs.qRef && upl.$refs.qRef.$el);"
+                        "  if (uplEl && uplEl.querySelectorAll) {"
+                        "    uplEl.querySelectorAll('a, button, input, [tabindex]')"
+                        "      .forEach(el => el.setAttribute('tabindex', '-1'));"
+                        "  }"
+                        "} catch (e) {}"
                     ),
                     once=True,
                 )
