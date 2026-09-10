@@ -421,11 +421,74 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
 
         menu_btn_tooltip_ref = None
 
+        # NiceGUI renders <main class="q-page"> but without an id. The skip
+        # link needs a target, so the id is set once after the page renders.
+        ui.timer(
+            0.1,
+            lambda: ui.run_javascript(
+                "const m=document.querySelector('main.q-page');"
+                "if(m && !m.id) m.id='main-content';"
+            ),
+            once=True,
+        )
+
         # menu_item_style, menu_active_style imported from utils.styles
 
         def menu_style(path: str) -> str:
             active = current_path == path
             return menu_item_style + (menu_active_style if active else "")
+
+        def menu_link(path: str, icon: str, label: str) -> None:
+            """
+            A menu entry rendered as a real link.
+
+            Each entry used to be a ui.element("div") with a click handler. Such
+            elements are not focusable, have no role and cannot be activated
+            from the keyboard, which left the entire main navigation outside the
+            tab order (WCAG 2.1.1, 4.1.2). ui.link renders <a href>, which gives
+            focusability, role=link, activation with Enter and support for
+            open-in-new-tab. Note that Space does not activate links: that is
+            correct behaviour for the link role, not a defect.
+            """
+            link = ui.link(target=path).style(menu_style(path)).classes("menu-item")
+            if current_path == path:
+                link.props('aria-current=page')
+            with link:
+                ui.icon(icon).style("font-size: 20px;").props("aria-hidden=true")
+                ui.label(label).classes("menu-label")
+                # The tooltip is a visual aid in mini mode, where the label is
+                # clipped for the eye but still present for screen readers. It is
+                # not the link's accessible name; the label is.
+                t = ui.tooltip(label)
+                t.set_visibility(not app.storage.user.get("drawer_open", False))
+                menu_tooltips.append(t)
+
+        def menu_group(title: Optional[str], items, group_id: str) -> None:
+            """
+            A group of menu entries as its own labelled nav landmark.
+
+            Separate labelled landmarks (Main menu, Administration, System,
+            Account) let a screen reader user jump straight to the right group
+            with their landmark command instead of tabbing through every entry.
+            The section headings used to be visual ui.label only (WCAG 1.3.1);
+            they are now real h2 elements inside their landmark.
+            """
+            with ui.element("nav").props(
+                f'aria-label="{title or "Main menu"}" id={group_id}'
+            ).classes("w-full"):
+                if title:
+                    with ui.element("h2").classes("menu-header").style(
+                        "padding: 10px 16px 4px; font-weight: bold;"
+                        " font-size: 0.85rem; margin: 0;"
+                        " color: var(--color-text-tertiary);"
+                    ):
+                        ui.label(title)
+                with ui.element("ul").style(
+                    "list-style: none; margin: 0; padding: 0; width: 100%;"
+                ):
+                    for path, icon, label in items:
+                        with ui.element("li").style("width: 100%;"):
+                            menu_link(path, icon, label)
 
         # Menu items: (path, icon, label)
         menu_items = [
@@ -450,74 +513,44 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
             with ui.column().classes("w-full").style("gap: 0;"):
                 ui.separator()
 
-                show_tips = not drawer_open
-
-                for path, icon, label in menu_items:
-                    with ui.element("div").style(menu_style(path)).classes(
-                        "menu-item"
-                    ).on("click", lambda p=path: ui.navigate.to(p)):
-                        ui.icon(icon).style("font-size: 20px;")
-                        ui.label(label).classes("menu-label")
-                        t = ui.tooltip(label)
-                        t.set_visibility(show_tips)
-                        menu_tooltips.append(t)
+                menu_group(None, menu_items, "nav-main")
 
                 if is_admin:
                     ui.separator().classes("menu-separator")
-                    ui.label("Administration").classes("menu-header").style(
-                        "padding: 10px 16px 4px; font-weight: bold; font-size: 0.85rem; color: var(--color-text-tertiary);"
-                    )
+                    menu_group("Administration", admin_items, "nav-administration")
 
-                    for path, icon, label in admin_items:
-                        with ui.element("div").style(menu_style(path)).classes(
-                            "menu-item"
-                        ).on("click", lambda p=path: ui.navigate.to(p)):
-                            ui.icon(icon).style("font-size: 20px;")
-                            ui.label(label).classes("menu-label")
-                            t = ui.tooltip(label)
-                            t.set_visibility(show_tips)
-                            menu_tooltips.append(t)
-
-                    with ui.element("div").style(menu_item_style).classes(
-                        "menu-item"
-                    ).on(
-                        "click",
-                        lambda: ui.run_javascript(
-                            f"window.open('{settings.API_URL}/api/docs', '_blank')"
-                        ),
-                    ):
-                        ui.icon("description").style("font-size: 20px;")
-                        ui.label("API documentation").classes("menu-label")
-                        t = ui.tooltip("API documentation")
-                        t.set_visibility(show_tips)
-                        menu_tooltips.append(t)
+                    # The API documentation opens in a new tab. A real link with
+                    # new_tab=True instead of a div calling window.open(): gives
+                    # focusability, a role, and lets the user decide how to open it.
+                    with ui.element("nav").props('aria-label="Documentation"').classes("w-full"):
+                        with ui.element("ul").style(
+                            "list-style: none; margin: 0; padding: 0; width: 100%;"
+                        ):
+                            with ui.element("li").style("width: 100%;"):
+                                with ui.link(
+                                    target=f"{settings.API_URL}/api/docs", new_tab=True
+                                ).style(menu_item_style).classes("menu-item"):
+                                    ui.icon("description").style(
+                                        "font-size: 20px;"
+                                    ).props("aria-hidden=true")
+                                    ui.label("API documentation").classes("menu-label")
+                                    # Tell the user the link opens in a new tab
+                                    # (WCAG 2.4.4 / good practice 3.2.5)
+                                    with ui.element("span").classes("sr-only"):
+                                        ui.label(" (opens in a new tab)")
+                                    t = ui.tooltip("API documentation")
+                                    t.set_visibility(
+                                        not app.storage.user.get("drawer_open", False)
+                                    )
+                                    menu_tooltips.append(t)
 
                 if is_bofh:
                     ui.separator().classes("menu-separator")
-                    ui.label("System").classes("menu-header").style(
-                        "padding: 10px 16px 4px; font-weight: bold; font-size: 0.85rem; color: var(--color-text-tertiary);"
-                    )
-
-                    for path, icon, label in system_items:
-                        with ui.element("div").style(menu_style(path)).classes(
-                            "menu-item"
-                        ).on("click", lambda p=path: ui.navigate.to(p)):
-                            ui.icon(icon).style("font-size: 20px;")
-                            ui.label(label).classes("menu-label")
-                            t = ui.tooltip(label)
-                            t.set_visibility(show_tips)
-                            menu_tooltips.append(t)
+                    menu_group("System", system_items, "nav-system")
 
                 ui.separator()
 
-                with ui.element("div").style(menu_item_style).classes("menu-item").on(
-                    "click", lambda: ui.navigate.to("/logout")
-                ):
-                    ui.icon("logout").style("font-size: 20px;")
-                    ui.label("Logout").classes("menu-label")
-                    t = ui.tooltip("Logout")
-                    t.set_visibility(show_tips)
-                    menu_tooltips.append(t)
+                menu_group("Account", [("/logout", "logout", "Logout")], "nav-account")
 
         with (
             ui.header()
@@ -529,10 +562,31 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
             with ui.element("div").style(
                 "display: flex; gap: 0px; align-items: center; margin-left: -12px;"
             ):
+                # Skip to content. The first focusable element on the page.
+                # Without it the main menu entries would precede the page content
+                # in the tab order on every page load (WCAG 2.4.1).
+                skip = ui.link("Skip to content", "#main-content").classes(
+                    "skip-link"
+                )
+                skip.on(
+                    "click",
+                    lambda: ui.run_javascript(
+                        "const m=document.querySelector('main.q-page');"
+                        "if(m){m.setAttribute('tabindex','-1');m.focus();}"
+                    ),
+                )
+
                 with ui.button(
                     icon="close" if drawer_open else "menu",
                     on_click=lambda: toggle_drawer(),
                 ).props("flat").classes("header-btn") as menu_btn:
+                    # A tooltip does NOT provide an accessible name in Quasar: it
+                    # becomes a child element. The name must be set with aria-label.
+                    # aria-expanded mirrors the drawer state (disclosure pattern).
+                    menu_btn.props(
+                        'aria-label="Main menu" aria-controls=nav-main '
+                        f'aria-expanded={"true" if drawer_open else "false"}'
+                    )
                     menu_btn_tooltip = ui.tooltip(
                         "Close menu" if drawer_open else "Expand menu"
                     )
@@ -559,7 +613,10 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                         icon=dark_icon,
                         on_click=lambda: _cycle_dark_mode(dark_btn),
                     )
-                    .props("flat")
+                    # Icon-only buttons take their name from the icon ligature
+                    # ("brightness_auto"), which is aria-hidden, leaving the button
+                    # nameless. aria-label is required; a tooltip is not enough.
+                    .props('flat aria-label="Toggle theme"')
                     .classes("header-btn")
                 )
                 with dark_btn:
@@ -568,7 +625,7 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                     icon="help",
                     on_click=lambda: show_help_dialog(),
                 ).props(
-                    "flat"
+                    'flat aria-label="Help and documentation"'
                 ).classes("header-btn"):
                     ui.tooltip("Help")
 
