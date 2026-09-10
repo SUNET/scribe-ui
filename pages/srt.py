@@ -48,7 +48,7 @@ def create() -> None:
         """
         Display the result of the transcription job.
         """
-        page_init(use_drawer=True)
+        page_init(use_drawer=True, title="Editor")
 
         try:
             UUID(uuid)

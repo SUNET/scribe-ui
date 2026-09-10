@@ -43,7 +43,7 @@ async def analytics() -> None:
     Page view analytics dashboard. BOFH only.
     """
 
-    page_init(use_drawer=True)
+    page_init(use_drawer=True, title="Analytics")
 
     if not get_bofh_status():
         ui.navigate.to("/home")

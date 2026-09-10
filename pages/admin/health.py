@@ -43,7 +43,7 @@ async def health() -> None:
     Health check dashboard displaying backend system metrics.
     """
 
-    page_init(use_drawer=True)
+    page_init(use_drawer=True, title="System health")
 
     if not get_admin_status():
         ui.navigate.to("/home")

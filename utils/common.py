@@ -283,10 +283,25 @@ def _show_announcement_banners() -> None:
                 )
 
 
-def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None:
+def page_init(
+    header_text: Optional[str] = "",
+    use_drawer: bool = False,
+    title: str = "",
+) -> None:
     """
     Initialize the page with a header and background color.
+
+    :param title: name of this page, appended to the service name and set
+        as the document title. Every page shared the single title set in
+        ui.run() before this, so a tab strip and a screen reader's page
+        announcement could not tell /home, /user and the admin pages
+        apart. WCAG 2.4.2 Page Titled (level A).
     """
+
+    # Set before the storage guard below, so a page that redirects does
+    # not leave the previous page's title in the tab.
+    if title:
+        ui.page_title(f"{settings.TAB_TITLE} - {title}")
 
     if "_scribe_bk" not in app.storage.browser:
         ui.navigate.to("/")

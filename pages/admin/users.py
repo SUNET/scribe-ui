@@ -48,7 +48,7 @@ def users() -> None:
     """
     Page to show all users.
     """
-    page_init(use_drawer=True)
+    page_init(use_drawer=True, title="Users")
 
     if not get_admin_status():
         ui.navigate.to("/home")

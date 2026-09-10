@@ -49,6 +49,10 @@ async def index(request: Request) -> None:
     Index page with login.
     """
 
+    # This page does not go through page_init, so it sets its own title.
+    # WCAG 2.4.2.
+    ui.page_title(f"{settings.TAB_TITLE} - Sign in")
+
     ui.add_head_html(default_styles)
 
     token = request.query_params.get("token")

@@ -160,7 +160,7 @@ def edit_group(group_id: str) -> None:
     """
     Page to edit a group.
     """
-    page_init(use_drawer=True)
+    page_init(use_drawer=True, title="Edit group")
 
     if not get_admin_status():
         ui.navigate.to("/home")
@@ -281,7 +281,7 @@ async def statistics(group_id: str) -> None:
     """
     Page to show statistics of a group with improved layout and design.
     """
-    page_init(use_drawer=True)
+    page_init(use_drawer=True, title="Group statistics")
 
     if not get_admin_status():
         ui.navigate.to("/home")
@@ -498,7 +498,7 @@ def create() -> None:
         """
         Main page of the application.
         """
-        page_init(use_drawer=True)
+        page_init(use_drawer=True, title="Groups")
 
         if not get_admin_status():
             ui.navigate.to("/home")

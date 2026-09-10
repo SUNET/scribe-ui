@@ -187,7 +187,7 @@ def edit_customer(customer_id: str) -> None:
     """
     Page to edit a customer.
     """
-    page_init(use_drawer=True)
+    page_init(use_drawer=True, title="Edit customer")
 
     if not get_admin_status():
         ui.navigate.to("/home")
@@ -337,7 +337,7 @@ def customers() -> None:
     """
     Customer management page.
     """
-    page_init(use_drawer=True)
+    page_init(use_drawer=True, title="Customers")
 
     if not get_admin_status():
         ui.navigate.to("/home")

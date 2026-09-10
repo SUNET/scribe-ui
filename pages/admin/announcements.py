@@ -325,7 +325,7 @@ def _announcement_delete_confirm(ann: dict) -> None:
 def announcements_page() -> None:
     """Announcement banner management page. BOFH only."""
 
-    page_init(use_drawer=True)
+    page_init(use_drawer=True, title="Announcements")
 
     if not get_bofh_status():
         ui.navigate.to("/home")

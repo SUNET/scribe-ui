@@ -911,7 +911,7 @@ def rules_page() -> None:
     Onboarding management page.
     """
 
-    page_init(use_drawer=True)
+    page_init(use_drawer=True, title="Provisioning rules")
 
     if not get_admin_status():
         ui.navigate.to("/home")
