@@ -39,7 +39,13 @@ async def token_refresh_call() -> str:
     except (httpx.HTTPError, Exception):
         return None
 
-    return response.json().get("access_token")
+    token_response = response.json()
+
+    new_refresh_token = token_response.get("refresh_token")
+    if new_refresh_token:
+        app.storage.user["refresh_token"] = new_refresh_token
+
+    return token_response.get("access_token")
 
 
 async def token_refresh() -> bool:
