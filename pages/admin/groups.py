@@ -50,7 +50,7 @@ def create_group_dialog(page: callable) -> None:
     Show a dialog to create a new group.
     """
 
-    with ui.dialog() as create_group_dialog:
+    with ui.dialog().props('aria-label="Create new group"') as create_group_dialog:
         with ui.card().style("width: 500px; max-width: 90vw;"):
             ui.label("Create new group").classes("text-2xl font-bold")
             name_input = ui.input("Group name").classes("w-full").props("outlined")
@@ -97,7 +97,7 @@ def admin_dialog(users: list, group_id: str) -> None:
     administrator or remove administrator rights.
     """
 
-    with ui.dialog() as dialog:
+    with ui.dialog().props('aria-label="Administrators"') as dialog:
         with ui.card().style("width: 600px; max-width: 90vw; "):
             ui.label("Administrators").classes("text-2xl font-bold")
             admin_table = ui.table(

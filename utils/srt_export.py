@@ -181,7 +181,7 @@ class ExportMixin:
         bulk_needs_preview = is_bulk and self.data_format == "txt"
 
         ui.add_head_html(default_styles)
-        with ui.dialog() as dialog:
+        with ui.dialog().props('aria-label="Export transcript"') as dialog:
             card = (
                 ui.card()
                 .classes("p-6")
@@ -197,7 +197,7 @@ class ExportMixin:
                 with ui.row().classes("w-full items-center justify-between mb-4"):
                     ui.label("Export transcript").classes("text-h5 font-bold")
                     ui.button(icon="close", on_click=dialog.close).props(
-                        "flat round dense color=grey-7"
+                        "flat round dense color=grey-7 aria-label='Close export dialog'"
                     )
 
                 ui.separator().classes("mb-4")

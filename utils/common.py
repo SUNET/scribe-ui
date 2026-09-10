@@ -82,7 +82,7 @@ def show_help_dialog() -> None:
     Show a help dialog with information about the application.
     """
 
-    with ui.dialog() as dialog:
+    with ui.dialog().props('aria-label="Help & Documentation"') as dialog:
         with (
             ui.card()
             .style("max-width: 900px; padding: 32px;")
@@ -91,7 +91,7 @@ def show_help_dialog() -> None:
             with ui.row().classes("w-full items-center justify-between mb-6"):
                 ui.label("Help & Documentation").classes("text-h4 font-bold")
                 ui.button(icon="close", on_click=dialog.close).props(
-                    "flat round dense color=grey-7"
+                    "flat round dense color=grey-7 aria-label='Close help dialog'"
                 )
 
             with ui.column().classes("w-full gap-6"):
@@ -279,7 +279,7 @@ def _show_announcement_banners() -> None:
                     container.set_visibility(False)
 
                 ui.button(icon="close", on_click=dismiss).props(
-                    "flat round dense size=sm color=grey-7"
+                    "flat round dense size=sm color=grey-7 aria-label='Dismiss announcement'"
                 )
 
 
@@ -649,29 +649,29 @@ def page_init(
                     with ui.button(
                         icon="settings",
                         on_click=lambda: ui.navigate.to("/admin"),
-                    ).props("flat color=red"):
+                    ).props("flat color=red aria-label='Admin settings'"):
                         ui.tooltip("Admin settings")
 
                 if is_bofh:
                     with ui.button(
                         icon="health_and_safety",
                         on_click=lambda: ui.navigate.to("/health"),
-                    ).props("flat color=red"):
+                    ).props("flat color=red aria-label='System status'"):
                         ui.tooltip("System status")
                     with ui.button(
                         icon="analytics",
                         on_click=lambda: ui.navigate.to("/admin/analytics"),
-                    ).props("flat color=red"):
+                    ).props("flat color=red aria-label='Page view statistics'"):
                         ui.tooltip("Page view statistics")
                 with ui.button(
                     icon="home",
                     on_click=lambda: ui.navigate.to("/home"),
-                ).props("flat").classes("header-btn"):
+                ).props("flat aria-label='Home'").classes("header-btn"):
                     ui.tooltip("Home")
                 with ui.button(
                     icon="person",
                     on_click=lambda: ui.navigate.to("/user"),
-                ).props("flat").classes("header-btn"):
+                ).props("flat aria-label='User settings'").classes("header-btn"):
                     ui.tooltip("User settings")
                 dark_val2 = app.storage.user.get("dark_mode", None)
                 dark_icon2 = (
@@ -684,7 +684,7 @@ def page_init(
                         icon=dark_icon2,
                         on_click=lambda: _cycle_dark_mode(dark_btn2),
                     )
-                    .props("flat")
+                    .props("flat aria-label='Toggle theme'")
                     .classes("header-btn")
                 )
                 with dark_btn2:
@@ -693,13 +693,13 @@ def page_init(
                     icon="help",
                     on_click=lambda: show_help_dialog(),
                 ).props(
-                    "flat"
+                    "flat aria-label='Help and documentation'"
                 ).classes("header-btn"):
                     ui.tooltip("Help")
                 with ui.button(
                     icon="logout",
                     on_click=lambda: ui.navigate.to("/logout"),
-                ).props("flat").classes("header-btn"):
+                ).props("flat aria-label='Log out'").classes("header-btn"):
                     ui.tooltip("Logout")
 
     # Target for the skip link, and the first element in the page content.
@@ -963,7 +963,7 @@ def table_upload(table) -> None:
 
     ui.add_head_html(default_styles)
 
-    with ui.dialog() as dialog:
+    with ui.dialog().props('aria-label="Upload files"') as dialog:
         with ui.card().style("min-width: 400px; padding: 32px;"):
             with ui.column().classes("w-full items-center") as status_column:
                 ui.label("Uploading files").classes("text-h6 q-mb-sm")
@@ -1248,7 +1248,7 @@ def table_transcribe(selected_row, on_complete=None) -> None:
     """
     Handle the click event on the Transcribe button.
     """
-    with ui.dialog() as dialog:
+    with ui.dialog().props('aria-label="Transcription settings"') as dialog:
         with (
             ui.card()
             .style(
@@ -1343,7 +1343,7 @@ def table_bulk_transcribe(table: ui.table, on_complete=None) -> None:
         ui.notify("No uploaded files selected", type="warning", position="top")
         return
 
-    with ui.dialog() as dialog:
+    with ui.dialog().props('aria-label="Bulk transcription settings"') as dialog:
         with (
             ui.card()
             .style(
@@ -1446,7 +1446,7 @@ def table_delete(table: ui.table) -> None:
 
     count = len(table.selected)
 
-    with ui.dialog() as dialog:
+    with ui.dialog().props('aria-label="Delete files"') as dialog:
         with ui.card():
             ui.label("Delete files").classes("text-h6")
             ui.label(
@@ -1534,7 +1534,7 @@ def table_bulk_export(table: ui.table) -> None:
     data_format = "srt" if source_format == "SRT" else "txt"
 
     # Show progress dialog while fetching
-    with ui.dialog() as progress_dialog:
+    with ui.dialog().props('aria-label="Preparing export"') as progress_dialog:
         with ui.card().classes("p-6 items-center").style(
             "min-width: 400px; background-color: var(--color-bg-surface);"
         ):

@@ -48,7 +48,7 @@ def create_customer_dialog(page: callable) -> None:
     ui.dark_mode(app.storage.user.get("dark_mode", None))
     realms = _get_valid_realms()
 
-    with ui.dialog() as create_customer_dialog:
+    with ui.dialog().props('aria-label="Create new customer"') as create_customer_dialog:
         with ui.card().style("width: 600px; max-width: 90vw;"):
             ui.label("Create new customer").classes("text-2xl font-bold")
 

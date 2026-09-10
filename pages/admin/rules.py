@@ -87,7 +87,7 @@ def create_rule_dialog(page: callable) -> None:
             if d.strip() and "." in d.strip()
         ]
 
-    with ui.dialog() as dialog:
+    with ui.dialog().props('aria-label="Create provisioning rule"') as dialog:
         with ui.card().style("width: 650px; max-width: 90vw;"):
             ui.label("Create provisioning rule").classes("text-2xl font-bold")
 
@@ -196,7 +196,7 @@ def _do_create_rule(**kwargs) -> bool:
     realm_val = kwargs["realm"]
 
     if not realm_val or (isinstance(realm_val, list) and len(realm_val) == 0):
-        with ui.dialog() as warn_dlg, ui.card().classes("p-6"):
+        with ui.dialog().props('aria-label="Realm required to create rule"') as warn_dlg, ui.card().classes("p-6"):
             ui.label("Realm required").classes("text-h6")
             ui.label("At least one realm must be selected.")
             ui.button("OK", on_click=warn_dlg.close).classes("mt-4 self-end")
@@ -259,7 +259,7 @@ def edit_rule_dialog(rule: dict, page: callable) -> None:
             if d.strip() and "." in d.strip()
         ]
 
-    with ui.dialog() as dialog:
+    with ui.dialog().props('aria-label="Edit provisioning rule"') as dialog:
         with ui.card().style("width: 650px; max-width: 90vw;"):
             ui.label("Edit provisioning rule").classes("text-2xl font-bold")
 
@@ -408,7 +408,7 @@ def _do_update_rule(**kwargs) -> bool:
     realm_val = kwargs["realm"]
 
     if not realm_val or (isinstance(realm_val, list) and len(realm_val) == 0):
-        with ui.dialog() as warn_dlg, ui.card().classes("p-6"):
+        with ui.dialog().props('aria-label="Realm required to update rule"') as warn_dlg, ui.card().classes("p-6"):
             ui.label("Realm required").classes("text-h6")
             ui.label("At least one realm must be selected.")
             ui.button("OK", on_click=warn_dlg.close).classes("mt-4 self-end")
@@ -447,7 +447,7 @@ def delete_rule_dialog(rule: dict) -> None:
 
     ui.dark_mode(app.storage.user.get("dark_mode", None))
 
-    with ui.dialog() as dialog:
+    with ui.dialog().props('aria-label="Delete rule"') as dialog:
         with ui.card().style("width: 400px; max-width: 90vw;"):
             ui.label("Delete rule").classes("text-2xl font-bold")
             ui.label(f'Are you sure you want to delete rule "{rule["name"]}"?').classes(
@@ -486,7 +486,7 @@ def add_attribute_dialog() -> None:
     """
     ui.dark_mode(app.storage.user.get("dark_mode", None))
 
-    with ui.dialog() as dialog:
+    with ui.dialog().props('aria-label="Add provisioning attribute"') as dialog:
         with ui.card().style("width: 450px; max-width: 90vw;"):
             ui.label("Add provisioning attribute").classes("text-2xl font-bold")
             name_input = ui.input("Attribute name").classes("w-full").props("outlined")
@@ -576,7 +576,7 @@ def test_rules_dialog(selected_rules: list[dict]) -> None:
     expected = rule.get("attribute_value", "")
     cond_label = CONDITION_OPTIONS.get(condition.lower(), condition)
 
-    with ui.dialog() as dialog, ui.card().style("min-width: 600px; max-width: 800px;"):
+    with ui.dialog().props('aria-label="Test rule"') as dialog, ui.card().style("min-width: 600px; max-width: 800px;"):
         ui.label("Test rule").classes("text-xl font-bold")
         ui.label(f"{rule.get('name', '')}").classes("text-theme-muted")
         ui.label(f'{attr_name} {cond_label} "{expected}"').classes(
@@ -639,7 +639,7 @@ def test_all_rules_dialog() -> None:
     if all_groups:
         group_names = {g["id"]: g["name"] for g in all_groups}
 
-    with ui.dialog() as dialog, ui.card().style("min-width: 600px; max-width: 800px;"):
+    with ui.dialog().props('aria-label="Simulate provisioning"') as dialog, ui.card().style("min-width: 600px; max-width: 800px;"):
         ui.label("Simulate provisioning").classes("text-xl font-bold")
         ui.label(
             "Enter attribute values to simulate what would happen when a user logs in."
@@ -674,7 +674,7 @@ def test_all_rules_dialog() -> None:
                     ui.button(
                         icon="close",
                         on_click=lambda r=row: remove_attr_row(r),
-                    ).props("flat round dense color=grey-6 size=sm")
+                    ).props("flat round dense color=grey-6 size=sm aria-label='Remove attribute row'")
             attr_rows.append(row)
 
         def remove_attr_row(row: dict) -> None:
@@ -814,7 +814,7 @@ def _show_rules_help() -> None:
     Show a help dialog explaining how onboarding rules work.
     """
 
-    with ui.dialog() as dialog, ui.card().style(
+    with ui.dialog().props('aria-label="How provisioning rules work"') as dialog, ui.card().style(
         "min-width: 550px; max-width: 700px; padding: 32px;"
     ):
         ui.label("How provisioning rules work").classes("text-2xl font-bold mb-4")
@@ -924,7 +924,7 @@ def rules_page() -> None:
     ):
         with ui.row().classes("items-center gap-2"):
             ui.label("User provisioning").classes("text-3xl font-bold")
-            ui.button(icon="help_outline").props("flat round dense color=grey-7").on(
+            ui.button(icon="help_outline").props("flat round dense color=grey-7 aria-label='Show provisioning rules help'").on(
                 "click", lambda: _show_rules_help()
             )
         with ui.element("div").style("display: flex; gap: 10px;"):
@@ -1174,6 +1174,7 @@ def rules_page() -> None:
                 r"""
                 <q-td :props="props">
                     <q-btn flat dense round icon="delete" color="negative" size="sm"
+                        aria-label="Delete attribute"
                         @click="$parent.$emit('delete_attr', props.row)"
                     >
                         <q-tooltip>Delete attribute</q-tooltip>

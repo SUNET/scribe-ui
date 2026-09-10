@@ -177,7 +177,7 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
             if on_cancel:
                 on_cancel()
 
-        with ui.dialog() as dialog, ui.card().classes("w-96"):
+        with ui.dialog().props('aria-label="Unsaved changes"') as dialog, ui.card().classes("w-96"):
             ui.label("Unsaved changes").classes("text-h6 q-mb-md")
             ui.label("You have unsaved changes. What would you like to do?").classes(
                 "q-mb-lg"

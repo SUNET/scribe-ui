@@ -32,7 +32,7 @@ settings = get_settings()
 
 
 def show_user_token() -> None:
-    with ui.dialog() as dialog:
+    with ui.dialog().props('aria-label="User token"') as dialog:
         with ui.card().style("max-width: 50%; width: 500px; min-width: 500px;"):
             ui.label("User token").classes("text-2xl font-bold")
             ui.label("Your user token is used to authenticate API requests.").classes(

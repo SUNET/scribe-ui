@@ -204,7 +204,7 @@ class SearchMixin:
         Create the search panel UI.
         """
 
-        with ui.dialog() as self.search_container:
+        with ui.dialog().props('aria-label="Find & Replace"') as self.search_container:
             with ui.card().classes("w-1/2 max-w-full").style("padding: 16px;"):
                 # Title
                 ui.label("Find & Replace").classes("text-h6 mb-3")
@@ -223,7 +223,7 @@ class SearchMixin:
                             .props("outlined dense clearable")
                         )
 
-                        ui.button(icon="search").props("flat dense round").classes(
+                        ui.button(icon="search").props("flat dense round aria-label='Find in captions'").classes(
                             "editor-btn"
                         ).on(
                             "click", lambda: self.search_captions(search_input.value)
@@ -246,14 +246,14 @@ class SearchMixin:
                         # Navigation + info
                         with ui.row().classes("items-center gap-1"):
                             ui.button(icon="keyboard_arrow_up").props(
-                                "flat dense round"
+                                "flat dense round aria-label='Previous search match'"
                             ).classes("editor-btn").on(
                                 "click", lambda: self.navigate_search_results(-1)
                             ).tooltip(
                                 "Previous match"
                             )
                             ui.button(icon="keyboard_arrow_down").props(
-                                "flat dense round"
+                                "flat dense round aria-label='Next search match'"
                             ).classes("editor-btn").on(
                                 "click", lambda: self.navigate_search_results(1)
                             ).tooltip(

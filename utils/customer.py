@@ -179,7 +179,7 @@ class Customer:
                         delete.on("click", lambda e: self.delete_customer_dialog())
 
     def delete_customer_dialog(self) -> None:
-        with ui.dialog() as delete_customer_dialog:
+        with ui.dialog().props('aria-label="Delete customer"') as delete_customer_dialog:
             with ui.card():
                 ui.label("Delete customer").classes("text-h6")
                 ui.label(

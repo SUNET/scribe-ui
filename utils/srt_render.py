@@ -671,7 +671,7 @@ class RenderMixin:
             specific_indices=changed_indices if changed_indices else None
         )
 
-        with ui.dialog() as dialog:
+        with ui.dialog().props('aria-label="Subtitle validation"') as dialog:
             with ui.card().classes("p-6").style(
                 "max-width: 700px; min-width: 500px; max-height: 90vh; overflow-y: auto;"
             ):
@@ -679,7 +679,7 @@ class RenderMixin:
                 with ui.row().classes("w-full items-center justify-between mb-4"):
                     ui.label("Subtitle validation").classes("text-h5 font-bold")
                     ui.button(icon="close", on_click=dialog.close).props(
-                        "flat round dense color=grey-7"
+                        "flat round dense color=grey-7 aria-label='Close validation dialog'"
                     )
 
                 ui.separator().classes("mb-4")
@@ -781,7 +781,7 @@ class RenderMixin:
             ),
         ]
 
-        with ui.dialog() as dialog:
+        with ui.dialog().props('aria-label="Keyboard shortcuts"') as dialog:
             with ui.card().classes("w-2/3 max-w-2xl").style(
                 "padding: 24px; max-height: 90vh; overflow-y: auto;"
             ):

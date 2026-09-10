@@ -54,7 +54,7 @@ def _announcement_preview_dialog(message: str, severity: str = "info") -> None:
 
     style = severity_styles.get(severity, severity_styles["info"])
 
-    with ui.dialog() as preview_dialog:
+    with ui.dialog().props('aria-label="Banner preview"') as preview_dialog:
         with ui.card().style("width: 700px; max-width: 90vw; padding: 24px;"):
             ui.label("Banner preview").classes("text-h6 font-bold mb-4")
             with ui.element("div").classes(
@@ -72,6 +72,7 @@ def _announcement_preview_dialog(message: str, severity: str = "info") -> None:
                 if style["dismissible"]:
                     ui.button(icon="close").props(
                         "flat round dense size=sm color=grey-7 disable"
+                        ' aria-hidden="true"'
                     )
             with ui.row().classes("w-full justify-end mt-4"):
                 ui.button("Close", on_click=preview_dialog.close).classes(
@@ -85,7 +86,7 @@ def _announcement_create_dialog() -> None:
 
     ui.dark_mode(app.storage.user.get("dark_mode", None))
 
-    with ui.dialog() as dialog:
+    with ui.dialog().props('aria-label="Create announcement"') as dialog:
         with ui.card().style("width: 600px; max-width: 90vw; padding: 24px;"):
             ui.label("Create announcement").classes("text-h6 font-bold mb-2")
 
@@ -186,7 +187,7 @@ def _announcement_edit_dialog(ann: dict) -> None:
 
     ui.dark_mode(app.storage.user.get("dark_mode", None))
 
-    with ui.dialog() as dialog:
+    with ui.dialog().props('aria-label="Edit announcement"') as dialog:
         with ui.card().style("width: 600px; max-width: 90vw; padding: 24px;"):
             ui.label("Edit announcement").classes("text-h6 font-bold mb-2")
 
@@ -297,7 +298,7 @@ def _announcement_delete_confirm(ann: dict) -> None:
 
     ui.dark_mode(app.storage.user.get("dark_mode", None))
 
-    with ui.dialog() as dialog:
+    with ui.dialog().props('aria-label="Delete announcement"') as dialog:
         with ui.card().style("width: 400px; max-width: 90vw; padding: 24px;"):
             ui.label("Delete announcement").classes("text-h6 font-bold mb-2")
             ui.label("Are you sure you want to delete this announcement?").classes(
@@ -454,8 +455,10 @@ def announcements_page() -> None:
             """
             <q-td :props="props">
                 <q-btn flat round dense icon="visibility" size="sm" color="grey-7"
+                    aria-label="Preview announcement"
                     @click="$parent.$emit('preview', props.row)" />
                 <q-btn flat round dense icon="delete" size="sm" color="red"
+                    aria-label="Delete announcement"
                     @click="$parent.$emit('delete', props.row)" />
             </q-td>
             """,

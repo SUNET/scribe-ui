@@ -103,6 +103,7 @@ def create() -> None:
             "header-selection",
             """
             <q-checkbox
+                aria-label="Select all files"
                 :model-value="props.selected"
                 @update:model-value="val => { if (!val) { $parent.$emit('deselect_all'); } else { props.selected = true; } }"
             />
@@ -139,6 +140,7 @@ def create() -> None:
                 <q-btn
                     v-if="props.row.status === 'Uploaded' || props.row.status === 'Completed'"
                     :label="props.row.status === 'Completed' ? 'Edit' : 'Transcribe'"
+                    :aria-label="(props.row.status === 'Completed' ? 'Edit ' : 'Transcribe ') + props.row.filename"
                     :class="props.row.status === 'Completed' ? 'table-btn-edit' : 'table-btn-transcribe'"
                     style="width: 120px; height: 40px;"
                     @click="$parent.$emit('table_handle_row_click', props.row)"
@@ -156,6 +158,8 @@ def create() -> None:
                         v-if="props.row.deletion_approaching"
                         name="warning"
                         class="deletion-warning-icon"
+                        role="img"
+                        aria-label="This file will be permanently deleted within 24 hours."
                     >
                         <q-tooltip>This file will be permanently deleted within 24 hours.</q-tooltip>
                     </q-icon>
