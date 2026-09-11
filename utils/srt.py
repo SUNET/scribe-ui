@@ -29,6 +29,11 @@ from utils.srt_render import RenderMixin, CHARACTER_LIMIT_EXCEEDED_COLOR
 from utils.srt_review import (
     AUTOSCROLL_KEY,
     DEFAULT_REVIEW_SENSITIVITY,
+    EDIT_TOOLTIP,
+    EDITS_SHOW_KEY,
+    OVERLAY_SHOW_KEY,
+    TIMELINE_DOCK_KEY,
+    TIMELINE_SHOW_KEY,
     REVIEW_SENSITIVITIES,
     REVIEW_SENSITIVITY_KEY,
     REVIEW_SHOW_KEY,
@@ -45,6 +50,11 @@ __all__ = [
     "AUTOSCROLL_KEY",
     "CHARACTER_LIMIT_EXCEEDED_COLOR",
     "DEFAULT_REVIEW_SENSITIVITY",
+    "EDITS_SHOW_KEY",
+    "EDIT_TOOLTIP",
+    "OVERLAY_SHOW_KEY",
+    "TIMELINE_DOCK_KEY",
+    "TIMELINE_SHOW_KEY",
     "REVIEW_SENSITIVITIES",
     "REVIEW_SENSITIVITY_KEY",
     "REVIEW_SHOW_KEY",
@@ -66,9 +76,6 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         self.srt_format = srt_format
         self.captions: List[SRTCaption] = []
         self.selected_caption: Optional[SRTCaption] = None
-        self.caption_cards = {}
-        self.caption_containers = {}
-        self.main_container = None
         self.search_term = ""
         self.search_results = []
         self.current_search_index = 0
@@ -76,9 +83,30 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         self.search_container = None
         self._video_player = None
         self.autoscroll = False
+
+        # Follow the audio word by word. Off by default: it needs one element
+        # per word, which is only worth paying for when it is being used.
+        self.highlight_word = False
+
+        # Set by the document editor once it is built, so refresh_display has
+        # somewhere to send changes; see refresh_display in srt_render.py.
+        self.render_override: Optional[Callable] = None
+        # Set the same way, for search and autoscroll to say which caption
+        # the reader's attention should move to.
+        self.on_select: Optional[Callable] = None
         self.words_per_minute_element = None
+        # The status line's own figures, by name -- see set_status_elements.
+        self.status_elements: dict = {}
         self.speakers = set()
-        self.data_format = None
+
+        # Seeded from what the page opened, not left as None until parsing:
+        # the toolbar is built before any content is fetched, and everything
+        # in it that asks which format is open -- the Shortcuts dialog most
+        # of all, which is worded for captions or for paragraphs -- read
+        # None and answered as though it were a transcription. parse_srt and
+        # parse_txt still set it, and are still the authority once content
+        # has actually been read.
+        self.data_format = srt_format
         self.filename = filename
 
         # Per-word timings, empty for results produced before they existed.
@@ -86,9 +114,17 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         self._word_midpoints: List[float] = []
         self.has_confidence = False
         self.show_uncertain_words = False
+        self.show_my_edits = False
+        # The strip under the video. On by default, the same as the overlay
+        # and for the same reason: it shows what is already there rather
+        # than adding anything to read.
+        self.show_timeline = True
+        # The caption playing right now, drawn over the video (subtitles
+        # only). On by default, unlike the review markings: it shows what a
+        # viewer would see rather than adding anything to read.
+        self.show_subtitle_overlay = True
         self.review_sensitivity = DEFAULT_REVIEW_SENSITIVITY
         self.flagged_count_element = None
-        self._active_text_area = None
 
         # Initialize undo/redo manager
         self.undo_redo_manager = UndoRedoManager()
@@ -214,22 +250,41 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         Save the current state before making changes.
         """
 
-        self.undo_redo_manager.save_state(self.captions)
+        self.undo_redo_manager.save_state(self.captions, self.speakers)
         self._update_undo_redo_buttons()
         # Mark as having unsaved changes
         self.mark_as_changed()
         self.update_beforeunload_state()
 
+    def restore_speakers(self, speakers) -> None:
+        """
+        Put the speaker list back as a restored state recorded it.
+
+        Mutated in place rather than rebound: the list is read straight off
+        the editor by the speaker menu and by refresh(), and a state saved
+        before speakers were tracked carries None, which leaves the current
+        list alone rather than emptying it.
+        """
+
+        if speakers is None:
+            return
+
+        self.speakers.clear()
+        self.speakers.update(speakers)
+
     def undo(self) -> None:
         """
         Undo the last action.
         """
-        previous_state = self.undo_redo_manager.undo(self.captions)
+        previous_state = self.undo_redo_manager.undo(self.captions, self.speakers)
         if previous_state is not None:
-            self.captions = previous_state
+            self.captions = previous_state.captions
+            self.restore_speakers(previous_state.speakers)
             self.selected_caption = None
             self.renumber_captions()
             self.update_words_per_minute()
+            # The text just moved, so which words are flagged moved with it.
+            self.update_flagged_count()
             self.refresh_display(force_full_refresh=True)
             self._update_undo_redo_buttons()
             # Mark as having unsaved changes (undo is still a change from saved state)
@@ -242,12 +297,15 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         """
         Redo the last undone action.
         """
-        next_state = self.undo_redo_manager.redo(self.captions)
+        next_state = self.undo_redo_manager.redo(self.captions, self.speakers)
         if next_state is not None:
-            self.captions = next_state
+            self.captions = next_state.captions
+            self.restore_speakers(next_state.speakers)
             self.selected_caption = None
             self.renumber_captions()
             self.update_words_per_minute()
+            # The text just moved, so which words are flagged moved with it.
+            self.update_flagged_count()
             self.refresh_display(force_full_refresh=True)
             self._update_undo_redo_buttons()
             # Mark as having unsaved changes
@@ -280,7 +338,7 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         """
         Create the undo/redo buttons panel.
         """
-        with ui.row().classes("gap-2"):
+        with ui.row().classes("editor-toolbar-group"):
             self.undo_button = (
                 ui.button("Undo", icon="undo")
                 .props("flat")
@@ -330,6 +388,15 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
             icon="check_circle",
         )
 
+    def set_highlight_word(self, highlight_word: bool) -> None:
+        """
+        Set whether the word being played is highlighted.
+
+        Coerced, because the value can come straight from stored preferences.
+        """
+
+        self.highlight_word = bool(highlight_word)
+
     def set_autoscroll(self, autoscroll: bool) -> None:
         """
         Set autoscroll property.
@@ -344,50 +411,6 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
             return
 
         match event.key:
-            # Next block of captions, Alt+Down
-            case "ArrowDown" if event.modifiers.alt and not event.modifiers.shift and not event.modifiers.ctrl and not event.modifiers.meta:
-                self.select_next_caption()
-
-            # Prev block of captions, Alt+Up
-            case "ArrowUp" if event.modifiers.alt and not event.modifiers.shift and not event.modifiers.ctrl and not event.modifiers.meta:
-                self.select_prev_caption()
-
-            # Move the first word to the previous block, Ctrl/⌘+Up
-            case "ArrowUp" if (event.modifiers.ctrl or event.modifiers.meta) and not event.modifiers.shift and not event.modifiers.alt:
-                self.move_first_word_to_previous(self.selected_caption)
-
-            # Move the last word to the next block, Ctrl/⌘+Down
-            case "ArrowDown" if (event.modifiers.ctrl or event.modifiers.meta) and not event.modifiers.shift and not event.modifiers.alt:
-                self.move_last_word_to_next(self.selected_caption)
-
-            # Split block at the cursor, Ctrl/⌘+Enter
-            case "Enter" if event.modifiers.ctrl and not event.modifiers.shift and not event.modifiers.alt and not event.modifiers.meta:
-                await self.split_caption_at_cursor(self.selected_caption)
-            case "Enter" if event.modifiers.meta and not event.modifiers.shift and not event.modifiers.alt and not event.modifiers.ctrl:
-                await self.split_caption_at_cursor(self.selected_caption)
-
-            # Merge block with next, Ctrl+M
-            case "m" if event.modifiers.ctrl:
-                self.merge_with_next(self.selected_caption)
-
-            # Merge block with previous, Ctrl+Shift+M
-            case "M" if event.modifiers.ctrl:
-                self.merge_with_previous(self.selected_caption)
-
-            # Add caption after, Shift+Ctrl+Enter
-            case "Enter" if event.modifiers.ctrl and event.modifiers.shift:
-                self.add_caption_after(self.selected_caption)
-            case "Enter" if event.modifiers.meta and event.modifiers.shift:
-                self.add_caption_after(self.selected_caption)
-
-            # Delete block, Ctrl+D
-            case "d" if event.modifiers.ctrl:
-                self.remove_caption(self.selected_caption)
-
-            # Validate captions, Ctrl+Shift+V
-            case "V" if event.modifiers.ctrl and event.modifiers.shift:
-                self.validate_captions()
-
             # Play/pause video, Ctrl+Space
             case " " if event.modifiers.ctrl and not event.modifiers.shift and not event.modifiers.alt and not event.modifiers.meta:
                 if self._video_player:
@@ -412,12 +435,6 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
             case "y" if event.modifiers.meta and not event.modifiers.shift:
                 self.redo()
 
-            # Close block, Escape
-            case "Escape":
-                # Click the "Close" button to save changes before closing
-                # This behaves the same as clicking the Close button
-                ui.run_javascript("document.querySelector('.caption-close')?.click()")
-
             # Open find, Ctrl+F
             case "f" if event.modifiers.ctrl and not event.modifiers.shift:
                 self.create_search_panel(open_window=True)
@@ -433,42 +450,22 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
                 self.show_export_dialog(self.filename)
             case "e" if event.modifiers.meta and not event.modifiers.shift:
                 self.show_export_dialog(self.filename)
+
+            # Validate captions, Ctrl+Shift+V. Subtitles only -- there is
+            # nothing to validate in a transcription, which has neither a
+            # line-length guideline nor a line count to exceed. Ctrl rather
+            # than Cmd as well: Cmd+Shift+V is paste-without-formatting on a
+            # Mac, which a text editor should not be taking.
+            case "v" if (
+                event.modifiers.ctrl
+                and event.modifiers.shift
+                and self.data_format == "srt"
+            ):
+                self.validate_captions()
+
             # Everything else
             case _:
                 pass
-
-    def select_next_caption(self) -> None:
-        """
-        Select the next caption in the list.
-        """
-
-        if not self.captions:
-            return
-
-        if self.selected_caption:
-            current_index = self.captions.index(self.selected_caption)
-
-            if current_index + 1 >= len(self.captions):
-                return
-
-            self.select_caption(self.captions[current_index + 1])
-        else:
-            self.select_caption(self.captions[0])
-
-    def select_prev_caption(self) -> None:
-        """
-        Select the previous caption in the list.
-        """
-
-        if not self.captions:
-            return
-
-        if self.selected_caption:
-            current_index = self.captions.index(self.selected_caption)
-            if current_index > 0:
-                self.select_caption(self.captions[current_index - 1])
-            else:
-                self.select_caption(self.captions[0])
 
     def set_words_per_minute_element(self, element) -> None:
         """
@@ -477,16 +474,90 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
 
         self.words_per_minute_element = element
 
+    def set_status_elements(self, **elements) -> None:
+        """
+        Register the status line's own figures, by name: "captions",
+        "duration" and "wpm". Each is a label of its own rather than one
+        line of text, so each can say what it means on hover -- a bare
+        number in a row of numbers explains nothing.
+
+        The language is not among them: it never changes, so the page draws
+        it once and the editor never touches it again.
+        """
+
+        self.status_elements = elements
+        self.update_status()
+
+    def status_values(self) -> dict:
+        """
+        What the status line reports, keyed the same way its elements are.
+        """
+
+        count = len(self.captions)
+
+        # A reader editing a transcription has paragraphs in front of them,
+        # not captions -- the same noun the information dialog's own row
+        # label uses.
+        noun = "caption" if self.data_format == "srt" else "paragraph"
+
+        return {
+            "captions": f"{count} {noun}" if count == 1 else f"{count} {noun}s",
+            "duration": (
+                self.format_duration(self.captions[-1].get_end_seconds())
+                if self.captions
+                else ""
+            ),
+            "wpm": f"{self.get_words_per_minute():.0f} wpm",
+        }
+
+    def update_status(self) -> None:
+        """
+        Redraw the status line: how many captions there are, how far the
+        last one runs to, and how fast the result reads.
+        """
+
+        elements = getattr(self, "status_elements", None)
+
+        if not elements:
+            return
+
+        values = self.status_values()
+
+        for name, element in elements.items():
+            element.set_text(values.get(name, ""))
+
+    @staticmethod
+    def format_duration(seconds: float) -> str:
+        """
+        A running time, as a viewer would read it off a player.
+        """
+
+        total = max(0, int(seconds))
+        hours, remainder = divmod(total, 3600)
+        minutes, secs = divmod(remainder, 60)
+
+        if hours:
+            return f"{hours}:{minutes:02d}:{secs:02d}"
+
+        return f"{minutes}:{secs:02d}"
+
     def update_words_per_minute(self) -> None:
         """
         Update the words per minute display.
+
+        The status line goes with it: the moments the words-per-minute
+        figure changes -- an edit, a split, a merge, an undo -- are exactly
+        the moments the caption count and the running time change too, and
+        every one of them already calls this.
         """
 
         if self.words_per_minute_element:
             wpm = self.get_words_per_minute()
-            self.words_per_minute_element.set_content(
-                f"<b>Words per minute:</b> {wpm:.2f}"
-            )
+            # The value alone: the panel names it in a label of its own
+            # beside this one, rather than repeating the name in the value.
+            self.words_per_minute_element.set_text(f"{wpm:.2f}")
+
+        self.update_status()
 
     def get_words_per_minute(self) -> float:
         """
@@ -504,6 +575,14 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
 
         return (total_words / total_seconds) * 60.0
 
+    def seek_video(self, seconds: float) -> None:
+        """
+        Move the video to a point in the recording, if a player is attached.
+        """
+
+        if self._video_player:
+            self._video_player.seek(seconds)
+
     def set_video_player(self, player) -> None:
         """
         Set the video player for the editor.
@@ -514,88 +593,96 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
     def parse_txt(self, data: dict) -> None:
         """
         Parse TXT content and populate captions list.
+
+        Raw output from the worker arrives as many short diarisation segments
+        in lower case, so it is merged into readable blocks and capitalised.
+        Anything saved from the editor says so, and is taken exactly as it is:
+        merging it again would undo the reader's splits, and capitalising it
+        again would undo their corrections.
         """
 
         self.data_format = "txt"
 
         original_data = json.loads(data)
-
-        if not original_data.get("segments"):
-            return
-
-        raw_segments = original_data["segments"]
+        raw_segments = original_data.get("segments")
 
         if not raw_segments:
             return
 
+        if original_data.get("preserve_segments"):
+            segments = [segment.copy() for segment in raw_segments]
+        else:
+            segments = self.tidy_segments(raw_segments)
+
+        for index, segment in enumerate(segments):
+            if not segment.get("text", "").strip():
+                continue
+
+            restored = SRTCaption(
+                index,
+                self.seconds_to_timestamp(segment.get("start", 0.0)),
+                self.seconds_to_timestamp(segment.get("end", 0.0)),
+                segment["text"],
+                speaker=segment.get("speaker", ""),
+            )
+
+            # Which words the reader had changed, as the last save recorded
+            # them. Absent from the worker's own output and from anything saved
+            # before this was kept, and then nothing is marked.
+            marks = segment.get("edited")
+
+            if isinstance(marks, list):
+                restored.edited_words = {
+                    position for position in marks if isinstance(position, int)
+                }
+
+            self.captions.append(restored)
+            self.speakers.add(segment.get("speaker", ""))
+
+        self.renumber_captions()
+
+    def tidy_segments(self, raw_segments: list) -> list:
+        """
+        Turn the worker's diarisation segments into readable blocks.
+
+        Neighbouring segments by one speaker are joined until the block is long
+        enough and has reached the end of a sentence, and the text is
+        capitalised -- the models emit it in lower case.
+        """
+
         max_words = 50
 
-        concatenated = []
+        merged = []
         current = raw_segments[0].copy()
 
         for segment in raw_segments[1:]:
-            word_count = len(current["text"].split())
-            past_limit = word_count >= max_words
+            past_limit = len(current["text"].split()) >= max_words
+
             if segment["speaker"] != current["speaker"]:
-                concatenated.append(current)
+                merged.append(current)
                 current = segment.copy()
             elif past_limit and current["text"].rstrip().endswith("."):
-                concatenated.append(current)
+                merged.append(current)
                 current = segment.copy()
             else:
                 current["text"] += " " + segment["text"]
                 current["end"] = segment["end"]
                 current["duration"] = current["end"] - current["start"]
 
-        concatenated.append(current)
+        merged.append(current)
 
-        import re
+        for segment in merged:
+            text = segment.get("text", "")
 
-        def capitalize_after_periods(text: str) -> str:
-            return re.sub(
-                r"(\.\s+)([a-z])", lambda m: m.group(1) + m.group(2).upper(), text
-            )
-
-        for index, seg in enumerate(concatenated):
-            if seg.get("text", "").strip():
-                seg["text"] = capitalize_after_periods(seg["text"])
-                seg["text"] = seg["text"][0].upper() + seg["text"][1:]
-                start_time = self.seconds_to_timestamp(seg.get("start", 0.0))
-                end_time = self.seconds_to_timestamp(seg.get("end", 0.0))
-
-                self.captions.append(
-                    SRTCaption(
-                        index,
-                        start_time,
-                        end_time,
-                        seg["text"],
-                        speaker=seg["speaker"],
-                    )
+            if text.strip():
+                text = re.sub(
+                    r"(\.\s+)([a-z])",
+                    lambda match: match.group(1) + match.group(2).upper(),
+                    text,
                 )
-                self.speakers.add(seg["speaker"])
+                segment["text"] = text[0].upper() + text[1:]
 
-        self.renumber_captions()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        return merged
 
     def parse_srt(self, srt_content: str) -> None:
         """
@@ -640,10 +727,38 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
     def renumber_captions(self) -> None:
         """
         Renumber all captions sequentially.
+
+        Refreshes the status line with them: this runs after parsing and
+        after every structural edit, so it is the one place that always
+        knows the count has just changed. Without it the line reported the
+        editor as empty for the whole session -- the page registers its
+        figures while building the toolbar, which is before the captions
+        have been parsed at all, and nothing else redrew them until the
+        first edit.
         """
 
         for i, caption in enumerate(self.captions, 1):
             caption.index = i
+
+        self.update_status()
+
+    def sort_captions(self) -> None:
+        """
+        Put the captions back into the order they play in, and renumber.
+
+        Nothing else does: a caption's number is its position in the list,
+        and the list is the order it was parsed in. Retiming one -- dragged
+        on the strip, or typed into -- can move it past a neighbour, and
+        without this the text editor went on showing it where it used to be,
+        with numbering that no longer matched either the times beside it or
+        the brackets on the strip.
+
+        Stable, so two captions starting at the same instant keep the order
+        they already had rather than swapping on every unrelated retime.
+        """
+
+        self.captions.sort(key=lambda caption: caption.get_start_seconds())
+        self.renumber_captions()
 
     def format_time_display(self, timestamp: str) -> str:
         """
@@ -677,69 +792,6 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
 
 
 
-    async def read_text_area_state(self) -> Optional[dict]:
-        """
-        Read the live value and caret offset out of the caption text area.
-
-        Returns None whenever the caret cannot be determined -- no text area
-        open, the browser did not answer in time, or an unexpected payload --
-        so callers fall back to splitting without a caret.
-        """
-
-        text_area = self._active_text_area
-
-        if text_area is None:
-            return None
-
-        try:
-            state = await ui.run_javascript(
-                f"""
-                (() => {{
-                    const root = getHtmlElement({text_area.id})
-                        || getElement({text_area.id})?.$el;
-                    if (!root || !root.querySelector) return null;
-                    const el = root.matches("textarea")
-                        ? root
-                        : root.querySelector("textarea");
-                    if (!el) return null;
-                    return {{value: el.value, pos: el.selectionStart}};
-                }})()
-                """,
-                timeout=2.0,
-            )
-        except Exception:
-            return None
-
-        if not isinstance(state, dict):
-            return None
-
-        value = state.get("value")
-        position = state.get("pos")
-
-        if not isinstance(value, str) or not isinstance(position, int):
-            return None
-
-        return {"value": value, "position": position}
-
-    async def split_caption_at_cursor(self, caption: SRTCaption) -> None:
-        """
-        Split a caption where the caret sits, falling back to a halfway split
-        when the caret position is unavailable.
-        """
-
-        if not caption:
-            return
-
-        state = await self.read_text_area_state()
-
-        if state is None:
-            self.split_caption(caption)
-            return
-
-        self.split_caption(
-            caption, cursor_position=state["position"], text=state["value"]
-        )
-
     def split_time(
         self,
         caption: SRTCaption,
@@ -770,10 +822,16 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         offset = len(first_part.split())
 
         if words and 0 < offset < len(words):
-            boundary = (words[offset - 1]["e"] + words[offset]["s"]) / 2
+            before = words[offset - 1]
+            after = words[offset]
 
-            if start_seconds < boundary < end_seconds:
-                return boundary
+            # Both sides have to be placed in the recording for the gap between
+            # them to mean anything. Without that, the fallbacks below decide.
+            if self.word_is_timed(before) and self.word_is_timed(after):
+                boundary = (before["e"] + after["s"]) / 2
+
+                if start_seconds < boundary < end_seconds:
+                    return boundary
 
         if at_cursor:
             first_length = len(first_part.strip())
@@ -787,6 +845,31 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
 
         return start_seconds + duration / 2
 
+    @staticmethod
+    def split_point(text: str) -> int:
+        """
+        Where to halve a caption that has no caret to break at.
+
+        The nearest gap between words to the middle, looking both ways. It
+        used to only look backwards and fall back to the bare middle when it
+        found nothing, which cut straight through the first word of a caption
+        that had no space before its midpoint -- "internationalization
+        matters" came out as "internationali" and "zation matters".
+
+        A caption of one long word has no gap to find, and there the middle is
+        all there is; every real caption has one.
+        """
+
+        middle = len(text) // 2
+        gaps = [index for index, character in enumerate(text) if character.isspace()]
+
+        if not gaps:
+            return middle
+
+        # Ties go to the earlier gap, so the same text always breaks the same
+        # way rather than depending on which side was searched first.
+        return min(gaps, key=lambda index: (abs(index - middle), index))
+
     def split_caption(
         self,
         caption: SRTCaption,
@@ -796,47 +879,59 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         """
         Split a caption into two parts.
 
-        Splits at ``cursor_position`` when given and it falls inside the text,
-        otherwise halfway through as before.
+        Splits at ``cursor_position`` when given, and halfway through when it
+        is not.
+
+        A caret at the very edge of the block is refused rather than falling
+        back to halving: the caret says exactly where the user wanted the
+        break, and there is nothing on one side of it. Halving instead would
+        cut a word they never asked to touch.
         """
 
         if not caption:
             return
+
+        source = caption.text if text is None else text
+        first_part = None
+        second_part = None
+        at_cursor = False
+
+        if cursor_position is not None:
+            # Clamped, because the offset comes from the browser.
+            position = max(0, min(int(cursor_position), len(source)))
+            head = source[:position].strip()
+            tail = source[position:].strip()
+
+            if not (head and tail):
+                # Nothing to divide. Keep any uncommitted typing, but leave
+                # the block whole.
+                if text is not None and text != caption.text:
+                    self.update_caption_text(caption, text)
+
+                return
+
+            first_part = head
+            second_part = tail
+            at_cursor = True
 
         # Save state before making changes
         self.save_state_for_undo()
 
         if text is not None and text != caption.text:
             # The text area holds edits that have not been committed yet;
-            # splitting must not discard them.
+            # splitting must not discard them, nor the marks they earned.
+            caption.edited_words = self.retag_edits(
+                caption.text, text, caption.edited_words
+            )
             caption.text = text
             self.mark_as_changed()
-
-        first_part = None
-        second_part = None
-        at_cursor = False
-
-        if cursor_position is not None and 0 < cursor_position < len(caption.text):
-            head = caption.text[:cursor_position].strip()
-            tail = caption.text[cursor_position:].strip()
-
-            if head and tail:
-                first_part = head
-                second_part = tail
-                at_cursor = True
 
         if first_part is None:
             text_lines = caption.text.split("\n")
 
             if len(text_lines) == 1:
-                # Split single line in half
                 text = caption.text
-                mid_point = len(text) // 2
-                # Find nearest space to split at
-                while mid_point > 0 and text[mid_point] != " ":
-                    mid_point -= 1
-                if mid_point == 0:
-                    mid_point = len(text) // 2
+                mid_point = self.split_point(text)
 
                 first_part = text[:mid_point].strip()
                 second_part = text[mid_point:].strip()
@@ -850,8 +945,14 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         end_seconds = caption.get_end_seconds()
         mid_seconds = self.split_time(caption, first_part, second_part, at_cursor)
 
+        # Marks follow their words across the break.
+        kept, moved = self.split_edits(
+            caption.edited_words, len(first_part.split())
+        )
+
         # Update first caption
         caption.text = first_part
+        caption.edited_words = kept
         caption.end_time = self.seconds_to_timestamp(mid_seconds)
 
         # Create second caption
@@ -862,6 +963,7 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
             second_part,
             speaker=caption.speaker,
         )
+        new_caption.edited_words = moved
 
         # Insert new caption
         caption_index = self.captions.index(caption)
@@ -939,7 +1041,7 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         previous.text = f"{previous.text.rstrip()} {moved_word}"
         caption.text = remaining
 
-        if moved_timing and next_timing:
+        if self.word_is_timed(moved_timing) and self.word_is_timed(next_timing):
             previous.end_time = self.seconds_to_timestamp(moved_timing["e"])
             caption.start_time = self.seconds_to_timestamp(next_timing["s"])
         else:
@@ -987,7 +1089,7 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         following.text = f"{moved_word} {following.text.lstrip()}"
         caption.text = remaining
 
-        if moved_timing and previous_timing:
+        if self.word_is_timed(moved_timing) and self.word_is_timed(previous_timing):
             following.start_time = self.seconds_to_timestamp(moved_timing["s"])
             caption.end_time = self.seconds_to_timestamp(previous_timing["e"])
         else:
@@ -1011,6 +1113,9 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         """
         Add a new caption after the selected one.
         """
+
+        if not caption:
+            return
 
         # Save state before making changes
         self.save_state_for_undo()
@@ -1063,20 +1168,15 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         self.update_words_per_minute()
 
     def select_caption(
-        self,
-        caption: SRTCaption,
-        speaker: Optional[ui.input] = None,
-        button: Optional[bool] = False,
-        seek: Optional[bool] = True,
-        new_text: Optional[str] = None,
+        self, caption: SRTCaption, seek: Optional[bool] = True
     ) -> None:
         """
-        Select/deselect a caption.
+        Mark a caption as the current one -- what search and autoscroll use
+        to say which caption the reader's attention should move to. Every
+        caption's text is editable regardless, so this no longer opens or
+        closes anything; it seeks the video and asks the editor in use (see
+        on_select) to bring the caption into view.
         """
-
-        if speaker:
-            self.speakers.add(speaker.value)
-            self.selected_caption.speaker = speaker.value
 
         old_selected = self.selected_caption
 
@@ -1089,18 +1189,8 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
             caption.is_selected = True
             self.selected_caption = caption
 
-            # Get caption start time
             if self._video_player and seek:
-                start_seconds = caption.get_start_seconds()
-                self._video_player.seek(start_seconds)
-
-        if new_text is not None and new_text != caption.text:
-            self.update_caption_text(
-                caption, caption.text, force=True
-            )  # To mark as changed
-            caption.text = new_text
-
-        self.update_words_per_minute()
+                self._video_player.seek(caption.get_start_seconds())
 
         # Only update the captions that changed state
         indices_to_update = set()
@@ -1110,15 +1200,8 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
             indices_to_update.add(caption.index)
         self.refresh_display(specific_indices=indices_to_update)
 
-        if self.selected_caption:
-            ui.run_javascript(
-                """
-                requestAnimationFrame(() => {
-                    const el = document.getElementById("action_row");
-                    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-                });
-                """
-            )
+        if self.selected_caption and self.on_select:
+            self.on_select(self.selected_caption)
 
     def update_caption_text(
         self, caption: SRTCaption, new_text: str, force: Optional[bool] = False
@@ -1130,51 +1213,86 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         # Only save state if text actually changed
         if caption.text != new_text or force:
             self.save_state_for_undo()
+            # Worked out before the text is replaced, while there is still
+            # something to compare it against.
+            caption.edited_words = self.retag_edits(
+                caption.text, new_text, caption.edited_words
+            )
             caption.text = new_text
             # Editing a word can take it off the count, or put one on it.
             self.update_flagged_count()
 
-    def update_caption_timing(
-        self, caption: SRTCaption, start_time: str, end_time: str
-    ) -> None:
+    def delete_range(
+        self,
+        first: SRTCaption,
+        last: SRTCaption,
+        start_offset: int,
+        end_offset: int,
+        text: str = "",
+    ) -> Optional[int]:
         """
-        Update caption timing.
+        Delete a selection that reaches across two or more captions, putting
+        ``text`` (a typed character, a paste, or nothing at all) where it was.
+
+        The browser cannot be left to do this itself. Two captions are
+        separate elements with the gutter's timings and numbers between them,
+        and a native delete across that boundary takes those elements with the
+        text -- the page comes apart rather than the captions being edited.
+        So the whole gesture is one edit here: the first caption keeps what
+        lies before the selection, the last keeps what lies after, the two
+        become one caption spanning both timings, and every caption between
+        them goes.
+
+        Returns the seam's character offset in the surviving caption, for the
+        caret to be put back at, or None when the range is not one this can
+        act on.
         """
-        # Only save state if timing actually changed
-        if caption.start_time != start_time or caption.end_time != end_time:
-            self.save_state_for_undo()
-            caption.start_time = start_time
-            caption.end_time = end_time
-            # Only update this specific caption
-            self.refresh_display(specific_indices={caption.index})
 
+        if first is None or last is None or first is last:
+            return None
 
-    def get_caption_from_time(self, caption_time: float) -> Optional[SRTCaption]:
-        """
-        Get caption at a specific time.
-        """
+        start = self.captions.index(first)
+        end = self.captions.index(last)
 
-        for caption in self.captions:
-            if caption.get_start_seconds() <= caption_time < caption.get_end_seconds():
-                return caption
+        if end <= start:
+            return None
 
-        return None
+        # Offsets come from the browser, so they are clamped rather than
+        # trusted.
+        head = first.text[: max(0, min(int(start_offset), len(first.text)))]
+        tail = last.text[max(0, min(int(end_offset), len(last.text))) :]
+        merged = head + text + tail
 
-    async def select_caption_from_video(self) -> None:
-        if not self.autoscroll:
-            return
+        self.save_state_for_undo()
 
-        current_time = await ui.run_javascript(
-            """
-            (() => { return document.querySelector("video").currentTime })()
-            """
-        )
+        # The marks of every caption the selection touched, as if their texts
+        # had already been joined -- then retagged against what is left of
+        # them. Both halves that survive keep their marks; whatever the
+        # reader typed or pasted in earns marks of its own, which is what
+        # retag_edits does with words a change brought in.
+        old_text = first.text
+        old_marks = set(first.edited_words)
 
-        caption = self.get_caption_from_time(current_time)
+        for caption in self.captions[start + 1 : end + 1]:
+            old_marks = self.joined_edits(
+                old_marks, caption.edited_words, len(old_text.split())
+            )
+            old_text = "\n".join(
+                part for part in (old_text, caption.text) if part
+            )
 
-        if caption:
-            if self.selected_caption != caption:
-                self.select_caption(caption, seek=False)
+        first.edited_words = self.retag_edits(old_text, merged, old_marks)
+        first.text = merged
+        first.end_time = last.end_time
+
+        del self.captions[start + 1 : end + 1]
+
+        self.renumber_captions()
+        self.update_flagged_count()
+        self.update_words_per_minute()
+        self.refresh_display(force_full_refresh=True)
+
+        return len(head + text)
 
     def merge_with_next(self, caption: SRTCaption) -> None:
         """
@@ -1182,6 +1300,9 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         Update the current cation with the text and end_time from
         the next caption and remove the next caption.
         """
+
+        if not caption:
+            return
 
         caption_index = self.captions.index(caption)
         if caption_index == len(self.captions) - 1:
@@ -1194,7 +1315,19 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         next_caption = self.captions[caption_index + 1]
 
         # Merge text and update end time
-        caption.text += "\n" + next_caption.text
+        caption.edited_words = self.joined_edits(
+            caption.edited_words,
+            next_caption.edited_words,
+            len(caption.text.split()),
+        )
+        # Only actually joined with a newline when both sides have text --
+        # an empty caption (freshly added, then merged straight back away
+        # with Backspace) has nothing to separate from the other, and a
+        # bare "\n" would show up as a spurious blank line the reader never
+        # typed.
+        caption.text = "\n".join(
+            text for text in (caption.text, next_caption.text) if text
+        )
         caption.end_time = next_caption.end_time
 
         # Remove next caption
@@ -1211,6 +1344,9 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         the previous caption and remove the previous caption.
         """
 
+        if not caption:
+            return
+
         caption_index = self.captions.index(caption)
         if caption_index == 0:
             ui.notify("No previous caption to merge with", type="warning")
@@ -1222,7 +1358,16 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         previous_caption = self.captions[caption_index - 1]
 
         # Merge text and update end time
-        previous_caption.text += "\n" + caption.text
+        previous_caption.edited_words = self.joined_edits(
+            previous_caption.edited_words,
+            caption.edited_words,
+            len(previous_caption.text.split()),
+        )
+        # See the equivalent join in merge_with_next for why this is not
+        # always a bare "\n" join.
+        previous_caption.text = "\n".join(
+            text for text in (previous_caption.text, caption.text) if text
+        )
         previous_caption.end_time = caption.end_time
 
         # Remove current caption

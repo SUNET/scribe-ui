@@ -134,6 +134,13 @@ class ExportMixin:
             "segments": [seg.to_dict() for seg in self.captions],
             "speaker_count": len(self.speakers),
             "full_transcription": " ".join(seg.text for seg in self.captions),
+            # These segments are the blocks the reader arranged, so they are to
+            # be loaded as they are. Without this, parse_txt would merge
+            # neighbouring blocks that share a speaker and re-capitalise the
+            # text, undoing their edits on the next reload. Absent from
+            # anything saved before this existed, and from the worker's own
+            # output, both of which still want tidying on the way in.
+            "preserve_segments": True,
         }
 
 
@@ -307,7 +314,7 @@ class ExportMixin:
                                     "Include speakers", value=True
                                 )
                                 txt_idx_incl = ui.checkbox(
-                                    "Include block numbers", value=False
+                                    "Include paragraph numbers", value=False
                                 )
                                 txt_sep_type = (
                                     ui.select(
@@ -347,7 +354,7 @@ class ExportMixin:
                                     "Include speakers", value=True
                                 )
                                 rtf_idx_incl = ui.checkbox(
-                                    "Include block numbers", value=False
+                                    "Include paragraph numbers", value=False
                                 )
                                 ui.separator()
 

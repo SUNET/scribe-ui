@@ -122,7 +122,18 @@ class SearchMixin:
                 pattern = re.compile(re.escape(self.search_term), re.IGNORECASE)
                 new_text = pattern.sub(replacement, self.selected_caption.text)
 
+            # Replacing a word is the reader changing it, exactly as typing
+            # over it is -- and a replacement of a different length shifts
+            # every mark after it along. Worked out here rather than through
+            # update_caption_text, which would take a second undo snapshot on
+            # top of the one already taken above.
+            self.selected_caption.edited_words = self.retag_edits(
+                self.selected_caption.text,
+                new_text,
+                self.selected_caption.edited_words,
+            )
             self.selected_caption.text = new_text
+            self.update_flagged_count()
             self.refresh_display()
             ui.notify("Replacement made", type="positive")
         else:
@@ -151,13 +162,23 @@ class SearchMixin:
         for caption in self.captions:
             if caption.matches_search(self.search_term, self.case_sensitive):
                 if self.case_sensitive:
-                    caption.text = caption.text.replace(self.search_term, replacement)
+                    new_text = caption.text.replace(self.search_term, replacement)
                 else:
                     pattern = re.compile(re.escape(self.search_term), re.IGNORECASE)
-                    caption.text = pattern.sub(replacement, caption.text)
+                    new_text = pattern.sub(replacement, caption.text)
+
+                # See replace_in_current_caption: the replaced word is an edit
+                # of the reader's, and a replacement of a different length
+                # moves every mark after it. One undo snapshot covers the whole
+                # Replace All, so this cannot go through update_caption_text.
+                caption.edited_words = self.retag_edits(
+                    caption.text, new_text, caption.edited_words
+                )
+                caption.text = new_text
                 count += 1
 
         if count > 0:
+            self.update_flagged_count()
             # Refresh search results
             self.search_captions(self.search_term)
             ui.notify(f"Replaced {count} occurrences", type="positive")

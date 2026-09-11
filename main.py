@@ -334,4 +334,10 @@ ui.run(
     port=8888,
     favicon=f"static/{settings.FAVICON}",
     reconnect_timeout=15,
+    # NiceGUI's custom Vue components (transcript_editor.js) are registered
+    # once, at import time, keyed by content -- so editing one takes effect
+    # only on the next reload. Uvicorn's default reload watch is *.py only
+    # and silently misses them, which makes a fixed bug look unfixed until
+    # the process is restarted by hand.
+    uvicorn_reload_includes="*.py, *.js, *.vue",
 )

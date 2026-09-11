@@ -26,7 +26,7 @@ import httpx
 
 from datetime import datetime
 from nicegui import app, ui
-from utils.common import page_init
+from utils.common import page_init, reload_on_theme_change
 from utils.styles import default_styles, chart_colors
 from utils.settings import get_settings
 from utils.token import (
@@ -44,6 +44,10 @@ async def health() -> None:
     """
 
     page_init(use_drawer=True, title="System health")
+    # Plotly draws its charts in one theme's colours server-side and
+    # cannot restyle itself, so this page reloads when the OS theme
+    # changes. Only pages with charts do -- see reload_on_theme_change.
+    reload_on_theme_change()
 
     if not get_admin_status():
         ui.navigate.to("/home")
@@ -70,13 +74,16 @@ async def health() -> None:
     ui.label("System status").classes("text-3xl font-bold mb-4")
 
     @ui.refreshable
-    def render_health():
+    async def render_health():
+        # Awaited, so the ten second poll below leaves the event loop free
+        # while the backend answers. A blocking call here would stall every
+        # other page this server is serving, not just this one.
         try:
-            res = httpx.get(
-                settings.API_URL + "/api/v1/healthcheck",
-                headers=get_auth_header(),
-                timeout=5,
-            )
+            async with httpx.AsyncClient(timeout=5) as client:
+                res = await client.get(
+                    settings.API_URL + "/api/v1/healthcheck",
+                    headers=get_auth_header(),
+                )
             res.raise_for_status()
             data = res.json()["result"]
             backend_reachable = True
@@ -256,6 +263,8 @@ async def health() -> None:
                         "text-xs text-theme-muted mt-1"
                     )
 
-    render_health()
+    await render_health()
 
+    # refresh() hands back an AwaitableResponse, which schedules the async
+    # render as a background task on its own when it is not awaited.
     ui.timer(10.0, render_health.refresh)

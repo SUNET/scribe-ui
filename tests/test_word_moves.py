@@ -191,3 +191,4 @@ class TestTimestampFormatting:
             assert int(minutes) < 60, stamp
             assert int(secs) < 60, stamp
             assert int(millis) < 1000, stamp
+

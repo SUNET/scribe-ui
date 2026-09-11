@@ -81,7 +81,6 @@ class TestLoadWords:
             [1, 2, 3],
             {"words": "not a list"},
             {"version": 99, "words": [{"t": "Hej", "s": 0.0, "e": 0.5}]},
-            {"version": 1, "words": [{"t": "Hej"}]},
             {"version": 1, "words": [{"s": 0.0, "e": 0.5}]},
         ],
     )
@@ -90,6 +89,35 @@ class TestLoadWords:
 
         assert editor.words == []
         assert editor.has_confidence is False
+
+    def test_a_word_without_a_timing_is_still_a_word(self, editor):
+        """
+        Text is what makes an entry a word; a timing only says where in the
+        recording it was said. Dropping it left a hole in the transcript that
+        read as a word the reader had written.
+        """
+
+        editor.load_words(
+            {"version": 1, "words": [{"t": "Hej", "c": 0.15}]}
+        )
+
+        assert [word["t"] for word in editor.words] == ["Hej"]
+        assert editor.words[0]["c"] == pytest.approx(0.15)
+        assert editor.has_confidence is True
+
+    def test_a_word_without_a_timing_is_not_timed(self, editor):
+        editor.load_words({"version": 1, "words": [{"t": "Hej"}]})
+
+        assert editor.words[0].keys() == {"t"}
+        assert editor.word_is_timed(editor.words[0]) is False
+
+    def test_an_unusable_timing_leaves_the_word_behind(self, editor):
+        editor.load_words(
+            {"version": 1, "words": [{"t": "Hej", "s": "soon", "e": "later"}]}
+        )
+
+        assert [word["t"] for word in editor.words] == ["Hej"]
+        assert editor.word_is_timed(editor.words[0]) is False
 
     def test_timings_without_confidence(self, editor):
         editor.load_words({"version": 1, "words": [{"t": "Hej", "s": 0.0, "e": 0.5}]})
@@ -143,6 +171,103 @@ class TestWordLookup:
             0.15,
             0.95,
             0.70,
+        ]
+
+
+class TestCaptionsDivideTheRecording:
+    """
+    A word's own timing cannot be relied on to sit inside the segment it was
+    transcribed in. Reported from a real recording: whisper dated a segment from
+    2.32 and that segment's first word from 0.00, reaching back into the silence
+    before it. Matching each caption only against its own range left that word
+    claimed by nobody.
+    """
+
+    # The numbers are the ones that were reported.
+    REPORTED = {
+        "version": 1,
+        "words": [
+            {"t": "Ja,", "s": 0.0, "e": 1.62, "c": 0.686},
+            {"t": "tack", "s": 2.96, "e": 4.08, "c": 0.421},
+            {"t": "för", "s": 4.08, "e": 4.32, "c": 0.604},
+            {"t": "inbjudan.", "s": 4.32, "e": 5.08, "c": 0.946},
+            {"t": "Jag", "s": 5.14, "e": 5.2, "c": 0.726},
+            {"t": "ska", "s": 5.2, "e": 5.4, "c": 0.538},
+        ],
+    }
+
+    @pytest.fixture
+    def reported(self, editor):
+        editor.load_words(self.REPORTED)
+        editor.captions = [
+            SRTCaption(1, "00:00:02,320", "00:00:05,100", "Ja, tack för inbjudan."),
+            SRTCaption(2, "00:00:05,140", "00:00:13,220", "Jag ska"),
+        ]
+
+        return editor
+
+    def test_a_word_timed_before_its_caption_is_still_claimed(self, reported):
+        assert [word["t"] for word in reported.caption_words(reported.captions[0])] == [
+            "Ja,", "tack", "för", "inbjudan.",
+        ]
+
+    def test_the_next_caption_does_not_take_it_as_well(self, reported):
+        assert [word["t"] for word in reported.caption_words(reported.captions[1])] == [
+            "Jag", "ska",
+        ]
+
+    def test_every_word_is_claimed_exactly_once(self, reported):
+        claimed = [
+            word["t"]
+            for caption in reported.captions
+            for word in reported.caption_words(caption)
+        ]
+
+        assert sorted(claimed) == sorted(word["t"] for word in reported.words)
+
+    def test_it_aligns_and_so_is_not_taken_for_an_edit(self, reported):
+        aligned = reported.aligned_words(reported.captions[0])
+
+        assert all(word is not None for word in aligned)
+
+    def test_it_can_be_flagged_for_review_again(self, reported):
+        """
+        A word no caption claimed could never be marked, whatever its score.
+        """
+
+        reported.show_uncertain_words = True
+        reported.set_review_sensitivity("high")
+        caption = reported.captions[0]
+
+        assert "Ja," in [
+            run["t"] for run in reported.review_runs(caption, caption.text)
+            if run["flag"]
+        ]
+
+    def test_the_last_caption_claims_what_trails_off_the_end(self, reported):
+        """
+        A word can drift past its segment as well as before it.
+        """
+
+        reported.load_words({"version": 1, "words": [
+            {"t": "Ja,", "s": 0.0, "e": 1.0},
+            {"t": "slut", "s": 30.0, "e": 31.0},
+        ]})
+
+        assert [word["t"] for word in reported.caption_words(reported.captions[1])] == [
+            "slut"
+        ]
+
+    def test_a_caption_of_its_own_still_answers_for_its_own_range(self, editor):
+        """
+        Nothing to bound it against, so it behaves as it always did.
+        """
+
+        editor.load_words(self.REPORTED)
+        loose = SRTCaption(1, "00:00:02,320", "00:00:05,100", "Ja, tack för inbjudan.")
+
+        assert [word["t"] for word in editor.caption_words(loose)] == [
+            "tack", "för", "inbjudan.",
         ]
 
 
@@ -231,6 +356,21 @@ class TestSplitWithoutCursor:
         assert editor.captions[0].get_end_seconds() == pytest.approx(2.0)
 
 
+class Label:
+    """
+    Stand-in for the counter's own ui.label: the two calls it ever receives.
+    """
+
+    text = None
+    visible = True
+
+    def set_text(self, value):
+        self.text = value
+
+    def set_visibility(self, visible):
+        self.visible = visible
+
+
 class TestReviewMarking:
     """
     Marking of words worth reviewing, and the flagged counter.
@@ -266,6 +406,7 @@ class TestReviewMarking:
 
     def test_marks_flagged_words_only(self, editor):
         editor.load_words(PAYLOAD)
+        editor.show_uncertain_words = True
 
         html = editor.get_review_html(caption())
 
@@ -280,6 +421,7 @@ class TestReviewMarking:
         """
 
         editor.load_words(PAYLOAD)
+        editor.show_uncertain_words = True
         editor.set_review_sensitivity("high")
 
         html = editor.get_review_html(caption())
@@ -293,11 +435,13 @@ class TestReviewMarking:
         editor.load_words(
             {"version": 1, "words": [{"t": "Hej", "s": 0.0, "e": 0.5, "c": 0.99}]}
         )
+        editor.show_uncertain_words = True
 
         assert editor.get_review_html(caption("Hej")) is None
 
     def test_no_marking_without_confidence_scores(self, editor):
         editor.load_words({"version": 1, "words": [{"t": "Hej", "s": 0.0, "e": 0.5}]})
+        editor.show_uncertain_words = True
 
         assert editor.get_review_html(caption("Hej")) is None
         assert editor.flagged_word_count() == 0
@@ -308,6 +452,7 @@ class TestReviewMarking:
         """
 
         editor.load_words(PAYLOAD)
+        editor.show_uncertain_words = True
 
         html = editor.get_review_html(caption())
 
@@ -319,6 +464,7 @@ class TestReviewMarking:
 
     def test_escapes_caption_text(self, editor):
         editor.load_words(PAYLOAD)
+        editor.show_uncertain_words = True
 
         html = editor.get_review_html(caption("Hej på <b>dig</b> idag"))
 
@@ -327,42 +473,36 @@ class TestReviewMarking:
 
     def test_keeps_line_breaks(self, editor):
         editor.load_words(PAYLOAD)
+        editor.show_uncertain_words = True
 
         html = editor.get_review_html(caption("Hej på\ndig idag"))
 
         assert "<br>" in html
 
-    def test_counter_reports_zero_while_switched_off(self, editor):
+    def test_the_counter_is_hidden_while_the_marking_is_off(self, editor):
+        """
+        Nothing is flagged by definition then, so "0 flagged" says nothing
+        and is one more thing to read in a panel of controls.
+        """
+
         editor.load_words(PAYLOAD)
-
-        class Label:
-            text = None
-
-            def set_text(self, value):
-                self.text = value
-
         editor.captions = [caption()]
         label = Label()
         editor.set_flagged_count_element(label)
 
-        assert label.text == "0 flagged", "off by default, so nothing is flagged"
+        assert label.visible is False, "off by default"
 
         editor.set_show_uncertain_words(True)
 
+        assert label.visible is True
         assert label.text == "1 flagged"
 
         editor.set_show_uncertain_words(False)
 
-        assert label.text == "0 flagged"
+        assert label.visible is False
 
     def test_counter_follows_sensitivity(self, editor):
         editor.load_words(PAYLOAD)
-
-        class Label:
-            text = None
-
-            def set_text(self, value):
-                self.text = value
 
         editor.captions = [caption()]
         label = Label()
@@ -431,6 +571,7 @@ class TestMarkingSurvivesEditing:
 
     def marked(self, editor, text):
         """Words actually marked in a caption, in order."""
+        editor.show_uncertain_words = True
         html = editor.get_review_html(caption(text))
 
         return re.findall(r'aria-label="[^"]*">([^<]*)</span>', html or "")
@@ -614,3 +755,410 @@ class TestReviewBackdrop:
         editor.show_uncertain_words = True
 
         assert editor.review_backdrop_html(caption(), "Hej\n").endswith("<br>")
+
+
+class TestReviewRuns:
+    """
+    The transcription editor renders the marking itself, from runs rather than
+    from markup, so the runs have to reconstruct the text exactly.
+    """
+
+    def joined(self, runs):
+        return "".join(run["t"] for run in runs)
+
+    def test_runs_reconstruct_the_text(self, editor):
+        editor.load_words(PAYLOAD)
+        editor.show_uncertain_words = True
+
+        assert self.joined(editor.review_runs(caption())) == TEXT
+
+    def test_flagged_word_is_its_own_run(self, editor):
+        editor.load_words(PAYLOAD)
+        editor.show_uncertain_words = True
+
+        runs = editor.review_runs(caption())
+        flagged = [run["t"] for run in runs if run["flag"]]
+
+        assert flagged == ["på"]
+
+    def test_unflagged_text_is_merged(self, editor):
+        editor.load_words(PAYLOAD)
+        editor.show_uncertain_words = True
+
+        runs = editor.review_runs(caption())
+
+        assert runs == [
+            {"t": "Hej ", "flag": False},
+            {"t": "på", "flag": True},
+            {"t": " dig idag", "flag": False},
+        ]
+
+    def test_whitespace_is_preserved(self, editor):
+        editor.load_words(PAYLOAD)
+        editor.show_uncertain_words = True
+
+        assert self.joined(editor.review_runs(caption("Hej på\ndig  idag"))) == (
+            "Hej på\ndig  idag"
+        )
+
+    def test_toggle_off_gives_one_unflagged_run(self, editor):
+        editor.load_words(PAYLOAD)
+        editor.show_uncertain_words = False
+
+        assert editor.review_runs(caption()) == [{"t": TEXT, "flag": False}]
+
+    def test_empty_text(self, editor):
+        editor.load_words(PAYLOAD)
+        editor.show_uncertain_words = True
+
+        assert editor.review_runs(caption("")) == []
+
+    def test_tracks_uncommitted_text(self, editor):
+        editor.load_words(PAYLOAD)
+        editor.show_uncertain_words = True
+
+        runs = editor.review_runs(caption(), "Hej TVÅ dig idag")
+
+        assert not any(run["flag"] for run in runs)
+        assert self.joined(runs) == "Hej TVÅ dig idag"
+
+
+class TestRenderOverride:
+    """
+    One editor draws every caption now, whichever format is open. Everything
+    that changes the captions funnels through refresh_display, which only
+    ever forwards to it -- there is no separate caption renderer to redirect
+    away from any more.
+    """
+
+    @pytest.fixture
+    def live(self):
+        """
+        An editor with the real refresh_display, which the shared fixture
+        stubs out. These tests are about what refresh_display does.
+        """
+
+        editor = SRTEditor("job-uuid", "txt", "file.txt")
+        editor.save_state_for_undo = lambda *a, **k: None
+        editor.mark_as_changed = lambda *a, **k: None
+        editor.update_words_per_minute = lambda *a, **k: None
+
+        return editor
+
+    def test_forwards_to_the_document_editor_when_built(self, live):
+        calls = []
+        live.render_override = lambda: calls.append("document")
+
+        live.refresh_display(force_full_refresh=True)
+
+        assert calls == ["document"]
+
+    def test_does_nothing_before_the_editor_is_built(self, live):
+        # render_override is still None at this point -- refresh_display is
+        # called this early by some setup paths, and must not raise.
+        assert live.render_override is None
+
+        live.refresh_display(force_full_refresh=True)
+
+    def test_toggling_uncertain_words_redraws_the_document(self, live):
+        calls = []
+        live.render_override = lambda: calls.append("document")
+
+        live.set_show_uncertain_words(True)
+
+        assert calls == ["document"]
+
+    def test_sensitivity_change_redraws_the_document(self, live):
+        calls = []
+        live.show_uncertain_words = True
+        live.render_override = lambda: calls.append("document")
+
+        live.set_review_sensitivity("high")
+
+        assert calls == ["document"]
+
+    def test_split_and_merge_redraw_the_document(self, live):
+        live.captions = [
+            SRTCaption(1, "00:00:00,000", "00:00:02,000", "ett tva tre fyra"),
+            SRTCaption(2, "00:00:02,000", "00:00:04,000", "fem sex sju"),
+        ]
+        calls = []
+        live.render_override = lambda: calls.append("document")
+
+        live.split_caption(live.captions[0])
+        live.merge_with_next(live.captions[0])
+
+        assert calls == ["document", "document"]
+
+class TestWordHighlightRuns:
+    """
+    Following the audio word by word needs one run per word, carrying its
+    timing. Merged runs cannot be highlighted individually.
+    """
+
+    def test_every_word_becomes_its_own_run(self, editor):
+        editor.load_words(PAYLOAD)
+
+        runs = editor.review_runs(caption(), per_word=True)
+        words = [run["t"] for run in runs if run["t"].strip()]
+
+        assert words == ["Hej", "på", "dig", "idag"]
+
+    def test_words_carry_their_timings(self, editor):
+        editor.load_words(PAYLOAD)
+
+        runs = editor.review_runs(caption(), per_word=True)
+        timed = [(run["t"], run["s"], run["e"]) for run in runs if "s" in run]
+
+        assert timed == [
+            ("Hej", 0.0, 0.5),
+            ("på", 0.6, 0.8),
+            ("dig", 1.0, 1.4),
+            ("idag", 3.0, 3.6),
+        ]
+
+    def test_reconstructs_the_text(self, editor):
+        editor.load_words(PAYLOAD)
+
+        runs = editor.review_runs(caption(), per_word=True)
+
+        assert "".join(run["t"] for run in runs) == TEXT
+
+    def test_edited_word_gets_no_timing(self, editor):
+        """
+        An edited word has no timing we can attribute to it, so it is simply
+        never highlighted rather than borrowing its neighbour's.
+        """
+
+        editor.load_words(PAYLOAD)
+
+        runs = editor.review_runs(caption(), "Hej TVÅ dig idag", per_word=True)
+        timings = {run["t"]: run.get("s") for run in runs if run["t"].strip()}
+
+        assert timings["TVÅ"] is None
+        assert timings["dig"] == 1.0, "the others stay aligned"
+
+    def test_review_toggle_still_governs_flags(self, editor):
+        editor.load_words(PAYLOAD)
+
+        editor.show_uncertain_words = False
+        assert not any(
+            run["flag"] for run in editor.review_runs(caption(), per_word=True)
+        )
+
+        editor.show_uncertain_words = True
+        assert any(
+            run["flag"] for run in editor.review_runs(caption(), per_word=True)
+        )
+
+    def test_merged_runs_are_unchanged_by_default(self, editor):
+        """
+        One element per word is only paid for when it is asked for.
+        """
+
+        editor.load_words(PAYLOAD)
+        editor.show_uncertain_words = True
+
+        assert editor.review_runs(caption()) == [
+            {"t": "Hej ", "flag": False},
+            {"t": "på", "flag": True},
+            {"t": " dig idag", "flag": False},
+        ]
+
+    @pytest.mark.parametrize("stored", [None, "", 0, 1, "yes"])
+    def test_stored_preference_is_coerced(self, editor, stored):
+        editor.set_highlight_word(stored)
+
+        assert editor.highlight_word is bool(stored)
+
+
+class TestSplitAtBlockEdges:
+    """
+    A caret at the very start or end of a block has nothing on one side of it.
+    Falling back to the halfway split there breaks a word the user never asked
+    to touch -- pressing Enter after a one word block turned "Hej" into
+    "He" / "j".
+    """
+
+    @pytest.fixture
+    def live(self):
+        editor = SRTEditor("job-uuid", "txt", "file.txt")
+        for name in ("refresh_display", "update_words_per_minute",
+                     "save_state_for_undo", "mark_as_changed"):
+            setattr(editor, name, lambda *a, **k: None)
+
+        return editor
+
+    def block(self, live, text="Hej"):
+        target = SRTCaption(1, "00:00:00,000", "00:00:02,000", text)
+        live.captions = [target]
+
+        return target
+
+    @pytest.mark.parametrize("position", [0, 3, 99, -2])
+    def test_edge_caret_leaves_the_block_whole(self, live, position):
+        target = self.block(live)
+
+        live.split_caption(target, cursor_position=position)
+
+        assert [c.text for c in live.captions] == ["Hej"]
+
+    def test_trailing_space_still_counts_as_the_edge(self, live):
+        target = self.block(live, "Hej ")
+
+        live.split_caption(target, cursor_position=4)
+
+        assert len(live.captions) == 1
+
+    def test_caret_inside_a_word_still_splits(self, live):
+        """
+        Deliberate, so it is honoured: the caret says where.
+        """
+
+        target = self.block(live)
+
+        live.split_caption(target, cursor_position=1)
+
+        assert [c.text for c in live.captions] == ["H", "ej"]
+
+    def test_no_caret_still_halves(self, live):
+        """
+        The Split button and results without word data rely on this.
+        """
+
+        target = self.block(live)
+
+        live.split_caption(target)
+
+        assert [c.text for c in live.captions] == ["H", "ej"]
+
+    def test_refused_split_keeps_uncommitted_typing(self, live):
+        target = self.block(live)
+
+        live.split_caption(target, cursor_position=6, text="Hejsan")
+
+        assert [c.text for c in live.captions] == ["Hejsan"]
+
+    def test_refused_split_saves_no_undo_state(self, live):
+        """
+        Enter at the end of a block is easy to hit repeatedly; it should not
+        fill the undo stack with states that changed nothing.
+        """
+
+        saved = []
+        live.save_state_for_undo = lambda: saved.append(True)
+        target = self.block(live)
+
+        live.split_caption(target, cursor_position=3)
+
+        assert saved == []
+
+
+class TestShortcutScope:
+    """
+    There is one editor now, for both formats, and one key handler. What
+    remains bound is the conventional file, history, search and playback set.
+    Every editing operation was dropped: each duplicated a gesture the
+    document editor already provides on its own (Enter to split,
+    Backspace/Delete to merge, a click to delete a caption outright), and with
+    ignore=[] they fired while the reader was typing.
+    """
+
+    @pytest.fixture
+    def live(self):
+        editor = SRTEditor("job-uuid", "txt", "file.txt")
+        for name in ("update_words_per_minute", "save_state_for_undo",
+                     "mark_as_changed"):
+            setattr(editor, name, lambda *a, **k: None)
+        editor.captions = [
+            SRTCaption(1, "00:00:00,000", "00:00:02,000", "ett tva"),
+            SRTCaption(2, "00:00:02,000", "00:00:04,000", "tre fyra"),
+        ]
+        editor.refresh_display = lambda *a, **k: None
+
+        return editor
+
+    def press(self, editor, key, **modifiers):
+        """Feed one keydown through the real handler."""
+        import asyncio
+        from types import SimpleNamespace
+
+        flags = {"ctrl": False, "meta": False, "shift": False, "alt": False}
+        flags.update(modifiers)
+        asyncio.run(editor.handle_key_event(SimpleNamespace(
+            key=key,
+            action=SimpleNamespace(keydown=True),
+            modifiers=SimpleNamespace(**flags),
+        )))
+
+    @pytest.mark.parametrize(
+        "key,modifiers",
+        [
+            ("m", {"ctrl": True}),                     # merge next
+            ("M", {"ctrl": True}),                     # merge previous
+            ("d", {"ctrl": True}),                     # delete caption
+            ("Enter", {"ctrl": True}),                 # split
+            ("Enter", {"meta": True}),                 # split
+            ("Enter", {"ctrl": True, "shift": True}),  # add caption
+            ("V", {"ctrl": True, "shift": True}),      # validate
+            ("ArrowDown", {"alt": True}),              # next caption
+            ("ArrowUp", {"alt": True}),                # previous caption
+            ("ArrowUp", {"ctrl": True}),               # move word up
+            ("ArrowDown", {"ctrl": True}),             # move word down
+            ("ArrowUp", {"meta": True}),               # move word up
+            ("ArrowDown", {"meta": True}),             # move word down
+        ],
+    )
+    def test_no_editing_shortcut_changes_anything(self, live, key, modifiers):
+        """
+        None of these are bound any more, in either editor. Pressing them must
+        leave the captions exactly as they were.
+        """
+
+        live.selected_caption = live.captions[0]
+        before = [(c.text, c.start_time, c.end_time) for c in live.captions]
+
+        self.press(live, key, **modifiers)
+
+        assert [(c.text, c.start_time, c.end_time) for c in live.captions] == before
+
+    def test_shared_shortcuts_fire_in_both_editors(self, live):
+        saved = []
+        live.save_srt_changes = lambda: saved.append(True)
+
+        self.press(live, "s", ctrl=True)
+        live.render_override = lambda: None
+        self.press(live, "s", meta=True)
+
+        assert saved == [True, True]
+
+    def test_undo_and_redo_still_fire(self, live):
+        calls = []
+        live.undo = lambda: calls.append("undo")
+        live.redo = lambda: calls.append("redo")
+
+        self.press(live, "z", ctrl=True)
+        self.press(live, "y", ctrl=True)
+        self.press(live, "z", meta=True, shift=True)
+
+        assert calls == ["undo", "redo", "redo"]
+
+    def test_find_works_whichever_format_is_open(self, live):
+        opened = []
+        live.create_search_panel = lambda **kwargs: opened.append(True)
+
+        self.press(live, "f", ctrl=True)
+        live.render_override = lambda: None
+        self.press(live, "f", ctrl=True)
+
+        assert opened == [True, True]
+
+    def test_no_selection_does_not_raise(self, live, monkeypatch):
+        # Escape reaches for the browser, which is not here.
+        monkeypatch.setattr("utils.srt.ui.run_javascript", lambda *a, **k: None)
+        live.create_search_panel = lambda **kwargs: None
+        live.save_srt_changes = lambda: None
+        live.selected_caption = None
+
+        for key, mods in (("Escape", {}), ("s", {"ctrl": True}), ("f", {"ctrl": True})):
+            self.press(live, key, **mods)

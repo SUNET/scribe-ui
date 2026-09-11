@@ -26,7 +26,7 @@ import plotly.graph_objects as go
 from collections import defaultdict
 from datetime import datetime
 from nicegui import app, ui
-from utils.common import page_init
+from utils.common import page_init, reload_on_theme_change
 from utils.styles import default_styles, chart_colors
 from db.analytics import fetch_all as fetch_analytics
 from utils.settings import get_settings
@@ -44,6 +44,10 @@ async def analytics() -> None:
     """
 
     page_init(use_drawer=True, title="Analytics")
+    # Plotly draws its charts in one theme's colours server-side and
+    # cannot restyle itself, so this page reloads when the OS theme
+    # changes. Only pages with charts do -- see reload_on_theme_change.
+    reload_on_theme_change()
 
     if not get_bofh_status():
         ui.navigate.to("/home")

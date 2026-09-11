@@ -15,13 +15,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import asyncio
 import httpx
 import pytz
 
 
 from datetime import datetime, timedelta
-from nicegui import ui, app
+from nicegui import background_tasks, ui, app
 from starlette.formparsers import MultiPartParser
 from typing import Optional
 from utils.settings import get_settings
@@ -30,7 +29,7 @@ from utils.token import (
     get_auth_header,
     get_bofh_status,
     get_user_data,
-    token_refresh,
+    token_refresh_or_wait,
 )
 from utils.helpers import (
     storage_decrypt,
@@ -283,6 +282,31 @@ def _show_announcement_banners() -> None:
                 )
 
 
+def reload_on_theme_change() -> None:
+    """
+    Reload when the OS switches between light and dark.
+
+    Only for pages holding Plotly charts, which are drawn server-side in one
+    theme's colours and cannot restyle themselves. Everything else follows
+    the OS through CSS custom properties and needs no reload -- and a reload
+    is never harmless: on the editor page it throws away every unsaved
+    caption, which is exactly what a reader is doing at sunset.
+    """
+
+    ui.add_head_html(
+        """
+    <script>
+    if (!window._scribeThemeListener) {
+        window._scribeThemeListener = true;
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function() {
+            location.reload();
+        });
+    }
+    </script>
+    """
+    )
+
+
 def page_init(
     header_text: Optional[str] = "",
     use_drawer: bool = False,
@@ -307,13 +331,31 @@ def page_init(
         ui.navigate.to("/")
         return
 
-    async def refresh():
-        if not await token_refresh():
-            app.storage.user["token"] = None
-            app.storage.user["refresh_token"] = None
-            app.storage.user["encryption_password"] = None
+    # How many refreshes in a row have failed to reach the provider. A blip,
+    # a suspended laptop or a provider restart is not a session that has
+    # ended, and treating it as one logs the reader out mid-edit -- which on
+    # the editor page takes every unsaved caption with it. See
+    # token_refresh_or_wait.
+    unreachable = {"count": 0}
 
-            ui.navigate.to(settings.OIDC_APP_LOGOUT_ROUTE)
+    async def refresh():
+        keep = await token_refresh_or_wait(unreachable["count"])
+
+        if keep is True:
+            unreachable["count"] = 0
+            return
+
+        # Kept, but only because the provider could not be asked: count it,
+        # so a provider that stays unreachable does eventually end.
+        if keep:
+            unreachable["count"] += 1
+            return
+
+        app.storage.user["token"] = None
+        app.storage.user["refresh_token"] = None
+        app.storage.user["encryption_password"] = None
+
+        ui.navigate.to(settings.OIDC_APP_LOGOUT_ROUTE)
 
     ui.timer(0.1, refresh, once=True)
 
@@ -325,20 +367,6 @@ def page_init(
     # Store resolved dark mode state for components like Plotly
     if dark_pref is not None:
         app.storage.user["_resolved_dark"] = bool(dark_pref)
-    else:
-        # Auto mode: reload when OS theme changes so Plotly charts update
-        ui.add_head_html(
-            """
-        <script>
-        if (!window._scribeThemeListener) {
-            window._scribeThemeListener = true;
-            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function() {
-                location.reload();
-            });
-        }
-        </script>
-        """
-        )
 
     is_admin = get_admin_status()
     is_bofh = get_bofh_status()
@@ -1241,7 +1269,10 @@ async def handle_upload_with_feedback(files, dialog, table):
             if fresh_rows is not None:
                 table.update_rows(fresh_rows, clear_selection=False)
 
-    asyncio.create_task(_upload())
+    # Not asyncio.create_task: the loop keeps only a weak reference, so an
+    # upload could be collected part way through and its errors would never
+    # surface. NiceGUI holds onto the task and reports what it raises.
+    background_tasks.create(_upload(), name=f"upload of {len(file_items)} file(s)")
 
 
 def table_transcribe(selected_row, on_complete=None) -> None:
@@ -1279,10 +1310,20 @@ def table_transcribe(selected_row, on_complete=None) -> None:
                     verbatim_container.set_visibility(
                         language.value.lower() == "swedish"
                     )
+                    # Untick as well as hide: set_visibility leaves the
+                    # value alone, so a box ticked under Swedish survived
+                    # unseen behind a language with no verbatim model and
+                    # the dialog sent "<language> (verbatim)" -- a key the
+                    # worker cannot look up, which kills its job thread
+                    # (seen in production as KeyError: 'Ukrainian
+                    # (verbatim)').
                     language.on_value_change(
-                        lambda e: verbatim_container.set_visibility(
-                            e.value.lower() == "swedish"
-                            or e.value.lower() == "norwegian"
+                        lambda e: (
+                            verbatim.set_value(False),
+                            verbatim_container.set_visibility(
+                                e.value.lower() == "swedish"
+                                or e.value.lower() == "norwegian"
+                            ),
                         )
                     )
 
@@ -1385,9 +1426,14 @@ def table_bulk_transcribe(table: ui.table, on_complete=None) -> None:
                     verbatim_container.set_visibility(
                         language.value.lower() == "swedish"
                     )
+                    # Untick as well as hide -- see the same handler in
+                    # the re-transcribe dialog above.
                     language.on_value_change(
-                        lambda e: verbatim_container.set_visibility(
-                            e.value.lower() == "swedish"
+                        lambda e: (
+                            verbatim.set_value(False),
+                            verbatim_container.set_visibility(
+                                e.value.lower() == "swedish"
+                            ),
                         )
                     )
 

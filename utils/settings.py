@@ -53,6 +53,22 @@ class Settings(BaseSettings):
     CHARACTER_LIMIT: int = 42
     CHARACTER_LIMIT_EXCEEDED_COLOR: str = "text-red"
 
+    # Subtitle row count guideline, alongside CHARACTER_LIMIT. A caption with
+    # more lines than this is flagged the same way; nothing is truncated or
+    # auto-wrapped.
+    MAX_SUBTITLE_LINES: int = 2
+
+    # How long a caption started by "Add caption after" runs for, in seconds,
+    # when there is room for it before the next one. Above
+    # MIN_CAPTION_SECONDS on purpose: a new caption should not open already
+    # failing "Validate".
+    NEW_CAPTION_SECONDS: float = 1.0
+
+    # Shortest a caption should be on screen, in seconds. A shorter one is
+    # reported by "Validate" as a warning -- it is readable text in a
+    # perfectly valid file, just gone before a viewer can read it.
+    MIN_CAPTION_SECONDS: float = 0.8
+
     # Review sensitivity: how far up the confidence range to flag words for
     # review. A word is flagged when its score falls below the threshold for
     # the selected sensitivity, so raising sensitivity flags strictly more.

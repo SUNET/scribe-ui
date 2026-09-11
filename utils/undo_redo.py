@@ -15,8 +15,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Optional
+from dataclasses import dataclass
+from typing import List, Optional, Set
 from utils.caption import SRTCaption
+
+
+@dataclass
+class EditorState:
+    """
+    One point in the editor's history.
+
+    Both halves travel together. The captions carry which speaker each block
+    belongs to; the speaker list carries which names exist at all -- including
+    ones no block uses yet ("Add new", or every block reassigned away), which
+    is why it cannot simply be recomputed from the captions on the way back.
+    Restoring one without the other left a block naming a speaker the list had
+    never heard of, and the rename menu then refused to act on it.
+
+    speakers is None for a state saved without one, which leaves whatever the
+    editor already has alone rather than clearing it.
+    """
+
+    captions: List[SRTCaption]
+    speakers: Optional[Set[str]] = None
 
 
 class UndoRedoManager:
@@ -25,17 +46,32 @@ class UndoRedoManager:
     """
 
     def __init__(self, max_history: int = 50):
-        self.undo_stack: List[List[SRTCaption]] = []
-        self.redo_stack: List[List[SRTCaption]] = []
+        self.undo_stack: List[EditorState] = []
+        self.redo_stack: List[EditorState] = []
         self.max_history = max_history
 
-    def save_state(self, captions: List[SRTCaption]) -> None:
+    @staticmethod
+    def _snapshot(
+        captions: List[SRTCaption], speakers: Optional[Set[str]]
+    ) -> EditorState:
+        """
+        A copy of both halves, so later edits to the live editor cannot reach
+        back into a state already on a stack.
+        """
+
+        return EditorState(
+            [caption.copy() for caption in captions],
+            None if speakers is None else set(speakers),
+        )
+
+    def save_state(
+        self, captions: List[SRTCaption], speakers: Optional[Set[str]] = None
+    ) -> None:
         """
         Save the current state to the undo stack.
         """
 
-        # Deep copy the captions list
-        state = [caption.copy() for caption in captions]
+        state = self._snapshot(captions, speakers)
         self.undo_stack.append(state)
 
         # Clear redo stack when new action is performed
@@ -45,7 +81,11 @@ class UndoRedoManager:
         if len(self.undo_stack) > self.max_history:
             self.undo_stack.pop(0)
 
-    def undo(self, current_captions: List[SRTCaption]) -> Optional[List[SRTCaption]]:
+    def undo(
+        self,
+        current_captions: List[SRTCaption],
+        current_speakers: Optional[Set[str]] = None,
+    ) -> Optional[EditorState]:
         """
         Undo the last action and return the previous state.
         """
@@ -53,13 +93,16 @@ class UndoRedoManager:
             return None
 
         # Save current state to redo stack
-        current_state = [caption.copy() for caption in current_captions]
-        self.redo_stack.append(current_state)
+        self.redo_stack.append(self._snapshot(current_captions, current_speakers))
 
         # Pop and return the previous state
         return self.undo_stack.pop()
 
-    def redo(self, current_captions: List[SRTCaption]) -> Optional[List[SRTCaption]]:
+    def redo(
+        self,
+        current_captions: List[SRTCaption],
+        current_speakers: Optional[Set[str]] = None,
+    ) -> Optional[EditorState]:
         """
         Redo the last undone action and return the next state.
         """
@@ -68,8 +111,7 @@ class UndoRedoManager:
             return None
 
         # Save current state to undo stack
-        current_state = [caption.copy() for caption in current_captions]
-        self.undo_stack.append(current_state)
+        self.undo_stack.append(self._snapshot(current_captions, current_speakers))
 
         # Pop and return the next state
         return self.redo_stack.pop()
