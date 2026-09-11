@@ -683,6 +683,67 @@ theme_styles = """
         margin-right: 12px;
     }
 
+    /* Skip to content (WCAG 2.4.1) */
+    .skip-link {
+        position: absolute;
+        left: -9999px;
+        top: 0;
+        z-index: 10000;
+        padding: 10px 16px;
+        background-color: var(--color-bg-surface);
+        color: var(--color-text-primary);
+        border: 2px solid var(--color-brand-primary);
+        border-radius: 0 0 4px 0;
+        text-decoration: underline;
+        font-weight: 600;
+    }
+    .skip-link:focus,
+    .skip-link:focus-visible {
+        left: 0;
+    }
+
+    /* Global focus indicator (WCAG 2.4.7) - NEW
+       Two things are needed here, both verified in the browser:
+
+       1. !important. Quasar resets the outline on its own components.
+       2. @layer theme. NiceGUI declares
+          @layer theme, base, quasar, nicegui, components, utilities, overrides,
+          quasar_importants
+          and imports Quasar into those layers. For !important declarations the
+          cascade REVERSES layer order, so an earlier layer wins - and an unlayered
+          !important loses to every layered one. A plain
+          ":focus-visible { outline: ... !important }" in an unlayered <style>
+          therefore has no effect on q-btn, even though :focus-visible matches.
+          Putting it in the first layer, theme, makes it win.
+
+       Measured on the collapsed/expanded drawer button: without this the computed
+       style stays outline: none 0px; with it, outline: solid 3px. */
+    @layer theme {
+        :focus-visible,
+        a:focus-visible,
+        .q-btn:focus-visible,
+        .q-item:focus-visible,
+        .q-checkbox:focus-visible,
+        .q-toggle:focus-visible,
+        [tabindex]:focus-visible {
+            outline: 3px solid var(--color-brand-primary) !important;
+            outline-offset: 2px !important;
+        }
+    }
+
+    /* Hidden visually, still read by screen readers */
+    .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+    }
+
     /* ── Drawer / menu ── */
     .menu-item:hover {
         background-color: var(--color-bg-surface-hover);
@@ -701,8 +762,20 @@ theme_styles = """
     .q-drawer--mini .menu-item .q-icon {
         margin: 0;
     }
+    /* Mini mode used to hide the label with display: none, which removed the
+       link's accessible name and left the icon ligature ("folder") as the only
+       text. Clip it visually instead so the name remains available to screen
+       readers. (WCAG 4.1.2) */
     .q-drawer--mini .menu-label {
-        display: none;
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
     }
 
     /* ── Announcement banners ── */
@@ -2017,6 +2090,11 @@ menu_item_style = (
     " cursor: pointer; font-size: 1.05rem;"
     " transition: background-color 0.15s; width: 100%;"
     " white-space: nowrap; overflow: hidden;"
+    # text-decoration and color are required, not cosmetic changes: the menu
+    # entries are now <a> elements, which browsers underline and paint in the
+    # link colour by default. Resetting both keeps the rendering identical to
+    # the current div-based menu.
+    " text-decoration: none; color: inherit;"
 )
 
 menu_active_style = (

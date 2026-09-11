@@ -147,7 +147,7 @@ def reset_password() -> None:
         except httpx.HTTPError:
             ui.notify("Failed to reset encryption passphrase.", color="negative")
 
-    with ui.dialog() as dialog:
+    with ui.dialog().props('aria-label="Reset encryption passphrase"') as dialog:
         with ui.card():
             ui.label("Reset encryption passphrase").classes("text-h6")
             ui.label(
@@ -585,7 +585,7 @@ def save_group(
     except httpx.HTTPError:
         error = res.json()
 
-        with ui.dialog() as dialog:
+        with ui.dialog().props('aria-label="Error saving group"') as dialog:
             with ui.card():
                 ui.label("Error saving group").classes("text-h6")
                 ui.label(error["error"])
@@ -698,7 +698,7 @@ def open_make_admin_dialog(selected_rows: list, all_users: list) -> None:
             {u["realm"] for u in all_users if u.get("realm") and "." in u["realm"]}
         )
 
-    with ui.dialog() as admin_dialog:
+    with ui.dialog().props('aria-label="Grant admin access"') as admin_dialog:
         with ui.card().style("width: 500px; max-width: 90vw;"):
             if len(selected_rows) == 1:
                 ui.label(f"Make {selected_rows[0]['username']} admin").classes(
@@ -853,7 +853,7 @@ def set_domains(selected_rows: list, all_users: list) -> None:
             if domain.strip() in realms:
                 domains.append(domain.strip())
 
-    with ui.dialog() as domain_dialog:
+    with ui.dialog().props('aria-label="Set domains the user can administer"') as domain_dialog:
         with ui.card().style("width: 500px; max-width: 90vw;"):
             ui.label("Set domains the user can administer").classes(
                 "text-2xl font-bold"

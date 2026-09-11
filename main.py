@@ -49,6 +49,10 @@ async def index(request: Request) -> None:
     Index page with login.
     """
 
+    # This page does not go through page_init, so it sets its own title.
+    # WCAG 2.4.2.
+    ui.page_title(f"{settings.TAB_TITLE} - Sign in")
+
     ui.add_head_html(default_styles)
 
     token = request.query_params.get("token")
@@ -126,7 +130,7 @@ async def index(request: Request) -> None:
         # prompt for password. If the user has no encryption settings, prompt
         # to set a password.
         if not user_data["encryption_settings"]:
-            with ui.dialog() as dialog:
+            with ui.dialog().props('aria-label="Set your encryption passphrase"') as dialog:
                 with ui.card():
                     ui.label("Set your encryption passphrase").classes("text-h6")
                     ui.label(
@@ -179,7 +183,7 @@ async def index(request: Request) -> None:
                     ).props("color=black").style("margin-top: 10px;")
                 dialog.open()
         else:
-            with ui.dialog() as dialog:
+            with ui.dialog().props('aria-label="Enter your encryption passphrase"') as dialog:
                 with ui.card():
                     ui.label("Enter your encryption passphrase").classes("text-h6")
                     password_input = ui.input(
@@ -210,7 +214,7 @@ async def index(request: Request) -> None:
                             )
 
                     def help_password() -> None:
-                        with ui.dialog() as help_dialog:
+                        with ui.dialog().props('aria-label="Help with Encryption Passphrase"') as help_dialog:
                             with ui.card():
                                 ui.label("Help with Encryption Passphrase").classes(
                                     "text-h6"

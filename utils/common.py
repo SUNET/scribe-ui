@@ -81,7 +81,7 @@ def show_help_dialog() -> None:
     Show a help dialog with information about the application.
     """
 
-    with ui.dialog() as dialog:
+    with ui.dialog().props('aria-label="Help & Documentation"') as dialog:
         with (
             ui.card()
             .style("max-width: 900px; padding: 32px;")
@@ -90,7 +90,7 @@ def show_help_dialog() -> None:
             with ui.row().classes("w-full items-center justify-between mb-6"):
                 ui.label("Help & Documentation").classes("text-h4 font-bold")
                 ui.button(icon="close", on_click=dialog.close).props(
-                    "flat round dense color=grey-7"
+                    "flat round dense color=grey-7 aria-label='Close help dialog'"
                 )
 
             with ui.column().classes("w-full gap-6"):
@@ -278,7 +278,7 @@ def _show_announcement_banners() -> None:
                     container.set_visibility(False)
 
                 ui.button(icon="close", on_click=dismiss).props(
-                    "flat round dense size=sm color=grey-7"
+                    "flat round dense size=sm color=grey-7 aria-label='Dismiss announcement'"
                 )
 
 
@@ -307,10 +307,25 @@ def reload_on_theme_change() -> None:
     )
 
 
-def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None:
+def page_init(
+    header_text: Optional[str] = "",
+    use_drawer: bool = False,
+    title: str = "",
+) -> None:
     """
     Initialize the page with a header and background color.
+
+    :param title: name of this page, appended to the service name and set
+        as the document title. Every page shared the single title set in
+        ui.run() before this, so a tab strip and a screen reader's page
+        announcement could not tell /home, /user and the admin pages
+        apart. WCAG 2.4.2 Page Titled (level A).
     """
+
+    # Set before the storage guard below, so a page that redirects does
+    # not leave the previous page's title in the tab.
+    if title:
+        ui.page_title(f"{settings.TAB_TITLE} - {title}")
 
     if "_scribe_bk" not in app.storage.browser:
         ui.navigate.to("/")
@@ -455,6 +470,58 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
             active = current_path == path
             return menu_item_style + (menu_active_style if active else "")
 
+        def menu_link(path: str, icon: str, label: str) -> None:
+            """
+            A menu entry rendered as a real link.
+
+            Each entry used to be a ui.element("div") with a click handler. Such
+            elements are not focusable, have no role and cannot be activated
+            from the keyboard, which left the entire main navigation outside the
+            tab order (WCAG 2.1.1, 4.1.2). ui.link renders <a href>, which gives
+            focusability, role=link, activation with Enter and support for
+            open-in-new-tab. Note that Space does not activate links: that is
+            correct behaviour for the link role, not a defect.
+            """
+            link = ui.link(target=path).style(menu_style(path)).classes("menu-item")
+            if current_path == path:
+                link.props('aria-current=page')
+            with link:
+                ui.icon(icon).style("font-size: 20px;").props("aria-hidden=true")
+                ui.label(label).classes("menu-label")
+                # The tooltip is a visual aid in mini mode, where the label is
+                # clipped for the eye but still present for screen readers. It is
+                # not the link's accessible name; the label is.
+                t = ui.tooltip(label)
+                t.set_visibility(not app.storage.user.get("drawer_open", False))
+                menu_tooltips.append(t)
+
+        def menu_group(title: Optional[str], items, group_id: str) -> None:
+            """
+            A group of menu entries as its own labelled nav landmark.
+
+            Separate labelled landmarks (Main menu, Administration, System,
+            Account) let a screen reader user jump straight to the right group
+            with their landmark command instead of tabbing through every entry.
+            The section headings used to be visual ui.label only (WCAG 1.3.1);
+            they are now real h2 elements inside their landmark.
+            """
+            with ui.element("nav").props(
+                f'aria-label="{title or "Main menu"}" id={group_id}'
+            ).classes("w-full"):
+                if title:
+                    with ui.element("h2").classes("menu-header").style(
+                        "padding: 10px 16px 4px; font-weight: bold;"
+                        " font-size: 0.85rem; margin: 0;"
+                        " color: var(--color-text-tertiary);"
+                    ):
+                        ui.label(title)
+                with ui.element("ul").style(
+                    "list-style: none; margin: 0; padding: 0; width: 100%;"
+                ):
+                    for path, icon, label in items:
+                        with ui.element("li").style("width: 100%;"):
+                            menu_link(path, icon, label)
+
         # Menu items: (path, icon, label)
         menu_items = [
             ("/home", "folder", "My files"),
@@ -478,74 +545,44 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
             with ui.column().classes("w-full").style("gap: 0;"):
                 ui.separator()
 
-                show_tips = not drawer_open
-
-                for path, icon, label in menu_items:
-                    with ui.element("div").style(menu_style(path)).classes(
-                        "menu-item"
-                    ).on("click", lambda p=path: ui.navigate.to(p)):
-                        ui.icon(icon).style("font-size: 20px;")
-                        ui.label(label).classes("menu-label")
-                        t = ui.tooltip(label)
-                        t.set_visibility(show_tips)
-                        menu_tooltips.append(t)
+                menu_group(None, menu_items, "nav-main")
 
                 if is_admin:
                     ui.separator().classes("menu-separator")
-                    ui.label("Administration").classes("menu-header").style(
-                        "padding: 10px 16px 4px; font-weight: bold; font-size: 0.85rem; color: var(--color-text-tertiary);"
-                    )
+                    menu_group("Administration", admin_items, "nav-administration")
 
-                    for path, icon, label in admin_items:
-                        with ui.element("div").style(menu_style(path)).classes(
-                            "menu-item"
-                        ).on("click", lambda p=path: ui.navigate.to(p)):
-                            ui.icon(icon).style("font-size: 20px;")
-                            ui.label(label).classes("menu-label")
-                            t = ui.tooltip(label)
-                            t.set_visibility(show_tips)
-                            menu_tooltips.append(t)
-
-                    with ui.element("div").style(menu_item_style).classes(
-                        "menu-item"
-                    ).on(
-                        "click",
-                        lambda: ui.run_javascript(
-                            f"window.open('{settings.API_URL}/api/docs', '_blank')"
-                        ),
-                    ):
-                        ui.icon("description").style("font-size: 20px;")
-                        ui.label("API documentation").classes("menu-label")
-                        t = ui.tooltip("API documentation")
-                        t.set_visibility(show_tips)
-                        menu_tooltips.append(t)
+                    # The API documentation opens in a new tab. A real link with
+                    # new_tab=True instead of a div calling window.open(): gives
+                    # focusability, a role, and lets the user decide how to open it.
+                    with ui.element("nav").props('aria-label="Documentation"').classes("w-full"):
+                        with ui.element("ul").style(
+                            "list-style: none; margin: 0; padding: 0; width: 100%;"
+                        ):
+                            with ui.element("li").style("width: 100%;"):
+                                with ui.link(
+                                    target=f"{settings.API_URL}/api/docs", new_tab=True
+                                ).style(menu_item_style).classes("menu-item"):
+                                    ui.icon("description").style(
+                                        "font-size: 20px;"
+                                    ).props("aria-hidden=true")
+                                    ui.label("API documentation").classes("menu-label")
+                                    # Tell the user the link opens in a new tab
+                                    # (WCAG 2.4.4 / good practice 3.2.5)
+                                    with ui.element("span").classes("sr-only"):
+                                        ui.label(" (opens in a new tab)")
+                                    t = ui.tooltip("API documentation")
+                                    t.set_visibility(
+                                        not app.storage.user.get("drawer_open", False)
+                                    )
+                                    menu_tooltips.append(t)
 
                 if is_bofh:
                     ui.separator().classes("menu-separator")
-                    ui.label("System").classes("menu-header").style(
-                        "padding: 10px 16px 4px; font-weight: bold; font-size: 0.85rem; color: var(--color-text-tertiary);"
-                    )
-
-                    for path, icon, label in system_items:
-                        with ui.element("div").style(menu_style(path)).classes(
-                            "menu-item"
-                        ).on("click", lambda p=path: ui.navigate.to(p)):
-                            ui.icon(icon).style("font-size: 20px;")
-                            ui.label(label).classes("menu-label")
-                            t = ui.tooltip(label)
-                            t.set_visibility(show_tips)
-                            menu_tooltips.append(t)
+                    menu_group("System", system_items, "nav-system")
 
                 ui.separator()
 
-                with ui.element("div").style(menu_item_style).classes("menu-item").on(
-                    "click", lambda: ui.navigate.to("/logout")
-                ):
-                    ui.icon("logout").style("font-size: 20px;")
-                    ui.label("Logout").classes("menu-label")
-                    t = ui.tooltip("Logout")
-                    t.set_visibility(show_tips)
-                    menu_tooltips.append(t)
+                menu_group("Account", [("/logout", "logout", "Logout")], "nav-account")
 
         with (
             ui.header()
@@ -557,10 +594,22 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
             with ui.element("div").style(
                 "display: flex; gap: 0px; align-items: center; margin-left: -12px;"
             ):
+                # Skip to content. The first focusable element on the page.
+                # Without it the main menu entries would precede the page content
+                # in the tab order on every page load (WCAG 2.4.1).
+                ui.link("Skip to content", "#main-content").classes("skip-link")
+
                 with ui.button(
                     icon="close" if drawer_open else "menu",
                     on_click=lambda: toggle_drawer(),
                 ).props("flat").classes("header-btn") as menu_btn:
+                    # A tooltip does NOT provide an accessible name in Quasar: it
+                    # becomes a child element. The name must be set with aria-label.
+                    # aria-expanded mirrors the drawer state (disclosure pattern).
+                    menu_btn.props(
+                        'aria-label="Main menu" aria-controls=nav-main '
+                        f'aria-expanded={"true" if drawer_open else "false"}'
+                    )
                     menu_btn_tooltip = ui.tooltip(
                         "Close menu" if drawer_open else "Expand menu"
                     )
@@ -587,7 +636,10 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                         icon=dark_icon,
                         on_click=lambda: _cycle_dark_mode(dark_btn),
                     )
-                    .props("flat")
+                    # Icon-only buttons take their name from the icon ligature
+                    # ("brightness_auto"), which is aria-hidden, leaving the button
+                    # nameless. aria-label is required; a tooltip is not enough.
+                    .props('flat aria-label="Toggle theme"')
                     .classes("header-btn")
                 )
                 with dark_btn:
@@ -596,7 +648,7 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                     icon="help",
                     on_click=lambda: show_help_dialog(),
                 ).props(
-                    "flat"
+                    'flat aria-label="Help and documentation"'
                 ).classes("header-btn"):
                     ui.tooltip("Help")
 
@@ -625,29 +677,29 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                     with ui.button(
                         icon="settings",
                         on_click=lambda: ui.navigate.to("/admin"),
-                    ).props("flat color=red"):
+                    ).props("flat color=red aria-label='Admin settings'"):
                         ui.tooltip("Admin settings")
 
                 if is_bofh:
                     with ui.button(
                         icon="health_and_safety",
                         on_click=lambda: ui.navigate.to("/health"),
-                    ).props("flat color=red"):
+                    ).props("flat color=red aria-label='System status'"):
                         ui.tooltip("System status")
                     with ui.button(
                         icon="analytics",
                         on_click=lambda: ui.navigate.to("/admin/analytics"),
-                    ).props("flat color=red"):
+                    ).props("flat color=red aria-label='Page view statistics'"):
                         ui.tooltip("Page view statistics")
                 with ui.button(
                     icon="home",
                     on_click=lambda: ui.navigate.to("/home"),
-                ).props("flat").classes("header-btn"):
+                ).props("flat aria-label='Home'").classes("header-btn"):
                     ui.tooltip("Home")
                 with ui.button(
                     icon="person",
                     on_click=lambda: ui.navigate.to("/user"),
-                ).props("flat").classes("header-btn"):
+                ).props("flat aria-label='User settings'").classes("header-btn"):
                     ui.tooltip("User settings")
                 dark_val2 = app.storage.user.get("dark_mode", None)
                 dark_icon2 = (
@@ -660,7 +712,7 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                         icon=dark_icon2,
                         on_click=lambda: _cycle_dark_mode(dark_btn2),
                     )
-                    .props("flat")
+                    .props("flat aria-label='Toggle theme'")
                     .classes("header-btn")
                 )
                 with dark_btn2:
@@ -669,14 +721,28 @@ def page_init(header_text: Optional[str] = "", use_drawer: bool = False) -> None
                     icon="help",
                     on_click=lambda: show_help_dialog(),
                 ).props(
-                    "flat"
+                    "flat aria-label='Help and documentation'"
                 ).classes("header-btn"):
                     ui.tooltip("Help")
                 with ui.button(
                     icon="logout",
                     on_click=lambda: ui.navigate.to("/logout"),
-                ).props("flat").classes("header-btn"):
+                ).props("flat aria-label='Log out'").classes("header-btn"):
                     ui.tooltip("Logout")
+
+    # Target for the skip link, and the first element in the page content.
+    #
+    # NiceGUI already gives <main class="q-page"> an id of its own (c2, c7, ...)
+    # and uses it to address the element when patching the DOM, so that id must
+    # not be overwritten. A dedicated empty anchor is used instead. tabindex=-1
+    # lets it receive focus from the fragment jump without being a tab stop of
+    # its own; the next Tab continues from here into the page content.
+    #
+    # It is placed before the announcement banners on purpose, so that skipping
+    # the navigation does not also skip a service message.
+    ui.element("div").props('id=main-content tabindex=-1').style(
+        "position: absolute; width: 0; height: 0; overflow: hidden;"
+    )
 
     _show_announcement_banners()
 
@@ -892,10 +958,30 @@ def format_size(bytes_val) -> str:
         return f"{bytes_val / (1024 * 1024 * 1024):.1f} GB"
 
 
-def toggle_upload_status(upload_column, status_column, dialog):
+def toggle_upload_status(upload_column, status_column, dialog, abort_button=None):
+    # Hiding upload_column also hides the Cancel button, which lives inside it,
+    # and dialog.props("persistent") disables Esc and backdrop dismissal at the
+    # same moment. Together that left a modal with no focusable element and no
+    # way out for the duration of the upload - up to 4 GB per the dialog's own
+    # text. That is a keyboard trap, WCAG 2.1.2 (level A).
+    #
+    # persistent is kept on purpose: a stray backdrop click should not abandon a
+    # large upload. The way out is an explicit, focusable Cancel button that
+    # status_column now carries.
     upload_column.visible = False
     status_column.visible = True
     dialog.props("persistent")
+
+    # The element that had focus is being hidden underneath the user, which
+    # drops focus to the document body: the keyboard user is left with nothing
+    # selected and no indication that the dialog changed. Move focus to the one
+    # control that is now visible. WCAG 2.4.3.
+    if abort_button is not None:
+        ui.run_javascript(
+            f"const b = getElement({abort_button.id});"
+            "const el = b && (b.$el || b);"
+            "if (el && el.focus) el.focus();"
+        )
 
 
 def table_upload(table) -> None:
@@ -905,20 +991,34 @@ def table_upload(table) -> None:
 
     ui.add_head_html(default_styles)
 
-    with ui.dialog() as dialog:
+    with ui.dialog().props('aria-label="Upload files"') as dialog:
         with ui.card().style("min-width: 400px; padding: 32px;"):
             with ui.column().classes("w-full items-center") as status_column:
                 ui.label("Uploading files").classes("text-h6 q-mb-sm")
-                status_label = ui.label("Please wait...").classes(
-                    "text-body1 q-mb-lg text-theme-muted"
+                # role=status so the byte counter is announced as it changes
+                # instead of updating silently. WCAG 4.1.3.
+                status_label = (
+                    ui.label("Please wait...")
+                    .classes("text-body1 q-mb-lg text-theme-muted")
+                    .props('role=status aria-live=polite')
                 )
-                ui.spinner(size="50px")
+                # The spinner is decorative; the text above carries the state.
+                ui.spinner(size="50px").props("aria-hidden=true")
+                # The keyboard way out of the upload. See toggle_upload_status.
+                abort_button = ui.button("Cancel upload", icon="cancel").props(
+                    'color=black flat aria-label="Cancel upload"'
+                )
+                abort_button.classes("cancel-style")
                 status_column.visible = False
 
             with ui.column().classes("w-full items-center mt-10") as upload_column:
                 upload = (
                     ui.upload(
-                        label="hidden",
+                        # The label is rendered into the uploader header, which
+                        # sits inside the opacity:0 wrapper below. The literal
+                        # string "hidden" was therefore exposed to screen
+                        # readers as the uploader's text.
+                        label="",
                         on_multi_upload=lambda e: handle_upload_with_feedback(
                             e, dialog, table
                         ),
@@ -937,7 +1037,7 @@ def table_upload(table) -> None:
                 upload.on(
                     "start",
                     lambda _: toggle_upload_status(
-                        upload_column, status_column, dialog
+                        upload_column, status_column, dialog, abort_button
                     ),
                 )
 
@@ -954,6 +1054,9 @@ def table_upload(table) -> None:
                     dialog.delete()
 
                 upload.on("finish", lambda _: _cleanup_dialog())
+                # _cleanup_dialog clears the progress interval, resets the
+                # uploader and closes the dialog, so it is a real abort.
+                abort_button.on_click(lambda: _cleanup_dialog())
 
                 def on_byte_progress(e):
                     uploaded = e.args.get("uploaded", 0)
@@ -965,11 +1068,23 @@ def table_upload(table) -> None:
 
                 upload.on("byte_progress", on_byte_progress)
 
+                # The dropzone is the only thing that looks clickable, and the
+                # instruction text points at it, but it used to be a plain div
+                # with its click handler bound in JavaScript: not focusable, no
+                # role, no accessible name. The file picker was reachable only
+                # through a 34x34 anchor inside the opacity:0 uploader below,
+                # which is invisible - focus went somewhere the user cannot see.
+                #
+                # role=button plus tabindex=0 makes the visible affordance the
+                # focusable control, and the keydown handler further down gives
+                # it Enter and Space. WCAG 2.1.1, 4.1.2 (level A).
                 dropzone = ui.html(
                     """
                     <div class="w-96 h-40 flex items-center justify-center
                                 border-2 border-dashed rounded-2xl cursor-pointer
-                                dropzone-area">
+                                dropzone-area"
+                         role="button" tabindex="0"
+                         aria-label="Choose audio or video files to upload">
                         Drag & drop files here or click to upload.
                         <br/><br/>
                         5 files at a maximum of 4GB can be uploaded at once.
@@ -987,6 +1102,15 @@ def table_upload(table) -> None:
                         "const upl = getElement(" + str(upload_id) + ");"
                         "if (!dz || !upl) return;"
                         "dz.addEventListener('click', () => upl.$refs.qRef.pickFiles());"
+                        # Enter and Space activate the dropzone, the way any
+                        # role=button must. preventDefault stops Space from
+                        # scrolling the page instead.
+                        "dz.addEventListener('keydown', e => {"
+                        "  if (e.key === 'Enter' || e.key === ' ' || e.code === 'Space') {"
+                        "    e.preventDefault();"
+                        "    upl.$refs.qRef.pickFiles();"
+                        "  }"
+                        "});"
                         "dz.addEventListener('dragover', e => {"
                         "  e.preventDefault();"
                         "  dz.querySelector('div').classList.add('dropzone-drag');"
@@ -1021,6 +1145,25 @@ def table_upload(table) -> None:
                         "  const qRef = upl.$refs.qRef;"
                         "  if (qRef) { try { qRef.reset(); } catch (e) {} }"
                         "};"
+                        # The uploader is hidden with opacity: 0, but its own
+                        # pick-files anchor stayed in the tab order - an
+                        # invisible focus stop on the primary upload path
+                        # (finding F-49). Take its focusable descendants out of
+                        # the tab order; the dropzone above is the control now.
+                        #
+                        # getElement() returns the Vue component, not a DOM
+                        # node, so the element has to be reached through $el.
+                        # This runs last and is guarded: if it ever fails it
+                        # must not take the drag-and-drop listeners or the
+                        # progress interval above down with it.
+                        "try {"
+                        "  const uplEl = upl.$el ||"
+                        "    (upl.$refs && upl.$refs.qRef && upl.$refs.qRef.$el);"
+                        "  if (uplEl && uplEl.querySelectorAll) {"
+                        "    uplEl.querySelectorAll('a, button, input, [tabindex]')"
+                        "      .forEach(el => el.setAttribute('tabindex', '-1'));"
+                        "  }"
+                        "} catch (e) {}"
                     ),
                     once=True,
                 )
@@ -1136,7 +1279,7 @@ def table_transcribe(selected_row, on_complete=None) -> None:
     """
     Handle the click event on the Transcribe button.
     """
-    with ui.dialog() as dialog:
+    with ui.dialog().props('aria-label="Transcription settings"') as dialog:
         with (
             ui.card()
             .style(
@@ -1241,7 +1384,7 @@ def table_bulk_transcribe(table: ui.table, on_complete=None) -> None:
         ui.notify("No uploaded files selected", type="warning", position="top")
         return
 
-    with ui.dialog() as dialog:
+    with ui.dialog().props('aria-label="Bulk transcription settings"') as dialog:
         with (
             ui.card()
             .style(
@@ -1349,7 +1492,7 @@ def table_delete(table: ui.table) -> None:
 
     count = len(table.selected)
 
-    with ui.dialog() as dialog:
+    with ui.dialog().props('aria-label="Delete files"') as dialog:
         with ui.card():
             ui.label("Delete files").classes("text-h6")
             ui.label(
@@ -1437,7 +1580,7 @@ def table_bulk_export(table: ui.table) -> None:
     data_format = "srt" if source_format == "SRT" else "txt"
 
     # Show progress dialog while fetching
-    with ui.dialog() as progress_dialog:
+    with ui.dialog().props('aria-label="Preparing export"') as progress_dialog:
         with ui.card().classes("p-6 items-center").style(
             "min-width: 400px; background-color: var(--color-bg-surface);"
         ):

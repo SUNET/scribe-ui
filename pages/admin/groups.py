@@ -50,7 +50,7 @@ def create_group_dialog(page: callable) -> None:
     Show a dialog to create a new group.
     """
 
-    with ui.dialog() as create_group_dialog:
+    with ui.dialog().props('aria-label="Create new group"') as create_group_dialog:
         with ui.card().style("width: 500px; max-width: 90vw;"):
             ui.label("Create new group").classes("text-2xl font-bold")
             name_input = ui.input("Group name").classes("w-full").props("outlined")
@@ -97,7 +97,7 @@ def admin_dialog(users: list, group_id: str) -> None:
     administrator or remove administrator rights.
     """
 
-    with ui.dialog() as dialog:
+    with ui.dialog().props('aria-label="Administrators"') as dialog:
         with ui.card().style("width: 600px; max-width: 90vw; "):
             ui.label("Administrators").classes("text-2xl font-bold")
             admin_table = ui.table(
@@ -160,7 +160,7 @@ def edit_group(group_id: str) -> None:
     """
     Page to edit a group.
     """
-    page_init(use_drawer=True)
+    page_init(use_drawer=True, title="Edit group")
     # Plotly draws its charts in one theme's colours server-side and
     # cannot restyle itself, so this page reloads when the OS theme
     # changes. Only pages with charts do -- see reload_on_theme_change.
@@ -285,7 +285,7 @@ async def statistics(group_id: str) -> None:
     """
     Page to show statistics of a group with improved layout and design.
     """
-    page_init(use_drawer=True)
+    page_init(use_drawer=True, title="Group statistics")
     # Plotly draws its charts in one theme's colours server-side and
     # cannot restyle itself, so this page reloads when the OS theme
     # changes. Only pages with charts do -- see reload_on_theme_change.
@@ -506,7 +506,7 @@ def create() -> None:
         """
         Main page of the application.
         """
-        page_init(use_drawer=True)
+        page_init(use_drawer=True, title="Groups")
         # Plotly draws its charts in one theme's colours server-side and
         # cannot restyle itself, so this page reloads when the OS theme
         # changes. Only pages with charts do -- see reload_on_theme_change.

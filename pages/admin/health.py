@@ -43,7 +43,7 @@ async def health() -> None:
     Health check dashboard displaying backend system metrics.
     """
 
-    page_init(use_drawer=True)
+    page_init(use_drawer=True, title="System health")
     # Plotly draws its charts in one theme's colours server-side and
     # cannot restyle itself, so this page reloads when the OS theme
     # changes. Only pages with charts do -- see reload_on_theme_change.

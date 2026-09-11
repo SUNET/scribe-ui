@@ -32,7 +32,7 @@ settings = get_settings()
 
 
 def show_user_token() -> None:
-    with ui.dialog() as dialog:
+    with ui.dialog().props('aria-label="User token"') as dialog:
         with ui.card().style("max-width: 50%; width: 500px; min-width: 500px;"):
             ui.label("User token").classes("text-2xl font-bold")
             ui.label("Your user token is used to authenticate API requests.").classes(
@@ -55,7 +55,7 @@ def create() -> None:
         """
         User page for managing user settings and information.
         """
-        page_init(use_drawer=True)
+        page_init(use_drawer=True, title="User settings")
         userdata = get_user_data()
 
         ui.add_head_html(default_styles)
