@@ -1014,7 +1014,11 @@ async def post_file(
                 )
     except httpx.HTTPStatusError as e:
         ui.notify(
-            f"Error when uploading file: {str(e)}", type="negative", position="top"
+            f"Error when uploading file: {str(e)}",
+            type="negative",
+            position="top",
+            timeout=None,
+            close_button="Close",
         )
         return False
     finally:
@@ -1334,8 +1338,8 @@ async def handle_upload_with_feedback(files, dialog, table):
                         ui.notify(
                             f"Error uploading {file_name}: {str(e)}",
                             type="negative",
-                            timeout=5000,
-                        )
+                            timeout=None,
+                            close_button="Close")
             finally:
                 if hasattr(file_upload, "_data"):
                     file_upload._data = b""
@@ -1460,7 +1464,7 @@ def table_bulk_transcribe(table: ui.table, on_complete=None) -> None:
     uploadable = [r for r in selected if r.get("status") == "Uploaded"]
     already_done = [r for r in selected if r.get("status") == "Completed"]
     if not uploadable:
-        ui.notify("No uploaded files selected", type="warning", position="top")
+        ui.notify("No uploaded files selected", type="warning", position="top", timeout=None, close_button="Close")
         return
 
     with ui.dialog().props('aria-label="Bulk transcription settings"') as dialog:
@@ -1627,7 +1631,7 @@ async def __delete_files(table: ui.table, dialog: ui.dialog) -> None:
             f"Deleted {deleted} of {total} files ({failed} failed)",
             type="warning",
             position="top",
-        )
+            timeout=None, close_button="Close")
 
 
 def table_bulk_export(table: ui.table) -> None:
@@ -1638,12 +1642,12 @@ def table_bulk_export(table: ui.table) -> None:
 
     selected = table.selected
     if not selected:
-        ui.notify("No files selected", type="warning", position="top")
+        ui.notify("No files selected", type="warning", position="top", timeout=None, close_button="Close")
         return
 
     completed = [r for r in selected if r.get("status") == "Completed"]
     if not completed:
-        ui.notify("No already completed files selected", type="warning", position="top")
+        ui.notify("No already completed files selected", type="warning", position="top", timeout=None, close_button="Close")
         return
 
     formats = set(r.get("output_format", "") for r in completed)
@@ -1652,7 +1656,7 @@ def table_bulk_export(table: ui.table) -> None:
             "All selected files must be of the same type",
             type="warning",
             position="top",
-        )
+            timeout=None, close_button="Close")
         return
 
     source_format = formats.pop()
@@ -1713,7 +1717,7 @@ def table_bulk_export(table: ui.table) -> None:
                     f"Error fetching {filename}: {str(e)}",
                     type="negative",
                     position="top",
-                )
+                    timeout=None, close_button="Close")
                 return
 
         progress_dialog.close()

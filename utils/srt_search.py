@@ -106,7 +106,7 @@ class SearchMixin:
         Replace search term in currently selected caption.
         """
         if not self.selected_caption or not self.search_term:
-            ui.notify("No caption selected or search term empty", type="warning")
+            ui.notify("No caption selected or search term empty", type="warning", timeout=None, close_button="Close")
             return
 
         if self.selected_caption.matches_search(self.search_term, self.case_sensitive):
@@ -137,7 +137,7 @@ class SearchMixin:
             self.refresh_display()
             ui.notify("Replacement made", type="positive")
         else:
-            ui.notify("Current caption doesn't contain search term", type="warning")
+            ui.notify("Current caption doesn't contain search term", type="warning", timeout=None, close_button="Close")
 
 
     def replace_all(self, replacement: str) -> None:
@@ -145,7 +145,7 @@ class SearchMixin:
         Replace search term in all matching captions.
         """
         if not self.search_term:
-            ui.notify("No search term entered", type="warning")
+            ui.notify("No search term entered", type="warning", timeout=None, close_button="Close")
             return
 
         # Check if there are any matches before saving state
@@ -222,8 +222,20 @@ class SearchMixin:
 
     def create_search_panel(self, open_window: Optional[bool] = False) -> None:
         """
-        Create the search panel UI.
+        Create the search panel UI, once. Called again -- Ctrl+F is bound
+        straight to this, so every press used to call it -- it just reopens
+        the existing dialog instead of building a second one: a fresh
+        ui.dialog() each time left the old one in the DOM (it is never
+        removed), so a few presses meant several stacked dialogs, several
+        elements with the same id (search_info_label, action_row) and
+        several copies of the Enter-key handler.
         """
+
+        existing = getattr(self, "search_container", None)
+        if existing is not None:
+            if open_window:
+                existing.open()
+            return
 
         with ui.dialog().props('aria-label="Find & Replace"') as self.search_container:
             with ui.card().classes("w-1/2 max-w-full").style("padding: 16px;"):

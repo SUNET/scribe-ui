@@ -55,7 +55,13 @@ theme_styles = """
         --color-text-primary: #111827;
         --color-text-secondary: #374151;
         --color-text-tertiary: #626b7a;
-        --color-text-muted: #6b7280;
+        /* #6b7280 measured 4.83:1 against white but fell under the 4.5:1
+           minimum (1.4.3) against the surfaces this token is actually read
+           on -- 4.39:1 on --color-bg-surface-alt, 4.01:1 on
+           --color-bg-surface-hover (the dropzone's own hover state, among
+           others). #5f5f5f clears all three with room: 6.39:1, 5.8:1,
+           5.3:1. */
+        --color-text-muted: #5f5f5f;
         --color-text-on-brand: #ffffff;
 
         /* A grey rule, not a black one. Pure black borders drew every button
@@ -401,7 +407,10 @@ theme_styles = """
         background-color: var(--color-btn-delete-bg);
         color: var(--color-btn-delete-text) !important;
         border: 1px solid var(--color-btn-delete-border);
-        width: 150px;
+        /* min-width, not width: a fixed width clips the label instead of
+           growing when the browser's text-zoom/reflow makes it wider
+           (1.4.4, 1.4.10). */
+        min-width: 150px;
     }
     .delete-style.disabled {
         background-color: var(--color-bg-disabled) !important;
@@ -412,24 +421,25 @@ theme_styles = """
         background-color: var(--color-bg-surface);
         color: var(--color-text-primary) !important;
         border: 1px solid var(--color-border);
-        width: 150px;
+        /* min-width, not width -- see .delete-style above. */
+        min-width: 150px;
     }
     .button-default-style {
         background-color: var(--color-btn-primary-bg) !important;
         color: var(--color-btn-primary-text) !important;
         border: 1px solid var(--color-btn-primary-border) !important;
-        width: 150px;
+        min-width: 150px;
     }
     .button-replace {
         background-color: var(--color-bg-surface);
         color: var(--color-brand-primary) !important;
         border: 1px solid var(--color-brand-primary);
-        width: 150px;
+        min-width: 150px;
     }
     .button-replace-current {
         background-color: var(--color-brand-accent);
         color: var(--color-text-primary) !important;
-        width: 150px;
+        min-width: 150px;
     }
     .button-replace-prev-next {
         background-color: var(--color-bg-surface);
@@ -438,19 +448,19 @@ theme_styles = """
     .button-close {
         background-color: var(--color-bg-surface);
         color: var(--color-text-primary) !important;
-        width: 150px;
+        min-width: 150px;
         border: 1px solid var(--color-border);
     }
     .button-user-status {
         background-color: var(--color-bg-surface);
-        width: 150px;
+        min-width: 150px;
         border: 1px solid var(--color-border);
     }
     .button-edit {
         background-color: var(--color-btn-edit-bg) !important;
         color: var(--color-btn-edit-text) !important;
         border: 1px solid var(--color-btn-edit-border) !important;
-        width: 150px;
+        min-width: 150px;
     }
 
     /* ── Username "view API token" control ── */
@@ -703,7 +713,10 @@ theme_styles = """
     /* ── Upload area ── */
     .upload-style {
         width: 100%;
-        height: 200px;
+        /* min-height, not height: a fixed height clips the dropzone's own
+           label/icon instead of growing when text-zoom/reflow makes its
+           content taller (1.4.4, 1.4.10). */
+        min-height: 200px;
     }
 
     /* ── Deletion warning ── */
@@ -1102,7 +1115,21 @@ theme_styles = """
     }
 
     /* Shared hover message. A CSS box rather than title=, which the browser
-       draws itself and stylesheets cannot reach. */
+       draws itself and stylesheets cannot reach.
+
+       Note for 1.4.13 (Content on Hover or Focus): inside the live editor
+       this box never actually renders at all, for anyone, in any input
+       modality -- see .transcript-text .review-word::after further down,
+       which unconditionally sets content: none there to protect the text
+       caret, and the editor is the only place these spans are rendered
+       today (get_review_html/review_runs's other caller is test-only). So
+       there is currently no hover/focus-triggered content in the live app
+       for 1.4.13's Hoverable/Dismissible/Persistent to apply to; the actual
+       gap is that the explanation was not reaching anyone at all, sighted
+       or not, since data-review/data-edit are plain data attributes with no
+       accessibility-tree presence. aria-label (added on the spans in
+       transcript_editor.js) is the fix for that: it works with or without
+       the ::after box. */
     .review-word::after,
     .edit-word::after,
     .transcript-show-edits [data-changed]::after {

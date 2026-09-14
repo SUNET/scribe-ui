@@ -174,7 +174,7 @@ def users() -> None:
             def confirm_remove_user():
                 selected = users_table.selected
                 if not selected:
-                    ui.notify("No users selected", type="warning")
+                    ui.notify("No users selected", type="warning", timeout=None, close_button="Close")
                     return
 
                 usernames = ", ".join(u["username"] for u in selected)

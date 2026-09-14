@@ -141,10 +141,12 @@ async def index(request: Request) -> None:
                     ).classes("text-subtitle2").style("margin-bottom: 10px;")
                     password_input = ui.input(
                         "Encryption Passphrase", password=True
-                    ).style("width: 100%;")
+                    ).props("autocomplete=new-password").style("width: 100%;")
                     confirm_password_input = ui.input(
                         "Confirm Encryption Passphrase", password=True
-                    ).style("width: 100%; margin-bottom: 10px;")
+                    ).props("autocomplete=new-password").style(
+                        "width: 100%; margin-bottom: 10px;"
+                    )
                     error_label = (
                         ui.label(
                             "Passphrases do not match or are less than 8 characters."
@@ -164,7 +166,7 @@ async def index(request: Request) -> None:
                                 ui.notify(
                                     "Failed to set encryption passphrase.",
                                     color="negative",
-                                )
+                                    timeout=None, close_button="Close")
                                 return
 
                             ui.notify(
@@ -192,7 +194,7 @@ async def index(request: Request) -> None:
                     password_input.on(
                         "keydown.enter", lambda e: verify_encryption_password()
                     )
-                    password_input.props("autofocus")
+                    password_input.props("autofocus autocomplete=current-password")
 
                     def verify_encryption_password() -> None:
                         if password_input.value:
@@ -204,14 +206,17 @@ async def index(request: Request) -> None:
                                 ui.navigate.to("/home")
                             else:
                                 ui.notify(
-                                    "Incorrect encryption passphrase.", color="negative"
+                                    "Incorrect encryption passphrase.",
+                                    color="negative",
+                                    timeout=None,
+                                    close_button="Close",
                                 )
 
                         else:
                             ui.notify(
                                 "Please enter your encryption passphrase.",
                                 color="negative",
-                            )
+                                timeout=None, close_button="Close")
 
                     def help_password() -> None:
                         with ui.dialog().props('aria-label="Help with Encryption Passphrase"') as help_dialog:

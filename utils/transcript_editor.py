@@ -334,7 +334,7 @@ class TranscriptEditor:
             # The strip is already drawing the caption it thought it was
             # making; nothing else would take it back off.
             self.refresh()
-            ui.notify("A caption already covers part of that", type="warning")
+            ui.notify("A caption already covers part of that", type="warning", timeout=None, close_button="Close")
 
             return
 
@@ -999,7 +999,7 @@ class TranscriptEditor:
             return
 
         if name in self.editor.speakers:
-            ui.notify(f'"{name}" already exists', type="warning")
+            ui.notify(f'"{name}" already exists', type="warning", timeout=None, close_button="Close")
             return
 
         # A history entry of its own. The speaker list rides the undo snapshot
@@ -1041,7 +1041,7 @@ class TranscriptEditor:
             return
 
         if new in self.editor.speakers and new != old:
-            ui.notify(f'"{new}" already exists', type="warning")
+            ui.notify(f'"{new}" already exists', type="warning", timeout=None, close_button="Close")
             return
 
         renamed = [
@@ -1078,7 +1078,10 @@ class TranscriptEditor:
 
         if not self.remove_speaker(speaker):
             ui.notify(
-                f'"{speaker}" is still used by some blocks', type="warning"
+                f'"{speaker}" is still used by some blocks',
+                type="warning",
+                timeout=None,
+                close_button="Close",
             )
             return
 
@@ -1148,7 +1151,7 @@ class TranscriptEditor:
         """
 
         if end <= start:
-            ui.notify("A block has to end after it starts", type="warning")
+            ui.notify("A block has to end after it starts", type="warning", timeout=None, close_button="Close")
             return False
 
         self.editor.save_state_for_undo()

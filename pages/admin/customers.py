@@ -122,10 +122,10 @@ def create_customer_dialog(page: callable) -> None:
 
                 def create_customer():
                     if not partner_id_input.value.strip():
-                        ui.notify("Kaltura Partner ID is required.", color="red")
+                        ui.notify("Kaltura Partner ID is required.", color="red", timeout=None, close_button="Close")
                         return
                     if not name_input.value.strip():
-                        ui.notify("Customer name is required.", color="red")
+                        ui.notify("Customer name is required.", color="red", timeout=None, close_button="Close")
                         return
 
                     selected_realms = realm_select.value if realm_select.value else []
@@ -164,11 +164,14 @@ def create_customer_dialog(page: callable) -> None:
                         if res.status_code == 400:
                             error_msg = res.json().get("error", "Unknown error")
                             ui.notify(
-                                f"Error creating customer: {error_msg}", color="red"
+                                f"Error creating customer: {error_msg}",
+                                color="red",
+                                timeout=None,
+                                close_button="Close",
                             )
                             return
                         else:
-                            ui.notify(f"Error creating customer: {e}", color="red")
+                            ui.notify(f"Error creating customer: {e}", color="red", timeout=None, close_button="Close")
                             return
                     else:
                         create_customer_dialog.close()

@@ -384,7 +384,18 @@ def announcements_page() -> None:
         def _toggle_enabled(ann_row: dict) -> None:
             new_val = not ann_row.get("enabled", True)
             announcement_update(ann_row["id"], {"enabled": new_val})
-            ui.navigate.to("/admin/announcements")
+            # Update the row in place rather than a full-page navigate: a
+            # whole-page reload for flipping one switch is an unannounced
+            # context change (3.2.2) and throws focus back to the top of
+            # the page, away from the switch just used. ann_row itself is
+            # the frontend's own copy of the row (a fresh dict off the
+            # wire), not the one ann_table is rendering from, so the match
+            # is by id against ann_list, same as ann_table's own rows.
+            for ann in ann_list:
+                if ann["id"] == ann_row["id"]:
+                    ann["enabled"] = new_val
+                    break
+            ann_table.update()
 
         ann_table = (
             ui.table(
@@ -466,6 +477,7 @@ def announcements_page() -> None:
             <q-td :props="props">
                 <q-toggle
                     :model-value="props.row.enabled"
+                    :aria-label="'Enabled: ' + props.row.message_short"
                     @update:model-value="$parent.$emit('toggle_enabled', props.row)"
                     color="positive"
                     :dark="$q.dark.isActive"

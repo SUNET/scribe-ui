@@ -133,15 +133,17 @@ def create() -> None:
                 }
             }
 
-            // Handle Escape key globally (even when video player has focus)
-            if (e.key === 'Escape' && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
-                // Blur active element
-                if (document.activeElement && typeof document.activeElement.blur === 'function') {
-                    document.activeElement.blur();
-                }
-                // Dispatch custom event that Python can listen to
-                window.dispatchEvent(new CustomEvent('escape-pressed'));
-            }
+            // There used to be a global Escape handler here that
+            // unconditionally blurred document.activeElement (2.4.3: it
+            // fired even inside dialogs and the transcript editor's own
+            // controls, throwing focus to <body> with nothing to show for
+            // it -- the CustomEvent it dispatched had no listener anywhere
+            // in the codebase). Removed rather than fixed to move focus
+            // "back" somewhere: this handler has no notion of which block
+            // or dialog Escape was meant for, so it cannot know where focus
+            // should go instead. Each component now handles its own
+            // Escape (the speaker menu's closeMenu, a q-dialog's own
+            // close-and-restore-focus, ...) without this blunt override.
         }, true);
         </script>
         """
@@ -177,7 +179,7 @@ def create() -> None:
             data = response.json()
 
         except httpx.HTTPError as e:
-            ui.notify(f"Error: Failed to get result: {e}")
+            ui.notify(f"Error: Failed to get result: {e}", type="negative", timeout=None, close_button="Close")
             return
 
         # Per-word timings are optional: jobs transcribed before they existed

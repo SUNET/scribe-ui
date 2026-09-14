@@ -225,7 +225,7 @@ def _do_create_rule(**kwargs) -> bool:
         ui.notify("Rule created successfully.", color="positive")
         return True
 
-    ui.notify("Failed to create rule.", color="negative")
+    ui.notify("Failed to create rule.", color="negative", timeout=None, close_button="Close")
 
     return False
 
@@ -435,7 +435,7 @@ def _do_update_rule(**kwargs) -> bool:
         ui.notify("Rule updated successfully.", color="positive")
         return True
 
-    ui.notify("Failed to update rule.", color="negative")
+    ui.notify("Failed to update rule.", color="negative", timeout=None, close_button="Close")
 
     return False
 
@@ -477,7 +477,7 @@ def _do_delete_rule(rule_id: int) -> None:
     if rule_delete(rule_id):
         ui.notify("Rule deleted.", color="positive")
     else:
-        ui.notify("Failed to delete rule.", color="negative")
+        ui.notify("Failed to delete rule.", color="negative", timeout=None, close_button="Close")
 
 
 def add_attribute_dialog() -> None:
@@ -526,7 +526,7 @@ def _do_add_attribute(name: str, description: str, example: str) -> None:
     if result:
         ui.notify("Attribute added.", color="positive")
     else:
-        ui.notify("Failed to add attribute. It may already exist.", color="negative")
+        ui.notify("Failed to add attribute. It may already exist.", color="negative", timeout=None, close_button="Close")
 
 
 def _evaluate_condition(condition: str, actual_value: str, expected_value: str) -> bool:
@@ -1044,6 +1044,7 @@ def rules_page() -> None:
             <q-td :props="props">
                 <q-toggle
                     :model-value="props.row.enabled"
+                    :aria-label="'Enabled: ' + props.row.name"
                     @update:model-value="val => $parent.$emit('toggle_enabled', {id: props.row.id, enabled: val})"
                     color="positive"
                     :dark="$q.dark.isActive"
@@ -1062,9 +1063,18 @@ def rules_page() -> None:
                     f"Rule {'enabled' if new_enabled else 'disabled'}.",
                     color="positive",
                 )
-                ui.navigate.to("/admin/rules")
+                # Update the row in place rather than a full-page navigate:
+                # a whole-page reload for flipping one switch is an
+                # unannounced context change (3.2.2) and throws focus back
+                # to the top of the page, away from the switch just used.
+                for rule in rules_list:
+                    if rule["id"] == rule_id:
+                        rule["enabled"] = new_enabled
+                        rule["enabled_label"] = "Yes" if new_enabled else "No"
+                        break
+                rules_table.update()
             else:
-                ui.notify("Failed to update rule.", color="negative")
+                ui.notify("Failed to update rule.", color="negative", timeout=None, close_button="Close")
 
         rules_table.on("toggle_enabled", handle_toggle)
 
@@ -1178,7 +1188,7 @@ def rules_page() -> None:
                 r"""
                 <q-td :props="props">
                     <q-btn flat dense round icon="delete" color="negative" size="sm"
-                        aria-label="Delete attribute"
+                        :aria-label="'Delete attribute ' + props.row.name"
                         @click="$parent.$emit('delete_attr', props.row)"
                     >
                         <q-tooltip>Delete attribute</q-tooltip>
@@ -1188,9 +1198,43 @@ def rules_page() -> None:
             )
 
             def handle_delete_attr(msg) -> None:
-                _do_delete_attribute(msg.args)
+                delete_attribute_dialog(msg.args)
 
             attrs_table.on("delete_attr", handle_delete_attr)
+
+
+def delete_attribute_dialog(attr: dict) -> None:
+    """
+    Show confirmation dialog to delete a provisioning attribute.
+
+    Deleting an attribute used to happen straight from the table's own
+    delete icon with no confirmation at all, unlike every other deletion in
+    the service (rules, announcements, users) -- the same action behaved
+    differently depending on where you triggered it from. Mirrors
+    delete_rule_dialog above.
+    """
+
+    ui.dark_mode(app.storage.user.get("dark_mode", None))
+
+    with ui.dialog().props('aria-label="Delete attribute"') as dialog:
+        with ui.card().style("width: 400px; max-width: 90vw;"):
+            ui.label("Delete attribute").classes("text-2xl font-bold")
+            ui.label(
+                f'Are you sure you want to delete attribute "{attr["name"]}"?'
+            ).classes("text-body1")
+
+            with ui.row().style("justify-content: flex-end; width: 100%;"):
+                ui.button("Cancel").classes("button-close").props(
+                    "color=black flat"
+                ).on("click", lambda: dialog.close())
+                ui.button("Delete").classes("delete-style").props("color=red flat").on(
+                    "click",
+                    lambda: (
+                        _do_delete_attribute(attr),
+                        dialog.close(),
+                    ),
+                )
+        dialog.open()
 
 
 def _do_delete_attribute(attr: dict) -> None:
