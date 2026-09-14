@@ -40,6 +40,8 @@ export default {
         class="transcript-body"
         contenteditable="true"
         spellcheck="false"
+        :aria-label="subtitleMode ? 'Captions' : 'Transcript'"
+        aria-multiline="true"
         @input="onInput"
         @keydown="onKeydown"
         @keyup="updateCaretBlock"
@@ -86,6 +88,7 @@ export default {
           ><input
               class="transcript-time-input"
               title="When this caption appears (HH:MM:SS.mmm). Click to edit."
+              aria-label="Start time"
               :value="block.start_label"
               @click.stop
               @keydown="onTimeInputKeydown($event)"
@@ -93,6 +96,7 @@ export default {
             /><span class="transcript-dash">-</span><input
               class="transcript-time-input"
               title="When this caption disappears (HH:MM:SS.mmm). Click to edit."
+              aria-label="End time"
               :value="block.end_label"
               @click.stop
               @keydown="onTimeInputKeydown($event)"
@@ -107,6 +111,7 @@ export default {
             ><div class="transcript-subtitle-timing"><input
                   class="transcript-time-input"
                   title="When this caption appears (HH:MM:SS.mmm). Click to edit."
+                  aria-label="Start time"
                   :value="block.start_label"
                   @click.stop
                   @keydown="onTimeInputKeydown($event)"
@@ -114,6 +119,7 @@ export default {
                 /><span class="transcript-dash">-</span><input
                   class="transcript-time-input"
                   title="When this caption disappears (HH:MM:SS.mmm). Click to edit."
+                  aria-label="End time"
                   :value="block.end_label"
                   @click.stop
                   @keydown="onTimeInputKeydown($event)"

@@ -141,6 +141,24 @@ def users() -> None:
     )
     users_table.classes("table-style")
 
+    # Quasar generates selection checkboxes from selection="multiple" with
+    # no accessible name at all -- both the header "select all" and each
+    # row's own checkbox are announced only as "checkbox". These slots keep
+    # Quasar's own default selection behaviour (v-model="props.selected")
+    # and add nothing but a name.
+    users_table.add_slot(
+        "header-selection",
+        """
+        <q-checkbox v-model="props.selected" aria-label="Select all users" />
+        """,
+    )
+    users_table.add_slot(
+        "body-selection",
+        """
+        <q-checkbox v-model="props.selected" :aria-label="'Select ' + props.row.username" />
+        """,
+    )
+
     with users_table.add_slot("top-left"):
         ui.label("Users").classes("text-3xl font-bold")
 
@@ -212,7 +230,7 @@ def users() -> None:
                         on_click=confirm_remove_user,
                     )
 
-            with ui.input(placeholder="Search").props("type=search").bind_value(
+            with ui.input(placeholder="Search").props('type=search aria-label="Search users"').bind_value(
                 users_table, "filter"
             ).add_slot("append"):
                 ui.icon("search")

@@ -111,7 +111,7 @@ def _announcement_create_dialog() -> None:
                 starts_input = (
                     ui.input("Start date/time (optional)")
                     .classes("flex-1")
-                    .props("outlined clearable")
+                    .props('outlined clearable hint="YYYY-MM-DD"')
                 )
                 with starts_input:
                     with ui.menu().props("no-parent-event") as starts_menu:
@@ -120,14 +120,19 @@ def _announcement_create_dialog() -> None:
                         ) as starts_date:
                             pass
                     with starts_input.add_slot("append"):
-                        ui.icon("edit_calendar").on("click", starts_menu.open).classes(
-                            "cursor-pointer"
+                        (
+                            ui.icon("edit_calendar")
+                            .classes("cursor-pointer")
+                            .props('tabindex="0" role="button" aria-label="Open calendar"')
+                            .on("click", starts_menu.open)
+                            .on("keydown.enter", starts_menu.open)
+                            .on("keydown.space.prevent", starts_menu.open)
                         )
 
                 ends_input = (
                     ui.input("End date/time (optional)")
                     .classes("flex-1")
-                    .props("outlined clearable")
+                    .props('outlined clearable hint="YYYY-MM-DD"')
                 )
                 with ends_input:
                     with ui.menu().props("no-parent-event") as ends_menu:
@@ -136,8 +141,13 @@ def _announcement_create_dialog() -> None:
                         ) as ends_date:
                             pass
                     with ends_input.add_slot("append"):
-                        ui.icon("edit_calendar").on("click", ends_menu.open).classes(
-                            "cursor-pointer"
+                        (
+                            ui.icon("edit_calendar")
+                            .classes("cursor-pointer")
+                            .props('tabindex="0" role="button" aria-label="Open calendar"')
+                            .on("click", ends_menu.open)
+                            .on("keydown.enter", ends_menu.open)
+                            .on("keydown.space.prevent", ends_menu.open)
                         )
 
             ui.label(
@@ -225,29 +235,39 @@ def _announcement_edit_dialog(ann: dict) -> None:
                 starts_input = (
                     ui.input("Start date/time (optional)", value=starts_val)
                     .classes("flex-1")
-                    .props("outlined clearable")
+                    .props('outlined clearable hint="YYYY-MM-DD"')
                 )
                 with starts_input:
                     with ui.menu().props("no-parent-event") as starts_menu:
                         with ui.date().bind_value(starts_input):
                             pass
                     with starts_input.add_slot("append"):
-                        ui.icon("edit_calendar").on("click", starts_menu.open).classes(
-                            "cursor-pointer"
+                        (
+                            ui.icon("edit_calendar")
+                            .classes("cursor-pointer")
+                            .props('tabindex="0" role="button" aria-label="Open calendar"')
+                            .on("click", starts_menu.open)
+                            .on("keydown.enter", starts_menu.open)
+                            .on("keydown.space.prevent", starts_menu.open)
                         )
 
                 ends_input = (
                     ui.input("End date/time (optional)", value=ends_val)
                     .classes("flex-1")
-                    .props("outlined clearable")
+                    .props('outlined clearable hint="YYYY-MM-DD"')
                 )
                 with ends_input:
                     with ui.menu().props("no-parent-event") as ends_menu:
                         with ui.date().bind_value(ends_input):
                             pass
                     with ends_input.add_slot("append"):
-                        ui.icon("edit_calendar").on("click", ends_menu.open).classes(
-                            "cursor-pointer"
+                        (
+                            ui.icon("edit_calendar")
+                            .classes("cursor-pointer")
+                            .props('tabindex="0" role="button" aria-label="Open calendar"')
+                            .on("click", ends_menu.open)
+                            .on("keydown.enter", ends_menu.open)
+                            .on("keydown.space.prevent", ends_menu.open)
                         )
 
             ui.label(
@@ -427,7 +447,11 @@ def announcements_page() -> None:
             <q-td :props="props">
                 <a
                     class="cursor-pointer text-primary"
+                    tabindex="0"
+                    role="button"
                     @click="$parent.$emit('edit', props.row)"
+                    @keydown.enter="$parent.$emit('edit', props.row)"
+                    @keydown.space.prevent="$parent.$emit('edit', props.row)"
                     style="text-decoration: underline;"
                 >
                     {{ props.row.message_short }}

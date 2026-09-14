@@ -1033,7 +1033,7 @@ def rules_page() -> None:
         )
 
         with rules_table.add_slot("top-right"):
-            with ui.input(placeholder="Search").props("type=search").bind_value(
+            with ui.input(placeholder="Search").props('type=search aria-label="Search rules"').bind_value(
                 rules_table, "filter"
             ).add_slot("append"):
                 ui.icon("search")
@@ -1074,7 +1074,11 @@ def rules_page() -> None:
             <q-td :props="props">
                 <a
                     class="cursor-pointer text-primary"
+                    tabindex="0"
+                    role="button"
                     @click="$parent.$emit('edit_rule', props.row)"
+                    @keydown.enter="$parent.$emit('edit_rule', props.row)"
+                    @keydown.space.prevent="$parent.$emit('edit_rule', props.row)"
                     style="text-decoration: underline;"
                 >
                     {{ props.row.name }}

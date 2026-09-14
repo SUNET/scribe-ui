@@ -39,7 +39,9 @@ def show_user_token() -> None:
                 "my-4"
             )
             token = app.storage.user.get("token", "No token found.")
-            ui.textarea(value=token).classes("w-full h-full")
+            ui.textarea(value=token).props(
+                'aria-label="API token" readonly'
+            ).classes("w-full h-full")
             with ui.row().style("justify-content: flex-end; width: 100%;"):
                 ui.button("Close").classes("button-close").props("color=black flat").on(
                     "click", lambda: dialog.close()

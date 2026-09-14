@@ -123,8 +123,26 @@ def admin_dialog(users: list, group_id: str) -> None:
                 on_select=lambda e: None,
             ).style("width: 100%; box-shadow: none; font-size: 18px;")
 
+            # Quasar generates selection checkboxes from selection="multiple"
+            # with no accessible name at all -- both the header "select all"
+            # and each row's own checkbox are announced only as "checkbox".
+            # These slots keep Quasar's own default selection behaviour
+            # (v-model="props.selected") and add nothing but a name.
+            admin_table.add_slot(
+                "header-selection",
+                """
+                <q-checkbox v-model="props.selected" aria-label="Select all administrators" />
+                """,
+            )
+            admin_table.add_slot(
+                "body-selection",
+                """
+                <q-checkbox v-model="props.selected" :aria-label="'Select ' + props.row.username" />
+                """,
+            )
+
             with admin_table.add_slot("top-right"):
-                with ui.input(placeholder="Search").props("type=search").bind_value(
+                with ui.input(placeholder="Search").props('type=search aria-label="Search administrators"').bind_value(
                     admin_table, "filter"
                 ).add_slot("append"):
                     ui.icon("search")
@@ -268,12 +286,30 @@ def edit_group(group_id: str) -> None:
             "width: 100%; box-shadow: none; font-size: 18px; height: calc(100vh - 550px - var(--banner-offset, 0px));"
         )
 
+        # Quasar generates selection checkboxes from selection="multiple"
+        # with no accessible name at all -- both the header "select all" and
+        # each row's own checkbox are announced only as "checkbox". These
+        # slots keep Quasar's own default selection behaviour
+        # (v-model="props.selected") and add nothing but a name.
+        users_table.add_slot(
+            "header-selection",
+            """
+            <q-checkbox v-model="props.selected" aria-label="Select all group members" />
+            """,
+        )
+        users_table.add_slot(
+            "body-selection",
+            """
+            <q-checkbox v-model="props.selected" :aria-label="'Select ' + props.row.username" />
+            """,
+        )
+
         users_table.selected = [
             user for user in group["users"] if user.get("in_group", True)
         ]
 
         with users_table.add_slot("top-right"):
-            with ui.input(placeholder="Search").props("type=search").bind_value(
+            with ui.input(placeholder="Search").props('type=search aria-label="Search group members"').bind_value(
                 users_table, "filter"
             ).add_slot("append"):
                 ui.icon("search")
@@ -443,7 +479,7 @@ async def statistics(group_id: str) -> None:
                 )
 
                 with stats_table.add_slot("top-right"):
-                    with ui.input(placeholder="Search").props("type=search").bind_value(
+                    with ui.input(placeholder="Search").props('type=search aria-label="Search users"').bind_value(
                         stats_table, "filter"
                     ).add_slot("append"):
                         ui.icon("search")
@@ -493,7 +529,7 @@ async def statistics(group_id: str) -> None:
                 )
 
                 with stats_table.add_slot("top-right"):
-                    with ui.input(placeholder="Search").props("type=search").bind_value(
+                    with ui.input(placeholder="Search").props('type=search aria-label="Search job queue"').bind_value(
                         stats_table, "filter"
                     ).add_slot("append"):
                         ui.icon("search")
