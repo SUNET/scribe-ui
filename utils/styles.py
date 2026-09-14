@@ -65,9 +65,17 @@ theme_styles = """
         --color-text-on-brand: #ffffff;
 
         /* A grey rule, not a black one. Pure black borders drew every button
-           and table cell as hard as the text inside it. */
-        --color-border: #d0d5dd;
-        --color-border-subtle: #e5e7eb;
+           and table cell as hard as the text inside it.
+           #d0d5dd/#e5e7eb measured 1.47:1 and 1.24:1 against the white
+           surfaces these borders actually sit on -- both far under the 3:1
+           1.4.11 needs for a component boundary. --color-border-subtle also
+           has to hold against --color-bg-surface-alt (the upload dropzone),
+           which is the tighter case. #6b7280 clears white at 4.83:1;
+           #80858c clears white at 3.56:1 and surface-alt at 3.23:1 -- kept
+           darker than --color-border itself so the two still read as
+           "regular" vs "subtle" the way they did before. */
+        --color-border: #6b7280;
+        --color-border-subtle: #80858c;
         --color-border-disabled: #bdbdbd;
 
         --color-bg-disabled: #e0e0e0;
@@ -96,7 +104,12 @@ theme_styles = """
         --color-severity-incident-link: #b71c1c;
 
         --color-warning-bg: #fff3cd;
-        --color-warning-border: #ffc107;
+        /* #ffc107 measured 1.63:1 against the page and 1.51:1 against its
+           own highlighted-transcript-cell tint -- both far under 1.4.11's
+           3:1 for a state border. #b45309 clears both (5.02:1 / 4.14:1).
+           Only in light mode: dark already clears 3:1 by a wide margin
+           (8.55-12.88:1) with the original colour, which stays. */
+        --color-warning-border: #b45309;
         --color-warning-icon: #ff9800;
 
         /* Words flagged for review. A violet used nowhere else in the app, so
@@ -148,13 +161,19 @@ theme_styles = """
         --color-btn-delete-border: #d0d5dd;
 
         --color-chart-bar-current: #4F46E5;
-        --color-chart-bar-previous: #10B981;
+        /* #10b981/#4caf50/#f59e0b measured 2.54:1, 2.78:1 and 2.15:1 against
+           the white chart surface -- all under 1.4.11's 3:1. Darkened one
+           step within the same hue so the series stay recognisable: emerald
+           #059669 (3.77:1), green #388e3c (4.12:1), amber #b45309 (5.02:1,
+           the same value chosen for --color-warning-border above). Dark
+           mode's own values already clear 7.0-12.6:1 and are unchanged. */
+        --color-chart-bar-previous: #059669;
         --color-chart-bar-primary: #082954;
-        --color-chart-bar-secondary: #4caf50;
+        --color-chart-bar-secondary: #388e3c;
         --color-chart-line-cpu: #3b82f6;
-        --color-chart-line-memory: #10b981;
+        --color-chart-line-memory: #059669;
         --color-chart-line-gpu: #8b5cf6;
-        --color-chart-line-gpu-mem: #f59e0b;
+        --color-chart-line-gpu-mem: #b45309;
         --color-chart-wow-positive: #2e7d32;
         --color-chart-wow-negative: #c62828;
         --color-chart-wow-neutral: #757575;
@@ -180,8 +199,15 @@ theme_styles = """
         --color-text-muted: #9aa1ab;
         --color-text-on-brand: #ffffff;
 
-        --color-border: #3a3f47;
-        --color-border-subtle: #2c3038;
+        /* #3a3f47/#2c3038 measured 1.98:1 and 1.34:1 against the dark
+           surfaces they sit on (the audit's own #555555/#3a3a3a no longer
+           match this codebase's palette at all -- both are stale). #868b95
+           clears the darkest case, the page itself, at 6.14:1 (5.19:1 on
+           --color-bg-surface, 4.71:1 on --color-bg-surface-alt); #6b7280
+           clears the same three at 4.34/3.67/3.33:1 -- kept dimmer than
+           --color-border so "regular" still reads stronger than "subtle". */
+        --color-border: #868b95;
+        --color-border-subtle: #6b7280;
         --color-border-disabled: #444444;
 
         --color-bg-disabled: #2a2e36;
@@ -289,7 +315,14 @@ theme_styles = """
     .body--dark .q-card {
         background-color: var(--color-bg-surface);
         box-shadow: none !important;
-        border: none !important;
+        /* --color-bg-surface (#16181d) measured 1.18:1 against the page
+           (#000000) -- effectively no visible edge at all once the shadow
+           above is turned off. A rgba(0,0,0,0.5) shadow over a black page
+           does not help either, since black-over-black is still black.
+           --color-border (see its own definition) clears 3:1 against both
+           the page and this card's own surface, so a real border replaces
+           the shadow as the card's boundary. */
+        border: 1px solid var(--color-border) !important;
     }
     .body--dark .q-header {
         background-color: var(--color-header-bg);
@@ -887,8 +920,28 @@ theme_styles = """
     }
 
     /* ── Drawer / menu ── */
+    /* The hover/active fill (--color-bg-surface-hover, set here and in
+       menu_active_style below) measured 1.1:1 (light, vs its own
+       --color-bg-surface-alt drawer background) and 1.18:1 (dark) -- both far
+       under 1.4.11's 3:1 for a state indicator. Making the fill itself hit
+       3:1 turned out to be a dead end for dark mode: the darkest value that
+       clears 3:1 against the drawer (#1e2128) has a luminance of ~0.146,
+       but the menu text (--color-text-primary, #e6e8eb, inherited onto
+       every label) needs the fill's luminance under ~0.140 to keep its own
+       4.5:1 (1.4.3) -- the two requirements do not overlap, so no single
+       fill colour satisfies both at once. An inset left-edge stripe sidesteps
+       the conflict: it is a graphical object the text does not sit on, so
+       only 1.4.11 applies to it, and --color-border already clears 3:1
+       against both drawers (4.39:1 light, 4.71:1 dark -- see its own
+       definition) with no new token needed. The existing background tint is
+       left in place as a secondary, non-required cue; box-shadow (not a
+       real border) so no element changes size when the stripe appears. */
+    .menu-item {
+        box-shadow: inset 3px 0 0 0 transparent;
+    }
     .menu-item:hover {
         background-color: var(--color-bg-surface-hover);
+        box-shadow: inset 3px 0 0 0 var(--color-border);
     }
     .q-drawer--mini .menu-header {
         display: none;
@@ -2275,6 +2328,12 @@ menu_item_style = (
 
 menu_active_style = (
     " background-color: var(--color-bg-surface-hover); font-weight: 600;"
+    # Same left-edge accent stripe as .menu-item:hover in styles.py, inlined
+    # here because this is an inline style (higher specificity than the
+    # external :hover rule) and the current-page item needs the stripe
+    # whether or not the pointer happens to be over it. See that rule's
+    # comment for why a stripe rather than the fill itself carries 1.4.11.
+    " box-shadow: inset 3px 0 0 0 var(--color-border);"
 )
 
 # ---------------------------------------------------------------------------
