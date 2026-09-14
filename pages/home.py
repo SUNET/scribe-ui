@@ -130,12 +130,32 @@ def create() -> None:
             "width: 100%; height: calc(100vh - 100px - var(--banner-offset, 0px)); box-shadow: none; font-size: 18px;"
         )
         table.classes("table-style")
+        # Was one slot (body-cell-status) emitting two <q-td> -- one for
+        # its own "status" column, one more for "action" tacked onto the
+        # end. Quasar calls a body-cell-<name> slot once per row for that
+        # column alone, so status's slot returning two cells left every row
+        # with 9 td against the table's 8 th (7 defined columns plus the
+        # selection column) -- the extra didn't just look wrong, it shifted
+        # every cell after it out of alignment with its header (WCAG
+        # 1.3.1). "action" is also a defined column of its own with no
+        # slot before this change, so Quasar rendered a second, empty
+        # default cell for it on top of the one status's slot already
+        # produced. Splitting the markup into its own body-cell-action slot
+        # gives Quasar exactly one slot call per column again. Verified by
+        # counting th against td in the rendered DOM -- the only check that
+        # actually settles this, since both cell counts read the same
+        # either way in the editor.
         table.add_slot(
             "body-cell-status",
             """
             <q-td key="status" :props="props">
                 <p>{{ props.value }}</p>
             </q-td>
+            """,
+        )
+        table.add_slot(
+            "body-cell-action",
+            """
             <q-td key="action" :props="props">
                 <q-btn
                     v-if="props.row.status === 'Uploaded' || props.row.status === 'Completed'"

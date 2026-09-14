@@ -453,6 +453,23 @@ theme_styles = """
         width: 150px;
     }
 
+    /* ── Username "view API token" control ── */
+    /* Was a plain underlined ui.label; is now a ui.button so it is
+       reachable and activatable from the keyboard (see pages/user.py). A
+       flat QBtn carries its own padding and minimum height, and in dark
+       mode -- from the global override just below -- its own border too.
+       Reset here so the control still looks like the underlined username
+       it replaces rather than a boxed button. */
+    .user-token-btn {
+        padding: 0 !important;
+        min-height: 0 !important;
+        font-weight: normal !important;
+        text-decoration: underline;
+    }
+    .body--dark .q-btn--flat.user-token-btn {
+        border: none !important;
+    }
+
     /* ── Upload dropzone ── */
     .dropzone-area {
         background-color: var(--color-bg-surface-alt);
@@ -474,6 +491,33 @@ theme_styles = """
     .body--dark .q-btn--flat .q-icon,
     .body--dark .q-btn--flat .q-btn__content {
         color: var(--color-text-primary) !important;
+    }
+    /* .default-style's green background (var(--color-brand-accent),
+       #3d7a2e in dark mode) is set unconditionally further down, in both
+       themes, and the flat-button override above sets every flat button's
+       text to var(--color-text-primary) regardless of what it sits on.
+       #e6e8eb on #3d7a2e measures 4.25:1, short of the 4.5:1 that 1.4.11
+       Non-text Contrast (AA) requires for a control's own label; plain
+       white clears it at 5.22:1. */
+    .body--dark .q-btn.default-style {
+        color: #ffffff !important;
+    }
+    /* .block, not just .q-btn__content: on /home this button sits inside
+       the files table's own toolbar slot, which is a descendant of
+       .q-table (class table-style), and .table-style span further down
+       this file sets every span in the table -- .block, the innermost
+       span a QBtn actually paints its label text in, included -- to
+       var(--color-text-primary) with its own !important. Both rules are
+       unlayered and !important, so between them specificity decides;
+       .block needs naming here explicitly; .q-btn__content alone does not
+       reach it, since color set on a parent is overridden, not inherited
+       away, by a rule that names the child directly. Measured: without
+       this line the button's own color read back as white while the text
+       node inside it still measured 4.25:1. */
+    .body--dark .q-btn.default-style .q-icon,
+    .body--dark .q-btn.default-style .q-btn__content,
+    .body--dark .q-btn.default-style .block {
+        color: #ffffff !important;
     }
 
     /* ── Editor toolbar ── */
@@ -607,10 +651,33 @@ theme_styles = """
         opacity: 0.4;
     }
 
-    /* ── Dark mode primary button contrast ── */
-    .body--dark .q-btn.bg-primary {
-        background-color: var(--color-btn-primary-bg) !important;
-        border: 1px solid var(--color-btn-primary-border) !important;
+    /* ── Primary button contrast (Quasar color=primary / toggle-color=primary) ── */
+    /* Found while re-checking F-72 with axe rather than by eye, and not
+       actually dark-mode-specific despite where the old version of this
+       rule lived: Quasar's own "bg-primary" utility paints #5898d4 from
+       its JS config regardless of .body--light/dark, and white text on it
+       measures 3.06:1 in both -- on the theme toggle's own selected
+       segment (pages/user.py) and on any plain color=primary button
+       (several Save/Close buttons elsewhere use it). --color-btn-primary-*
+       already carries a themed pair meant for exactly this (see
+       .button-default-style above, a custom class that already reads
+       them without trouble), so the fix is applying that pair here too,
+       not one theme's version of it.
+       Doing so needs @layer: "bg-primary" and "text-white" both carry
+       !important from inside the quasar_importants layer, and for
+       !important declarations the cascade runs layer priority in
+       reverse, so an unlayered rule -- this one, before this change --
+       loses to every layered !important no matter its own specificity.
+       @layer theme is declared first, which for !important rules makes it
+       the strongest layer of all; the focus-ring fix above already
+       relies on the same thing. Measured after moving it in and adding
+       color: #5898d4/white becomes the themed pair, in both themes. */
+    @layer theme {
+        .q-btn.bg-primary {
+            background-color: var(--color-btn-primary-bg) !important;
+            color: var(--color-btn-primary-text) !important;
+            border: 1px solid var(--color-btn-primary-border) !important;
+        }
     }
 
     /* ── Table action buttons ── */

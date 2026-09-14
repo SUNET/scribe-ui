@@ -291,7 +291,17 @@ def reload_on_theme_change() -> None:
     the OS through CSS custom properties and needs no reload -- and a reload
     is never harmless: on the editor page it throws away every unsaved
     caption, which is exactly what a reader is doing at sunset.
+
+    Calling this is also what _cycle_dark_mode (below) uses to decide
+    whether ITS OWN reload, from clicking the header's theme button, is
+    worth doing on this page. Measured: before this flag existed, that
+    button reloaded on every page except /srt, whether or not the page had
+    anything that needed it -- and a full reload always drops keyboard
+    focus to the document body, so a page with nothing to redraw paid for
+    the redraw anyway, in a focus loss the reload never bought back.
     """
+
+    app.storage.client["scribe_theme_reload_needed"] = True
 
     ui.add_head_html(
         """
@@ -419,9 +429,20 @@ def page_init(
             )
             btn._props["icon"] = new_icon
             btn.update()
-        # Reload to update Plotly charts etc., except on /srt where it
-        # would lose editor state.  location.reload() preserves query params.
-        if current_path != "/srt":
+        # Reload to update Plotly charts, on the pages that have them and
+        # said so via reload_on_theme_change() -- see its docstring. Every
+        # other page, /srt included, now skips the reload rather than being
+        # named as a one-off exception: it never had anything a reload
+        # would redraw, only state a reload would lose (editor captions) or
+        # keyboard focus a reload would drop for no reason at all.
+        if app.storage.client.get("scribe_theme_reload_needed"):
+            # location.reload() always drops focus to the document body, so
+            # a second Enter/Space on this same button -- to keep cycling
+            # through the three theme states -- lands on nothing and does
+            # nothing. Remembered here, in storage that survives the
+            # reload, and consumed once the reloaded page has built its own
+            # new theme button (see page_init, near _show_announcement_banners).
+            app.storage.user["_scribe_restore_theme_focus"] = True
             ui.run_javascript("location.reload()")
 
     if use_drawer:
@@ -614,12 +635,27 @@ def page_init(
                         "Close menu" if drawer_open else "Expand menu"
                     )
                     menu_btn_tooltip_ref = menu_btn_tooltip
-                ui.image(f"static/{settings.LOGO_TOPBAR_LIGHT}").classes(
-                    "q-mr-sm logo-light"
-                ).style("height: 30px; width: 30px;")
-                ui.image(f"static/{settings.LOGO_TOPBAR_DARK}").classes(
-                    "q-mr-sm logo-dark"
-                ).style("height: 30px; width: 30px;")
+                # Decorative, on both this header and the drawer-less one
+                # below: the service name sits right next to the logo as
+                # real text (settings.TOPBAR_TEXT), so the logo carries no
+                # information a screen reader user would otherwise lose.
+                # Only one of the pair is ever visible -- CSS swaps them by
+                # theme -- but both get alt="" rather than relying on that.
+                # aria-hidden is needed too: NiceGUI wraps the real <img>
+                # in its own div carrying role="img", and an empty alt on
+                # the inner element does not by itself mark the outer one
+                # decorative -- axe's role-img-alt rule still flagged the
+                # wrapper as an unnamed image without it.
+                ui.image(f"static/{settings.LOGO_TOPBAR_LIGHT}").props(
+                    'alt="" aria-hidden="true"'
+                ).classes("q-mr-sm logo-light").style(
+                    "height: 30px; width: 30px;"
+                )
+                ui.image(f"static/{settings.LOGO_TOPBAR_DARK}").props(
+                    'alt="" aria-hidden="true"'
+                ).classes("q-mr-sm logo-dark").style(
+                    "height: 30px; width: 30px;"
+                )
                 ui.label(settings.TOPBAR_TEXT + header_text).classes(
                     "text-h6 text-theme-primary"
                 )
@@ -662,12 +698,16 @@ def page_init(
             .classes("drop-shadow-md")
         ):
             with ui.element("div").style("display: flex; gap: 0px;"):
-                ui.image(f"static/{settings.LOGO_TOPBAR_LIGHT}").classes(
-                    "q-mr-sm logo-light"
-                ).style("height: 30px; width: 30px;")
-                ui.image(f"static/{settings.LOGO_TOPBAR_DARK}").classes(
-                    "q-mr-sm logo-dark"
-                ).style("height: 30px; width: 30px;")
+                ui.image(f"static/{settings.LOGO_TOPBAR_LIGHT}").props(
+                    'alt="" aria-hidden="true"'
+                ).classes("q-mr-sm logo-light").style(
+                    "height: 30px; width: 30px;"
+                )
+                ui.image(f"static/{settings.LOGO_TOPBAR_DARK}").props(
+                    'alt="" aria-hidden="true"'
+                ).classes("q-mr-sm logo-dark").style(
+                    "height: 30px; width: 30px;"
+                )
                 ui.label(settings.TOPBAR_TEXT + header_text).classes(
                     "text-h6 text-theme-primary"
                 )
@@ -757,6 +797,31 @@ def page_init(
         "position: absolute; width: 0; height: 0; overflow: hidden;"
         " outline: none;"
     )
+
+    # Consumed once, whether or not this page ended up with a theme
+    # button at all: a page that reaches here without one (use_drawer
+    # branches always create one today, but nothing guarantees that stays
+    # true) must not leave the flag set for whatever page loads next.
+    if app.storage.user.pop("_scribe_restore_theme_focus", False):
+        ui.add_head_html(
+            """
+            <script>
+            (function () {
+                function focusThemeButton() {
+                    var btn = document.querySelector('[aria-label="Toggle theme"]');
+                    if (btn) { btn.focus(); return true; }
+                    return false;
+                }
+                if (!focusThemeButton()) {
+                    var tries = setInterval(function () {
+                        if (focusThemeButton()) clearInterval(tries);
+                    }, 50);
+                    setTimeout(function () { clearInterval(tries); }, 3000);
+                }
+            })();
+            </script>
+            """
+        )
 
     _show_announcement_banners()
 
