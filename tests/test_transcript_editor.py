@@ -1392,7 +1392,7 @@ class TestTiming:
         """
 
         source = self.source()
-        body = source[source.index("onTimeInputKeydown(event) {"):]
+        body = source[source.index("onTimeInputKeydown(event, id, col) {"):]
         body = body[: body.index("\n    },\n")]
 
         assert "event.stopPropagation()" in body
