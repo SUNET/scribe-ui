@@ -340,6 +340,23 @@ def create() -> None:
         with ui.splitter(value=60).classes("w-full h-full") as splitter:
             with splitter.before:
                 with ui.card().classes("editor-panel w-full h-full"):
+                    # A long transcription can put well over a hundred
+                    # keyboard stops (two time fields per block) between here
+                    # and the video/settings panel, with nothing in between
+                    # to jump past them (WCAG 2.4.1). Same skip-link pattern
+                    # as "Skip to content" in common.py: an invisible link,
+                    # revealed on focus, targeting a tabindex="-1" landmark
+                    # at the top of the other panel.
+                    ui.link(
+                        "Skip to video and settings", "#srt-player-panel"
+                    ).classes("skip-link")
+                    ui.element("div").props(
+                        'id=srt-transcript-panel tabindex=-1'
+                        ' aria-label="Transcript"'
+                    ).style(
+                        "position: absolute; width: 0; height: 0;"
+                        " overflow: hidden; outline: none;"
+                    )
                     with ui.scroll_area().style("height: calc(90vh - 100px);"):
                         if data_format == "srt":
                             editor.parse_srt(data["result"])
@@ -355,6 +372,16 @@ def create() -> None:
 
                 with splitter.after:
                     with ui.card().classes("editor-panel w-full h-full"):
+                        ui.link(
+                            "Skip to transcript", "#srt-transcript-panel"
+                        ).classes("skip-link")
+                        ui.element("div").props(
+                            'id=srt-player-panel tabindex=-1'
+                            ' aria-label="Video and settings"'
+                        ).style(
+                            "position: absolute; width: 0; height: 0;"
+                            " overflow: hidden; outline: none;"
+                        )
                         with ui.element("div").classes("video-frame w-full h-full"):
                             video = ui.video(
                                 f"/video/{uuid}",
