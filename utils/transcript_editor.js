@@ -225,6 +225,7 @@ export default {
         :style="{ top: menu.y + 'px', left: menu.x + 'px' }"
         @click.stop
         @keydown="onMenuKeydown($event)"
+        @focusout="onMenuFocusOut($event)"
       >
         <div
           class="speaker-menu-add"
@@ -1611,6 +1612,26 @@ export default {
           ? items[Math.min(items.length - 1, at + 1)]
           : items[Math.max(0, at - 1)];
       next?.focus();
+    },
+
+    // Tab and Shift+Tab are deliberately left native within the menu --
+    // its own items are plain tabindex="0" elements in document order, and
+    // stepping off either end of that order is exactly how a reader
+    // leaves a short, ordinary list of them. But nothing else was
+    // watching for that: closeMenu previously only ran from a pointer
+    // click outside, Escape, or picking an item, and tabbing past the
+    // menu's own last (or first) control left it open with focus already
+    // somewhere else on the page entirely -- reported directly, testing
+    // this by keyboard. relatedTarget is the element about to take focus,
+    // so a focusout landing on another control inside the menu itself
+    // (moving from "Add new" to a speaker row, say) is left alone; only a
+    // focusout that leaves the whole menu closes it, and without pulling
+    // focus back -- it has already gone where the reader's own Tab sent
+    // it, and yanking it back to the speaker label would undo that.
+    onMenuFocusOut(event) {
+      const next = event.relatedTarget;
+      if (next && event.currentTarget.contains(next)) return;
+      this.closeMenu();
     },
 
     onKeydown(event) {
