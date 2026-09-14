@@ -58,9 +58,11 @@ def create_customer_dialog(page: callable) -> None:
             partner_id_input = (
                 ui.input("Kaltura Partner ID", value="N/A")
                 .classes("w-full")
-                .props("outlined")
+                .props("outlined required")
             )
-            name_input = ui.input("Customer name").classes("w-full").props("outlined")
+            name_input = (
+                ui.input("Customer name").classes("w-full").props("outlined required")
+            )
             contact_email_input = (
                 ui.input("Contact email").classes("w-full").props("outlined")
             )
@@ -121,12 +123,25 @@ def create_customer_dialog(page: callable) -> None:
                 ).on("click", lambda: create_customer_dialog.close())
 
                 def create_customer():
+                    # Errors attach to the field itself and move focus there
+                    # (3.3.1): a toast alone never named which of the two
+                    # required fields was empty, and left focus sitting on
+                    # this button rather than on the problem.
                     if not partner_id_input.value.strip():
-                        ui.notify("Kaltura Partner ID is required.", color="red", timeout=None, close_button="Close")
+                        partner_id_input.props(
+                            'error error-message="Kaltura Partner ID is required."'
+                        )
+                        partner_id_input.run_method("focus")
                         return
+                    partner_id_input.props(remove="error error-message")
+
                     if not name_input.value.strip():
-                        ui.notify("Customer name is required.", color="red", timeout=None, close_button="Close")
+                        name_input.props(
+                            'error error-message="Customer name is required."'
+                        )
+                        name_input.run_method("focus")
                         return
+                    name_input.props(remove="error error-message")
 
                     selected_realms = realm_select.value if realm_select.value else []
                     new_realms = [
@@ -136,6 +151,32 @@ def create_customer_dialog(page: callable) -> None:
                     ]
                     all_realms = list(set(selected_realms + new_realms))
                     realms_str = ",".join(all_realms)
+
+                    # int() on these two raised a bare ValueError with no
+                    # message shown anywhere -- e.g. a decimal like "12.5" is
+                    # accepted by the browser's own type=number spinner but
+                    # not by int(). Same field/focus treatment as above
+                    # (3.3.1).
+                    try:
+                        base_fee_val = int(base_fee.value) if base_fee.value else 0
+                    except ValueError:
+                        base_fee.props(
+                            'error error-message="Base fee must be a whole number."'
+                        )
+                        base_fee.run_method("focus")
+                        return
+                    base_fee.props(remove="error error-message")
+
+                    try:
+                        blocks_val = int(blocks_input.value) if blocks_input.value else 0
+                    except ValueError:
+                        blocks_input.props(
+                            'error error-message="Blocks purchased must be a '
+                            'whole number."'
+                        )
+                        blocks_input.run_method("focus")
+                        return
+                    blocks_input.props(remove="error error-message")
 
                     try:
                         res = httpx.post(
@@ -148,12 +189,8 @@ def create_customer_dialog(page: callable) -> None:
                                 "contact_email": contact_email_input.value,
                                 "support_contact_email": support_contact_email_input.value,
                                 "priceplan": priceplan_select.value,
-                                "base_fee": int(base_fee.value)
-                                if base_fee.value
-                                else 0,
-                                "blocks_purchased": int(blocks_input.value)
-                                if blocks_input.value
-                                else 0,
+                                "base_fee": base_fee_val,
+                                "blocks_purchased": blocks_val,
                                 "realms": realms_str,
                                 "notes": notes_input.value,
                             },
@@ -308,28 +345,51 @@ def edit_customer(customer_id: str) -> None:
                 .props("outlined")
             )
 
+    def do_save() -> None:
+        # save_customer's own int(base_fee) raised a bare, unshown ValueError
+        # on anything int() rejects (a decimal like "12.5", which the
+        # browser's type=number spinner accepts without complaint). Same
+        # field/focus treatment as create_customer_dialog's own copy of this
+        # bug (3.3.1).
+        try:
+            int(base_fee.value) if base_fee.value else 0
+        except ValueError:
+            base_fee.props('error error-message="Base fee must be a whole number."')
+            base_fee.run_method("focus")
+            return
+        base_fee.props(remove="error error-message")
+
+        try:
+            int(blocks_input.value) if blocks_input.value else 0
+        except ValueError:
+            blocks_input.props(
+                'error error-message="Blocks purchased must be a whole number."'
+            )
+            blocks_input.run_method("focus")
+            return
+        blocks_input.props(remove="error error-message")
+
+        save_customer(
+            customer_abbr_input.value,
+            customer_id,
+            partner_id_input.value,
+            name_input.value,
+            contact_email_input.value,
+            support_contact_email_input.value,
+            priceplan_select.value,
+            base_fee.value,
+            realm_select.value if realm_select.value else [],
+            new_realms_input.value,
+            notes_input.value,
+            blocks_input.value,
+        )
+
     with ui.row().style(
         "justify-content: flex-end; width: 100%; padding: 16px; gap: 8px;"
     ):
         ui.button("Save customer").classes("default-style").props(
             "color=black flat"
-        ).style("width: 150px").on(
-            "click",
-            lambda: save_customer(
-                customer_abbr_input.value,
-                customer_id,
-                partner_id_input.value,
-                name_input.value,
-                contact_email_input.value,
-                support_contact_email_input.value,
-                priceplan_select.value,
-                base_fee.value,
-                realm_select.value if realm_select.value else [],
-                new_realms_input.value,
-                notes_input.value,
-                blocks_input.value,
-            ),
-        )
+        ).style("width: 150px").on("click", do_save)
         ui.button("Cancel").classes("delete-style").props("color=black flat").on(
             "click", lambda: ui.navigate.to("/admin/customers")
         )

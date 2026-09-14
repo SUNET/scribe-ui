@@ -1375,6 +1375,19 @@ def table_transcribe(selected_row, on_complete=None) -> None:
                     "text-h6 q-mb-xl"
                 )
 
+                # Hidden until start_transcription has something to report;
+                # role=alert means a screen reader hears it the moment
+                # set_text/set_visibility make it appear, without moving
+                # focus or rebuilding the dialog around it. See that
+                # function's own comment for what this replaced.
+                error_display = (
+                    ui.label("")
+                    .classes("text-h6 q-mb-md w-full")
+                    .style("color: var(--color-text-danger);")
+                )
+                error_display.props("role=alert")
+                error_display.set_visibility(False)
+
                 with ui.column().classes("col-12 col-sm-24"):
                     ui.label("Filename:").classes("text-subtitle2 q-mb-sm")
                     ui.label(f"{selected_row['filename']}")
@@ -1447,6 +1460,7 @@ def table_transcribe(selected_row, on_complete=None) -> None:
                         output_format.value,
                         dialog,
                         on_complete=on_complete,
+                        error_display=error_display,
                     ),
                 ) as start:
                     start.props("color=black flat")
@@ -1479,6 +1493,15 @@ def table_bulk_transcribe(table: ui.table, on_complete=None) -> None:
                 ui.label("Transcription settings").style("width: 100%;").classes(
                     "text-h6 q-mb-xl"
                 )
+
+                # See table_transcribe's own copy of this element for why.
+                error_display = (
+                    ui.label("")
+                    .classes("text-h6 q-mb-md w-full")
+                    .style("color: var(--color-text-danger);")
+                )
+                error_display.props("role=alert")
+                error_display.set_visibility(False)
 
                 with ui.column().classes("w-full q-mb-sm").style(
                     "background-color: var(--color-severity-maint-bg); padding: 8px 12px; border-radius: 4px;"
@@ -1559,6 +1582,7 @@ def table_bulk_transcribe(table: ui.table, on_complete=None) -> None:
                             dialog,
                             table,
                             on_complete=on_complete,
+                            error_display=error_display,
                         ),
                     ),
                 ) as start:
@@ -1736,6 +1760,7 @@ def start_transcription(
     dialog: ui.dialog,
     table: ui.table = None,
     on_complete=None,
+    error_display: ui.label = None,
 ) -> None:
     selected_language = language
     error = ""
@@ -1772,19 +1797,17 @@ def start_transcription(
             break
 
     if error:
-        with dialog:
-            dialog.clear()
-
-            with ui.card().style(
-                "background-color: var(--color-bg-surface); align-self: center; border: 0; width: 50%;"
-            ):
-                ui.label(error).classes("text-h6 q-mb-md")
-                ui.button(
-                    "Close",
-                ).on("click", lambda: dialog.close()).classes(
-                    "button-close"
-                ).props("color=black flat")
-            dialog.open()
+        # Used to be dialog.clear() + a bare replacement card: language,
+        # speaker count and format the user had just chosen were thrown
+        # away, and the error label had no role, so nothing announced that
+        # anything had changed at all. Writing into error_display instead
+        # keeps the form exactly as filled in -- nothing to redo -- and
+        # role="alert" (set where error_display is created) means a screen
+        # reader announces it the moment the text is set, with no dialog
+        # rebuild needed for that. (3.3.1)
+        if error_display is not None:
+            error_display.set_text(error)
+            error_display.set_visibility(True)
     else:
         if table is not None:
             table.selected = []

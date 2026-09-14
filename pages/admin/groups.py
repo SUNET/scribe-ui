@@ -65,28 +65,42 @@ def create_group_dialog(page: callable) -> None:
                 .props("outlined type=number min=0")
             )
 
+            def do_create() -> None:
+                # int(quota.value) raised a bare, unshown ValueError on
+                # anything int() rejects -- a decimal, or the field left
+                # empty -- and min=0 in props is decorative only, not
+                # enforced. The user saw the dialog simply not close, with
+                # no indication why (3.3.1).
+                try:
+                    quota_seconds = int(quota.value) * 60 if quota.value else 0
+                except ValueError:
+                    quota.props(
+                        'error error-message="Monthly transcription limit '
+                        'must be a whole number of minutes."'
+                    )
+                    quota.run_method("focus")
+                    return
+                quota.props(remove="error error-message")
+
+                httpx.post(
+                    settings.API_URL + "/api/v1/admin/groups",
+                    headers=get_auth_header(),
+                    json={
+                        "name": name_input.value,
+                        "description": description_input.value,
+                        "quota_seconds": quota_seconds,
+                    },
+                )
+                create_group_dialog.close()
+                ui.navigate.to("/admin")
+
             with ui.row().style("justify-content: flex-end; width: 100%;"):
                 ui.button("Cancel").classes("button-close").props(
                     "color=black flat"
                 ).on("click", lambda: create_group_dialog.close())
                 ui.button("Create").classes("default-style").props(
                     "color=black flat"
-                ).on(
-                    "click",
-                    lambda: (
-                        httpx.post(
-                            settings.API_URL + "/api/v1/admin/groups",
-                            headers=get_auth_header(),
-                            json={
-                                "name": name_input.value,
-                                "description": description_input.value,
-                                "quota_seconds": int(quota.value) * 60,
-                            },
-                        ),
-                        create_group_dialog.close(),
-                        ui.navigate.to("/admin"),
-                    ),
-                )
+                ).on("click", do_create)
 
         create_group_dialog.open()
 
@@ -213,18 +227,35 @@ def edit_group(group_id: str) -> None:
     ):
         ui.label(f"Edit group: {group['name']}").classes("text-3xl font-bold")
         with ui.element("div").style("display: flex; gap: 8px;"):
-            ui.button("Save group").classes("default-style").props(
-                "color=black flat"
-            ).style("width: 150px").on(
-                "click",
-                lambda: save_group(
+            def do_save() -> None:
+                # save_group's own int(quota_seconds) has the same unshown
+                # ValueError as create_group_dialog's copy above -- see its
+                # comment. Fixed the same way, against the field defined
+                # further down (quota is still in scope by the time this
+                # runs: the click can only happen once the whole page body,
+                # quota included, has been built).
+                try:
+                    int(quota.value) if quota.value else 0
+                except ValueError:
+                    quota.props(
+                        'error error-message="Monthly transcription limit '
+                        'must be a whole number of minutes."'
+                    )
+                    quota.run_method("focus")
+                    return
+                quota.props(remove="error error-message")
+
+                save_group(
                     users_table.selected,
                     name_input.value,
                     description_input.value,
                     group_id,
                     quota.value,
-                ),
-            )
+                )
+
+            ui.button("Save group").classes("default-style").props(
+                "color=black flat"
+            ).style("width: 150px").on("click", do_save)
             ui.button("Cancel").classes("delete-style").props("color=black flat").on(
                 "click", lambda: ui.navigate.to("/admin")
             )

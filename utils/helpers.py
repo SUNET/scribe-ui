@@ -725,10 +725,21 @@ def open_make_admin_dialog(selected_rows: list, all_users: list) -> None:
             def on_save() -> None:
                 domains = domains_select.value or []
                 if not domains:
-                    error_label.set_text(
-                        "Select at least one domain before granting admin access."
+                    # Quasar's error-message prop renders into a role="alert"
+                    # div (quasar.umd.js, QField's error slot), so this reaches
+                    # screen reader users the moment it appears -- the plain
+                    # ui.label it replaces had no such role and was never
+                    # announced. Moving focus completes the identification:
+                    # without it the field with the problem is never
+                    # highlighted to a keyboard/screen reader user, only
+                    # described. (3.3.1)
+                    domains_select.props(
+                        'error error-message="Select at least one domain '
+                        'before granting admin access."'
                     )
+                    domains_select.run_method("focus")
                     return
+                domains_select.props(remove="error error-message")
 
                 domains_str = ",".join(domains)
 

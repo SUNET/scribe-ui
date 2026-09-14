@@ -164,26 +164,45 @@ def create_rule_dialog(page: callable) -> None:
                 ui.button("Cancel").classes("button-close").props(
                     "color=black flat"
                 ).on("click", lambda: dialog.close())
+                def do_create() -> None:
+                    # Validated here, against the field itself, rather than
+                    # inside _do_create_rule: that helper only ever sees the
+                    # already-read-out .value, not the ui.select, and this is
+                    # the one place with the element to attach the error to
+                    # and move focus to (3.3.1). A second ui.dialog stacked on
+                    # top of this one -- the previous approach -- named the
+                    # problem without identifying which field it was in, and
+                    # its own focus handling on close was unverified.
+                    realm_val = realm_input.value
+                    if not realm_val or (
+                        isinstance(realm_val, list) and len(realm_val) == 0
+                    ):
+                        realm_input.props(
+                            'error error-message="At least one realm must '
+                            'be selected."'
+                        )
+                        realm_input.run_method("focus")
+                        return
+                    realm_input.props(remove="error error-message")
+
+                    if _do_create_rule(
+                        name=name_input.value,
+                        attribute_name=attr_select.value,
+                        attribute_condition=condition_select.value,
+                        attribute_value=value_input.value,
+                        realm=realm_val,
+                        activate=activate_cb.value,
+                        deny=deny_cb.value,
+                        assign_to_group=group_select.value,
+                        notify_job=notify_job_cb.value,
+                        notify_deletion=notify_deletion_cb.value,
+                    ):
+                        dialog.close()
+                        ui.navigate.to("/admin/rules")
+
                 ui.button("Create").classes("default-style").props(
                     "color=black flat"
-                ).on(
-                    "click",
-                    lambda: (
-                        _do_create_rule(
-                            name=name_input.value,
-                            attribute_name=attr_select.value,
-                            attribute_condition=condition_select.value,
-                            attribute_value=value_input.value,
-                            realm=realm_input.value,
-                            activate=activate_cb.value,
-                            deny=deny_cb.value,
-                            assign_to_group=group_select.value,
-                            notify_job=notify_job_cb.value,
-                            notify_deletion=notify_deletion_cb.value,
-                        )
-                        and (dialog.close(), ui.navigate.to("/admin/rules"))
-                    ),
-                )
+                ).on("click", do_create)
 
         dialog.open()
 
@@ -191,17 +210,15 @@ def create_rule_dialog(page: callable) -> None:
 def _do_create_rule(**kwargs) -> bool:
     """
     Helper to create a rule from dialog values. Returns True on success.
+
+    Assumes realm has already been validated non-empty by the caller, which
+    has the ui.select to attach an inline error to; this is a defensive
+    fallback only, not user-facing.
     """
 
     realm_val = kwargs["realm"]
 
     if not realm_val or (isinstance(realm_val, list) and len(realm_val) == 0):
-        with ui.dialog().props('aria-label="Realm required to create rule"') as warn_dlg, ui.card().classes("p-6"):
-            ui.label("Realm required").classes("text-h6")
-            ui.label("At least one realm must be selected.")
-            ui.button("OK", on_click=warn_dlg.close).classes("mt-4 self-end")
-        warn_dlg.open()
-
         return False
 
     data = {
@@ -377,25 +394,40 @@ def edit_rule_dialog(rule: dict, page: callable) -> None:
                 ui.button("Cancel").classes("button-close").props(
                     "color=black flat"
                 ).on("click", lambda: dialog.close())
-                ui.button("Save").classes("default-style").props("color=black flat").on(
-                    "click",
-                    lambda: (
-                        _do_update_rule(
-                            rule_id=rule["id"],
-                            name=name_input.value,
-                            attribute_name=attr_select.value,
-                            attribute_condition=condition_select.value,
-                            attribute_value=value_input.value,
-                            realm=realm_input.value,
-                            activate=activate_cb.value,
-                            deny=deny_cb.value,
-                            assign_to_group=group_select.value,
-                            notify_job=notify_job_cb.value,
-                            notify_deletion=notify_deletion_cb.value,
+                def do_update() -> None:
+                    # See do_create's comment above -- same reasoning, same
+                    # fix, for the edit dialog's own realm_input.
+                    realm_val = realm_input.value
+                    if not realm_val or (
+                        isinstance(realm_val, list) and len(realm_val) == 0
+                    ):
+                        realm_input.props(
+                            'error error-message="At least one realm must '
+                            'be selected."'
                         )
-                        and (dialog.close(), ui.navigate.to("/admin/rules"))
-                    ),
-                )
+                        realm_input.run_method("focus")
+                        return
+                    realm_input.props(remove="error error-message")
+
+                    if _do_update_rule(
+                        rule_id=rule["id"],
+                        name=name_input.value,
+                        attribute_name=attr_select.value,
+                        attribute_condition=condition_select.value,
+                        attribute_value=value_input.value,
+                        realm=realm_val,
+                        activate=activate_cb.value,
+                        deny=deny_cb.value,
+                        assign_to_group=group_select.value,
+                        notify_job=notify_job_cb.value,
+                        notify_deletion=notify_deletion_cb.value,
+                    ):
+                        dialog.close()
+                        ui.navigate.to("/admin/rules")
+
+                ui.button("Save").classes("default-style").props(
+                    "color=black flat"
+                ).on("click", do_update)
 
         dialog.open()
 
@@ -403,17 +435,15 @@ def edit_rule_dialog(rule: dict, page: callable) -> None:
 def _do_update_rule(**kwargs) -> bool:
     """
     Helper to update a rule from dialog values. Returns True on success.
+
+    Assumes realm has already been validated non-empty by the caller, which
+    has the ui.select to attach an inline error to; this is a defensive
+    fallback only, not user-facing.
     """
 
     realm_val = kwargs["realm"]
 
     if not realm_val or (isinstance(realm_val, list) and len(realm_val) == 0):
-        with ui.dialog().props('aria-label="Realm required to update rule"') as warn_dlg, ui.card().classes("p-6"):
-            ui.label("Realm required").classes("text-h6")
-            ui.label("At least one realm must be selected.")
-            ui.button("OK", on_click=warn_dlg.close).classes("mt-4 self-end")
-        warn_dlg.open()
-
         return False
 
     data = {
