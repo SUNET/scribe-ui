@@ -717,15 +717,77 @@ theme_styles = """
           Putting it in the first layer, theme, makes it win.
 
        Measured on the collapsed/expanded drawer button: without this the computed
-       style stays outline: none 0px; with it, outline: solid 3px. */
+       style stays outline: none 0px; with it, outline: solid 3px.
+
+       Two exclusions were added after the rule shipped, both found by testing
+       the running page rather than by reading this rule:
+
+       -- [tabindex] excludes tabindex="-1" (the closing :not()). That value is
+          used for two different things: a control reachable by script but
+          skipped by Tab, and a plain landmark used only as a fragment/script
+          focus target -- see the skip-link target in common.py. The second is
+          not a control, and a ring around one is a box with nothing in it to
+          explain why it's there, which is exactly what a PR reviewer flagged
+          against that target. The bare :focus-visible on the first line needs
+          the same exclusion: activating the skip link focuses that target from
+          a keyboard action, and the browser carries the keyboard modality over,
+          so it matched :focus-visible on arrival same as anything else would.
+          Measured: without :not() here, the skip-link target still took the
+          ring even though [tabindex] on its own line already excluded it.
+
+       -- input, textarea and [contenteditable] are excluded too, and handled
+          by their own rule just below instead. Reported directly: clicking a
+          text input with the mouse left it ringed, and so did a field that
+          autofocuses with no interaction at all (the encryption passphrase
+          dialog). Measured cause: the browser's own :focus-visible heuristic,
+          which correctly tells keyboard from pointer focus for buttons and
+          links, does not do the same job for text-entry controls -- a plain
+          mouse click still matches it there. CSS alone cannot tell those cases
+          apart for text entry, so this rule leaves them out and the modality
+          script below decides for them instead. */
     @layer theme {
-        :focus-visible,
-        a:focus-visible,
-        .q-btn:focus-visible,
-        .q-item:focus-visible,
-        .q-checkbox:focus-visible,
-        .q-toggle:focus-visible,
-        [tabindex]:focus-visible {
+        :is(
+            :focus-visible,
+            a:focus-visible,
+            .q-btn:focus-visible,
+            .q-item:focus-visible,
+            .q-checkbox:focus-visible,
+            .q-toggle:focus-visible,
+            [tabindex]:focus-visible
+        ):not([tabindex="-1"]):not(input):not(textarea):not([contenteditable]) {
+            outline: 3px solid var(--color-brand-primary) !important;
+            outline-offset: 2px !important;
+        }
+    }
+
+    /* Text inputs, textareas and contenteditable, carved out above and
+       handled here instead -- see the exclusion note in the rule above for
+       why. scribe-user-is-tabbing is set by the script at the bottom of this
+       file from a Tab keydown and cleared from mousedown/pointerdown, so the
+       ring only appears once the browser has actually seen a keyboard.
+
+       The outline: none just below is deliberately not gated and not
+       !important: Quasar's own inputs already reset their outline in Quasar's
+       base styles, so this changes nothing for a q-field, but a plain
+       [contenteditable] built without Quasar has no such reset and would
+       otherwise fall back to the browser's own default focus outline, which
+       is not gated on anything. The transcript editor's own contenteditable
+       (utils/transcript_editor.py/.js) already has its own focus-visible
+       rules for word-marking (see below) and was not re-measured here -- this
+       is precautionary for [contenteditable] in general, not a claim about
+       what that element does today. Un-!important, so the gated rule after it
+       still wins whenever scribe-user-is-tabbing applies. */
+    @layer theme {
+        input:focus-visible,
+        textarea:focus-visible,
+        [contenteditable]:focus-visible {
+            outline: none;
+        }
+    }
+    @layer theme {
+        body.scribe-user-is-tabbing input:focus-visible,
+        body.scribe-user-is-tabbing textarea:focus-visible,
+        body.scribe-user-is-tabbing [contenteditable]:focus-visible {
             outline: 3px solid var(--color-brand-primary) !important;
             outline-offset: 2px !important;
         }
@@ -2003,6 +2065,26 @@ theme_styles = """
         color: var(--color-help-support-icon);
     }
 </style>
+<script>
+if (!window._scribeFocusModality) {
+    window._scribeFocusModality = true;
+    // Capture phase so a component that stops propagation on its own
+    // container still lets the document see the keydown/pointerdown.
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Tab') {
+            document.body.classList.add('scribe-user-is-tabbing');
+        }
+    }, true);
+    document.addEventListener('mousedown', function () {
+        document.body.classList.remove('scribe-user-is-tabbing');
+    }, true);
+    document.addEventListener('pointerdown', function (e) {
+        if (e.pointerType !== 'keyboard') {
+            document.body.classList.remove('scribe-user-is-tabbing');
+        }
+    }, true);
+}
+</script>
 """
 
 # Keep backward-compatible alias so existing `from utils.common import default_styles`

@@ -734,14 +734,28 @@ def page_init(
     #
     # NiceGUI already gives <main class="q-page"> an id of its own (c2, c7, ...)
     # and uses it to address the element when patching the DOM, so that id must
-    # not be overwritten. A dedicated empty anchor is used instead. tabindex=-1
+    # not be overwritten. A dedicated element is used instead. tabindex=-1
     # lets it receive focus from the fragment jump without being a tab stop of
     # its own; the next Tab continues from here into the page content.
     #
     # It is placed before the announcement banners on purpose, so that skipping
     # the navigation does not also skip a service message.
-    ui.element("div").props('id=main-content tabindex=-1').style(
+    #
+    # aria-label was added after review feedback pointed out that landing on
+    # an empty, unlabelled element reads as an "unexplained empty box" once
+    # focus is visible. It now carries the page name, so arriving here reads
+    # as something rather than silence. The visible box the same feedback
+    # flagged is fixed on the CSS side too: the global focus ring in
+    # styles.py now excludes tabindex="-1" from its selector, so our own ring
+    # never draws here. outline: none below is needed in addition to that --
+    # measured after the styles.py fix, the browser's own default focus
+    # outline still showed on arrival (outline: auto), since excluding this
+    # element from our rule only stops our ring, not the browser's.
+    ui.element("div").props(
+        f'id=main-content tabindex=-1 aria-label="Main content{header_text}"'
+    ).style(
         "position: absolute; width: 0; height: 0; overflow: hidden;"
+        " outline: none;"
     )
 
     _show_announcement_banners()
