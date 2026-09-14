@@ -32,7 +32,7 @@ settings = get_settings()
 
 
 def show_user_token() -> None:
-    with ui.dialog() as dialog:
+    with ui.dialog().props('aria-label="User token"') as dialog:
         with ui.card().style("max-width: 50%; width: 500px; min-width: 500px;"):
             ui.label("User token").classes("text-2xl font-bold")
             ui.label("Your user token is used to authenticate API requests.").classes(
@@ -55,7 +55,7 @@ def create() -> None:
         """
         User page for managing user settings and information.
         """
-        page_init(use_drawer=True)
+        page_init(use_drawer=True, title="User settings")
         userdata = get_user_data()
 
         ui.add_head_html(default_styles)
@@ -86,12 +86,34 @@ def create() -> None:
                         ui.label("Username").classes(
                             "font-medium text-theme-secondary"
                         ).style("min-width: 140px;")
-                        ui.label(userdata["username"]).classes(
-                            "text-theme-primary"
-                        ).style("cursor: pointer; text-decoration: underline;").on(
-                            "click", lambda: show_user_token()
-                        )
-                        ui.tooltip("Click to view your API token")
+                        # A ui.label with an on-click handler renders as a
+                        # div: no role, not in the Tab order, and Enter/Space
+                        # do nothing to it, so the API token was reachable by
+                        # mouse only (WCAG 2.1.1). ui.button gives the control
+                        # what a label structurally cannot: a button role, a
+                        # Tab stop, and Enter/Space activation. Its own
+                        # default chrome (padding, border, min-height) is
+                        # reset in styles.py under .user-token-btn, so it
+                        # still reads as the underlined username it replaces,
+                        # not a boxed button.
+                        # color=None, not left at ui.button's own default
+                        # of "primary": that default adds Quasar's own
+                        # "text-primary" class, painting the button
+                        # #5898d4 (Quasar's JS config, unrelated to either
+                        # theme) ahead of the text-theme-primary class
+                        # below -- measured with axe, which is how this
+                        # was caught even though the button visibly still
+                        # looked underlined and in-place. color=None adds
+                        # no Quasar colour class at all, leaving
+                        # text-theme-primary as the only rule painting it.
+                        with ui.button(
+                            userdata["username"],
+                            on_click=show_user_token,
+                            color=None,
+                        ).props("flat no-caps").classes(
+                            "text-theme-primary user-token-btn"
+                        ):
+                            ui.tooltip("Click to view your API token")
 
                     with ui.row().classes("items-center gap-3"):
                         ui.icon("fingerprint").style("font-size: 20px;")
@@ -124,10 +146,21 @@ def create() -> None:
 
                 with ui.row().classes("items-center gap-3 mt-2 mb-6"):
                     ui.icon("email").style("font-size: 20px;")
+                    # The "Email" heading two rows above is a section title,
+                    # not this field's label -- nothing connected the two,
+                    # and the placeholder was the reader's own current
+                    # address, which describes nothing about what the field
+                    # is for (WCAG 3.3.2). A real label fixes both: it is
+                    # the field's accessible name, and it reads as an
+                    # instruction on its own. type=email and
+                    # autocomplete=email were also missing; value already
+                    # covers what the placeholder used to.
                     email = ui.input(
-                        placeholder=current_email,
+                        "Email address for notifications",
                         value=current_email,
-                    ).style("min-width: 300px;")
+                    ).props("type=email autocomplete=email").style(
+                        "min-width: 300px;"
+                    )
 
                     save = ui.button("Test and save")
                     save.props("color=black flat")

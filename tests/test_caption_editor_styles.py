@@ -280,6 +280,29 @@ class TestSubtitleTimingInputWidth:
         assert "width" not in applied
 
 
+class TestTimingIsNotText:
+    """
+    A selection dragged across captions selects words. The timing row is
+    not one of them, and painting it as selected reads as text about to go
+    with them -- which it never is: a cross-block delete acts on the
+    blocks' own text alone (see selectionSpan in transcript_editor.js).
+    """
+
+    def test_neither_timing_row_takes_the_highlight(self):
+        assert effective(".transcript-time")["user-select"] == "none"
+        assert effective(".transcript-subtitle-time")["user-select"] == "none"
+
+    def test_the_field_does_not_paint_while_a_selection_passes_it(self):
+        """
+        A document selection that only encloses an input still paints the
+        input's own value as selected -- so the field opts out too, and
+        opts back in on focus alone.
+        """
+
+        assert effective(".transcript-time-input")["user-select"] == "none"
+        assert effective(".transcript-time-input:focus")["user-select"] == "text"
+
+
 class TestSubtitleMarginAlignment:
     """
     The margin is a column, the index heading it at the same height as the

@@ -62,7 +62,7 @@ def create() -> None:
         """
         Display the result of the transcription job.
         """
-        page_init(use_drawer=True)
+        page_init(use_drawer=True, title="Editor")
 
         try:
             UUID(uuid)
@@ -686,7 +686,22 @@ def create() -> None:
                                     "Follow audio" if following_words else "Autoscroll",
                                     value=editor.autoscroll,
                                 ).props("dense").classes("editor-switch")
-                                follow.on("click", save_follow)
+                                # Click only fires from a mouse. Quasar's
+                                # QToggle answers Enter/Space with its own
+                                # internal onClick(), which only emits
+                                # update:model-value -- never a DOM click.
+                                # Measured: with "click" here, Enter/Space
+                                # visibly flips the switch but save_follow
+                                # never runs, so nothing is persisted and
+                                # nothing downstream updates -- the switch
+                                # was a mouse-only control despite looking
+                                # like any other. update:model-value fires
+                                # for a mouse click too, with the same
+                                # event.sender.value, so save_follow needs
+                                # no change of its own. The sensitivity
+                                # toggle below already listens on
+                                # update:model-value for the same reason.
+                                follow.on("update:model-value", save_follow)
 
                                 if following_words:
                                     with follow:
@@ -711,7 +726,14 @@ def create() -> None:
                                         "Subtitle overlay",
                                         value=editor.show_subtitle_overlay,
                                     ).props("dense").classes("editor-switch")
-                                    overlay_switch.on("click", save_show_overlay)
+                                    # Same reason as the Follow audio /
+                                    # Autoscroll switch above: "click" is
+                                    # mouse-only on a QToggle, and
+                                    # update:model-value fires for a
+                                    # keyboard activation too.
+                                    overlay_switch.on(
+                                        "update:model-value", save_show_overlay
+                                    )
                                     with overlay_switch:
                                         ui.tooltip(
                                             "Show captions as an overlay on the "
@@ -733,7 +755,13 @@ def create() -> None:
                                         "Timeline",
                                         value=editor.show_timeline,
                                     ).props("dense").classes("editor-switch")
-                                    timeline_switch.on("click", save_show_timeline)
+                                    # Same reason as the switches above:
+                                    # "click" is mouse-only on a QToggle,
+                                    # and update:model-value fires for a
+                                    # keyboard activation too.
+                                    timeline_switch.on(
+                                        "update:model-value", save_show_timeline
+                                    )
                                     with timeline_switch:
                                         ui.tooltip(
                                             "Show the caption timeline under "
@@ -756,7 +784,13 @@ def create() -> None:
                                         "My edits",
                                         value=editor.show_my_edits,
                                     ).props("dense").classes("editor-switch edits-switch")
-                                    edits_switch.on("click", save_show_edits)
+                                    # Same reason as the switches above:
+                                    # "click" is mouse-only on a QToggle,
+                                    # and update:model-value fires for a
+                                    # keyboard activation too.
+                                    edits_switch.on(
+                                        "update:model-value", save_show_edits
+                                    )
                                     with edits_switch:
                                         ui.tooltip(
                                             "Highlight words you have added or "

@@ -48,7 +48,7 @@ def users() -> None:
     """
     Page to show all users.
     """
-    page_init(use_drawer=True)
+    page_init(use_drawer=True, title="Users")
 
     if not get_admin_status():
         ui.navigate.to("/home")
@@ -161,7 +161,7 @@ def users() -> None:
 
                 usernames = ", ".join(u["username"] for u in selected)
 
-                with ui.dialog() as dialog:
+                with ui.dialog().props('aria-label="Remove users"') as dialog:
                     with ui.card():
                         ui.label("Remove users").classes("text-h6")
                         ui.label(

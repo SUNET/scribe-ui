@@ -43,7 +43,7 @@ async def analytics() -> None:
     Page view analytics dashboard. BOFH only.
     """
 
-    page_init(use_drawer=True)
+    page_init(use_drawer=True, title="Analytics")
     # Plotly draws its charts in one theme's colours server-side and
     # cannot restyle itself, so this page reloads when the OS theme
     # changes. Only pages with charts do -- see reload_on_theme_change.

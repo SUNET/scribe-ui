@@ -56,6 +56,10 @@ async def index(request: Request) -> None:
     Index page with login.
     """
 
+    # This page does not go through page_init, so it sets its own title.
+    # WCAG 2.4.2.
+    ui.page_title(f"{settings.TAB_TITLE} - Sign in")
+
     ui.add_head_html(default_styles)
 
     # The backend's OIDC callback redirects here with a one-time code, not
@@ -148,7 +152,7 @@ async def index(request: Request) -> None:
         # prompt for password. If the user has no encryption settings, prompt
         # to set a password.
         if not user_data["encryption_settings"]:
-            with ui.dialog() as dialog:
+            with ui.dialog().props('aria-label="Set your encryption passphrase"') as dialog:
                 with ui.card():
                     ui.label("Set your encryption passphrase").classes("text-h6")
                     ui.label(
@@ -201,7 +205,7 @@ async def index(request: Request) -> None:
                     ).props("color=black").style("margin-top: 10px;")
                 dialog.open()
         else:
-            with ui.dialog() as dialog:
+            with ui.dialog().props('aria-label="Enter your encryption passphrase"') as dialog:
                 with ui.card():
                     ui.label("Enter your encryption passphrase").classes("text-h6")
                     password_input = ui.input(
@@ -232,7 +236,7 @@ async def index(request: Request) -> None:
                             )
 
                     def help_password() -> None:
-                        with ui.dialog() as help_dialog:
+                        with ui.dialog().props('aria-label="Help with Encryption Passphrase"') as help_dialog:
                             with ui.card():
                                 ui.label("Help with Encryption Passphrase").classes(
                                     "text-h6"
@@ -280,7 +284,23 @@ async def index(request: Request) -> None:
                 "width: 500px; max-width: 90%; padding: 40px; border: 0; box-shadow: none;"
             ):
                 with ui.column().classes("w-full items-center gap-4"):
-                    ui.image(f"static/{settings.LOGO_LANDING}").style(
+                    # Decorative: the welcome text right below already
+                    # names the service (settings.LANDING_TEXT, "Welcome to
+                    # Sunet Scribe" by default), so the logo adds nothing a
+                    # screen reader user would otherwise miss. NiceGUI's
+                    # ui.image only takes a source, not alt text -- it has
+                    # to be set through .props() instead (WCAG 1.1.1).
+                    # aria-hidden is needed alongside alt="": NiceGUI wraps
+                    # the real <img> in its own div carrying role="img",
+                    # and an empty alt on the inner element does not by
+                    # itself say the outer one is decorative too -- axe
+                    # still flagged the wrapper as an unnamed image.
+                    # aria-hidden removes the wrapper from the accessible
+                    # tree outright, which is what "decorative" actually
+                    # means here. Measured with axe's role-img-alt rule.
+                    ui.image(f"static/{settings.LOGO_LANDING}").props(
+                        'alt="" aria-hidden="true"'
+                    ).style(
                         f"max-width: {settings.LOGO_LANDING_WIDTH}px; height: auto;"
                     )
 
