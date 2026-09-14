@@ -31,6 +31,10 @@ def create() -> None:
         Status page showing health of backend, database, and frontend.
         """
 
+        # This page does not go through page_init, so it sets its own
+        # title. WCAG 2.4.2.
+        ui.page_title(f"{settings.TAB_TITLE} - System status")
+
         ui.add_head_html(default_styles)
 
         with ui.column().classes("w-full items-center").style("padding: 40px;"):

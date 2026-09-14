@@ -87,7 +87,7 @@ def create_rule_dialog(page: callable) -> None:
             if d.strip() and "." in d.strip()
         ]
 
-    with ui.dialog() as dialog:
+    with ui.dialog().props('aria-label="Create provisioning rule"') as dialog:
         with ui.card().style("width: 650px; max-width: 90vw;"):
             ui.label("Create provisioning rule").classes("text-2xl font-bold")
 
@@ -164,26 +164,45 @@ def create_rule_dialog(page: callable) -> None:
                 ui.button("Cancel").classes("button-close").props(
                     "color=black flat"
                 ).on("click", lambda: dialog.close())
+                def do_create() -> None:
+                    # Validated here, against the field itself, rather than
+                    # inside _do_create_rule: that helper only ever sees the
+                    # already-read-out .value, not the ui.select, and this is
+                    # the one place with the element to attach the error to
+                    # and move focus to (3.3.1). A second ui.dialog stacked on
+                    # top of this one -- the previous approach -- named the
+                    # problem without identifying which field it was in, and
+                    # its own focus handling on close was unverified.
+                    realm_val = realm_input.value
+                    if not realm_val or (
+                        isinstance(realm_val, list) and len(realm_val) == 0
+                    ):
+                        realm_input.props(
+                            'error error-message="At least one realm must '
+                            'be selected."'
+                        )
+                        realm_input.run_method("focus")
+                        return
+                    realm_input.props(remove="error error-message")
+
+                    if _do_create_rule(
+                        name=name_input.value,
+                        attribute_name=attr_select.value,
+                        attribute_condition=condition_select.value,
+                        attribute_value=value_input.value,
+                        realm=realm_val,
+                        activate=activate_cb.value,
+                        deny=deny_cb.value,
+                        assign_to_group=group_select.value,
+                        notify_job=notify_job_cb.value,
+                        notify_deletion=notify_deletion_cb.value,
+                    ):
+                        dialog.close()
+                        ui.navigate.to("/admin/rules")
+
                 ui.button("Create").classes("default-style").props(
                     "color=black flat"
-                ).on(
-                    "click",
-                    lambda: (
-                        _do_create_rule(
-                            name=name_input.value,
-                            attribute_name=attr_select.value,
-                            attribute_condition=condition_select.value,
-                            attribute_value=value_input.value,
-                            realm=realm_input.value,
-                            activate=activate_cb.value,
-                            deny=deny_cb.value,
-                            assign_to_group=group_select.value,
-                            notify_job=notify_job_cb.value,
-                            notify_deletion=notify_deletion_cb.value,
-                        )
-                        and (dialog.close(), ui.navigate.to("/admin/rules"))
-                    ),
-                )
+                ).on("click", do_create)
 
         dialog.open()
 
@@ -191,17 +210,15 @@ def create_rule_dialog(page: callable) -> None:
 def _do_create_rule(**kwargs) -> bool:
     """
     Helper to create a rule from dialog values. Returns True on success.
+
+    Assumes realm has already been validated non-empty by the caller, which
+    has the ui.select to attach an inline error to; this is a defensive
+    fallback only, not user-facing.
     """
 
     realm_val = kwargs["realm"]
 
     if not realm_val or (isinstance(realm_val, list) and len(realm_val) == 0):
-        with ui.dialog() as warn_dlg, ui.card().classes("p-6"):
-            ui.label("Realm required").classes("text-h6")
-            ui.label("At least one realm must be selected.")
-            ui.button("OK", on_click=warn_dlg.close).classes("mt-4 self-end")
-        warn_dlg.open()
-
         return False
 
     data = {
@@ -225,7 +242,7 @@ def _do_create_rule(**kwargs) -> bool:
         ui.notify("Rule created successfully.", color="positive")
         return True
 
-    ui.notify("Failed to create rule.", color="negative")
+    ui.notify("Failed to create rule.", color="negative", timeout=None, close_button="Close")
 
     return False
 
@@ -259,7 +276,7 @@ def edit_rule_dialog(rule: dict, page: callable) -> None:
             if d.strip() and "." in d.strip()
         ]
 
-    with ui.dialog() as dialog:
+    with ui.dialog().props('aria-label="Edit provisioning rule"') as dialog:
         with ui.card().style("width: 650px; max-width: 90vw;"):
             ui.label("Edit provisioning rule").classes("text-2xl font-bold")
 
@@ -377,25 +394,40 @@ def edit_rule_dialog(rule: dict, page: callable) -> None:
                 ui.button("Cancel").classes("button-close").props(
                     "color=black flat"
                 ).on("click", lambda: dialog.close())
-                ui.button("Save").classes("default-style").props("color=black flat").on(
-                    "click",
-                    lambda: (
-                        _do_update_rule(
-                            rule_id=rule["id"],
-                            name=name_input.value,
-                            attribute_name=attr_select.value,
-                            attribute_condition=condition_select.value,
-                            attribute_value=value_input.value,
-                            realm=realm_input.value,
-                            activate=activate_cb.value,
-                            deny=deny_cb.value,
-                            assign_to_group=group_select.value,
-                            notify_job=notify_job_cb.value,
-                            notify_deletion=notify_deletion_cb.value,
+                def do_update() -> None:
+                    # See do_create's comment above -- same reasoning, same
+                    # fix, for the edit dialog's own realm_input.
+                    realm_val = realm_input.value
+                    if not realm_val or (
+                        isinstance(realm_val, list) and len(realm_val) == 0
+                    ):
+                        realm_input.props(
+                            'error error-message="At least one realm must '
+                            'be selected."'
                         )
-                        and (dialog.close(), ui.navigate.to("/admin/rules"))
-                    ),
-                )
+                        realm_input.run_method("focus")
+                        return
+                    realm_input.props(remove="error error-message")
+
+                    if _do_update_rule(
+                        rule_id=rule["id"],
+                        name=name_input.value,
+                        attribute_name=attr_select.value,
+                        attribute_condition=condition_select.value,
+                        attribute_value=value_input.value,
+                        realm=realm_val,
+                        activate=activate_cb.value,
+                        deny=deny_cb.value,
+                        assign_to_group=group_select.value,
+                        notify_job=notify_job_cb.value,
+                        notify_deletion=notify_deletion_cb.value,
+                    ):
+                        dialog.close()
+                        ui.navigate.to("/admin/rules")
+
+                ui.button("Save").classes("default-style").props(
+                    "color=black flat"
+                ).on("click", do_update)
 
         dialog.open()
 
@@ -403,17 +435,15 @@ def edit_rule_dialog(rule: dict, page: callable) -> None:
 def _do_update_rule(**kwargs) -> bool:
     """
     Helper to update a rule from dialog values. Returns True on success.
+
+    Assumes realm has already been validated non-empty by the caller, which
+    has the ui.select to attach an inline error to; this is a defensive
+    fallback only, not user-facing.
     """
 
     realm_val = kwargs["realm"]
 
     if not realm_val or (isinstance(realm_val, list) and len(realm_val) == 0):
-        with ui.dialog() as warn_dlg, ui.card().classes("p-6"):
-            ui.label("Realm required").classes("text-h6")
-            ui.label("At least one realm must be selected.")
-            ui.button("OK", on_click=warn_dlg.close).classes("mt-4 self-end")
-        warn_dlg.open()
-
         return False
 
     data = {
@@ -435,7 +465,7 @@ def _do_update_rule(**kwargs) -> bool:
         ui.notify("Rule updated successfully.", color="positive")
         return True
 
-    ui.notify("Failed to update rule.", color="negative")
+    ui.notify("Failed to update rule.", color="negative", timeout=None, close_button="Close")
 
     return False
 
@@ -447,7 +477,7 @@ def delete_rule_dialog(rule: dict) -> None:
 
     ui.dark_mode(app.storage.user.get("dark_mode", None))
 
-    with ui.dialog() as dialog:
+    with ui.dialog().props('aria-label="Delete rule"') as dialog:
         with ui.card().style("width: 400px; max-width: 90vw;"):
             ui.label("Delete rule").classes("text-2xl font-bold")
             ui.label(f'Are you sure you want to delete rule "{rule["name"]}"?').classes(
@@ -477,7 +507,7 @@ def _do_delete_rule(rule_id: int) -> None:
     if rule_delete(rule_id):
         ui.notify("Rule deleted.", color="positive")
     else:
-        ui.notify("Failed to delete rule.", color="negative")
+        ui.notify("Failed to delete rule.", color="negative", timeout=None, close_button="Close")
 
 
 def add_attribute_dialog() -> None:
@@ -486,7 +516,7 @@ def add_attribute_dialog() -> None:
     """
     ui.dark_mode(app.storage.user.get("dark_mode", None))
 
-    with ui.dialog() as dialog:
+    with ui.dialog().props('aria-label="Add provisioning attribute"') as dialog:
         with ui.card().style("width: 450px; max-width: 90vw;"):
             ui.label("Add provisioning attribute").classes("text-2xl font-bold")
             name_input = ui.input("Attribute name").classes("w-full").props("outlined")
@@ -526,7 +556,7 @@ def _do_add_attribute(name: str, description: str, example: str) -> None:
     if result:
         ui.notify("Attribute added.", color="positive")
     else:
-        ui.notify("Failed to add attribute. It may already exist.", color="negative")
+        ui.notify("Failed to add attribute. It may already exist.", color="negative", timeout=None, close_button="Close")
 
 
 def _evaluate_condition(condition: str, actual_value: str, expected_value: str) -> bool:
@@ -576,7 +606,7 @@ def test_rules_dialog(selected_rules: list[dict]) -> None:
     expected = rule.get("attribute_value", "")
     cond_label = CONDITION_OPTIONS.get(condition.lower(), condition)
 
-    with ui.dialog() as dialog, ui.card().style("min-width: 600px; max-width: 800px;"):
+    with ui.dialog().props('aria-label="Test rule"') as dialog, ui.card().style("min-width: 600px; max-width: 800px;"):
         ui.label("Test rule").classes("text-xl font-bold")
         ui.label(f"{rule.get('name', '')}").classes("text-theme-muted")
         ui.label(f'{attr_name} {cond_label} "{expected}"').classes(
@@ -639,7 +669,7 @@ def test_all_rules_dialog() -> None:
     if all_groups:
         group_names = {g["id"]: g["name"] for g in all_groups}
 
-    with ui.dialog() as dialog, ui.card().style("min-width: 600px; max-width: 800px;"):
+    with ui.dialog().props('aria-label="Simulate provisioning"') as dialog, ui.card().style("min-width: 600px; max-width: 800px;"):
         ui.label("Simulate provisioning").classes("text-xl font-bold")
         ui.label(
             "Enter attribute values to simulate what would happen when a user logs in."
@@ -674,7 +704,7 @@ def test_all_rules_dialog() -> None:
                     ui.button(
                         icon="close",
                         on_click=lambda r=row: remove_attr_row(r),
-                    ).props("flat round dense color=grey-6 size=sm")
+                    ).props("flat round dense color=grey-6 size=sm aria-label='Remove attribute row'")
             attr_rows.append(row)
 
         def remove_attr_row(row: dict) -> None:
@@ -814,7 +844,7 @@ def _show_rules_help() -> None:
     Show a help dialog explaining how onboarding rules work.
     """
 
-    with ui.dialog() as dialog, ui.card().style(
+    with ui.dialog().props('aria-label="How provisioning rules work"') as dialog, ui.card().style(
         "min-width: 550px; max-width: 700px; padding: 32px;"
     ):
         ui.label("How provisioning rules work").classes("text-2xl font-bold mb-4")
@@ -911,7 +941,7 @@ def rules_page() -> None:
     Onboarding management page.
     """
 
-    page_init(use_drawer=True)
+    page_init(use_drawer=True, title="Provisioning rules")
 
     if not get_admin_status():
         ui.navigate.to("/home")
@@ -924,7 +954,7 @@ def rules_page() -> None:
     ):
         with ui.row().classes("items-center gap-2"):
             ui.label("User provisioning").classes("text-3xl font-bold")
-            ui.button(icon="help_outline").props("flat round dense color=grey-7").on(
+            ui.button(icon="help_outline").props("flat round dense color=grey-7 aria-label='Show provisioning rules help'").on(
                 "click", lambda: _show_rules_help()
             )
         with ui.element("div").style("display: flex; gap: 10px;"):
@@ -1033,7 +1063,7 @@ def rules_page() -> None:
         )
 
         with rules_table.add_slot("top-right"):
-            with ui.input(placeholder="Search").props("type=search").bind_value(
+            with ui.input(placeholder="Search").props('type=search aria-label="Search rules"').bind_value(
                 rules_table, "filter"
             ).add_slot("append"):
                 ui.icon("search")
@@ -1044,6 +1074,7 @@ def rules_page() -> None:
             <q-td :props="props">
                 <q-toggle
                     :model-value="props.row.enabled"
+                    :aria-label="'Enabled: ' + props.row.name"
                     @update:model-value="val => $parent.$emit('toggle_enabled', {id: props.row.id, enabled: val})"
                     color="positive"
                     :dark="$q.dark.isActive"
@@ -1062,9 +1093,18 @@ def rules_page() -> None:
                     f"Rule {'enabled' if new_enabled else 'disabled'}.",
                     color="positive",
                 )
-                ui.navigate.to("/admin/rules")
+                # Update the row in place rather than a full-page navigate:
+                # a whole-page reload for flipping one switch is an
+                # unannounced context change (3.2.2) and throws focus back
+                # to the top of the page, away from the switch just used.
+                for rule in rules_list:
+                    if rule["id"] == rule_id:
+                        rule["enabled"] = new_enabled
+                        rule["enabled_label"] = "Yes" if new_enabled else "No"
+                        break
+                rules_table.update()
             else:
-                ui.notify("Failed to update rule.", color="negative")
+                ui.notify("Failed to update rule.", color="negative", timeout=None, close_button="Close")
 
         rules_table.on("toggle_enabled", handle_toggle)
 
@@ -1074,7 +1114,11 @@ def rules_page() -> None:
             <q-td :props="props">
                 <a
                     class="cursor-pointer text-primary"
+                    tabindex="0"
+                    role="button"
                     @click="$parent.$emit('edit_rule', props.row)"
+                    @keydown.enter="$parent.$emit('edit_rule', props.row)"
+                    @keydown.space.prevent="$parent.$emit('edit_rule', props.row)"
                     style="text-decoration: underline;"
                 >
                     {{ props.row.name }}
@@ -1174,6 +1218,7 @@ def rules_page() -> None:
                 r"""
                 <q-td :props="props">
                     <q-btn flat dense round icon="delete" color="negative" size="sm"
+                        :aria-label="'Delete attribute ' + props.row.name"
                         @click="$parent.$emit('delete_attr', props.row)"
                     >
                         <q-tooltip>Delete attribute</q-tooltip>
@@ -1183,9 +1228,43 @@ def rules_page() -> None:
             )
 
             def handle_delete_attr(msg) -> None:
-                _do_delete_attribute(msg.args)
+                delete_attribute_dialog(msg.args)
 
             attrs_table.on("delete_attr", handle_delete_attr)
+
+
+def delete_attribute_dialog(attr: dict) -> None:
+    """
+    Show confirmation dialog to delete a provisioning attribute.
+
+    Deleting an attribute used to happen straight from the table's own
+    delete icon with no confirmation at all, unlike every other deletion in
+    the service (rules, announcements, users) -- the same action behaved
+    differently depending on where you triggered it from. Mirrors
+    delete_rule_dialog above.
+    """
+
+    ui.dark_mode(app.storage.user.get("dark_mode", None))
+
+    with ui.dialog().props('aria-label="Delete attribute"') as dialog:
+        with ui.card().style("width: 400px; max-width: 90vw;"):
+            ui.label("Delete attribute").classes("text-2xl font-bold")
+            ui.label(
+                f'Are you sure you want to delete attribute "{attr["name"]}"?'
+            ).classes("text-body1")
+
+            with ui.row().style("justify-content: flex-end; width: 100%;"):
+                ui.button("Cancel").classes("button-close").props(
+                    "color=black flat"
+                ).on("click", lambda: dialog.close())
+                ui.button("Delete").classes("delete-style").props("color=red flat").on(
+                    "click",
+                    lambda: (
+                        _do_delete_attribute(attr),
+                        dialog.close(),
+                    ),
+                )
+        dialog.open()
 
 
 def _do_delete_attribute(attr: dict) -> None:

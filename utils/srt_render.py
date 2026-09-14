@@ -241,7 +241,7 @@ class RenderMixin:
         error_count = sum(1 for entry in issues if entry["errors"])
         warning_count = len(issues) - error_count
 
-        with ui.dialog() as dialog:
+        with ui.dialog().props('aria-label="Subtitle validation"') as dialog:
             with ui.card().classes("p-6").style(
                 "max-width: 700px; min-width: 500px; max-height: 90vh; overflow-y: auto;"
             ):
@@ -249,7 +249,7 @@ class RenderMixin:
                 with ui.row().classes("w-full items-center justify-between mb-4"):
                     ui.label("Subtitle validation").classes("text-h5 font-bold")
                     ui.button(icon="close", on_click=dialog.close).props(
-                        "flat round dense color=grey-7"
+                        "flat round dense color=grey-7 aria-label='Close validation dialog'"
                     )
 
                 ui.separator().classes("mb-4")
@@ -453,12 +453,13 @@ class RenderMixin:
         """
 
         shortcut_groups = self.keyboard_shortcut_groups()
+        shortcut_title = self.keyboard_shortcuts_title()
 
-        with ui.dialog() as dialog:
+        with ui.dialog().props(f'aria-label="{shortcut_title}"') as dialog:
             with ui.card().classes("w-2/3 max-w-2xl").style(
                 "padding: 24px; max-height: 90vh; overflow-y: auto;"
             ):
-                ui.label(self.keyboard_shortcuts_title()).classes(
+                ui.label(shortcut_title).classes(
                     "text-h5 mb-4 font-bold"
                 )
 

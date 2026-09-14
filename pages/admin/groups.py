@@ -50,7 +50,7 @@ def create_group_dialog(page: callable) -> None:
     Show a dialog to create a new group.
     """
 
-    with ui.dialog() as create_group_dialog:
+    with ui.dialog().props('aria-label="Create new group"') as create_group_dialog:
         with ui.card().style("width: 500px; max-width: 90vw;"):
             ui.label("Create new group").classes("text-2xl font-bold")
             name_input = ui.input("Group name").classes("w-full").props("outlined")
@@ -65,28 +65,42 @@ def create_group_dialog(page: callable) -> None:
                 .props("outlined type=number min=0")
             )
 
+            def do_create() -> None:
+                # int(quota.value) raised a bare, unshown ValueError on
+                # anything int() rejects -- a decimal, or the field left
+                # empty -- and min=0 in props is decorative only, not
+                # enforced. The user saw the dialog simply not close, with
+                # no indication why (3.3.1).
+                try:
+                    quota_seconds = int(quota.value) * 60 if quota.value else 0
+                except ValueError:
+                    quota.props(
+                        'error error-message="Monthly transcription limit '
+                        'must be a whole number of minutes."'
+                    )
+                    quota.run_method("focus")
+                    return
+                quota.props(remove="error error-message")
+
+                httpx.post(
+                    settings.API_URL + "/api/v1/admin/groups",
+                    headers=get_auth_header(),
+                    json={
+                        "name": name_input.value,
+                        "description": description_input.value,
+                        "quota_seconds": quota_seconds,
+                    },
+                )
+                create_group_dialog.close()
+                ui.navigate.to("/admin")
+
             with ui.row().style("justify-content: flex-end; width: 100%;"):
                 ui.button("Cancel").classes("button-close").props(
                     "color=black flat"
                 ).on("click", lambda: create_group_dialog.close())
                 ui.button("Create").classes("default-style").props(
                     "color=black flat"
-                ).on(
-                    "click",
-                    lambda: (
-                        httpx.post(
-                            settings.API_URL + "/api/v1/admin/groups",
-                            headers=get_auth_header(),
-                            json={
-                                "name": name_input.value,
-                                "description": description_input.value,
-                                "quota_seconds": int(quota.value) * 60,
-                            },
-                        ),
-                        create_group_dialog.close(),
-                        ui.navigate.to("/admin"),
-                    ),
-                )
+                ).on("click", do_create)
 
         create_group_dialog.open()
 
@@ -97,7 +111,7 @@ def admin_dialog(users: list, group_id: str) -> None:
     administrator or remove administrator rights.
     """
 
-    with ui.dialog() as dialog:
+    with ui.dialog().props('aria-label="Administrators"') as dialog:
         with ui.card().style("width: 600px; max-width: 90vw; "):
             ui.label("Administrators").classes("text-2xl font-bold")
             admin_table = ui.table(
@@ -123,8 +137,26 @@ def admin_dialog(users: list, group_id: str) -> None:
                 on_select=lambda e: None,
             ).style("width: 100%; box-shadow: none; font-size: 18px;")
 
+            # Quasar generates selection checkboxes from selection="multiple"
+            # with no accessible name at all -- both the header "select all"
+            # and each row's own checkbox are announced only as "checkbox".
+            # These slots keep Quasar's own default selection behaviour
+            # (v-model="props.selected") and add nothing but a name.
+            admin_table.add_slot(
+                "header-selection",
+                """
+                <q-checkbox v-model="props.selected" aria-label="Select all administrators" />
+                """,
+            )
+            admin_table.add_slot(
+                "body-selection",
+                """
+                <q-checkbox v-model="props.selected" :aria-label="'Select ' + props.row.username" />
+                """,
+            )
+
             with admin_table.add_slot("top-right"):
-                with ui.input(placeholder="Search").props("type=search").bind_value(
+                with ui.input(placeholder="Search").props('type=search aria-label="Search administrators"').bind_value(
                     admin_table, "filter"
                 ).add_slot("append"):
                     ui.icon("search")
@@ -160,7 +192,7 @@ def edit_group(group_id: str) -> None:
     """
     Page to edit a group.
     """
-    page_init(use_drawer=True)
+    page_init(use_drawer=True, title="Edit group")
     # Plotly draws its charts in one theme's colours server-side and
     # cannot restyle itself, so this page reloads when the OS theme
     # changes. Only pages with charts do -- see reload_on_theme_change.
@@ -195,18 +227,35 @@ def edit_group(group_id: str) -> None:
     ):
         ui.label(f"Edit group: {group['name']}").classes("text-3xl font-bold")
         with ui.element("div").style("display: flex; gap: 8px;"):
-            ui.button("Save group").classes("default-style").props(
-                "color=black flat"
-            ).style("width: 150px").on(
-                "click",
-                lambda: save_group(
+            def do_save() -> None:
+                # save_group's own int(quota_seconds) has the same unshown
+                # ValueError as create_group_dialog's copy above -- see its
+                # comment. Fixed the same way, against the field defined
+                # further down (quota is still in scope by the time this
+                # runs: the click can only happen once the whole page body,
+                # quota included, has been built).
+                try:
+                    int(quota.value) if quota.value else 0
+                except ValueError:
+                    quota.props(
+                        'error error-message="Monthly transcription limit '
+                        'must be a whole number of minutes."'
+                    )
+                    quota.run_method("focus")
+                    return
+                quota.props(remove="error error-message")
+
+                save_group(
                     users_table.selected,
                     name_input.value,
                     description_input.value,
                     group_id,
                     quota.value,
-                ),
-            )
+                )
+
+            ui.button("Save group").classes("default-style").props(
+                "color=black flat"
+            ).style("width: 150px").on("click", do_save)
             ui.button("Cancel").classes("delete-style").props("color=black flat").on(
                 "click", lambda: ui.navigate.to("/admin")
             )
@@ -268,12 +317,30 @@ def edit_group(group_id: str) -> None:
             "width: 100%; box-shadow: none; font-size: 18px; height: calc(100vh - 550px - var(--banner-offset, 0px));"
         )
 
+        # Quasar generates selection checkboxes from selection="multiple"
+        # with no accessible name at all -- both the header "select all" and
+        # each row's own checkbox are announced only as "checkbox". These
+        # slots keep Quasar's own default selection behaviour
+        # (v-model="props.selected") and add nothing but a name.
+        users_table.add_slot(
+            "header-selection",
+            """
+            <q-checkbox v-model="props.selected" aria-label="Select all group members" />
+            """,
+        )
+        users_table.add_slot(
+            "body-selection",
+            """
+            <q-checkbox v-model="props.selected" :aria-label="'Select ' + props.row.username" />
+            """,
+        )
+
         users_table.selected = [
             user for user in group["users"] if user.get("in_group", True)
         ]
 
         with users_table.add_slot("top-right"):
-            with ui.input(placeholder="Search").props("type=search").bind_value(
+            with ui.input(placeholder="Search").props('type=search aria-label="Search group members"').bind_value(
                 users_table, "filter"
             ).add_slot("append"):
                 ui.icon("search")
@@ -285,7 +352,7 @@ async def statistics(group_id: str) -> None:
     """
     Page to show statistics of a group with improved layout and design.
     """
-    page_init(use_drawer=True)
+    page_init(use_drawer=True, title="Group statistics")
     # Plotly draws its charts in one theme's colours server-side and
     # cannot restyle itself, so this page reloads when the OS theme
     # changes. Only pages with charts do -- see reload_on_theme_change.
@@ -443,7 +510,7 @@ async def statistics(group_id: str) -> None:
                 )
 
                 with stats_table.add_slot("top-right"):
-                    with ui.input(placeholder="Search").props("type=search").bind_value(
+                    with ui.input(placeholder="Search").props('type=search aria-label="Search users"').bind_value(
                         stats_table, "filter"
                     ).add_slot("append"):
                         ui.icon("search")
@@ -493,7 +560,7 @@ async def statistics(group_id: str) -> None:
                 )
 
                 with stats_table.add_slot("top-right"):
-                    with ui.input(placeholder="Search").props("type=search").bind_value(
+                    with ui.input(placeholder="Search").props('type=search aria-label="Search job queue"').bind_value(
                         stats_table, "filter"
                     ).add_slot("append"):
                         ui.icon("search")
@@ -506,7 +573,7 @@ def create() -> None:
         """
         Main page of the application.
         """
-        page_init(use_drawer=True)
+        page_init(use_drawer=True, title="Groups")
         # Plotly draws its charts in one theme's colours server-side and
         # cannot restyle itself, so this page reloads when the OS theme
         # changes. Only pages with charts do -- see reload_on_theme_change.

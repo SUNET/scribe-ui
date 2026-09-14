@@ -106,7 +106,7 @@ class SearchMixin:
         Replace search term in currently selected caption.
         """
         if not self.selected_caption or not self.search_term:
-            ui.notify("No caption selected or search term empty", type="warning")
+            ui.notify("No caption selected or search term empty", type="warning", timeout=None, close_button="Close")
             return
 
         if self.selected_caption.matches_search(self.search_term, self.case_sensitive):
@@ -137,7 +137,7 @@ class SearchMixin:
             self.refresh_display()
             ui.notify("Replacement made", type="positive")
         else:
-            ui.notify("Current caption doesn't contain search term", type="warning")
+            ui.notify("Current caption doesn't contain search term", type="warning", timeout=None, close_button="Close")
 
 
     def replace_all(self, replacement: str) -> None:
@@ -145,7 +145,7 @@ class SearchMixin:
         Replace search term in all matching captions.
         """
         if not self.search_term:
-            ui.notify("No search term entered", type="warning")
+            ui.notify("No search term entered", type="warning", timeout=None, close_button="Close")
             return
 
         # Check if there are any matches before saving state
@@ -222,10 +222,22 @@ class SearchMixin:
 
     def create_search_panel(self, open_window: Optional[bool] = False) -> None:
         """
-        Create the search panel UI.
+        Create the search panel UI, once. Called again -- Ctrl+F is bound
+        straight to this, so every press used to call it -- it just reopens
+        the existing dialog instead of building a second one: a fresh
+        ui.dialog() each time left the old one in the DOM (it is never
+        removed), so a few presses meant several stacked dialogs, several
+        elements with the same id (search_info_label, action_row) and
+        several copies of the Enter-key handler.
         """
 
-        with ui.dialog() as self.search_container:
+        existing = getattr(self, "search_container", None)
+        if existing is not None:
+            if open_window:
+                existing.open()
+            return
+
+        with ui.dialog().props('aria-label="Find & Replace"') as self.search_container:
             with ui.card().classes("w-1/2 max-w-full").style("padding: 16px;"):
                 # Title
                 ui.label("Find & Replace").classes("text-h6 mb-3")
@@ -244,7 +256,7 @@ class SearchMixin:
                             .props("outlined dense clearable")
                         )
 
-                        ui.button(icon="search").props("flat dense round").classes(
+                        ui.button(icon="search").props("flat dense round aria-label='Find in captions'").classes(
                             "editor-btn"
                         ).on(
                             "click", lambda: self.search_captions(search_input.value)
@@ -267,14 +279,14 @@ class SearchMixin:
                         # Navigation + info
                         with ui.row().classes("items-center gap-1"):
                             ui.button(icon="keyboard_arrow_up").props(
-                                "flat dense round"
+                                "flat dense round aria-label='Previous search match'"
                             ).classes("editor-btn").on(
                                 "click", lambda: self.navigate_search_results(-1)
                             ).tooltip(
                                 "Previous match"
                             )
                             ui.button(icon="keyboard_arrow_down").props(
-                                "flat dense round"
+                                "flat dense round aria-label='Next search match'"
                             ).classes("editor-btn").on(
                                 "click", lambda: self.navigate_search_results(1)
                             ).tooltip(

@@ -54,7 +54,7 @@ def _announcement_preview_dialog(message: str, severity: str = "info") -> None:
 
     style = severity_styles.get(severity, severity_styles["info"])
 
-    with ui.dialog() as preview_dialog:
+    with ui.dialog().props('aria-label="Banner preview"') as preview_dialog:
         with ui.card().style("width: 700px; max-width: 90vw; padding: 24px;"):
             ui.label("Banner preview").classes("text-h6 font-bold mb-4")
             with ui.element("div").classes(
@@ -72,6 +72,7 @@ def _announcement_preview_dialog(message: str, severity: str = "info") -> None:
                 if style["dismissible"]:
                     ui.button(icon="close").props(
                         "flat round dense size=sm color=grey-7 disable"
+                        ' aria-hidden="true"'
                     )
             with ui.row().classes("w-full justify-end mt-4"):
                 ui.button("Close", on_click=preview_dialog.close).classes(
@@ -85,7 +86,7 @@ def _announcement_create_dialog() -> None:
 
     ui.dark_mode(app.storage.user.get("dark_mode", None))
 
-    with ui.dialog() as dialog:
+    with ui.dialog().props('aria-label="Create announcement"') as dialog:
         with ui.card().style("width: 600px; max-width: 90vw; padding: 24px;"):
             ui.label("Create announcement").classes("text-h6 font-bold mb-2")
 
@@ -110,7 +111,7 @@ def _announcement_create_dialog() -> None:
                 starts_input = (
                     ui.input("Start date/time (optional)")
                     .classes("flex-1")
-                    .props("outlined clearable")
+                    .props('outlined clearable hint="YYYY-MM-DD"')
                 )
                 with starts_input:
                     with ui.menu().props("no-parent-event") as starts_menu:
@@ -119,14 +120,19 @@ def _announcement_create_dialog() -> None:
                         ) as starts_date:
                             pass
                     with starts_input.add_slot("append"):
-                        ui.icon("edit_calendar").on("click", starts_menu.open).classes(
-                            "cursor-pointer"
+                        (
+                            ui.icon("edit_calendar")
+                            .classes("cursor-pointer")
+                            .props('tabindex="0" role="button" aria-label="Open calendar"')
+                            .on("click", starts_menu.open)
+                            .on("keydown.enter", starts_menu.open)
+                            .on("keydown.space.prevent", starts_menu.open)
                         )
 
                 ends_input = (
                     ui.input("End date/time (optional)")
                     .classes("flex-1")
-                    .props("outlined clearable")
+                    .props('outlined clearable hint="YYYY-MM-DD"')
                 )
                 with ends_input:
                     with ui.menu().props("no-parent-event") as ends_menu:
@@ -135,8 +141,13 @@ def _announcement_create_dialog() -> None:
                         ) as ends_date:
                             pass
                     with ends_input.add_slot("append"):
-                        ui.icon("edit_calendar").on("click", ends_menu.open).classes(
-                            "cursor-pointer"
+                        (
+                            ui.icon("edit_calendar")
+                            .classes("cursor-pointer")
+                            .props('tabindex="0" role="button" aria-label="Open calendar"')
+                            .on("click", ends_menu.open)
+                            .on("keydown.enter", ends_menu.open)
+                            .on("keydown.space.prevent", ends_menu.open)
                         )
 
             ui.label(
@@ -186,7 +197,7 @@ def _announcement_edit_dialog(ann: dict) -> None:
 
     ui.dark_mode(app.storage.user.get("dark_mode", None))
 
-    with ui.dialog() as dialog:
+    with ui.dialog().props('aria-label="Edit announcement"') as dialog:
         with ui.card().style("width: 600px; max-width: 90vw; padding: 24px;"):
             ui.label("Edit announcement").classes("text-h6 font-bold mb-2")
 
@@ -224,29 +235,39 @@ def _announcement_edit_dialog(ann: dict) -> None:
                 starts_input = (
                     ui.input("Start date/time (optional)", value=starts_val)
                     .classes("flex-1")
-                    .props("outlined clearable")
+                    .props('outlined clearable hint="YYYY-MM-DD"')
                 )
                 with starts_input:
                     with ui.menu().props("no-parent-event") as starts_menu:
                         with ui.date().bind_value(starts_input):
                             pass
                     with starts_input.add_slot("append"):
-                        ui.icon("edit_calendar").on("click", starts_menu.open).classes(
-                            "cursor-pointer"
+                        (
+                            ui.icon("edit_calendar")
+                            .classes("cursor-pointer")
+                            .props('tabindex="0" role="button" aria-label="Open calendar"')
+                            .on("click", starts_menu.open)
+                            .on("keydown.enter", starts_menu.open)
+                            .on("keydown.space.prevent", starts_menu.open)
                         )
 
                 ends_input = (
                     ui.input("End date/time (optional)", value=ends_val)
                     .classes("flex-1")
-                    .props("outlined clearable")
+                    .props('outlined clearable hint="YYYY-MM-DD"')
                 )
                 with ends_input:
                     with ui.menu().props("no-parent-event") as ends_menu:
                         with ui.date().bind_value(ends_input):
                             pass
                     with ends_input.add_slot("append"):
-                        ui.icon("edit_calendar").on("click", ends_menu.open).classes(
-                            "cursor-pointer"
+                        (
+                            ui.icon("edit_calendar")
+                            .classes("cursor-pointer")
+                            .props('tabindex="0" role="button" aria-label="Open calendar"')
+                            .on("click", ends_menu.open)
+                            .on("keydown.enter", ends_menu.open)
+                            .on("keydown.space.prevent", ends_menu.open)
                         )
 
             ui.label(
@@ -297,7 +318,7 @@ def _announcement_delete_confirm(ann: dict) -> None:
 
     ui.dark_mode(app.storage.user.get("dark_mode", None))
 
-    with ui.dialog() as dialog:
+    with ui.dialog().props('aria-label="Delete announcement"') as dialog:
         with ui.card().style("width: 400px; max-width: 90vw; padding: 24px;"):
             ui.label("Delete announcement").classes("text-h6 font-bold mb-2")
             ui.label("Are you sure you want to delete this announcement?").classes(
@@ -325,7 +346,7 @@ def _announcement_delete_confirm(ann: dict) -> None:
 def announcements_page() -> None:
     """Announcement banner management page. BOFH only."""
 
-    page_init(use_drawer=True)
+    page_init(use_drawer=True, title="Announcements")
 
     if not get_bofh_status():
         ui.navigate.to("/home")
@@ -363,7 +384,18 @@ def announcements_page() -> None:
         def _toggle_enabled(ann_row: dict) -> None:
             new_val = not ann_row.get("enabled", True)
             announcement_update(ann_row["id"], {"enabled": new_val})
-            ui.navigate.to("/admin/announcements")
+            # Update the row in place rather than a full-page navigate: a
+            # whole-page reload for flipping one switch is an unannounced
+            # context change (3.2.2) and throws focus back to the top of
+            # the page, away from the switch just used. ann_row itself is
+            # the frontend's own copy of the row (a fresh dict off the
+            # wire), not the one ann_table is rendering from, so the match
+            # is by id against ann_list, same as ann_table's own rows.
+            for ann in ann_list:
+                if ann["id"] == ann_row["id"]:
+                    ann["enabled"] = new_val
+                    break
+            ann_table.update()
 
         ann_table = (
             ui.table(
@@ -426,7 +458,11 @@ def announcements_page() -> None:
             <q-td :props="props">
                 <a
                     class="cursor-pointer text-primary"
+                    tabindex="0"
+                    role="button"
                     @click="$parent.$emit('edit', props.row)"
+                    @keydown.enter="$parent.$emit('edit', props.row)"
+                    @keydown.space.prevent="$parent.$emit('edit', props.row)"
                     style="text-decoration: underline;"
                 >
                     {{ props.row.message_short }}
@@ -441,6 +477,7 @@ def announcements_page() -> None:
             <q-td :props="props">
                 <q-toggle
                     :model-value="props.row.enabled"
+                    :aria-label="'Enabled: ' + props.row.message_short"
                     @update:model-value="$parent.$emit('toggle_enabled', props.row)"
                     color="positive"
                     :dark="$q.dark.isActive"
@@ -454,8 +491,10 @@ def announcements_page() -> None:
             """
             <q-td :props="props">
                 <q-btn flat round dense icon="visibility" size="sm" color="grey-7"
+                    aria-label="Preview announcement"
                     @click="$parent.$emit('preview', props.row)" />
                 <q-btn flat round dense icon="delete" size="sm" color="red"
+                    aria-label="Delete announcement"
                     @click="$parent.$emit('delete', props.row)" />
             </q-td>
             """,

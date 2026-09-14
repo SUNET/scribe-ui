@@ -145,9 +145,9 @@ def reset_password() -> None:
             ui.navigate.to("/")
 
         except httpx.HTTPError:
-            ui.notify("Failed to reset encryption passphrase.", color="negative")
+            ui.notify("Failed to reset encryption passphrase.", color="negative", timeout=None, close_button="Close")
 
-    with ui.dialog() as dialog:
+    with ui.dialog().props('aria-label="Reset encryption passphrase"') as dialog:
         with ui.card():
             ui.label("Reset encryption passphrase").classes("text-h6")
             ui.label(
@@ -185,7 +185,7 @@ def export_customers_csv() -> None:
         ui.download.content(str(csv_data), filename="customers_export.csv")
 
     except httpx.HTTPError:
-        ui.notify("Error when exporting customers", color="red")
+        ui.notify("Error when exporting customers", color="red", timeout=None, close_button="Close")
 
 
 # Minutes of transcription one purchased block covers. Anything beyond the
@@ -239,10 +239,10 @@ def export_billing_data() -> None:
         res.raise_for_status()
         customers = res.json().get("result", [])
     except httpx.HTTPError:
-        ui.notify("Error when exporting billing data", color="red")
+        ui.notify("Error when exporting billing data", color="red", timeout=None, close_button="Close")
         return
     except ValueError:
-        ui.notify("Unexpected response when exporting billing data", color="red")
+        ui.notify("Unexpected response when exporting billing data", color="red", timeout=None, close_button="Close")
         return
 
     ui.download.content(
@@ -290,7 +290,7 @@ def save_customer(
         res.raise_for_status()
         ui.navigate.to("/admin/customers")
     except httpx.HTTPError as e:
-        ui.notify(f"Error saving customer: {e}", type="negative")
+        ui.notify(f"Error saving customer: {e}", type="negative", timeout=None, close_button="Close")
 
 
 def customers_get() -> list:
@@ -379,14 +379,14 @@ def email_save(email: str) -> None:
         data = response.json()
 
         if "error" in data.get("result", {}):
-            ui.notify(f"Error: {data['result']['error']}", color="red")
+            ui.notify(f"Error: {data['result']['error']}", color="red", timeout=None, close_button="Close")
             return None
 
         ui.notify("E-mail address saved successfully", color="green")
         return data["result"]
 
     except httpx.HTTPError:
-        ui.notify("Failed to save e-mail address", color="red")
+        ui.notify("Failed to save e-mail address", color="red", timeout=None, close_button="Close")
         return None
 
 
@@ -404,13 +404,13 @@ def email_get() -> str:
         data = response.json()
 
         if "error" in data.get("result", {}):
-            ui.notify(f"Error: {data['result']['error']}", color="red")
+            ui.notify(f"Error: {data['result']['error']}", color="red", timeout=None, close_button="Close")
             return ""
 
         return data["result"].get("email", "")
 
     except httpx.HTTPError:
-        ui.notify("Failed to retrieve e-mail address", color="red")
+        ui.notify("Failed to retrieve e-mail address", color="red", timeout=None, close_button="Close")
         return ""
 
 
@@ -452,13 +452,13 @@ def email_save_notifications(
         data = response.json()
 
         if "error" in data.get("result", {}):
-            ui.notify(f"Error: {data['result']['error']}", color="red")
+            ui.notify(f"Error: {data['result']['error']}", color="red", timeout=None, close_button="Close")
             return
 
         ui.notify("Notification preferences updated", color="green")
 
     except httpx.HTTPError:
-        ui.notify("Failed to update notification preferences", color="red")
+        ui.notify("Failed to update notification preferences", color="red", timeout=None, close_button="Close")
 
 
 def email_save_notifications_get() -> dict:
@@ -475,7 +475,7 @@ def email_save_notifications_get() -> dict:
         data = response.json()
 
         if "error" in data.get("result", {}):
-            ui.notify(f"Error: {data['result']['error']}", color="red")
+            ui.notify(f"Error: {data['result']['error']}", color="red", timeout=None, close_button="Close")
             return {}
 
         notifications = data["result"].get("notifications", {})
@@ -486,7 +486,7 @@ def email_save_notifications_get() -> dict:
         return notifications
 
     except httpx.HTTPError:
-        ui.notify("Failed to retrieve notification preferences", color="red")
+        ui.notify("Failed to retrieve notification preferences", color="red", timeout=None, close_button="Close")
         return {}
 
 
@@ -511,7 +511,7 @@ def dark_mode_save(enabled: Optional[bool]) -> None:
         )
         response.raise_for_status()
     except httpx.HTTPError:
-        ui.notify("Failed to save dark mode preference", color="red")
+        ui.notify("Failed to save dark mode preference", color="red", timeout=None, close_button="Close")
 
 
 def dark_mode_get() -> bool:
@@ -543,7 +543,7 @@ def test_all_notifications() -> None:
         data = response.json()
 
         if "error" in data:
-            ui.notify(f"Error: {data['error']}", color="red")
+            ui.notify(f"Error: {data['error']}", color="red", timeout=None, close_button="Close")
             return
 
         result = data.get("result", {})
@@ -555,7 +555,7 @@ def test_all_notifications() -> None:
         )
 
     except httpx.HTTPError:
-        ui.notify("Failed to send test notifications", color="red")
+        ui.notify("Failed to send test notifications", color="red", timeout=None, close_button="Close")
 
 
 def save_group(
@@ -585,7 +585,7 @@ def save_group(
     except httpx.HTTPError:
         error = res.json()
 
-        with ui.dialog() as dialog:
+        with ui.dialog().props('aria-label="Error saving group"') as dialog:
             with ui.card():
                 ui.label("Error saving group").classes("text-h6")
                 ui.label(error["error"])
@@ -612,7 +612,7 @@ def remove_user(selected_rows: list) -> None:
             ui.notify(
                 f"Error removing user {user['username']}: {e}",
                 type="negative",
-            )
+                timeout=None, close_button="Close")
             return
 
     ui.navigate.to("/admin/users")
@@ -636,7 +636,7 @@ def set_active_status(selected_rows: list, make_active: bool) -> None:
             ui.notify(
                 f"Error updating active status for {user['username']}: {e}",
                 type="negative",
-            )
+                timeout=None, close_button="Close")
 
 
 def set_admin_status(
@@ -664,7 +664,7 @@ def set_admin_status(
             ui.notify(
                 f"Error updating admin status for {user['username']}: {e}",
                 type="negative",
-            )
+                timeout=None, close_button="Close")
 
 
 def set_user_admin_and_domains(username: str, admin: bool, admin_domains: str) -> None:
@@ -687,7 +687,7 @@ def open_make_admin_dialog(selected_rows: list, all_users: list) -> None:
     Open a dialog that requires at least one domain before granting admin access.
     """
     if not selected_rows:
-        ui.notify("Select at least one user first.", type="warning")
+        ui.notify("Select at least one user first.", type="warning", timeout=None, close_button="Close")
         return
 
     user_realms = {u["realm"] for u in selected_rows if u.get("realm")}
@@ -698,7 +698,7 @@ def open_make_admin_dialog(selected_rows: list, all_users: list) -> None:
             {u["realm"] for u in all_users if u.get("realm") and "." in u["realm"]}
         )
 
-    with ui.dialog() as admin_dialog:
+    with ui.dialog().props('aria-label="Grant admin access"') as admin_dialog:
         with ui.card().style("width: 500px; max-width: 90vw;"):
             if len(selected_rows) == 1:
                 ui.label(f"Make {selected_rows[0]['username']} admin").classes(
@@ -725,10 +725,21 @@ def open_make_admin_dialog(selected_rows: list, all_users: list) -> None:
             def on_save() -> None:
                 domains = domains_select.value or []
                 if not domains:
-                    error_label.set_text(
-                        "Select at least one domain before granting admin access."
+                    # Quasar's error-message prop renders into a role="alert"
+                    # div (quasar.umd.js, QField's error slot), so this reaches
+                    # screen reader users the moment it appears -- the plain
+                    # ui.label it replaces had no such role and was never
+                    # announced. Moving focus completes the identification:
+                    # without it the field with the problem is never
+                    # highlighted to a keyboard/screen reader user, only
+                    # described. (3.3.1)
+                    domains_select.props(
+                        'error error-message="Select at least one domain '
+                        'before granting admin access."'
                     )
+                    domains_select.run_method("focus")
                     return
+                domains_select.props(remove="error error-message")
 
                 domains_str = ",".join(domains)
 
@@ -746,7 +757,7 @@ def open_make_admin_dialog(selected_rows: list, all_users: list) -> None:
 
                 except httpx.HTTPError as e:
                     error_label.set_text("Failed to update admin access.")
-                    ui.notify(str(e), type="negative")
+                    ui.notify(str(e), type="negative", timeout=None, close_button="Close")
 
             with ui.row().style("justify-content: flex-end; width: 100%;"):
                 ui.button("Cancel").classes("button-close").props(
@@ -777,7 +788,7 @@ def reset_manual_override(selected_rows: list) -> None:
             ui.notify(
                 f"Error resetting manual override for {user['username']}: {e}",
                 type="negative",
-            )
+                timeout=None, close_button="Close")
             return
 
     ui.navigate.to("/admin/users")
@@ -801,7 +812,10 @@ def save_domains(selected_rows: list, domains: list, dialog: ui.dialog) -> None:
             ui.navigate.to("/admin/users")
         except httpx.HTTPError as e:
             ui.notify(
-                f"Error updating domains for {user['username']}: {e}", type="negative"
+                f"Error updating domains for {user['username']}: {e}",
+                type="negative",
+                timeout=None,
+                close_button="Close",
             )
 
     dialog.close()
@@ -853,7 +867,7 @@ def set_domains(selected_rows: list, all_users: list) -> None:
             if domain.strip() in realms:
                 domains.append(domain.strip())
 
-    with ui.dialog() as domain_dialog:
+    with ui.dialog().props('aria-label="Set domains the user can administer"') as domain_dialog:
         with ui.card().style("width: 500px; max-width: 90vw;"):
             ui.label("Set domains the user can administer").classes(
                 "text-2xl font-bold"
