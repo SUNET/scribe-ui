@@ -516,7 +516,18 @@ class ExportMixin:
                                         "font-family: 'Courier New', monospace; font-size: 13px; white-space: pre-wrap;"
                                     )
                                 )
-                            cnt_lbl = ui.label("").classes("text-caption mt-2")
+                            # role=status on the count, not on prev itself:
+                            # prev holds the full rendered preview (up to
+                            # several hundred lines), and making that whole
+                            # block live would read it aloud in full on every
+                            # option change. This line is the short summary
+                            # of what changed (WCAG 4.1.3) -- the same
+                            # "separate status row" the finding suggested.
+                            cnt_lbl = (
+                                ui.label("")
+                                .classes("text-caption mt-2")
+                                .props('role=status aria-live=polite')
+                            )
 
                 update_options_visibility()
 

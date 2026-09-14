@@ -75,7 +75,16 @@ def users() -> None:
             )
 
     except httpx.HTTPError as e:
-        ui.label(f"Error fetching users: {e}").classes("text-lg").style("color: var(--color-text-danger);")
+        # The raw exception went straight to the page before (e.g. a bare
+        # "[Errno 111] Connection refused"), meaningless to anyone reading
+        # it; the detail is printed instead, in the same style already used
+        # elsewhere in this codebase (utils/helpers.py's own fetch
+        # functions). role=alert: this replaces the whole page body with no
+        # other cue that anything changed (WCAG 4.1.3).
+        print(f"Error fetching users: {e}")
+        ui.label("Failed to load users. Please try again later.").classes(
+            "text-lg"
+        ).style("color: var(--color-text-danger);").props("role=alert")
         return
 
     users_table = ui.table(

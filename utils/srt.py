@@ -514,6 +514,18 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         """
         Redraw the status line: how many captions there are, how far the
         last one runs to, and how fast the result reads.
+
+        Deliberately not a live region (WCAG 4.1.3's own audit finding,
+        F-56, listed this element among four; the other three are fixed --
+        see search_info_label, flagged_count_element and the export
+        preview's cnt_lbl). This one redraws on every edit, split, merge
+        and undo -- see update_words_per_minute's own docstring -- so an
+        aria-live announcement here would fire continuously while someone
+        types, which WCAG's own guidance on 4.1.3 warns against: status
+        messages are for a distinct result, not a running total. Left
+        silent rather than fixed with the same pattern as the other three;
+        worth a separate, more careful pass (e.g. a keyboard shortcut to
+        check the figures on demand) rather than folding into this finding.
         """
 
         elements = getattr(self, "status_elements", None)

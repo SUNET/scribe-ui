@@ -1692,10 +1692,20 @@ def table_bulk_export(table: ui.table) -> None:
             "min-width: 400px; background-color: var(--color-bg-surface);"
         ):
             ui.label("Preparing export...").classes("text-h6 mb-2")
-            progress_label = ui.label(f"Fetching file 0 of {len(completed)}").classes(
-                "text-body2 mb-2"
+            # role=status so each file name is announced as fetching moves
+            # on to it, the same pattern already used for the upload
+            # dialog's own byte counter above (WCAG 4.1.3). One file at a
+            # time, not continuous, so polite announcements stay reasonable.
+            progress_label = (
+                ui.label(f"Fetching file 0 of {len(completed)}")
+                .classes("text-body2 mb-2")
+                .props('role=status aria-live=polite')
             )
-            progress = ui.linear_progress(value=0, show_value=False).classes("w-full")
+            progress = (
+                ui.linear_progress(value=0, show_value=False)
+                .classes("w-full")
+                .props('aria-label="Export progress"')
+            )
 
     progress_dialog.open()
 

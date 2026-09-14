@@ -767,7 +767,13 @@ def create() -> None:
                                             "the model is more certain about."
                                         )
 
-                                    flagged = ui.label().classes(
-                                        "text-sm text-theme-muted review-count"
+                                    # role=status: the count changes when
+                                    # sensitivity or show/hide toggles, with
+                                    # nothing else on screen announcing it
+                                    # (WCAG 4.1.3).
+                                    flagged = (
+                                        ui.label()
+                                        .classes("text-sm text-theme-muted review-count")
+                                        .props('role=status aria-live=polite')
                                     )
                                     editor.set_flagged_count_element(flagged)
