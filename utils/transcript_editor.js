@@ -86,7 +86,7 @@ export default {
             @keydown="onControlKeydown($event, block.id, 'speaker')"
           >{{ block.speaker }}</span><span v-if="!subtitleMode" class="transcript-colon">:</span></div><div
           class="transcript-cell"
-          :class="{ 'transcript-cell-active': block.id === activeId, 'transcript-cell-editing': block.id === caretId, 'transcript-cell-invalid': block.invalid, 'transcript-cell-highlighted': block.highlighted }"
+          :class="{ 'transcript-cell-active': block.id === activeId, 'transcript-cell-editing': block.id === caretId, 'transcript-cell-invalid': block.invalid, 'transcript-cell-highlighted': block.highlighted, 'transcript-cell-found': block.id === flashedId }"
           :data-id="block.id"
         ><div
             v-if="!subtitleMode"
@@ -298,6 +298,11 @@ export default {
     subtitleMode: { type: Boolean, default: false },
     characterLimit: { type: Number, default: 42 },
     maxSubtitleLines: { type: Number, default: 2 },
+    // Which caption to mark as the one just arrived at, and a count that
+    // makes each ask its own. Sent as an object so that jumping to the
+    // same caption twice is still two events -- an id alone would not
+    // change, and the watcher would never fire the second time.
+    flash: { type: Object, default: null },
   },
   // One watch block. Two would silently discard the first: duplicate keys in
   // an object literal keep only the last.
@@ -305,6 +310,32 @@ export default {
     activeId(id) {
       if (!this.follow) return;
       this.scrollToBlock(id);
+    },
+    flash(asked) {
+      // A jump from outside the text -- a line of an analysis, say -- lands
+      // the reader in the middle of somebody else's speech with nothing
+      // saying which part of it was meant. The mark fades on its own after
+      // a moment: it answers "where did I land", which stops being a
+      // question as soon as it has been answered, and a mark that stayed
+      // would end up sitting on a caption the reader has since left.
+      if (this.flashTimer) clearTimeout(this.flashTimer);
+
+      if (!asked || asked.id === undefined || asked.id === null) {
+        this.flashedId = null;
+        return;
+      }
+
+      // Cleared first so the animation restarts when the same caption is
+      // asked for twice: the class has to actually leave the element.
+      this.flashedId = null;
+
+      this.$nextTick(() => {
+        this.flashedId = asked.id;
+        this.flashTimer = setTimeout(() => {
+          this.flashedId = null;
+          this.flashTimer = null;
+        }, 2400);
+      });
     },
     revision() {
       // Bumped by the server only when the blocks actually change. Watching
@@ -464,6 +495,10 @@ export default {
       // block id, and only ever set for subtitles. See onInput and the
       // revision watcher.
       liveCounts: {},
+      // The caption jumped to from outside the text, marked until the
+      // reader has had time to see where they landed. See the flash watcher.
+      flashedId: null,
+      flashTimer: null,
     };
   },
   mounted() {
@@ -483,6 +518,7 @@ export default {
     this.$nextTick(() => this.indexWords());
   },
   beforeUnmount() {
+    if (this.flashTimer) clearTimeout(this.flashTimer);
     this.video?.removeEventListener("timeupdate", this.onTime);
     this.video?.removeEventListener("seeking", this.onTime);
     document.removeEventListener("pointerdown", this.onOutside, true);

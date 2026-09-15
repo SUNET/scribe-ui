@@ -24,9 +24,15 @@ from pages.home import create as create_files_table
 from pages.srt import create as create_srt
 from pages.status import create as create_status
 from pages.user import create as create_user_page
+from pages.view import create as create_view
 from utils.styles import default_styles
 from utils.settings import get_settings
-from utils.token import get_user_data, get_user_status, get_token_is_valid
+from utils.token import (
+    exchange_login_code,
+    get_user_data,
+    get_user_status,
+    get_token_is_valid,
+)
 from utils.helpers import (
     encryption_password_set,
     encryption_password_verify,
@@ -41,6 +47,7 @@ create_srt()
 create_admin()
 create_user_page()
 create_status()
+create_view()
 
 
 @ui.page("/")
@@ -55,8 +62,13 @@ async def index(request: Request) -> None:
 
     ui.add_head_html(default_styles)
 
-    token = request.query_params.get("token")
-    refresh_token = request.query_params.get("refresh_token")
+    # The backend's OIDC callback redirects here with a one-time code, not
+    # with the tokens themselves. Anything in a query string ends up in the
+    # browser's history, in the referrer of whatever this page loads next
+    # and in every access log on the way -- fine for a code that this
+    # request is about to spend, not for an id token and a refresh token.
+    code = request.query_params.get("code")
+    login_error = request.query_params.get("error")
 
     if "_scribe_bk" not in app.storage.browser:
         app.storage.browser["_scribe_bk"] = secrets.token_hex(32)
@@ -64,11 +76,21 @@ async def index(request: Request) -> None:
     # Wait for client connection before accessing user storage.
     await ui.context.client.connected()
 
-    if refresh_token:
-        app.storage.user["refresh_token"] = refresh_token
+    if code:
+        tokens = await exchange_login_code(code)
 
-    if token:
-        app.storage.user["token"] = token
+        if tokens:
+            app.storage.user["token"] = tokens["token"]
+            app.storage.user["refresh_token"] = tokens.get("refresh_token")
+        else:
+            login_error = "login_failed"
+
+        # Take the spent code out of the address bar, so a reload does not
+        # try it again and it does not sit in the history.
+        ui.run_javascript("history.replaceState({}, '', '/')")
+
+    if login_error:
+        ui.notify("Login failed, please try again.", color="negative")
 
     client = ui.context.client
 

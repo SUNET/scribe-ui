@@ -26,7 +26,11 @@ import pytest
 
 from utils.caption import SRTCaption
 from utils.srt import SRTEditor
-from utils.transcript_editor import TranscriptEditor, format_time_label
+from utils.transcript_editor import (
+    TranscriptBody,
+    TranscriptEditor,
+    format_time_label,
+)
 
 
 SEGMENTS = [
@@ -2970,3 +2974,94 @@ class TestRetimingReorders:
 
         assert editor.captions[0] is first
         assert editor.captions[1] is second
+
+
+class TestGoTo:
+    """
+    A jump from outside the text -- a line of an analysis followed back to
+    what was said. It moves the recording and the view, marks where it
+    landed, and deliberately leaves the caret where it was: unlike a click
+    on the timeline, which is a click on the captions themselves, this is a
+    click on something written *about* them and must not take the reader
+    out of the caption they were typing into.
+    """
+
+    class Body:
+        def __init__(self):
+            self.active = []
+            self.scrolled = []
+            self.flashed = []
+            self.focused = []
+
+        def set_active(self, block_id):
+            self.active.append(block_id)
+
+        def scroll_to_block(self, block_id):
+            self.scrolled.append(block_id)
+
+        def flash_block(self, block_id):
+            self.flashed.append(block_id)
+
+        def focus_block(self, block_id, offset=0):
+            self.focused.append(block_id)
+
+    def test_it_scrolls_marks_and_leaves_the_caret_alone(self, view, editor):
+        body = self.Body()
+        view.body = body
+        sought = []
+        editor.seek_video = sought.append
+
+        view.go_to(editor.captions[1])
+
+        assert body.scrolled == [editor.captions[1].index]
+        assert body.flashed == [editor.captions[1].index]
+        assert body.focused == []
+        assert sought == [editor.captions[1].get_start_seconds()]
+
+    def test_the_same_caption_twice_is_marked_twice(self, view, editor):
+        # The mark fades on its own, so a second jump to the caption the
+        # reader is already on has to mark it again -- otherwise following
+        # two lines that came from the same place looks like nothing
+        # happened the second time.
+        body = self.Body()
+        view.body = body
+        editor.seek_video = lambda _: None
+
+        view.go_to(editor.captions[0])
+        view.go_to(editor.captions[0])
+
+        assert body.flashed == [
+            editor.captions[0].index,
+            editor.captions[0].index,
+        ]
+
+
+class TestFlashProp:
+    """
+    What is actually sent down for the mark. An id on its own would not
+    change when the same caption is asked for twice, and a prop that does
+    not change is a watcher that does not fire.
+    """
+
+    class Body:
+        def __init__(self):
+            self._props = {}
+            self._flashes = 0
+            self.updates = 0
+
+        def update(self):
+            self.updates += 1
+
+        flash_block = TranscriptBody.flash_block
+
+    def test_each_ask_is_its_own_event(self):
+        body = self.Body()
+
+        body.flash_block(7)
+        first = dict(body._props["flash"])
+
+        body.flash_block(7)
+
+        assert body._props["flash"]["id"] == 7
+        assert body._props["flash"] != first
+        assert body.updates == 2

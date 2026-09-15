@@ -29,6 +29,7 @@ from utils.token import (
     get_auth_header,
     get_bofh_status,
     get_user_data,
+    session_alive,
     token_refresh_or_wait,
 )
 from utils.helpers import (
@@ -37,6 +38,7 @@ from utils.helpers import (
     dark_mode_save,
     sanitize_filename,
 )
+from utils.recorder import record_panel
 from utils.styles import (
     default_styles,
     menu_active_style,
@@ -349,6 +351,14 @@ def page_init(
     unreachable = {"count": 0}
 
     async def refresh():
+        # This timer outlives the session it was started for: a closed tab,
+        # a server restart or a logout takes the user storage away while the
+        # timer is still on the loop. Refreshing a token for a session that
+        # no longer exists is both pointless and, since NiceGUI raises
+        # rather than answering, noisy.
+        if not session_alive():
+            return
+
         keep = await token_refresh_or_wait(unreachable["count"])
 
         if keep is True:
@@ -657,7 +667,7 @@ def page_init(
                     "height: 30px; width: 30px;"
                 )
                 ui.label(settings.TOPBAR_TEXT + header_text).classes(
-                    "text-h6 text-theme-primary"
+                    "text-h6 text-theme-primary topbar-text"
                 )
 
             with ui.element("div").style("display: flex; gap: 0px;"):
@@ -709,7 +719,7 @@ def page_init(
                     "height: 30px; width: 30px;"
                 )
                 ui.label(settings.TOPBAR_TEXT + header_text).classes(
-                    "text-h6 text-theme-primary"
+                    "text-h6 text-theme-primary topbar-text"
                 )
 
             with ui.element("div").style("display: flex; gap: 0px;"):
@@ -922,9 +932,15 @@ async def jobs_get() -> list | None:
     return jobs
 
 
-def table_click(event) -> None:
+def open_result(event, page: str) -> None:
     """
-    Handle the click event on the table rows.
+    Open a completed job on one of the two pages that can show it.
+
+    The editor and the read-only view take the same job in the same query
+    and differ in nothing else, so which of them a row opens is the
+    caller's decision -- the phone's card asks for the view, the desktop
+    table for the editor -- rather than something worked out again here
+    from the width of the screen.
     """
 
     status = event.args["status"].lower()
@@ -937,14 +953,28 @@ def table_click(event) -> None:
     if status != "completed":
         return
 
-    if output_format == "TXT":
-        ui.navigate.to(
-            f"/srt?uuid={uuid}&filename={filename}&model={model_type}&language={language}&data_format=txt"
-        )
-    else:
-        ui.navigate.to(
-            f"/srt?uuid={uuid}&filename={filename}&model={model_type}&language={language}&data_format=srt"
-        )
+    data_format = "txt" if output_format == "TXT" else "srt"
+
+    ui.navigate.to(
+        f"{page}?uuid={uuid}&filename={filename}&model={model_type}"
+        f"&language={language}&data_format={data_format}"
+    )
+
+
+def table_click(event) -> None:
+    """
+    Handle the click event on the table rows.
+    """
+
+    open_result(event, "/srt")
+
+
+def table_view(event) -> None:
+    """
+    Open a completed job read-only, which is what a phone offers.
+    """
+
+    open_result(event, "/view")
 
 
 async def post_file(
@@ -1067,15 +1097,119 @@ def toggle_upload_status(upload_column, status_column, dialog, abort_button=None
         )
 
 
-def table_upload(table) -> None:
+def _dropzone(upload) -> None:
     """
-    Handle the click event on the Upload button with improved UX.
+    Draw the drop target and wire it to `upload`.
+
+    The uploader itself is hidden: a QUploader draws its own list, buttons and
+    heading, and none of that is wanted here -- so the visible target is plain
+    markup that calls `pickFiles`/`addFiles` on the real one.
+    """
+
+    # The dropzone is the only thing that looks clickable, and the
+    # instruction text points at it, but it used to be a plain div with its
+    # click handler bound in JavaScript: not focusable, no role, no
+    # accessible name. The file picker was reachable only through a 34x34
+    # anchor inside the opacity:0 uploader, which is invisible - focus went
+    # somewhere the user cannot see.
+    #
+    # role=button plus tabindex=0 makes the visible affordance the focusable
+    # control, and the keydown handler below gives it Enter and Space.
+    # WCAG 2.1.1, 4.1.2 (level A).
+    dropzone = ui.html(
+        """
+        <div class="w-96 h-40 flex items-center justify-center
+                    border-2 border-dashed rounded-2xl cursor-pointer
+                    dropzone-area"
+             role="button" tabindex="0"
+             aria-label="Choose audio or video files to upload">
+            Drag & drop files here or click to upload.
+            <br/><br/>
+            5 files at a maximum of 4GB can be uploaded at once.
+        </div>
+        """,
+        sanitize=False,
+    )
+
+    upload_id = upload.id
+    dropzone_id = dropzone.id
+    ui.timer(
+        0.1,
+        lambda: ui.run_javascript(
+            "const dz = getHtmlElement(" + str(dropzone_id) + ");"
+            "const upl = getElement(" + str(upload_id) + ");"
+            "if (!dz || !upl) return;"
+            "dz.addEventListener('click', () => upl.$refs.qRef.pickFiles());"
+            # Enter and Space activate the dropzone, the way any role=button
+            # must. preventDefault stops Space from scrolling the page.
+            "dz.addEventListener('keydown', e => {"
+            "  if (e.key === 'Enter' || e.key === ' ' || e.code === 'Space') {"
+            "    e.preventDefault();"
+            "    upl.$refs.qRef.pickFiles();"
+            "  }"
+            "});"
+            "dz.addEventListener('dragover', e => {"
+            "  e.preventDefault();"
+            "  dz.querySelector('div').classList.add('dropzone-drag');"
+            "});"
+            "dz.addEventListener('dragleave', () => {"
+            "  dz.querySelector('div').classList.remove('dropzone-drag');"
+            "});"
+            "dz.addEventListener('drop', e => {"
+            "  e.preventDefault();"
+            "  dz.querySelector('div').classList.remove('dropzone-drag');"
+            "  upl.$refs.qRef.addFiles(Array.from(e.dataTransfer.files));"
+            "});"
+            "const progressInterval = setInterval(() => {"
+            "  const qRef = upl.$refs.qRef;"
+            "  if (!qRef || !qRef.files || qRef.files.length === 0) return;"
+            "  let totalSize = 0, uploaded = 0, currentFile = '';"
+            "  qRef.files.forEach(f => {"
+            "    totalSize += f.size || 0;"
+            "    uploaded += f.__uploaded || 0;"
+            "    if (f.__status === 'uploading') currentFile = f.name;"
+            "  });"
+            "  if (currentFile) {"
+            "    getElement("
+            + str(upload_id)
+            + ").$emit('byte_progress', {"
+            "      uploaded: uploaded, total: totalSize, current_file: currentFile"
+            "    });"
+            "  }"
+            "}, 500);"
+            "upl._cleanup = () => {"
+            "  clearInterval(progressInterval);"
+            "  const qRef = upl.$refs.qRef;"
+            "  if (qRef) { try { qRef.reset(); } catch (e) {} }"
+            "};"
+        ),
+        once=True,
+    )
+
+
+def table_upload(table, mode: str = "files") -> None:
+    """
+    Open the upload dialog.
+
+    Parameters:
+        table: The jobs table a finished upload adds its row to.
+        mode: "files" for the drop target, "record" for the microphone.  The
+            two are separate dialogs rather than one holding both: the reader
+            has already said which they came for, and a recorder sitting under
+            a drop target is a second thing to read past every time a file is
+            uploaded.  Both are the same uploader underneath, so a recording
+            and a dropped file take exactly the same path from here.
     """
 
     ui.add_head_html(default_styles)
 
     with ui.dialog().props('aria-label="Upload files"') as dialog:
-        with ui.card().style("min-width: 400px; padding: 32px;"):
+        # 400px is wider than a phone. It stays the width this wants to be
+        # wherever there is room for it, and gives way where there is not.
+        with ui.card().style(
+            "width: 100%; max-width: 480px; min-width: min(400px, 100%);"
+            " padding: 32px;"
+        ):
             with ui.column().classes("w-full items-center") as status_column:
                 ui.label("Uploading files").classes("text-h6 q-mb-sm")
                 # role=status so the byte counter is announced as it changes
@@ -1127,6 +1261,7 @@ def table_upload(table) -> None:
                 def _cleanup_dialog():
                     ui.run_javascript(
                         f"const upl = getElement({upload.id});"
+                        f"if (upl && upl._recordCleanup) upl._recordCleanup();"
                         f"if (upl && upl._cleanup) upl._cleanup();"
                     )
                     try:
@@ -1151,94 +1286,25 @@ def table_upload(table) -> None:
 
                 upload.on("byte_progress", on_byte_progress)
 
-                # The dropzone is the only thing that looks clickable, and the
-                # instruction text points at it, but it used to be a plain div
-                # with its click handler bound in JavaScript: not focusable, no
-                # role, no accessible name. The file picker was reachable only
-                # through a 34x34 anchor inside the opacity:0 uploader below,
-                # which is invisible - focus went somewhere the user cannot see.
-                #
-                # role=button plus tabindex=0 makes the visible affordance the
-                # focusable control, and the keydown handler further down gives
-                # it Enter and Space. WCAG 2.1.1, 4.1.2 (level A).
-                dropzone = ui.html(
-                    """
-                    <div class="w-96 h-40 flex items-center justify-center
-                                border-2 border-dashed rounded-2xl cursor-pointer
-                                dropzone-area"
-                         role="button" tabindex="0"
-                         aria-label="Choose audio or video files to upload">
-                        Drag & drop files here or click to upload.
-                        <br/><br/>
-                        5 files at a maximum of 4GB can be uploaded at once.
-                    </div>
-                    """,
-                    sanitize=False,
-                )
-
+                if mode == "record":
+                    record_panel(upload)
+                else:
+                    _dropzone(upload)
+                # The uploader is hidden with opacity: 0, but its own
+                # pick-files anchor stayed in the tab order - an invisible
+                # focus stop on the primary upload path (finding F-49).
+                # Take its focusable descendants out of the tab order; the
+                # dropzone (or the recorder's own buttons) is the control.
+                # Done here rather than in _dropzone so a recording gets it
+                # too.  getElement() returns the Vue component, not a DOM
+                # node, so the element is reached through $el; guarded so a
+                # failure cannot take the dialog down with it.
                 upload_id = upload.id
-                dropzone_id = dropzone.id
                 ui.timer(
-                    0.1,
+                    0.2,
                     lambda: ui.run_javascript(
-                        "const dz = getHtmlElement(" + str(dropzone_id) + ");"
                         "const upl = getElement(" + str(upload_id) + ");"
-                        "if (!dz || !upl) return;"
-                        "dz.addEventListener('click', () => upl.$refs.qRef.pickFiles());"
-                        # Enter and Space activate the dropzone, the way any
-                        # role=button must. preventDefault stops Space from
-                        # scrolling the page instead.
-                        "dz.addEventListener('keydown', e => {"
-                        "  if (e.key === 'Enter' || e.key === ' ' || e.code === 'Space') {"
-                        "    e.preventDefault();"
-                        "    upl.$refs.qRef.pickFiles();"
-                        "  }"
-                        "});"
-                        "dz.addEventListener('dragover', e => {"
-                        "  e.preventDefault();"
-                        "  dz.querySelector('div').classList.add('dropzone-drag');"
-                        "});"
-                        "dz.addEventListener('dragleave', () => {"
-                        "  dz.querySelector('div').classList.remove('dropzone-drag');"
-                        "});"
-                        "dz.addEventListener('drop', e => {"
-                        "  e.preventDefault();"
-                        "  dz.querySelector('div').classList.remove('dropzone-drag');"
-                        "  upl.$refs.qRef.addFiles(Array.from(e.dataTransfer.files));"
-                        "});"
-                        "const progressInterval = setInterval(() => {"
-                        "  const qRef = upl.$refs.qRef;"
-                        "  if (!qRef || !qRef.files || qRef.files.length === 0) return;"
-                        "  let totalSize = 0, uploaded = 0, currentFile = '';"
-                        "  qRef.files.forEach(f => {"
-                        "    totalSize += f.size || 0;"
-                        "    uploaded += f.__uploaded || 0;"
-                        "    if (f.__status === 'uploading') currentFile = f.name;"
-                        "  });"
-                        "  if (currentFile) {"
-                        "    getElement("
-                        + str(upload_id)
-                        + ").$emit('byte_progress', {"
-                        "      uploaded: uploaded, total: totalSize, current_file: currentFile"
-                        "    });"
-                        "  }"
-                        "}, 500);"
-                        "upl._cleanup = () => {"
-                        "  clearInterval(progressInterval);"
-                        "  const qRef = upl.$refs.qRef;"
-                        "  if (qRef) { try { qRef.reset(); } catch (e) {} }"
-                        "};"
-                        # The uploader is hidden with opacity: 0, but its own
-                        # pick-files anchor stayed in the tab order - an
-                        # invisible focus stop on the primary upload path
-                        # (finding F-49). Take its focusable descendants out of
-                        # the tab order; the dropzone above is the control now.
-                        #
-                        # getElement() returns the Vue component, not a DOM
-                        # node, so the element has to be reached through $el.
-                        # This runs last and is guarded: if it ever fails it
-                        # must not take the drag-and-drop listeners or the
-                        # progress interval above down with it.
+                        "if (!upl) return;"
                         "try {"
                         "  const uplEl = upl.$el ||"
                         "    (upl.$refs && upl.$refs.qRef && upl.$refs.qRef.$el);"
@@ -1250,6 +1316,7 @@ def table_upload(table) -> None:
                     ),
                     once=True,
                 )
+
                 with ui.row().style("justify-content: flex-end; gap: 12px;"):
                     with ui.button(
                         "Cancel",
@@ -1298,6 +1365,26 @@ async def handle_upload_with_feedback(files, dialog, table):
         )
     table.update_rows(existing_rows, clear_selection=True)
 
+    async def _swap_in_real_rows(pending_row_ids: list) -> None:
+        """
+        Replace the finished placeholder rows with the backend's own.
+
+        The placeholders of files not uploaded yet are kept, ids and all, so
+        their progress goes on being written to them.  Placeholder ids are
+        strings (`_uploading_0`) and the backend's are ints, so the two can
+        never collide.
+        """
+
+        if client._deleted:
+            return
+
+        fresh_rows = await jobs_get()
+        if fresh_rows is None or client._deleted:
+            return
+
+        pending = [row for row in table.rows if row["id"] in pending_row_ids]
+        table.update_rows(pending + fresh_rows, clear_selection=False)
+
     # Upload to backend in a background task so the UI stays responsive
     async def _upload():
         for idx in range(len(file_items)):
@@ -1327,6 +1414,15 @@ async def handle_upload_with_feedback(files, dialog, table):
                             type="positive",
                             timeout=3000,
                         )
+                    # Swap this file's placeholder for the row the backend
+                    # now holds, rather than waiting for the whole batch.
+                    # The placeholder carries no uuid, and the status it
+                    # has just been given is exactly what draws the
+                    # Transcribe button and what bulk transcribe selects
+                    # on -- so between here and the end of the batch a
+                    # reader could start a transcription of a row with
+                    # nothing to start (KeyError: 'uuid').
+                    await _swap_in_real_rows(upload_row_ids[idx + 1 :])
             except Exception as e:
                 if not client._deleted:
                     for row in table.rows:
@@ -1346,11 +1442,9 @@ async def handle_upload_with_feedback(files, dialog, table):
                 file_items[idx] = (file_name, None)
                 file_upload = None
 
-        # Refresh with real data from backend
-        if not client._deleted:
-            fresh_rows = await jobs_get()
-            if fresh_rows is not None:
-                table.update_rows(fresh_rows, clear_selection=False)
+        # Refresh with real data from backend.  Nothing is pending by here,
+        # so every placeholder left (a failed upload) goes with it.
+        await _swap_in_real_rows([])
 
     # Not asyncio.create_task: the loop keeps only a weak reference, so an
     # upload could be collected part way through and its errors would never
@@ -1366,7 +1460,8 @@ def table_transcribe(selected_row, on_complete=None) -> None:
         with (
             ui.card()
             .style(
-                "background-color: var(--color-bg-surface); align-self: center; border: 0; width: 80%;"
+                "background-color: var(--color-bg-surface); align-self: center;"
+                " border: 0; width: 80%; min-width: min(320px, 100%);"
             )
             .classes("w-full no-shadow no-border")
         ):
@@ -1485,7 +1580,8 @@ def table_bulk_transcribe(table: ui.table, on_complete=None) -> None:
         with (
             ui.card()
             .style(
-                "background-color: var(--color-bg-surface); align-self: center; border: 0; width: 80%;"
+                "background-color: var(--color-bg-surface); align-self: center;"
+                " border: 0; width: 80%; min-width: min(320px, 100%);"
             )
             .classes("w-full no-shadow no-border")
         ):
@@ -1764,6 +1860,21 @@ def start_transcription(
 ) -> None:
     selected_language = language
     error = ""
+
+    # A row the backend has not answered for yet carries no uuid: the table
+    # draws a placeholder row of its own while a file uploads, and that row
+    # is marked "Uploaded" the moment the upload finishes -- a moment before
+    # the real row replaces it.  There is nothing to transcribe until then.
+    rows = [row for row in rows if row.get("uuid")]
+
+    if not rows:
+        ui.notify(
+            "That upload is still being registered. Try again in a moment.",
+            type="warning",
+            position="top",
+        )
+        dialog.close()
+        return
 
     if output_format == "Subtitles":
         output_format = "SRT"

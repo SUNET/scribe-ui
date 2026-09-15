@@ -55,6 +55,7 @@ API_URL="http://localhost:8000"
 
 # OIDC configuration
 OIDC_APP_REFRESH_ROUTE="http://localhost:8000/api/refresh"
+OIDC_APP_EXCHANGE_ROUTE="http://localhost:8000/api/auth/exchange"
 OIDC_APP_LOGIN_ROUTE="http://localhost:8000/api/login"
 OIDC_APP_LOGOUT_ROUTE="http://localhost:8000/api/logout"
 

@@ -113,6 +113,29 @@ async def token_refresh() -> bool:
     return True
 
 
+def session_alive() -> bool:
+    """
+    Whether this client's user storage is still there.
+
+    Background timers outlive the session that started them -- a reader
+    closes the tab, the server restarts, someone logs out -- and NiceGUI
+    does not answer "no" when asked for the storage of a session it no
+    longer has: it raises (an assertion in its storage.py). Anything running
+    on a timer has to ask first, or the first anyone hears of a session
+    ending is a traceback from a refresh firing into nothing.
+
+    Returns:
+        bool: True when app.storage.user can be read.
+    """
+
+    try:
+        app.storage.user
+    except Exception:
+        return False
+
+    return True
+
+
 async def token_refresh_or_wait(failures: int = 0) -> bool:
     """
     Whether to keep the session, given how many times refreshing has already
@@ -129,6 +152,46 @@ async def token_refresh_or_wait(failures: int = 0) -> bool:
         return await token_refresh()
     except RefreshUnavailable:
         return failures + 1 < MAX_REFRESH_FAILURES
+
+
+async def exchange_login_code(code: str) -> dict | None:
+    """
+    Trade the one-time code from the login redirect for that login's tokens.
+
+    The backend's OIDC callback used to put the id token and the refresh
+    token straight into the query string it redirected to, which left a
+    working set of credentials in the browser's history and in the referrer
+    of everything the landing page went on to load. It now redirects with a
+    single-use code and keeps the tokens; this call collects them from here,
+    server to server, so they never reach the browser at all.
+
+    Parameters:
+        code (str): The one-time code from the redirect.
+
+    Returns:
+        dict | None: {"token": ..., "refresh_token": ...}, or None when the
+            code was refused -- spent, expired or never issued.
+    """
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                settings.OIDC_APP_EXCHANGE_ROUTE,
+                json={"code": code},
+                timeout=10,
+            )
+
+        if response.status_code != 200:
+            return None
+
+        tokens = response.json()
+    except (httpx.HTTPError, ValueError):
+        return None
+
+    if not tokens.get("token"):
+        return None
+
+    return tokens
 
 
 def get_auth_header() -> dict[str, str]:

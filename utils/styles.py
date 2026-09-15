@@ -526,6 +526,137 @@ theme_styles = """
         background-color: var(--color-bg-surface-hover) !important;
     }
 
+    /* ── Microphone recorder ── */
+    /* The waveform is the card: tall enough to read, with the clock and the
+       recording marker inside it rather than in a caption underneath, so
+       there is one thing to look at instead of four. */
+    .recorder-hero {
+        position: relative;
+        width: 384px;
+        height: 120px;
+        border-radius: 14px;
+        overflow: hidden;
+        background-color: var(--color-bg-surface-alt);
+        border: 1px solid var(--color-border-subtle);
+    }
+    .recorder-wave {
+        display: block;
+        width: 100%;
+        height: 100%;
+        cursor: pointer;
+    }
+    .recorder-hint {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.82rem;
+        color: var(--color-text-muted);
+        pointer-events: none;
+    }
+    /* Both readouts sit over the drawing, so each carries a ground of its
+       own; without one the digits fall in among the bars and cannot be read
+       at all. */
+    .recorder-clock,
+    .recorder-live {
+        position: absolute;
+        top: 8px;
+        border-radius: 999px;
+        background-color: var(--color-bg-surface);
+        padding: 2px 9px;
+        pointer-events: none;
+    }
+    .recorder-clock {
+        left: 10px;
+        font-family: var(--font-mono);
+        font-size: 0.78rem;
+        color: var(--color-text-secondary);
+    }
+    .recorder-live {
+        right: 10px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        color: var(--color-text-danger);
+    }
+    .recorder-dot {
+        display: block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background-color: currentColor;
+    }
+
+    /* Pills, and content-width: these are a row of peers, and only one of
+       them is filled at any moment.  nowrap because Quasar wraps a q-btn's
+       content when the label does not fit, which puts the icon above the text
+       and makes that one button a different height as well as a different
+       shape. */
+    .recorder-action {
+        border-radius: 999px !important;
+        padding: 6px 18px;
+    }
+    .recorder-action .q-btn__content {
+        flex-wrap: nowrap;
+        gap: 8px;
+    }
+    .recorder-filled {
+        background-color: var(--color-brand-accent);
+        color: var(--color-text-primary) !important;
+        border: 1px solid var(--color-border);
+    }
+    .recorder-outline {
+        background-color: var(--color-bg-surface);
+        color: var(--color-text-primary) !important;
+        border: 1px solid var(--color-border);
+    }
+    .recorder-muted {
+        color: var(--color-text-secondary) !important;
+        border: 1px solid transparent;
+    }
+    /* The global dark-mode rule gives every flat button a border; this one is
+       a quiet text control and must not grow one. */
+    .body--dark .recorder-muted {
+        border-color: transparent !important;
+    }
+
+    /* A native <select>, because its options are written from the page as
+       devices come and go and a QSelect's options live on the server -- but
+       stripped back to a line of text, since it is one of the quiet controls
+       and not a form field at the top of the card.  The browser keeps drawing
+       its own arrow, which is what says it opens. */
+    .recorder-device {
+        background: transparent;
+        border: none;
+        font-family: inherit;
+        font-size: 0.78rem;
+        color: var(--color-text-muted);
+        cursor: pointer;
+        max-width: 240px;
+    }
+    .recorder-device:disabled {
+        opacity: 0.55;
+        cursor: default;
+    }
+
+    /* Driven by the card's own Play button: the browser's controls were the
+       loudest thing here and the least like the rest of the app. */
+    .recorder-player {
+        display: none;
+    }
+    .recorder-status {
+        font-size: 0.75rem;
+        color: var(--color-text-muted);
+        margin-top: 10px;
+        text-align: center;
+        min-height: 1.1rem;
+        max-width: 384px;
+    }
+
     /* ── Global dark mode button override ── */
     .body--dark .q-btn--flat {
         color: var(--color-text-primary) !important;
@@ -643,6 +774,525 @@ theme_styles = """
         font-size: 0.8125rem;
         font-style: italic;
         color: var(--color-text-secondary);
+    }
+
+    /* The Analyse strip, under the video. One row at rest: a mark, a
+       button per thing the model can be asked for, and the answer beneath
+       them only once there is one -- so an unused feature costs a single
+       row of the pane. */
+    .inference-panel {
+        gap: 0.35rem;
+        padding-top: 0.35rem;
+        /* Takes whatever the video, the timeline and the switches leave,
+           rather than a height of its own: the answer is the thing being
+           read once there is one, and a fixed box left it scrolling inside
+           a pane with empty space under it. min-height: 0 because a flex
+           item refuses to shrink below its content without it, and the
+           answer's content is arbitrarily long. */
+        /* Nothing at all while both panels are closed: it is a flex item
+           of the pane, and a strip that grows into space it is not using
+           holds that space away from the video. Open, it takes everything
+           the video, the timeline and the switches leave. */
+        flex: 0 0 auto;
+        min-height: 0;
+        padding-top: 0;
+    }
+    .inference-panel.is-open {
+        flex: 1 1 0%;
+        padding-top: 0.35rem;
+    }
+    /* The whole of this feature on screen at rest: two icons riding the
+       switch row, held to its right end. They were in the video frame's
+       top corner, which needed a translucent ground of its own to stay
+       readable over a moving picture; on the row they sit on the page's
+       own surface and need none, and they cost no row of the pane at all.
+       margin-left rather than justify-content, since they are one item of
+       that row and not its layout. */
+    .inference-launcher-row {
+        flex: 0 0 auto;
+        margin-left: auto;
+        gap: 0.1rem;
+    }
+    .inference-launchers {
+        gap: 0.1rem;
+    }
+    .body--light .q-btn.inference-launcher,
+    .body--dark .q-btn.inference-launcher,
+    .body--light .q-btn.inference-launcher .q-icon,
+    .body--dark .q-btn.inference-launcher .q-icon {
+        color: var(--color-text-secondary) !important;
+    }
+    .body--light .q-btn.inference-launcher:hover,
+    .body--dark .q-btn.inference-launcher:hover {
+        background-color: var(--color-bg-surface-hover) !important;
+        color: var(--color-text-primary) !important;
+    }
+    /* The panel's own head: what it is on the left, what can be done with
+       it on the right. Same shape the review's own header has, so the two
+       read as the same kind of thing opened in the same place. */
+    .inference-head {
+        gap: 0.15rem;
+        flex-wrap: nowrap;
+    }
+    .inference-open {
+        gap: 0.35rem;
+        flex: 1 1 0%;
+        min-height: 0;
+    }
+    .inference-title {
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: var(--color-text-primary);
+    }
+    .inference-mark {
+        font-size: 1.05rem;
+        color: var(--color-text-tertiary);
+    }
+    .inference-actions {
+        justify-content: flex-start;
+        align-items: center;
+        gap: 0.15rem;
+        flex-wrap: wrap;
+    }
+    /* Pills rather than buttons: they are peers, none of them the action
+       of the page -- Save is -- and a row of filled buttons under the
+       video shouts louder than Save does in the toolbar. They *were*
+       filled in the near-black the transcription is set in, on the
+       reasoning that outlined pills read as disabled next to the switches
+       above them; with a fifth added for Review that came to five solid
+       blobs in a pane 40% of the window wide, wrapping onto two rows and
+       reading as the loudest thing in the editor. Quiet is also what the
+       row was meant to be. So: no fill and no border at rest, the page's
+       own text colour, and a soft ground on hover -- the same treatment
+       the icon buttons at the end of the row already have, so the whole
+       row reads as one set of controls instead of two. */
+    .inference-chip {
+        border-radius: 999px;
+        font-size: 0.8125rem;
+        font-weight: 500;
+        padding: 0.15rem 0.6rem;
+        transition: background 0.15s ease, color 0.15s ease;
+    }
+    .inference-chip .q-icon {
+        font-size: 1rem;
+        /* Quasar spaces a prop-set icon for a filled button; unfilled and
+           at this size it sits too far from its own label. */
+        margin-right: 0.1rem;
+    }
+    .body--light .q-btn.inference-chip,
+    .body--dark .q-btn.inference-chip {
+        background-color: transparent !important;
+        border: none !important;
+        color: var(--color-text-secondary) !important;
+    }
+    .body--light .q-btn.inference-chip .q-icon,
+    .body--light .q-btn.inference-chip .q-btn__content,
+    .body--dark .q-btn.inference-chip .q-icon,
+    .body--dark .q-btn.inference-chip .q-btn__content {
+        color: inherit !important;
+    }
+    /* The hover is what says these are pressable, so it carries the
+       weight the fill used to: the page's own text colour on the lifted
+       surface. */
+    .body--light .q-btn.inference-chip:hover,
+    .body--dark .q-btn.inference-chip:hover {
+        background-color: var(--color-bg-surface-hover) !important;
+        color: var(--color-text-primary) !important;
+    }
+    .body--light .q-btn.inference-chip[disabled],
+    .body--dark .q-btn.inference-chip[disabled] {
+        opacity: 0.4;
+    }
+    /* The same near-black the pills are filled with, rather than Quasar's
+       default primary -- blue icons beside black buttons read as a
+       different control belonging to something else. Drawn as glyphs, not
+       filled circles: copying and downloading act on an answer that is
+       already there, while the pills are what produce one. */
+    .body--light .q-btn.inference-icon-btn,
+    .body--dark .q-btn.inference-icon-btn,
+    .body--light .q-btn.inference-icon-btn .q-icon,
+    .body--dark .q-btn.inference-icon-btn .q-icon {
+        color: var(--color-text-primary) !important;
+    }
+    .body--light .q-btn.inference-icon-btn:hover,
+    .body--dark .q-btn.inference-icon-btn:hover {
+        background-color: var(--color-bg-surface-hover) !important;
+    }
+    .inference-status-line {
+        font-size: 0.78rem;
+        color: var(--color-text-muted);
+        min-height: 1.1rem;
+        padding-left: 0.15rem;
+    }
+    /* The line under the answer: what it is on the left, what it cost on
+       the right. The cost is quieter than the note beside it -- it is
+       there to be found, not to be read every time. */
+    .inference-status {
+        gap: 0.75rem;
+        flex-wrap: wrap;
+    }
+    .inference-usage {
+        margin-left: auto;
+        font-size: 0.72rem;
+        color: var(--color-text-tertiary);
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+    }
+    .review-usage {
+        font-variant-numeric: tabular-nums;
+    }
+    /* A tinted surface rather than a bordered box. The strip sits inside a
+       card already, and a second rule around the answer drew a frame
+       within a frame. */
+    .inference-output {
+        width: 100%;
+        /* NiceGUI gives a scroll area a fixed 16rem; this one is measured
+           by the space left in the pane instead, with a floor so it is
+           still a box worth reading on a short window. */
+        flex: 1 1 auto;
+        height: auto;
+        min-height: 7rem;
+        border-radius: 0.75rem;
+        background: var(--color-bg-surface-alt);
+        padding: 0.2rem 0.85rem;
+    }
+    /* A caret while the text is still arriving, so a pause between batches
+       reads as the model thinking rather than as the answer having
+       stopped. */
+    .inference-output.is-generating .nicegui-markdown > *:last-child::after {
+        content: "▌";
+        margin-left: 0.1rem;
+        color: var(--color-text-tertiary);
+        animation: inference-caret 1.1s steps(2, start) infinite;
+    }
+    @keyframes inference-caret {
+        to {
+            visibility: hidden;
+        }
+    }
+    /* Study notes are headings and lists, written for a page rather than
+       for a strip this size, so the type is stepped down and the vertical
+       rhythm tightened to match. */
+    /* Stepped up from 0.85rem: this is prose to be read, not a caption
+       to be glanced at, and it shares a pane rather than a page. */
+    .inference-output .nicegui-markdown {
+        font-size: 0.9rem;
+        line-height: 1.55;
+        color: var(--color-text-primary);
+    }
+    .inference-output .nicegui-markdown h1,
+    .inference-output .nicegui-markdown h2,
+    .inference-output .nicegui-markdown h3 {
+        font-size: 0.9rem;
+        font-weight: 600;
+        letter-spacing: 0.01em;
+        margin: 0.7rem 0 0.2rem;
+    }
+    .inference-output .nicegui-markdown h1:first-child,
+    .inference-output .nicegui-markdown h2:first-child,
+    .inference-output .nicegui-markdown h3:first-child {
+        margin-top: 0.25rem;
+    }
+    .inference-output .nicegui-markdown p,
+    .inference-output .nicegui-markdown ul,
+    .inference-output .nicegui-markdown ol {
+        margin: 0.3rem 0;
+    }
+    .inference-output .nicegui-markdown ul,
+    .inference-output .nicegui-markdown ol {
+        padding-left: 1.1rem;
+        list-style: revert;
+    }
+    .inference-output .nicegui-markdown strong {
+        color: var(--color-text-primary);
+        font-weight: 600;
+    }
+    /* Mathematics, drawn by the browser itself from the MathML the answer
+       is rendered into. Block formulae get room of their own and scroll
+       sideways rather than pushing the strip wider than the pane. */
+    .inference-output .nicegui-markdown math {
+        font-size: 1.05em;
+    }
+    .inference-output .nicegui-markdown math[display="block"] {
+        display: block;
+        overflow-x: auto;
+        margin: 0.5rem 0;
+        padding-bottom: 0.15rem;
+    }
+    /* The finished answer: its passages stacked in the order the model
+       wrote them. */
+    .inference-answer {
+        gap: 0.25rem;
+        width: 100%;
+    }
+    /* One passage of the answer -- a paragraph, a heading, a bullet. Each
+       is its own element so that clicking it can move the transcription to
+       where it came from; on its own it should read as running prose, so
+       it carries no rule, no ground and no gap of its own beyond the
+       column's. */
+    .inference-passage {
+        width: 100%;
+        border-radius: 0.4rem;
+        padding: 0.05rem 0.35rem;
+        margin-left: -0.35rem;
+    }
+    /* Only where there is somewhere to go. A quiet ground on hover rather
+       than a link's colour or underline: every line is followable, and
+       marking them all as links would make the answer unreadable. */
+    .inference-passage.is-linked {
+        cursor: pointer;
+        transition: background-color 0.12s ease;
+    }
+    .inference-passage.is-linked:hover {
+        background-color: var(--color-bg-surface);
+    }
+    /* The line the reader followed, kept marked while the answer is on
+       screen: it is the one thing on the page that says which of a dozen
+       similar bullets the transcription was moved for. A rule down the
+       side rather than a ground, so it does not read as a second hover. */
+    .inference-passage.is-followed {
+        box-shadow: inset 2px 0 var(--color-brand-primary);
+        background-color: color-mix(
+            in srgb, var(--color-brand-primary) 8%, transparent
+        );
+    }
+    /* The passages are stacked by the column, so their own first and last
+       margins would double the gap between them. */
+    .inference-passage .nicegui-markdown > *:first-child {
+        margin-top: 0;
+    }
+    .inference-passage .nicegui-markdown > *:last-child {
+        margin-bottom: 0;
+    }
+    .inference-output .nicegui-markdown ul,
+    .inference-output .nicegui-markdown ol {
+        padding-left: 1.1rem;
+        list-style: revert;
+    }
+
+    /* ── Review assistant ───────────────────────────────────────────────
+       One suggestion at a time, in the Analyse strip's own answer area: a
+       review is another thing asked of the same recording, so it is asked
+       for from the same row of pills and read where an answer is read. It
+       used to be a dialog, which meant a card standing over the very text
+       a suggestion is judged against -- hence the seamless dialog, the
+       drag handle and the clamping that kept it on screen, all of which
+       the strip does away with. */
+    .review-panel {
+        gap: 0.5rem;
+        /* Fills whatever the video, the timeline and the switches leave,
+           down to the foot of the pane -- the same room the answer area
+           takes, since the two stand in the same place and only one is up
+           at a time. The basis is 0 rather than auto so the height comes
+           from the pane and not from the suggestion being shown: a short
+           card must still reach the bottom, and a long one must not push
+           past it. min-height: 0 so the body inside can scroll rather than
+           growing the panel out of the pane. */
+        flex: 1 1 0%;
+        min-height: 0;
+    }
+    /* Says which of the pills beside Review produced what is in the slot.
+       No longer a drag handle: there is nothing to drag it off. */
+    .review-header {
+        gap: 0.4rem;
+    }
+    .review-mark {
+        font-size: 1.05rem;
+        color: var(--color-text-tertiary);
+    }
+    .review-title {
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: var(--color-text-primary);
+    }
+    /* Height from the pane, never from what is in it. Accept, Dismiss and
+       Skip are pressed dozens of times in a row, and a box that grew with
+       a long explanation would move all three out from under the pointer
+       between one suggestion and the next. A suggestion longer than the
+       box scrolls inside it instead. The tinted surface is the answer
+       area's own (see .inference-output): the review stands in the same
+       place and should look like it belongs there. */
+    .review-body {
+        gap: 0.6rem;
+        /* Everything the header and the footer leave, so the footer sits
+           at the foot of the pane and the suggestion scrolls between them
+           rather than under them. Basis 0 for the same reason the panel's
+           is: what is on the card must not decide how tall it is. */
+        flex: 1 1 0%;
+        min-height: 7rem;
+        overflow-y: auto;
+        border-radius: 0.75rem;
+        background: var(--color-bg-surface-alt);
+        padding: 0.55rem 0.85rem;
+    }
+    .review-footer {
+        gap: 0.4rem;
+        padding-top: 0.35rem;
+        border-top: 1px solid var(--color-border-subtle);
+        flex: 0 0 auto;
+    }
+    /* Waiting for the hub. It fills the card and sits in the middle of it:
+       nothing else is on the card while this is up, and a spinner in the
+       top corner of an empty box reads as a fault rather than as work
+       going on. */
+    .review-working {
+        flex: 1 1 auto;
+        width: 100%;
+        min-height: 100%;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+        gap: 0.6rem;
+    }
+    .review-working-note {
+        max-width: 24rem;
+    }
+    .review-lead {
+        font-size: 0.95rem;
+        color: var(--color-text-primary);
+    }
+    .review-note {
+        font-size: 0.78rem;
+        color: var(--color-text-muted);
+    }
+    .review-domain {
+        font-size: 1.05rem;
+        font-weight: 600;
+        color: var(--color-brand-primary);
+    }
+    .review-select {
+        width: 100%;
+    }
+    /* What kind of thing is being suggested -- terminology, a name, a
+       word used two ways. A quiet chip: it groups the suggestions, it is
+       not the suggestion. */
+    .review-kind {
+        font-size: 0.7rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        padding: 0.1rem 0.5rem;
+        border-radius: 999px;
+        background-color: var(--color-bg-surface-alt);
+        color: var(--color-text-secondary);
+    }
+    .review-progress {
+        margin-left: auto;
+        font-size: 0.75rem;
+        color: var(--color-text-muted);
+    }
+    .review-change {
+        gap: 0.3rem;
+        padding: 0.6rem 0.75rem;
+        border-radius: 0.6rem;
+        background-color: var(--color-bg-surface-alt);
+    }
+    /* Full width, explicitly: the row sits in a NiceGUI column, which
+       sets align-items: flex-start, so without this the row is sized to
+       its own content and the replacement box never gets more than its
+       flex basis -- the suggested text was cut off mid-word with empty
+       card to the right of it. */
+    .review-change-row {
+        gap: 0.6rem;
+        flex-wrap: wrap;
+        width: 100%;
+    }
+    .review-change-label {
+        min-width: 7rem;
+        font-size: 0.75rem;
+        color: var(--color-text-muted);
+    }
+    /* The two halves of the decision. The transcribed text is what is
+       there now, so it is stated plainly rather than struck through --
+       nothing has been changed yet, and a strike would say it had. */
+    .review-original {
+        font-size: 0.95rem;
+        color: var(--color-text-primary);
+    }
+    .review-replacement {
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: var(--color-brand-primary);
+    }
+    /* The replacement is the reader's to change, so it is a box and not a
+       label -- but it is still the value on the card, so it is set in the
+       same brand weight the label was rather than dressed as a form field
+       in the middle of a sentence. A quiet underline is what says it can be
+       typed into; it strengthens on focus. */
+    .review-replacement-input {
+        /* Everything the label leaves. A suggestion can be a phrase, not
+           only a word, and it is the one thing on the card the reader
+           types into. */
+        flex: 1 1 auto;
+        min-width: 8rem;
+    }
+    .review-replacement-input .q-field__control,
+    .review-replacement-input .q-field__native {
+        min-height: 1.6rem;
+        padding: 0;
+    }
+    .review-replacement-input .q-field__native {
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: var(--color-brand-primary);
+        border-bottom: 1px dashed var(--color-border-subtle);
+    }
+    .review-replacement-input .q-field__native:focus {
+        border-bottom-color: var(--color-brand-primary);
+    }
+    /* The model's own sentence, in the language of the recording. Set apart
+       from the product's own English, which is everything else here. */
+    /* The sentence the suggestion is about, with the words it would change
+       picked out. Three labels laid out inline so they read as one
+       wrapping sentence -- a caption is somebody's speech and a suggestion
+       is a model's writing, and neither is markup to be trusted here. */
+    .review-context-block {
+        gap: 0.15rem;
+    }
+    .review-context {
+        font-size: 0.85rem;
+        line-height: 1.5;
+        color: var(--color-text-secondary);
+    }
+    .review-context > * {
+        display: inline;
+    }
+    .review-context-hit {
+        font-weight: 600;
+        color: var(--color-text-primary);
+        background-color: color-mix(
+            in srgb, var(--color-brand-primary) 18%, transparent
+        );
+        border-radius: 0.2rem;
+        padding: 0 0.1rem;
+    }
+    .review-why {
+        font-size: 0.85rem;
+        font-style: italic;
+        color: var(--color-text-secondary);
+    }
+    .review-where {
+        gap: 0.5rem;
+    }
+    .review-summary {
+        gap: 0.15rem;
+        font-size: 0.85rem;
+        color: var(--color-text-secondary);
+    }
+    /* Quasar gives a flat button the primary colour, which here is the
+       brand blue -- three blue words in a row read as three links, and
+       Accept is the only action of the three that does anything to the
+       transcription. The plain answers are set in the page's own text
+       colour and Accept alone carries the brand. */
+    .body--light .q-btn.review-action,
+    .body--dark .q-btn.review-action,
+    .body--light .q-btn.review-action .q-icon,
+    .body--dark .q-btn.review-action .q-icon {
+        color: var(--color-text-primary) !important;
+    }
+    .body--light .q-btn.review-primary,
+    .body--dark .q-btn.review-primary {
+        background-color: var(--color-brand-primary) !important;
+        color: var(--color-text-on-brand) !important;
     }
 
     /* ── Editor toolbar buttons (flat, no border, subtle bg in dark mode) ── */
@@ -1101,6 +1751,15 @@ theme_styles = """
        are the page's own content, not something floating over it, so they
        carry neither a drop shadow nor a rule around them. Just a radius,
        and the splitter's own handle between them. */
+    /* Both panes, the same height, measured in the page rather than
+       guessed at: --editor-height is what is left of the window under
+       whatever chrome is above them (see the script in pages/srt.py). The
+       fallback is the expression this replaces, so a pane is never
+       height-less between the first paint and the first measurement --
+       it just leaves the band of empty page the measurement takes away. */
+    .editor-panes .editor-panel {
+        height: var(--editor-height, calc(90vh - 100px));
+    }
     .editor-panel {
         background-color: var(--color-bg-surface);
         border: none !important;
@@ -1356,6 +2015,12 @@ theme_styles = """
        ui.video nor the card wrapping it establishes one. */
     .video-frame {
         position: relative;
+        /* Sized by the picture it holds, and no taller: the frame used to
+           be h-full and claimed the whole pane, leaving the Analyse strip
+           under it nothing to grow into. Note it must keep a content-based
+           floor -- giving it min-height: 0 as well let flex shrink the
+           video to nothing at all. */
+        flex: 0 0 auto;
         /* The frame sits inside a rounded panel now, so the picture is
            rounded to match rather than filling square corners inside it. */
         border-radius: 8px;
@@ -1606,6 +2271,39 @@ theme_styles = """
         background-color: color-mix(
             in srgb, var(--color-warning-border) 22%, transparent
         );
+    }
+    /* Where a jump from outside the text landed -- a line of an analysis
+       followed back to what was said. A ring rather than a tint: the three
+       tinted states above already own the caption's background between
+       them (playing, being typed into, a search match), and a fourth
+       colour there would be one more thing to tell apart. It fades on its
+       own, which is also what says it is not a state the caption is in but
+       an answer to "where did I land". */
+    .transcript-cell-found {
+        animation: transcript-found 2.4s ease-out;
+    }
+    @keyframes transcript-found {
+        0% {
+            box-shadow: 0 0 0 2px
+                color-mix(in srgb, var(--color-brand-primary) 85%, transparent);
+        }
+        60% {
+            box-shadow: 0 0 0 2px
+                color-mix(in srgb, var(--color-brand-primary) 70%, transparent);
+        }
+        100% {
+            box-shadow: 0 0 0 2px transparent;
+        }
+    }
+    /* A reader who has asked for less movement still has to be told where
+       they landed, so the mark is simply held for as long as it would have
+       taken to fade. */
+    @media (prefers-reduced-motion: reduce) {
+        .transcript-cell-found {
+            animation: none;
+            box-shadow: 0 0 0 2px
+                color-mix(in srgb, var(--color-brand-primary) 70%, transparent);
+        }
     }
 
     /* The timing row is not part of the caption's text, so a selection
@@ -2169,8 +2867,10 @@ theme_styles = """
     }
 
     /* ── SRT editor controls under the video ── */
-    /* The switches on one row, what they mark under it -- grouped by what
-       each control affects, without a heading naming each group. */
+    /* One row: the switches and, as a group of its own, the sensitivity
+       selector that used to sit on a second row behind a separator. Still
+       a column, because that row is what show_player() folds away with the
+       video, and because a narrow pane wraps it into more than one. */
     .editor-settings {
         display: flex;
         flex-direction: column;
@@ -2210,6 +2910,282 @@ theme_styles = """
     }
     .help-support-icon {
         color: var(--color-help-support-icon);
+    }
+
+    /* ══════════════════════════════════════════════════════════════════
+       Phones
+       ══════════════════════════════════════════════════════════════════
+       What a phone is for here is recording something and starting a
+       transcription of it -- not editing one. Editing wants a video, a
+       caption list and a timeline side by side, which is a desk, and the
+       editor says so for itself rather than being shrunk into something
+       that technically fits (see .editor-too-small).
+
+       One breakpoint, not a scale of them: this is the difference between
+       a window and a hand, and everything below reads as either. */
+    @media (max-width: 700px) {
+        /* The page's own margins are most of a phone's width. */
+        .nicegui-content {
+            padding-left: 0.75rem;
+            padding-right: 0.75rem;
+            padding-top: 0.75rem;
+        }
+
+        /* The rail is 56px of a 390px screen given over to icons nobody
+           is looking at. Hidden entirely when collapsed, and drawn over
+           the page rather than beside it when opened -- there is no room
+           to put anything beside anything here. Quasar writes the page
+           container's padding inline from the drawer's width, which is
+           why this has to insist. */
+        .q-drawer--mini {
+            width: 0 !important;
+            min-width: 0 !important;
+            overflow: hidden;
+        }
+        .q-page-container {
+            padding-left: 0 !important;
+        }
+        .q-drawer--left:not(.q-drawer--mini) {
+            box-shadow: 0 0 24px rgba(0, 0, 0, 0.35);
+            z-index: 3000;
+        }
+
+        /* The product name is the first thing to go: the menu button, the
+           logo and the two controls on the right all have to fit, and the
+           name is the one thing a reader already knows. */
+        .topbar-text {
+            font-size: 1rem !important;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            max-width: 40vw;
+        }
+
+        /* A heading, not a banner. */
+        .page-title {
+            font-size: 1.5rem !important;
+        }
+
+        /* The table's own toolbar is a row of four buttons and a title on
+           a screen that fits about two. Stacked, and the buttons given a
+           row of their own that they may wrap inside. */
+        .q-table__top {
+            flex-direction: column;
+            align-items: stretch;
+            gap: 0.5rem;
+            padding: 0.5rem 0;
+        }
+        .q-table__top .q-table__control {
+            width: 100%;
+        }
+        /* The four actions are peers -- none of them is the action of
+           the page -- so they are drawn as peers: a two by two grid of
+           identical cells rather than four buttons each as wide as its
+           own label happens to be, which put Delete and Upload on one
+           row and Transcribe alone on the next. A grid rather than
+           `flex: 1 1 0`, because four across a 390px screen leaves no
+           room for "Transcribe" to be read. The height is the same tap
+           target the card's own action has. */
+        .jobs-actions {
+            width: 100%;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.35rem !important;
+        }
+        .jobs-actions .q-btn {
+            width: 100%;
+            min-width: 0;
+            min-height: 44px;
+        }
+
+        /* Rows are cards here (see the table's `grid` prop), so the strip
+           of column headings and the fixed table height have nothing left
+           to describe. */
+        .table-style {
+            height: auto !important;
+            font-size: 1rem !important;
+        }
+        .jobs-card {
+            width: 100%;
+            padding: 0.75rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .jobs-card-name {
+            font-weight: 600;
+            overflow-wrap: anywhere;
+        }
+        .jobs-card-meta {
+            font-size: 0.8rem;
+            color: var(--color-text-muted);
+        }
+        /* A tap target, not a pointer target: the row's own action is the
+           whole reason the card is here. */
+        .jobs-card-action .q-btn {
+            width: 100%;
+            min-height: 44px;
+        }
+
+        /* A dialog on a phone is the screen. The card inside it carries
+           the minimum width that made it a dialog on a desktop, which is
+           wider than the phone it is now on. */
+        .q-dialog__inner > .q-card,
+        .q-dialog__inner > div > .q-card {
+            min-width: 0 !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            padding: 1rem !important;
+            margin: 0;
+        }
+        .q-dialog__inner--minimized {
+            padding: 0.5rem;
+        }
+
+        /* And the same for a card that is the page rather than over it:
+           the user settings card asks for 500px, which is wider than the
+           phone and takes the whole page sideways with it. Nothing here
+           may be wider than the screen it is on. */
+        .nicegui-content .q-card {
+            min-width: 0 !important;
+            max-width: 100% !important;
+        }
+
+        /* The recorder is the point of the exercise, so it gets the width
+           it can have and buttons a thumb can hit. */
+        .recorder-hero {
+            width: 100%;
+            height: 150px;
+        }
+        .recorder-status {
+            max-width: 100%;
+        }
+        .recorder-action {
+            min-height: 46px;
+            font-size: 1rem;
+        }
+        .recorder-device {
+            max-width: 100%;
+        }
+    }
+
+    /* ══════════════════════════════════════════════════════════════════
+       Reading a transcription (/view)
+       ══════════════════════════════════════════════════════════════════
+       The read-only page a phone's card opens: the recording, the text
+       under it, and the passage being played marked. It is a column at
+       any width -- there is nothing beside anything here -- so it is not
+       inside the phone media query; on a desktop it simply stops growing
+       once a line is as long as anyone wants to read. */
+    .view-page {
+        max-width: 760px;
+        margin: 0 auto;
+        gap: 0.75rem;
+    }
+    .view-header {
+        gap: 0.5rem;
+        flex-wrap: nowrap;
+    }
+    .view-title {
+        font-size: 1.1rem;
+        font-weight: 600;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    /* Sticky, because the whole point of tapping a passage is hearing it:
+       the player has to stay reachable however far down the text the
+       reader has scrolled.
+
+       It sticks *below the header*, not at the top of the window: the
+       header is `position: fixed`, so a sticky element stopping at 0
+       parks itself underneath it and loses its top to it. The height is
+       measured in the page (see VIDEO_TOP_SCRIPT) rather than written
+       here as a number -- the header carries the announcement banners,
+       so how tall it is is not known until they are drawn, and it
+       changes when one is dismissed. The fallback is the header's own
+       minimum plus its padding, so the video is never under it even
+       before the first measurement. */
+    .view-video {
+        position: sticky;
+        top: var(--view-header, 58px);
+        z-index: 2;
+        background-color: var(--color-bg-page);
+        /* Its own ground, top and bottom: the text scrolls underneath
+           it, and a picture flush against the header reads as part of
+           it. */
+        padding-top: 0.5rem;
+        padding-bottom: 0.5rem;
+    }
+    .view-video video {
+        max-height: 40vh;
+        background-color: black;
+    }
+    .view-controls {
+        gap: 0.75rem;
+        flex-wrap: wrap;
+    }
+    .view-note {
+        font-size: 0.8rem;
+        color: var(--color-text-muted);
+    }
+    .view-captions {
+        gap: 0.25rem;
+        padding-bottom: 4rem;
+    }
+    /* A passage, not a filled cell -- the same rule the editor's own
+       captions follow. The pointer says it can be tapped; the marking
+       says which one is being played. */
+    .view-caption {
+        padding: 0.5rem 0.6rem;
+        border-radius: 6px;
+        cursor: pointer;
+        border-left: 3px solid transparent;
+    }
+    .view-caption:hover {
+        background-color: var(--color-bg-surface-hover);
+    }
+    .view-caption.is-playing {
+        border-left-color: var(--color-brand-primary);
+        background-color: var(--color-bg-surface-hover);
+    }
+    .view-caption-meta {
+        font-size: 0.75rem;
+        color: var(--color-text-muted);
+    }
+    /* The editor's own line breaks are part of a caption, so they are
+       kept rather than reflowed. */
+    .view-caption-text {
+        white-space: pre-line;
+        overflow-wrap: anywhere;
+    }
+
+    /* Said by the editor about itself, and only where it applies: a
+       caption list, a video and a timeline side by side need a desk. It
+       is a plain sentence rather than a redirect, because a reader who
+       followed a link here should be told what to do, not sent back to
+       where they came from. */
+    .editor-too-small {
+        display: none;
+    }
+    @media (max-width: 700px) {
+        .editor-too-small {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.75rem;
+            text-align: center;
+            padding: 3rem 1.25rem;
+            color: var(--color-text-secondary);
+        }
+        .editor-too-small .editor-too-small-title {
+            font-size: 1.15rem;
+            font-weight: 600;
+            color: var(--color-text-primary);
+        }
+        .editor-panes {
+            display: none !important;
+        }
     }
 </style>
 <script>

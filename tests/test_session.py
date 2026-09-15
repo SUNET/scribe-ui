@@ -232,3 +232,39 @@ class TestThemeReloadIsOnlyForCharts:
 
     def test_the_editor_does_not(self):
         assert "reload_on_theme_change" not in pathlib.Path("pages/srt.py").read_text()
+
+
+class TestATimerOutlivingItsSession:
+    """
+    The refresh timer keeps firing after the session it belongs to is gone
+    -- a closed tab, a server restart, a logout. NiceGUI does not answer
+    "no" when asked for a session it no longer holds; it raises. Asking
+    first is what keeps a refresh from turning into a traceback.
+    """
+
+    def test_a_live_session_is_alive(self, monkeypatch):
+        class Storage:
+            user = {"token": "something"}
+
+        class FakeApp:
+            storage = Storage()
+
+        monkeypatch.setattr(token_module, "app", FakeApp)
+
+        assert token_module.session_alive() is True
+
+    def test_a_departed_session_is_not(self, monkeypatch):
+        class Storage:
+            @property
+            def user(self):
+                raise AssertionError(
+                    "user storage for 6a95c818 should be created before "
+                    "accessing it"
+                )
+
+        class FakeApp:
+            storage = Storage()
+
+        monkeypatch.setattr(token_module, "app", FakeApp)
+
+        assert token_module.session_alive() is False
