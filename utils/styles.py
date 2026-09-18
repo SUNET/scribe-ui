@@ -2211,6 +2211,265 @@ theme_styles = """
     .help-support-icon {
         color: var(--color-help-support-icon);
     }
+
+    /* ══════════════════════════════════════════════════════════════════
+       Phones
+       ══════════════════════════════════════════════════════════════════
+       What a phone is for here is recording something and starting a
+       transcription of it -- not editing one. Editing wants a video, a
+       caption list and a timeline side by side, which is a desk, and the
+       editor says so for itself rather than being shrunk into something
+       that technically fits (see .editor-too-small).
+
+       One breakpoint, not a scale of them: this is the difference between
+       a window and a hand, and everything below reads as either. */
+    @media (max-width: 700px) {
+        /* The page's own margins are most of a phone's width. */
+        .nicegui-content {
+            padding-left: 0.75rem;
+            padding-right: 0.75rem;
+            padding-top: 0.75rem;
+        }
+
+        /* The rail is 56px of a 390px screen given over to icons nobody
+           is looking at. Hidden entirely when collapsed, and drawn over
+           the page rather than beside it when opened -- there is no room
+           to put anything beside anything here. Quasar writes the page
+           container's padding inline from the drawer's width, which is
+           why this has to insist. */
+        .q-drawer--mini {
+            width: 0 !important;
+            min-width: 0 !important;
+            overflow: hidden;
+        }
+        .q-page-container {
+            padding-left: 0 !important;
+        }
+        .q-drawer--left:not(.q-drawer--mini) {
+            box-shadow: 0 0 24px rgba(0, 0, 0, 0.35);
+            z-index: 3000;
+        }
+
+        /* The product name is the first thing to go: the menu button, the
+           logo and the two controls on the right all have to fit, and the
+           name is the one thing a reader already knows. */
+        .topbar-text {
+            font-size: 1rem !important;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            max-width: 40vw;
+        }
+
+        /* A heading, not a banner. */
+        .page-title {
+            font-size: 1.5rem !important;
+        }
+
+        /* The table's own toolbar is a row of four buttons and a title on
+           a screen that fits about two. Stacked, and the buttons given a
+           row of their own that they may wrap inside. */
+        .q-table__top {
+            flex-direction: column;
+            align-items: stretch;
+            gap: 0.5rem;
+            padding: 0.5rem 0;
+        }
+        .q-table__top .q-table__control {
+            width: 100%;
+        }
+        /* The four actions are peers -- none of them is the action of
+           the page -- so they are drawn as peers: a two by two grid of
+           identical cells rather than four buttons each as wide as its
+           own label happens to be, which put Delete and Upload on one
+           row and Transcribe alone on the next. A grid rather than
+           `flex: 1 1 0`, because four across a 390px screen leaves no
+           room for "Transcribe" to be read. The height is the same tap
+           target the card's own action has. */
+        .jobs-actions {
+            width: 100%;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.35rem !important;
+        }
+        .jobs-actions .q-btn {
+            width: 100%;
+            min-width: 0;
+            min-height: 44px;
+        }
+
+        /* Rows are cards here (see the table's `grid` prop), so the strip
+           of column headings and the fixed table height have nothing left
+           to describe. */
+        .table-style {
+            height: auto !important;
+            font-size: 1rem !important;
+        }
+        .jobs-card {
+            width: 100%;
+            padding: 0.75rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .jobs-card-name {
+            font-weight: 600;
+            overflow-wrap: anywhere;
+        }
+        .jobs-card-meta {
+            font-size: 0.8rem;
+            color: var(--color-text-muted);
+        }
+        /* A tap target, not a pointer target: the row's own action is the
+           whole reason the card is here. */
+        .jobs-card-action .q-btn {
+            width: 100%;
+            min-height: 44px;
+        }
+
+        /* A dialog on a phone is the screen. The card inside it carries
+           the minimum width that made it a dialog on a desktop, which is
+           wider than the phone it is now on. */
+        .q-dialog__inner > .q-card,
+        .q-dialog__inner > div > .q-card {
+            min-width: 0 !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            padding: 1rem !important;
+            margin: 0;
+        }
+        .q-dialog__inner--minimized {
+            padding: 0.5rem;
+        }
+
+        /* And the same for a card that is the page rather than over it:
+           the user settings card asks for 500px, which is wider than the
+           phone and takes the whole page sideways with it. Nothing here
+           may be wider than the screen it is on. */
+        .nicegui-content .q-card {
+            min-width: 0 !important;
+            max-width: 100% !important;
+        }
+    }
+
+    /* ══════════════════════════════════════════════════════════════════
+       Reading a transcription (/view)
+       ══════════════════════════════════════════════════════════════════
+       The read-only page a phone's card opens: the recording, the text
+       under it, and the passage being played marked. It is a column at
+       any width -- there is nothing beside anything here -- so it is not
+       inside the phone media query; on a desktop it simply stops growing
+       once a line is as long as anyone wants to read. */
+    .view-page {
+        max-width: 760px;
+        margin: 0 auto;
+        gap: 0.75rem;
+    }
+    .view-header {
+        gap: 0.5rem;
+        flex-wrap: nowrap;
+    }
+    .view-title {
+        font-size: 1.1rem;
+        font-weight: 600;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    /* Sticky, because the whole point of tapping a passage is hearing it:
+       the player has to stay reachable however far down the text the
+       reader has scrolled.
+
+       It sticks *below the header*, not at the top of the window: the
+       header is `position: fixed`, so a sticky element stopping at 0
+       parks itself underneath it and loses its top to it. The height is
+       measured in the page (see VIDEO_TOP_SCRIPT) rather than written
+       here as a number -- the header carries the announcement banners,
+       so how tall it is is not known until they are drawn, and it
+       changes when one is dismissed. The fallback is the header's own
+       minimum plus its padding, so the video is never under it even
+       before the first measurement. */
+    .view-video {
+        position: sticky;
+        top: var(--view-header, 58px);
+        z-index: 2;
+        background-color: var(--color-bg-page);
+        /* Its own ground, top and bottom: the text scrolls underneath
+           it, and a picture flush against the header reads as part of
+           it. */
+        padding-top: 0.5rem;
+        padding-bottom: 0.5rem;
+    }
+    .view-video video {
+        max-height: 40vh;
+        background-color: black;
+    }
+    .view-controls {
+        gap: 0.75rem;
+        flex-wrap: wrap;
+    }
+    .view-note {
+        font-size: 0.8rem;
+        color: var(--color-text-muted);
+    }
+    .view-captions {
+        gap: 0.25rem;
+        padding-bottom: 4rem;
+    }
+    /* A passage, not a filled cell -- the same rule the editor's own
+       captions follow. The pointer says it can be tapped; the marking
+       says which one is being played. */
+    .view-caption {
+        padding: 0.5rem 0.6rem;
+        border-radius: 6px;
+        cursor: pointer;
+        border-left: 3px solid transparent;
+    }
+    .view-caption:hover {
+        background-color: var(--color-bg-surface-hover);
+    }
+    .view-caption.is-playing {
+        border-left-color: var(--color-brand-primary);
+        background-color: var(--color-bg-surface-hover);
+    }
+    .view-caption-meta {
+        font-size: 0.75rem;
+        color: var(--color-text-muted);
+    }
+    /* The editor's own line breaks are part of a caption, so they are
+       kept rather than reflowed. */
+    .view-caption-text {
+        white-space: pre-line;
+        overflow-wrap: anywhere;
+    }
+
+    /* Said by the editor about itself, and only where it applies: a
+       caption list, a video and a timeline side by side need a desk. It
+       is a plain sentence rather than a redirect, because a reader who
+       followed a link here should be told what to do, not sent back to
+       where they came from. */
+    .editor-too-small {
+        display: none;
+    }
+    @media (max-width: 700px) {
+        .editor-too-small {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.75rem;
+            text-align: center;
+            padding: 3rem 1.25rem;
+            color: var(--color-text-secondary);
+        }
+        .editor-too-small .editor-too-small-title {
+            font-size: 1.15rem;
+            font-weight: 600;
+            color: var(--color-text-primary);
+        }
+        .editor-panes {
+            display: none !important;
+        }
+    }
 </style>
 <script>
 if (!window._scribeFocusModality) {

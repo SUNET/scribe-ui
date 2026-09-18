@@ -339,7 +339,41 @@ def create() -> None:
         # for a length guideline and a per-caption delete action.
         transcript = TranscriptEditor(editor)
 
-        with ui.splitter(value=60).classes("w-full h-full") as splitter:
+        # Said on a phone instead of the editor, which is a caption list, a
+        # video and a timeline side by side and wants a desk. A sentence
+        # rather than a redirect: a reader who followed a link here should
+        # be told what to do, not bounced back to where they came from.
+        # The stylesheet decides which of the two is on screen -- the
+        # server cannot know how wide a phone is, and a reader who turns
+        # the tablet in their hands should not have to reload.
+        with ui.element("div").classes("editor-too-small w-full"):
+            ui.icon("desktop_windows").style("font-size: 2.5rem;").props(
+                'role="img" aria-hidden="true"'
+            )
+            ui.label("Editing needs a bigger screen").classes(
+                "editor-too-small-title"
+            )
+            ui.label(
+                "The editor puts the recording, the captions and the "
+                "timeline side by side. Open this transcription on a "
+                "computer to edit it."
+            )
+
+            # Reading it back does fit a phone, so the notice offers that
+            # rather than only turning the reader away -- the same page
+            # the jobs list's own card opens.
+            ui.button(
+                "View transcription",
+                on_click=lambda: ui.navigate.to(
+                    f"/view?uuid={uuid}&filename={filename}&model={model}"
+                    f"&language={language}&data_format={data_format}"
+                ),
+            ).props("flat color=black")
+            ui.button(
+                "Back to my files", on_click=lambda: ui.navigate.to("/home")
+            ).props("flat color=black")
+
+        with ui.splitter(value=60).classes("editor-panes w-full h-full") as splitter:
             with splitter.before:
                 with ui.card().classes("editor-panel w-full h-full"):
                     # A long transcription can put well over a hundred
@@ -392,7 +426,13 @@ def create() -> None:
                                 loop=False,
                             ).classes("w-full h-full")
                             editor.set_video_player(video)
-                            video.props("preload='auto'")
+                            # playsinline: iOS plays a video fullscreen
+                            # without it, which takes the captions off
+                            # the screen every time the reader presses
+                            # play on a tablet.
+                            video.props(
+                                "playsinline webkit-playsinline preload='auto'"
+                            )
 
                             # Subtitles only -- a transcription's own
                             # blocks are a speaker's whole turn, not a

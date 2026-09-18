@@ -657,7 +657,7 @@ def page_init(
                     "height: 30px; width: 30px;"
                 )
                 ui.label(settings.TOPBAR_TEXT + header_text).classes(
-                    "text-h6 text-theme-primary"
+                    "text-h6 text-theme-primary topbar-text"
                 )
 
             with ui.element("div").style("display: flex; gap: 0px;"):
@@ -709,7 +709,7 @@ def page_init(
                     "height: 30px; width: 30px;"
                 )
                 ui.label(settings.TOPBAR_TEXT + header_text).classes(
-                    "text-h6 text-theme-primary"
+                    "text-h6 text-theme-primary topbar-text"
                 )
 
             with ui.element("div").style("display: flex; gap: 0px;"):
@@ -922,9 +922,15 @@ async def jobs_get() -> list | None:
     return jobs
 
 
-def table_click(event) -> None:
+def open_result(event, page: str) -> None:
     """
-    Handle the click event on the table rows.
+    Open a completed job on one of the two pages that can show it.
+
+    The editor and the read-only view take the same job in the same query
+    and differ in nothing else, so which of them a row opens is the
+    caller's decision -- the phone's card asks for the view, the desktop
+    table for the editor -- rather than something worked out again here
+    from the width of the screen.
     """
 
     status = event.args["status"].lower()
@@ -937,14 +943,28 @@ def table_click(event) -> None:
     if status != "completed":
         return
 
-    if output_format == "TXT":
-        ui.navigate.to(
-            f"/srt?uuid={uuid}&filename={filename}&model={model_type}&language={language}&data_format=txt"
-        )
-    else:
-        ui.navigate.to(
-            f"/srt?uuid={uuid}&filename={filename}&model={model_type}&language={language}&data_format=srt"
-        )
+    data_format = "txt" if output_format == "TXT" else "srt"
+
+    ui.navigate.to(
+        f"{page}?uuid={uuid}&filename={filename}&model={model_type}"
+        f"&language={language}&data_format={data_format}"
+    )
+
+
+def table_click(event) -> None:
+    """
+    Handle the click event on the table rows.
+    """
+
+    open_result(event, "/srt")
+
+
+def table_view(event) -> None:
+    """
+    Open a completed job read-only, which is what a phone offers.
+    """
+
+    open_result(event, "/view")
 
 
 async def post_file(
@@ -1075,7 +1095,12 @@ def table_upload(table) -> None:
     ui.add_head_html(default_styles)
 
     with ui.dialog().props('aria-label="Upload files"') as dialog:
-        with ui.card().style("min-width: 400px; padding: 32px;"):
+        # 400px is wider than a phone. It stays the width this wants to be
+        # wherever there is room for it, and gives way where there is not.
+        with ui.card().style(
+            "width: 100%; max-width: 480px; min-width: min(400px, 100%);"
+            " padding: 32px;"
+        ):
             with ui.column().classes("w-full items-center") as status_column:
                 ui.label("Uploading files").classes("text-h6 q-mb-sm")
                 # role=status so the byte counter is announced as it changes
@@ -1366,7 +1391,8 @@ def table_transcribe(selected_row, on_complete=None) -> None:
         with (
             ui.card()
             .style(
-                "background-color: var(--color-bg-surface); align-self: center; border: 0; width: 80%;"
+                "background-color: var(--color-bg-surface); align-self: center;"
+                " border: 0; width: 80%; min-width: min(320px, 100%);"
             )
             .classes("w-full no-shadow no-border")
         ):
@@ -1485,7 +1511,8 @@ def table_bulk_transcribe(table: ui.table, on_complete=None) -> None:
         with (
             ui.card()
             .style(
-                "background-color: var(--color-bg-surface); align-self: center; border: 0; width: 80%;"
+                "background-color: var(--color-bg-surface); align-self: center;"
+                " border: 0; width: 80%; min-width: min(320px, 100%);"
             )
             .classes("w-full no-shadow no-border")
         ):

@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     OIDC_APP_LOGIN_ROUTE: str = ""
     OIDC_APP_LOGOUT_ROUTE: str = ""
     OIDC_APP_REFRESH_ROUTE: str = ""
+    # Where a login's one-time code is traded for its tokens. The OIDC
+    # callback redirects here with the code; this call collects the tokens
+    # server to server, so they never travel through the browser.
+    OIDC_APP_EXCHANGE_ROUTE: str = ""
     STORAGE_SECRET: str = "change_this_secret_to_another_very_secret_secret"
 
     LOGO_LANDING: str = "sunet_logo.png"
