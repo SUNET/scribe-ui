@@ -582,13 +582,25 @@ def save_group(
         res.raise_for_status()
 
         ui.navigate.to("/admin")
-    except httpx.HTTPError:
-        error = res.json()
+    except httpx.HTTPError as e:
+        # The backend rejects a save it won't do (e.g. a user who already
+        # belongs to another group) with 400 {"error": "..."}. Anything
+        # else -- no response at all, a proxy's HTML error page, a 422
+        # with "detail" -- still has to end in a message, not a crash.
+        message = "The group could not be saved. Please try again."
+        response = getattr(e, "response", None)
+        if response is not None:
+            try:
+                body = response.json()
+            except ValueError:
+                body = None
+            if isinstance(body, dict) and body.get("error"):
+                message = body["error"]
 
         with ui.dialog().props('aria-label="Error saving group"') as dialog:
             with ui.card():
                 ui.label("Error saving group").classes("text-h6")
-                ui.label(error["error"])
+                ui.label(message)
                 ui.button("Close", on_click=lambda: dialog.close()).props(
                     "color=black"
                 ).style("margin-top: 10px;")
