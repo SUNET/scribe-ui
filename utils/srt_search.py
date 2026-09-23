@@ -293,8 +293,13 @@ class SearchMixin:
                                 "Next match"
                             )
 
-                            self.search_info_label = ui.label("").classes(
-                                "text-caption text-theme-secondary"
+                            # role=status: search results are the only
+                            # feedback a search gives, and set_text below
+                            # updated this silently otherwise (WCAG 4.1.3).
+                            self.search_info_label = (
+                                ui.label("")
+                                .classes("text-caption text-theme-secondary")
+                                .props('role=status aria-live=polite')
                             )
 
                 ui.separator().classes("my-3")
