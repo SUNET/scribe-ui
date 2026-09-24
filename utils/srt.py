@@ -185,47 +185,6 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         else:
             ui.run_javascript("window.hasUnsavedChanges = false;")
 
-    def show_save_confirmation_dialog(
-        self,
-        on_save: Optional[Callable] = None,
-        on_discard: Optional[Callable] = None,
-        on_cancel: Optional[Callable] = None,
-    ) -> None:
-        """
-        Show a dialog asking the user to save, discard, or cancel.
-        """
-
-        def handle_save():
-            dialog.close()
-            self.save_srt_changes()
-            if on_save:
-                on_save()
-
-        def handle_discard():
-            dialog.close()
-            self.mark_as_saved()
-            self.update_beforeunload_state()
-            if on_discard:
-                on_discard()
-
-        def handle_cancel():
-            dialog.close()
-            if on_cancel:
-                on_cancel()
-
-        with ui.dialog().props('aria-label="Unsaved changes"') as dialog, ui.card().classes("w-96"):
-            ui.label("Unsaved changes").classes("text-h6 q-mb-md")
-            ui.label("You have unsaved changes. What would you like to do?").classes(
-                "q-mb-lg"
-            )
-
-            with ui.row().classes("w-full justify-end gap-2"):
-                ui.button("Cancel", on_click=handle_cancel).props("flat")
-                ui.button("Discard", on_click=handle_discard).props("flat color=red")
-                ui.button("Save", on_click=handle_save).props("color=primary")
-
-        dialog.open()
-
     def close_editor(self, redirect_url: Optional[str] = None) -> None:
         """
         Close the editor, prompting to save if there are unsaved changes.
@@ -236,14 +195,7 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
             if redirect_url:
                 ui.navigate.to(redirect_url)
 
-        if self.has_unsaved_changes():
-            self.show_save_confirmation_dialog(
-                on_save=do_close,
-                on_discard=do_close,
-                on_cancel=None,  # Just close the dialog, don't navigate
-            )
-        else:
-            do_close()
+        do_close()
 
     def save_state_for_undo(self) -> None:
         """
@@ -374,7 +326,12 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
             )
             res.raise_for_status()
         except httpx.HTTPError as e:
-            ui.notify(f"Error:  Failed to save file:  {e}", type="negative", timeout=None, close_button="Close")
+            ui.notify(
+                f"Error:  Failed to save file:  {e}",
+                type="negative",
+                timeout=None,
+                close_button="Close",
+            )
             return
 
         # Mark as saved after successful save
@@ -720,10 +677,6 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
 
         self.renumber_captions()
 
-
-
-
-
     def renumber_captions(self) -> None:
         """
         Renumber all captions sequentially.
@@ -784,13 +737,6 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         secs, milliseconds = divmod(remainder, 1000)
 
         return f"{hours:02d}:{minutes:02d}:{secs:02d},{milliseconds:03d}"
-
-
-
-
-
-
-
 
     def split_time(
         self,
@@ -946,9 +892,7 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         mid_seconds = self.split_time(caption, first_part, second_part, at_cursor)
 
         # Marks follow their words across the break.
-        kept, moved = self.split_edits(
-            caption.edited_words, len(first_part.split())
-        )
+        kept, moved = self.split_edits(caption.edited_words, len(first_part.split()))
 
         # Update first caption
         caption.text = first_part
@@ -1017,7 +961,12 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         position = self.captions.index(caption)
 
         if position == 0:
-            ui.notify("No previous block to move the word to", type="warning", timeout=None, close_button="Close")
+            ui.notify(
+                "No previous block to move the word to",
+                type="warning",
+                timeout=None,
+                close_button="Close",
+            )
             return
 
         moved_word, remaining = self.split_off_first_word(caption.text)
@@ -1026,7 +975,9 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
             ui.notify(
                 "That is the only word in the block -- merge instead",
                 type="warning",
-                timeout=None, close_button="Close")
+                timeout=None,
+                close_button="Close",
+            )
             return
 
         # Resolve the timings before the text changes, since words are matched
@@ -1048,7 +999,9 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
             ui.notify(
                 "Word moved, but the timings could not be updated",
                 type="warning",
-                timeout=None, close_button="Close")
+                timeout=None,
+                close_button="Close",
+            )
 
         self.finish_word_move()
 
@@ -1067,7 +1020,12 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         position = self.captions.index(caption)
 
         if position == len(self.captions) - 1:
-            ui.notify("No next block to move the word to", type="warning", timeout=None, close_button="Close")
+            ui.notify(
+                "No next block to move the word to",
+                type="warning",
+                timeout=None,
+                close_button="Close",
+            )
             return
 
         remaining, moved_word = self.split_off_last_word(caption.text)
@@ -1076,7 +1034,9 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
             ui.notify(
                 "That is the only word in the block -- merge instead",
                 type="warning",
-                timeout=None, close_button="Close")
+                timeout=None,
+                close_button="Close",
+            )
             return
 
         aligned = self.aligned_words(caption)
@@ -1096,7 +1056,9 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
             ui.notify(
                 "Word moved, but the timings could not be updated",
                 type="warning",
-                timeout=None, close_button="Close")
+                timeout=None,
+                close_button="Close",
+            )
 
         self.finish_word_move()
 
@@ -1163,13 +1125,16 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
             self.renumber_captions()
             self.refresh_display(force_full_refresh=True)
         else:
-            ui.notify("Cannot remove the only remaining caption", type="warning", timeout=None, close_button="Close")
+            ui.notify(
+                "Cannot remove the only remaining caption",
+                type="warning",
+                timeout=None,
+                close_button="Close",
+            )
 
         self.update_words_per_minute()
 
-    def select_caption(
-        self, caption: SRTCaption, seek: Optional[bool] = True
-    ) -> None:
+    def select_caption(self, caption: SRTCaption, seek: Optional[bool] = True) -> None:
         """
         Mark a caption as the current one -- what search and autoscroll use
         to say which caption the reader's attention should move to. Every
@@ -1277,9 +1242,7 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
             old_marks = self.joined_edits(
                 old_marks, caption.edited_words, len(old_text.split())
             )
-            old_text = "\n".join(
-                part for part in (old_text, caption.text) if part
-            )
+            old_text = "\n".join(part for part in (old_text, caption.text) if part)
 
         first.edited_words = self.retag_edits(old_text, merged, old_marks)
         first.text = merged
@@ -1306,7 +1269,12 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
 
         caption_index = self.captions.index(caption)
         if caption_index == len(self.captions) - 1:
-            ui.notify("No next caption to merge with", type="warning", timeout=None, close_button="Close")
+            ui.notify(
+                "No next caption to merge with",
+                type="warning",
+                timeout=None,
+                close_button="Close",
+            )
             return
 
         # Save state before making changes
@@ -1349,7 +1317,12 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
 
         caption_index = self.captions.index(caption)
         if caption_index == 0:
-            ui.notify("No previous caption to merge with", type="warning", timeout=None, close_button="Close")
+            ui.notify(
+                "No previous caption to merge with",
+                type="warning",
+                timeout=None,
+                close_button="Close",
+            )
             return
 
         # Save state before making changes
@@ -1376,10 +1349,3 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         self.renumber_captions()
         self.update_words_per_minute()
         self.refresh_display(force_full_refresh=True)
-
-
-
-
-
-
-
