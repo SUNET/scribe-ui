@@ -383,15 +383,30 @@ def announcements_page() -> None:
 
         def _toggle_enabled(ann_row: dict) -> None:
             new_val = not ann_row.get("enabled", True)
-            announcement_update(ann_row["id"], {"enabled": new_val})
+            if not announcement_update(ann_row["id"], {"enabled": new_val}):
+                # The switch is driven by the row's value, which has not
+                # changed, so it stays where the backend still has it.
+                ui.notify(
+                    "Failed to update announcement.",
+                    color="negative",
+                    timeout=None,
+                    close_button="Close",
+                )
+                return
+            ui.notify(
+                f"Announcement {'enabled' if new_val else 'disabled'}.",
+                color="positive",
+            )
             # Update the row in place rather than a full-page navigate: a
             # whole-page reload for flipping one switch is an unannounced
             # context change (3.2.2) and throws focus back to the top of
             # the page, away from the switch just used. ann_row itself is
             # the frontend's own copy of the row (a fresh dict off the
-            # wire), not the one ann_table is rendering from, so the match
-            # is by id against ann_list, same as ann_table's own rows.
-            for ann in ann_list:
+            # wire), so the match is by id. It has to be against
+            # ann_table.rows, not ann_list: NiceGUI wraps a prop's value in
+            # observable copies, so ann_list is no longer what the table
+            # renders from and editing it changed nothing on screen.
+            for ann in ann_table.rows:
                 if ann["id"] == ann_row["id"]:
                     ann["enabled"] = new_val
                     break
