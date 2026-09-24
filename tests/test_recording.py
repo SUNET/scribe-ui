@@ -348,6 +348,36 @@ def test_no_blocking_http_in_the_recording_routes():
     assert sync_httpx_calls(parse("utils/recording_api.py")) == []
 
 
+def test_the_browser_and_the_server_agree_on_where_the_routes_are():
+    engine = (ROOT / "static" / "recorder_engine.js").read_text()
+    assert f'const API = "{recording_api.API_PREFIX}";' in engine
+    # /api/* is scribe-backend's behind the reverse proxy.
+    assert not recording_api.API_PREFIX.startswith("/api")
+
+
+def test_the_nicegui_reloads_the_recorder_guards_are_still_there():
+    # utils/recorder.js replaces three of nicegui.js's own socket handlers
+    # while recording, because each of them reloads the page, and a reload
+    # stops the recording. If NiceGUI renames or moves them, the guard
+    # silently stops guarding -- this is what says so.
+    import nicegui
+
+    client = next(pathlib.Path(nicegui.__file__).parent.glob("static/nicegui.js")).read_text()
+    for needle in (
+        'window.socket = io(',
+        'connect_error: (err) => {',
+        'err.message == "timeout"',
+        "try_reconnect: async () => {",
+        'window.socket.emit("handshake", options.query, finishHandshake);',
+        "window.socket.on(event,",
+    ):
+        assert needle in client, needle
+
+    guard = (ROOT / "utils" / "recorder.js").read_text()
+    for event in ("connect", "connect_error", "try_reconnect"):
+        assert f'"{event}"' in guard
+
+
 # -- The browser half -------------------------------------------------------
 
 

@@ -79,7 +79,9 @@
   // reader can remove one sooner themselves.
   const KEEP_UPLOADED_MS = 7 * 24 * 3600 * 1000;
 
-  const API = "/api/recording";
+  // Kept in step with API_PREFIX in utils/recording_api.py (the test there
+  // checks).  Not under /api: behind the proxy that is the backend's.
+  const API = "/record/api";
   const DB_NAME = "scribe-recordings";
   const DB_VERSION = 1;
 
@@ -375,7 +377,11 @@
         throw new SyncError("refused", detail || "Scribe refused the recording.");
       }
 
-      throw new SyncError("unavailable", "Scribe is not answering right now.");
+      // The status is in the message on purpose: "not answering" covers a
+      // backend that is down (503) and a proxy sending these routes
+      // somewhere they do not exist (404), and the two are fixed by
+      // different people.
+      throw new SyncError("unavailable", "Scribe is not answering right now (" + response.status + ").");
     }
 
     async function markUploaded(meta, done) {
