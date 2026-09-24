@@ -16,54 +16,60 @@
 # limitations under the License.
 
 """
-The HTTP side of recording: parts in, a finished file out to the backend.
+The HTTP side of recording: a finished recording, from the browser to the
+backend.
 
-Plain FastAPI routes rather than NiceGUI events, on purpose.  A NiceGUI event
-travels over the page's websocket, and the websocket is exactly the thing a
-phone in a lecture hall loses -- past `reconnect_timeout` NiceGUI deletes the
-page's state and the browser reloads it.  A `fetch()` needs nothing but the
-session cookie, so the browser can keep sending parts through a reconnect, a
-reload, or from a different page than the one that recorded them.
+**Nothing is stored here.**  The upload is streamed through to the backend
+as it arrives, piece by piece, and never written to this server's disk or
+held whole in its memory -- so the only copy of a recording that exists
+outside the reader's own browser is the backend's, which it encrypts as it
+stores it.  The browser keeps its copy until the backend has answered (see
+static/recorder_engine.js), which is what makes it safe for this route to
+hold nothing: a failed upload is simply sent again.
 
-Every route is answered for the signed-in user only: the staging directory is
-named from the session's own token (`recording_owner()`), never from anything
-in the request.  Cross-site requests are refused twice over -- the session
-cookie is SameSite=Lax, so a cross-site POST or PUT carries no session, and
-every route also requires a custom header, which a cross-site page cannot
-send without a CORS preflight this app never answers.
+It has to pass through this server at all only because the browser holds
+no token the backend accepts; the session's token lives in this server's
+user storage.
 
-Answers are shaped for the browser's retry logic (static/recorder_engine.js):
+A plain FastAPI route rather than a NiceGUI event, on purpose.  A NiceGUI
+event travels over the page's websocket, and the websocket is exactly the
+thing a laptop that has slept or a phone in a lecture hall loses.  A
+`fetch()` needs nothing but the session cookie, so an upload goes on through
+a reconnect, a reload, or from a different page than the one that recorded.
 
-- 2xx: done, move on.
+The recording is answered for the signed-in user only, and cross-site
+requests are refused twice over: the session cookie is SameSite=Lax, so a
+cross-site POST carries no session, and the route requires a custom header,
+which a cross-site page cannot send without a CORS preflight this app never
+answers.
+
+Answers are shaped for the browser's retry logic:
+
+- 200: the backend has it.
 - 401: the session is over.  Nothing is lost; the browser keeps the
   recording and tries again once the reader has signed in.
-- 409: parts are missing (staging was swept or the server restarted); the
-  body lists them and the browser sends them.
-- 422: can never succeed as sent.  The browser stops and offers to save the
-  recording to the device instead.
+- 422: can never succeed as sent.  The browser stops and the recording can
+  still be downloaded.
 - 503: try again later -- the backend is down, slow or refusing for now.
 """
 
-import asyncio
 import hashlib
 import hmac
 import logging
-import os
-import time
+import re
+import secrets
+
+from collections import OrderedDict
+from urllib.parse import unquote
 
 import httpx
 
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 from nicegui import app
+from starlette.requests import ClientDisconnect
 
 from utils.helpers import sanitize_filename
-from utils.recording_staging import (
-    MAX_PART_BYTES,
-    MAX_PARTS,
-    RecordingStaging,
-    StagingError,
-)
 from utils.settings import get_settings
 from utils.token import RefreshUnavailable, get_user_info, token_refresh
 
@@ -80,6 +86,12 @@ API_PREFIX = "/record/api"
 # is that a cross-site page cannot set it without a preflight.
 CSRF_HEADER = "x-scribe-recording"
 
+# 32 lower-case hex characters: crypto.randomUUID() without its dashes.
+RID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
+
+# The same ceiling the upload dialog states for a file.
+MAX_RECORDING_BYTES = 4 * 1024 * 1024 * 1024
+
 # What a recording may be sent as, and the extension its file is given.  The
 # backend decides what it can transcribe by content, but a file name with
 # the right extension is what a person downloading it again expects.
@@ -95,11 +107,18 @@ MIME_EXTENSIONS = {
 # of audio over a slow link to it is minutes, not seconds.
 BACKEND_TIMEOUT = httpx.Timeout(900, connect=15)
 
-staging = RecordingStaging(settings.RECORDING_STAGING_DIR or None)
+# Recordings the backend has taken, by owner and recording id, with its
+# answer -- ids and names only, never audio.  An upload repeated after its
+# answer was lost on the way back (the connection dropped, a second tab
+# asked too) gets the job the first one made instead of making another.
+# In memory, so a restart forgets it; the worst that costs is that rare
+# duplicate job.
+_uploaded: "OrderedDict[str, dict]" = OrderedDict()
+UPLOADED_REMEMBERED = 4096
 
-# Two tabs finishing the same recording must not both create a job.
-_finish_locks: dict[str, asyncio.Lock] = {}
-_last_sweep = {"at": 0.0}
+
+class _TooLarge(Exception):
+    pass
 
 
 def recording_owner(username: str | None) -> str | None:
@@ -108,10 +127,10 @@ def recording_owner(username: str | None) -> str | None:
     every device and in every session, and the key says nothing about who
     they are.
 
-    Also sent to the browser, which tags its local recordings with it so a
-    shared computer does not show one user's recordings to the next.  That
-    tag is a courtesy, not a control -- the server never trusts a key sent
-    back to it and derives its own from the session every time.
+    Sent to the browser, which tags its local recordings with it so a shared
+    computer does not show one user's recordings to the next.  That tag is a
+    courtesy, not a control -- the server never trusts a key sent back to it
+    and derives its own from the session every time.
     """
 
     if not username:
@@ -146,138 +165,6 @@ def _caller(request: Request) -> str:
     return owner
 
 
-def _staging_error(error: StagingError) -> HTTPException:
-    return HTTPException(status_code=422, detail=str(error))
-
-
-async def _maybe_sweep() -> None:
-    """
-    Drop stale staging now and then.  Done on the back of real requests
-    rather than a timer so that a server nobody is recording on does no
-    work at all.
-    """
-
-    now = time.time()
-
-    if now - _last_sweep["at"] < 3600:
-        return
-
-    _last_sweep["at"] = now
-    max_age = settings.RECORDING_STAGING_MAX_AGE_HOURS * 3600
-
-    try:
-        removed = await asyncio.to_thread(staging.sweep, max_age)
-        if removed:
-            log.info("recording staging sweep removed %d recording(s)", removed)
-    except OSError:
-        log.exception("recording staging sweep failed")
-
-
-async def _read_body(request: Request, limit: int) -> bytes:
-    """
-    The request body, refused as soon as it passes `limit` rather than after
-    it has all been read into memory.
-    """
-
-    declared = request.headers.get("content-length")
-
-    if declared and declared.isdigit() and int(declared) > limit:
-        raise HTTPException(status_code=422, detail="part too large")
-
-    received = bytearray()
-
-    async for piece in request.stream():
-        received.extend(piece)
-        if len(received) > limit:
-            raise HTTPException(status_code=422, detail="part too large")
-
-    return bytes(received)
-
-
-@app.get(API_PREFIX + "/{rid}")
-async def recording_status(rid: str, request: Request) -> JSONResponse:
-    """
-    Which parts this server holds, and whether the backend already has the
-    recording.  Asked before sending anything, so a browser that reloaded
-    half way through sends only what is missing.
-    """
-
-    owner = _caller(request)
-
-    try:
-        parts = await asyncio.to_thread(staging.parts, owner, rid)
-        done = await asyncio.to_thread(staging.done, owner, rid)
-    except StagingError as error:
-        raise _staging_error(error)
-
-    return JSONResponse({"parts": parts, "done": done})
-
-
-@app.put(API_PREFIX + "/{rid}/part/{seq}")
-async def recording_part(rid: str, seq: int, request: Request) -> JSONResponse:
-    owner = _caller(request)
-    data = await _read_body(request, MAX_PART_BYTES)
-
-    try:
-        await asyncio.to_thread(staging.write_part, owner, rid, seq, data)
-    except StagingError as error:
-        raise _staging_error(error)
-    except OSError:
-        # A full or read-only disk.  Nothing the browser sent is wrong, and
-        # it still holds the part, so this is "later", not "never".
-        log.exception("could not stage a recording part")
-        raise HTTPException(status_code=503, detail="staging unavailable")
-
-    await _maybe_sweep()
-
-    return JSONResponse({"ok": True})
-
-
-@app.delete(API_PREFIX + "/{rid}")
-async def recording_discard(rid: str, request: Request) -> JSONResponse:
-    owner = _caller(request)
-
-    try:
-        await asyncio.to_thread(staging.discard, owner, rid)
-    except StagingError as error:
-        raise _staging_error(error)
-
-    return JSONResponse({"ok": True})
-
-
-async def _post_to_backend(path, filename: str, mime: str) -> httpx.Response:
-    """
-    Send the assembled file to the backend, the same endpoint the upload
-    dialog uses.  One retry on 401 after refreshing: the reader may well
-    have had no page open for the token timer to keep fresh.
-    """
-
-    for attempt in (1, 2):
-        headers = {}
-        token = app.storage.user.get("token")
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
-
-        with open(path, "rb") as handle:
-            async with httpx.AsyncClient(timeout=BACKEND_TIMEOUT) as client:
-                response = await client.post(
-                    f"{settings.API_URL}/api/v1/transcriber",
-                    files={"file": (filename, handle, mime)},
-                    headers=headers,
-                )
-
-        if response.status_code != 401 or attempt == 2:
-            return response
-
-        try:
-            if not await token_refresh():
-                return response
-        except RefreshUnavailable:
-            raise HTTPException(status_code=503, detail="sign-in service unavailable")
-
-    return response
-
-
 def _file_name(name: str, mime: str) -> str:
     base_mime = (mime or "").split(";")[0].strip().lower()
     extension = MIME_EXTENSIONS.get(base_mime)
@@ -294,80 +181,147 @@ def _file_name(name: str, mime: str) -> str:
     return stem + extension
 
 
-@app.post(API_PREFIX + "/{rid}/finish")
-async def recording_finish(rid: str, request: Request) -> JSONResponse:
+def _disposition_name(filename: str) -> str:
     """
-    Hand a fully staged recording to the backend.
+    A file name for a multipart header, escaped the way browsers (and
+    httpx's own `files=`) do it.  sanitize_filename has already taken quotes
+    and control characters out; this is what keeps a header from being
+    broken open if that ever changes.
+    """
 
-    Idempotent: a finish repeated after the backend took the file -- the
-    answer was lost, a second tab asked too -- is answered with the job the
-    first one made rather than making another.
+    return (
+        filename.replace("\\", "\\\\")
+        .replace('"', "%22")
+        .replace("\r", "%0D")
+        .replace("\n", "%0A")
+    )
+
+
+def _multipart(filename: str, mime: str, request: Request):
+    """
+    The request body as a multipart/form-data body for the backend, built
+    around the incoming stream rather than from it: the part header, then
+    every piece as it arrives, then the closing boundary.
+    """
+
+    boundary = secrets.token_hex(16)
+    head = (
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="file"; '
+        f'filename="{_disposition_name(filename)}"\r\n'
+        f"Content-Type: {mime}\r\n\r\n"
+    ).encode("utf-8")
+    tail = f"\r\n--{boundary}--\r\n".encode()
+
+    async def body():
+        yield head
+        sent = 0
+        async for piece in request.stream():
+            sent += len(piece)
+            if sent > MAX_RECORDING_BYTES:
+                raise _TooLarge()
+            yield piece
+        yield tail
+
+    return boundary, head, tail, body()
+
+
+def _token() -> str | None:
+    return app.storage.user.get("token")
+
+
+async def _forward(filename: str, mime: str, request: Request) -> httpx.Response:
+    """
+    Stream the upload to the backend -- the same endpoint the upload dialog
+    uses, so a recording and a dropped file are the same job to it.
+
+    The token is refreshed first rather than retried on a 401: a stream can
+    be sent only once, and the reader may well have had no page open for
+    the token timer to keep fresh.
+    """
+
+    try:
+        if not await token_refresh():
+            raise HTTPException(status_code=401, detail="not signed in")
+    except RefreshUnavailable:
+        raise HTTPException(status_code=503, detail="sign-in service unavailable")
+
+    boundary, head, tail, body = _multipart(filename, mime, request)
+    headers = {"Content-Type": f"multipart/form-data; boundary={boundary}"}
+
+    token = _token()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    # Known length when the browser sent one -- it does for a Blob -- so the
+    # backend is not handed a chunked body it did not need.
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit():
+        headers["Content-Length"] = str(len(head) + int(declared) + len(tail))
+
+    async with httpx.AsyncClient(timeout=BACKEND_TIMEOUT) as client:
+        return await client.post(
+            f"{settings.API_URL}/api/v1/transcriber",
+            content=body,
+            headers=headers,
+        )
+
+
+@app.post(API_PREFIX + "/{rid}/upload")
+async def recording_upload(rid: str, request: Request) -> JSONResponse:
+    """
+    Hand a finished recording to the backend, without keeping any of it.
     """
 
     owner = _caller(request)
 
+    if not RID_PATTERN.match(rid or ""):
+        raise HTTPException(status_code=422, detail="bad recording id")
+
+    key = f"{owner}/{rid}"
+    if key in _uploaded:
+        return JSONResponse({"done": _uploaded[key]})
+
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > MAX_RECORDING_BYTES:
+        raise HTTPException(status_code=422, detail="recording too large")
+    if declared == "0":
+        raise HTTPException(status_code=422, detail="empty recording")
+
+    mime = (request.headers.get("content-type") or "").split(";")[0].strip()
+    filename = _file_name(unquote(request.headers.get("x-recording-name", "")), mime)
+
     try:
-        body = await request.json()
-        count = int(body.get("parts"))
-        mime = str(body.get("mime") or "")
-        name = str(body.get("name") or "")
-    except (ValueError, TypeError, AttributeError):
-        raise HTTPException(status_code=422, detail="bad request")
+        response = await _forward(filename, mime, request)
+    except _TooLarge:
+        raise HTTPException(status_code=422, detail="recording too large")
+    except ClientDisconnect:
+        # The browser went away half way. The backend was handed a body that
+        # stops short, which it refuses rather than storing, and the browser
+        # sends the whole recording again when it is back.
+        raise HTTPException(status_code=503, detail="upload interrupted")
+    except httpx.HTTPError:
+        log.warning("backend unreachable while uploading a recording")
+        raise HTTPException(status_code=503, detail="backend unavailable")
 
-    if count < 1 or count > MAX_PARTS:
-        raise HTTPException(status_code=422, detail="bad part count")
+    if response.status_code == 401:
+        raise HTTPException(status_code=401, detail="not signed in")
 
-    filename = _file_name(name, mime)
-    lock = _finish_locks.setdefault(f"{owner}/{rid}", asyncio.Lock())
+    if response.status_code >= 500 or response.status_code in (408, 429):
+        raise HTTPException(status_code=503, detail="backend unavailable")
 
-    async with lock:
-        try:
-            done = await asyncio.to_thread(staging.done, owner, rid)
-            if done:
-                return JSONResponse({"done": done})
+    if response.status_code >= 400:
+        log.warning("backend refused a recording: %d", response.status_code)
+        raise HTTPException(status_code=422, detail="backend refused the file")
 
-            missing = await asyncio.to_thread(staging.missing, owner, rid, count)
-            if missing:
-                return JSONResponse({"missing": missing}, status_code=409)
+    try:
+        result = response.json().get("result") or {}
+    except ValueError:
+        result = {}
 
-            assembled = await asyncio.to_thread(staging.assemble, owner, rid, count)
-        except StagingError as error:
-            raise _staging_error(error)
-        except OSError:
-            log.exception("could not assemble a recording")
-            raise HTTPException(status_code=503, detail="staging unavailable")
-
-        try:
-            response = await _post_to_backend(
-                assembled, filename, mime.split(";")[0].strip()
-            )
-        except httpx.HTTPError:
-            log.warning("backend unreachable while finishing a recording")
-            raise HTTPException(status_code=503, detail="backend unavailable")
-        finally:
-            try:
-                os.unlink(assembled)
-            except FileNotFoundError:
-                pass
-
-        if response.status_code == 401:
-            raise HTTPException(status_code=401, detail="not signed in")
-
-        if response.status_code >= 500 or response.status_code in (408, 429):
-            raise HTTPException(status_code=503, detail="backend unavailable")
-
-        if response.status_code >= 400:
-            log.warning("backend refused a recording: %d", response.status_code)
-            raise HTTPException(status_code=422, detail="backend refused the file")
-
-        try:
-            result = response.json().get("result") or {}
-        except ValueError:
-            result = {}
-
-        done = {"uuid": result.get("uuid"), "filename": filename}
-        await asyncio.to_thread(staging.mark_done, owner, rid, done)
-
-    _finish_locks.pop(f"{owner}/{rid}", None)
+    done = {"uuid": result.get("uuid"), "filename": filename}
+    _uploaded[key] = done
+    while len(_uploaded) > UPLOADED_REMEMBERED:
+        _uploaded.popitem(last=False)
 
     return JSONResponse({"done": done})

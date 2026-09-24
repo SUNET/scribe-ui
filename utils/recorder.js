@@ -149,8 +149,8 @@ export default {
       </div>
 
       <div v-if="sessionEnded" class="recorder-banner recorder-banner-warn" role="alert">
-        You have been signed out. <template v-if="live">The recording goes on and is saved in
-        this browser.</template> Sign in again afterwards to upload it – nothing is lost.
+        You have been signed out. The recording goes on and is saved in this browser; when you
+        stop it you are taken to sign in again, and it is here to upload afterwards.
       </div>
 
       <div v-if="!persistent" class="recorder-banner recorder-banner-danger" role="alert">
@@ -203,10 +203,6 @@ export default {
           <span class="recorder-safety-item">
             <q-icon name="save" size="16px" aria-hidden="true" />
             Saved in this browser: {{ clock(savedMs) }}
-          </span>
-          <span class="recorder-safety-item">
-            <q-icon :name="backedUpMs ? 'cloud_done' : 'cloud_queue'" size="16px" aria-hidden="true" />
-            Backed up to Scribe: {{ backedUpMs ? clock(backedUpMs) : "not yet" }}
           </span>
         </div>
 
@@ -292,7 +288,7 @@ export default {
               <div class="recorder-help-section">
                 <h3 class="recorder-help-heading">Privacy and security</h3>
                 <p>While it is being recorded, and until it is removed, the recording is stored unencrypted in this browser on this device. Anyone who can use this browser on this device could get to it, so on a shared computer, remove recordings from this browser once they are uploaded.</p>
-                <p>It is sent to Scribe over an encrypted connection and stored encrypted there, under your account only. While recording, parts of it are already sent to the Scribe server as a backup; they are deleted from there as soon as the recording is stored, or after {{ stagingLabel }} if it is never uploaded.</p>
+                <p>Nothing leaves this device until you press Upload. Then it is sent to Scribe over an encrypted connection and stored encrypted there, under your account only. It passes through Scribe's web server on the way without being stored there.</p>
                 <p>A downloaded original is an ordinary file on your device. Keep it the way your organisation asks you to keep recordings of people.</p>
               </div>
             </q-card-section>
@@ -378,7 +374,7 @@ export default {
               @click="upload(item)"
             />
             <q-btn
-              v-if="item.submit && item.state !== 'uploaded' && item.sync.phase !== 'uploading' && item.sync.phase !== 'finishing'"
+              v-if="item.submit && item.state !== 'uploaded' && item.sync.phase !== 'uploading'"
               outline
               no-caps
               class="recorder-secondary recorder-small"
@@ -436,7 +432,7 @@ export default {
     owner: { type: String, required: true },
     filesUrl: { type: String, default: "/home" },
     sessionEnded: { type: Boolean, default: false },
-    stagingHours: { type: Number, default: 72 },
+    logoutUrl: { type: String, default: "" },
   },
 
   data() {
@@ -451,7 +447,6 @@ export default {
       paused: false,
       elapsed: 0,
       savedMs: 0,
-      backedUpMs: 0,
       warnings: [],
       status: "",
       unsupported: "",
@@ -477,11 +472,6 @@ export default {
   },
 
   computed: {
-    stagingLabel() {
-      const hours = this.stagingHours;
-      if (hours >= 48 && hours % 24 === 0) return hours / 24 + " days";
-      return hours === 1 ? "an hour" : Math.round(hours) + " hours";
-    },
     others() {
       return this.items.filter((item) => !item.live);
     },
@@ -491,6 +481,15 @@ export default {
     latestInterruptedId() {
       const found = this.items.find((item) => item.interrupted && item.state === "stopped");
       return found ? found.id : null;
+    },
+  },
+
+  watch: {
+    // Signed out: leave now, unless a recording is running -- then leave
+    // the moment it stops (see follow()), with everything it recorded
+    // saved in the browser.
+    sessionEnded(ended) {
+      if (ended) this.leaveIfSignedOut();
     },
   },
 
@@ -598,9 +597,6 @@ export default {
         this.liveMeta = Object.assign({}, running.meta);
         this.paused = running.paused;
         this.savedMs = running.savedMs();
-        const mine = this.items.find((item) => item.id === running.meta.id);
-        const sent = mine && mine.sync && mine.sync.sent ? mine.sync.sent : 0;
-        this.backedUpMs = sent * window.ScribeRecorder.PART_CHUNKS * window.ScribeRecorder.CHUNK_MS;
       }
 
       this.warnings = this.currentWarnings(running);
@@ -622,15 +618,6 @@ export default {
       if (this.awayMs > 2000) {
         out.push(
           "This page was in the background for " + clock(this.awayMs) + ". Some devices stop the microphone meanwhile; the level meter shows whether it is still hearing you."
-        );
-      }
-      const mine = this.items.find((item) => item.id === running.meta.id);
-      const sync = (mine && mine.sync) || {};
-      if (["offline", "auth", "unavailable", "error"].includes(sync.phase)) {
-        out.push(
-          "Not backed up to Scribe right now: " +
-            (sync.message || "no answer") +
-            " The recording is still being saved in this browser, and the backup catches up by itself."
         );
       }
       if (running.fellBack) {
@@ -740,6 +727,7 @@ export default {
         }
         this.elapsed = 0;
         this.redraw();
+        this.leaveIfSignedOut();
       });
     },
 
@@ -839,6 +827,12 @@ export default {
       this.engine.discard(item.id);
     },
 
+    leaveIfSignedOut() {
+      if (!this.sessionEnded || !this.logoutUrl) return;
+      if (this.engine && this.engine.session()) return;
+      window.location.href = this.logoutUrl;
+    },
+
     reloadPage() {
       window.location.reload();
     },
@@ -877,7 +871,6 @@ export default {
       if (item.error) return "error";
       switch (item.sync.phase) {
         case "uploading":
-        case "finishing":
         case "queued":
           return "cloud_upload";
         case "offline":
@@ -904,8 +897,6 @@ export default {
         switch (sync.phase) {
           case "uploading":
             return sync.total ? "Uploading " + Math.round((100 * (sync.sent || 0)) / sync.total) + "%" : "Uploading";
-          case "finishing":
-            return "Handing over to Scribe";
           case "offline":
             return "Waiting for a connection. Saved in this browser." + retry;
           case "auth":

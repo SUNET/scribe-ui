@@ -20,6 +20,7 @@ from nicegui import ui
 import utils.recording_api  # noqa: F401 -- registers the upload routes
 from utils.common import page_init
 from utils.recorder import Recorder, current_owner, engine_script
+from utils.settings import get_settings
 from utils.styles import default_styles
 
 # How long the page survives its websocket being down.  Everything else in
@@ -31,6 +32,8 @@ from utils.styles import default_styles
 # longer than any lecture; the price is a little server memory for an
 # abandoned tab, for that long.
 RECONNECT_TIMEOUT = 6 * 3600
+
+settings = get_settings()
 
 
 def create() -> None:
@@ -48,13 +51,31 @@ def create() -> None:
         recorder = {"element": None}
 
         def session_ended() -> None:
-            # Not a navigation: that would stop a recording in progress.
+            # Handed to the page rather than acted on here: only the page
+            # knows whether a recording is running. If one is, a navigation
+            # would stop it, so it is said instead; if not, the page logs
+            # out exactly as every other page does.
             if recorder["element"] is not None:
-                recorder["element"].end_session()
+                recorder["element"].end_session(settings.OIDC_APP_LOGOUT_ROUTE)
+            else:
+                ui.navigate.to(settings.OIDC_APP_LOGOUT_ROUTE)
 
         page_init(use_drawer=True, title="Record", on_session_end=session_ended)
+
+        # Signed in, or nothing. Every other page is gated by page_init's
+        # token refresh navigating to the logout route when it fails, a
+        # moment after the page is drawn -- and this page asks page_init not
+        # to navigate (session_ended above), so it has to check for itself,
+        # before anything is drawn. Everything here runs in the browser: a
+        # page left open to a visitor who is not signed in is a working
+        # recorder, whatever the upload route then refuses.
+        owner = current_owner()
+        if not owner:
+            ui.navigate.to("/")
+            return
+
         ui.add_head_html(default_styles)
         engine_script()
 
         with ui.column().classes("recorder-page w-full items-center"):
-            recorder["element"] = Recorder(owner=current_owner(), files_url="/home")
+            recorder["element"] = Recorder(owner=owner, files_url="/home")

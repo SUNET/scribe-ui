@@ -30,13 +30,16 @@ const path = require("node:path");
 const Recorder = require(path.join(__dirname, "..", "..", "static", "recorder_engine.js"));
 
 const OWNER = "a".repeat(32);
-const N = Recorder.PART_CHUNKS;
+// Long enough that a recording spans many seconds of chunks.
+const N = 30;
 
 // -- Fakes -----------------------------------------------------------------
 
+// Behaves like utils/recording_api.py: one POST with the whole recording,
+// streamed on to the backend, and the backend's answer remembered by
+// recording id so a repeated upload gets the same job.
 function fakeServer() {
   const server = {
-    parts: new Map(), // rid -> Map(seq -> bytes)
     done: new Map(),
     finishes: 0,
     down: false,
@@ -52,46 +55,24 @@ function fakeServer() {
     if (init.headers["X-Scribe-Recording"] !== "1") return reply(400, {});
     if (server.status401) return reply(401, {});
 
-    const match = url.match(/^\/record\/api\/([0-9a-f]{32})(\/part\/(\d+)|\/finish)?$/);
-    if (!match) return reply(404, {});
+    const match = url.match(/^\/record\/api\/([0-9a-f]{32})\/upload$/);
+    if (!match || init.method !== "POST") return reply(404, {});
     const rid = match[1];
-    const held = server.parts.get(rid) || new Map();
-    server.parts.set(rid, held);
 
-    if (init.method === "GET") {
-      return reply(200, {
-        parts: Array.from(held.keys()).sort((a, b) => a - b),
-        done: server.done.get(rid) || null,
-      });
-    }
+    if (server.done.has(rid)) return reply(200, { done: server.done.get(rid) });
+    if (server.backendDown) return reply(503, { detail: "backend unavailable" });
 
-    if (init.method === "PUT") {
-      const bytes = Buffer.from(await init.body.arrayBuffer());
-      held.set(Number(match[3]), bytes);
-      return reply(200, { ok: true });
-    }
-
-    if (init.method === "POST") {
-      const body = JSON.parse(init.body);
-      if (server.done.has(rid)) return reply(200, { done: server.done.get(rid) });
-      const missing = [];
-      for (let i = 0; i < body.parts; i++) if (!held.has(i)) missing.push(i);
-      if (missing.length) return reply(409, { missing: missing });
-      if (server.backendDown) return reply(503, { detail: "backend unavailable" });
-      server.finishes += 1;
-      const file = Buffer.concat(Array.from({ length: body.parts }, (_, i) => held.get(i)));
-      const done = { uuid: "job-" + server.finishes, filename: body.name, bytes: file.length };
-      server.done.set(rid, done);
-      server.file = file;
-      return reply(200, { done: done });
-    }
-
-    if (init.method === "DELETE") {
-      server.parts.delete(rid);
-      return reply(200, { ok: true });
-    }
-
-    return reply(405, {});
+    const file = Buffer.from(await init.body.arrayBuffer());
+    server.finishes += 1;
+    const done = {
+      uuid: "job-" + server.finishes,
+      filename: decodeURIComponent(init.headers["X-Recording-Name"]),
+      bytes: file.length,
+      type: init.headers["Content-Type"],
+    };
+    server.done.set(rid, done);
+    server.file = file;
+    return reply(200, { done: done });
   };
 
   return server;
@@ -256,16 +237,17 @@ test("the recorder asks for speech-rate audio in a timeslice", async () => {
   assert.equal(FakeMediaRecorder.last.options.audioBitsPerSecond, Recorder.BITRATE);
 });
 
-test("complete parts are backed up while recording, the growing one is not", async () => {
+test("nothing leaves the device while recording, or after it, until Upload", async () => {
   const ctx = makeEngine();
-  const session = await record(ctx, N * 2 + 5);
-  const held = ctx.server.parts.get(session.meta.id);
+  const session = await record(ctx, N * 3);
+  assert.deepEqual(ctx.server.requests, []);
 
-  assert.deepEqual(Array.from(held.keys()).sort(), [0, 1]);
-  assert.equal(ctx.server.finishes, 0, "nothing is transcribed until asked");
+  await session.stop();
+  await settled();
+  assert.deepEqual(ctx.server.requests, [], "stopping is not uploading");
 });
 
-test("stop then submit sends the rest, finishes once, and keeps the original", async () => {
+test("Upload sends the whole recording once, named, and keeps the original", async () => {
   const ctx = makeEngine();
   const session = await record(ctx, N + 3);
   const result = await session.stop();
@@ -280,6 +262,9 @@ test("stop then submit sends the rest, finishes once, and keeps the original", a
   assert.equal(meta.job.uuid, "job-1");
   assert.equal(ctx.server.finishes, 1);
   assert.equal(ctx.server.file.toString().split(";").length - 1, N + 3, "every chunk made it, once");
+  assert.equal(ctx.server.requests.length, 1, "one request");
+  assert.equal(meta.job.filename, "Lecture 1");
+  assert.equal(ctx.server.done.get(session.meta.id).type, "audio/webm");
   // The original stays downloadable from the device after the upload.
   const kept = await ctx.engine.blob(session.meta.id);
   assert.equal((await kept.text()).split(";").length - 1, N + 3);
@@ -317,51 +302,14 @@ test("removing an uploaded recording from the device leaves Scribe's copy alone"
   assert.ok(!ctx.server.requests.some((r) => r.startsWith("DELETE")));
 });
 
-test("a server that lost its staging is sent everything again", async () => {
+test("a name any language can write survives the trip", async () => {
   const ctx = makeEngine();
-  const session = await record(ctx, N * 2 + 1);
+  const session = await record(ctx, 2);
   await session.stop();
   await settled();
-
-  ctx.server.parts.clear(); // a restart
-  await ctx.engine.submit(session.meta.id);
+  await ctx.engine.submit(session.meta.id, "Föreläsning 3 – Ångström");
   await settled();
-
-  assert.equal(storedMeta(ctx, session.meta.id).state, "uploaded");
-  assert.equal(ctx.server.file.toString().split(";").length - 1, N * 2 + 1);
-});
-
-test("parts lost between sending and finishing are sent again (409)", async () => {
-  const ctx = makeEngine();
-  const session = await record(ctx, N + 1);
-  await session.stop();
-  await settled();
-
-  const originalFetch = ctx.server.fetch;
-  let dropped = false;
-  // Drop part 0 on the server the moment finish is asked for, once.
-  const server = ctx.server;
-  const wrapped = async (url, init) => {
-    if (!dropped && init.method === "POST") {
-      dropped = true;
-      server.parts.get(session.meta.id).delete(0);
-    }
-    return originalFetch(url, init);
-  };
-  const ctx2 = makeEngine({ server: Object.assign(server, { fetch: wrapped }), store: ctx.store });
-  await ctx2.engine.init();
-  await ctx2.engine.submit(session.meta.id);
-  await settled();
-
-  assert.equal(dropped, true);
-  assert.equal(server.requests.filter((r) => r.startsWith("POST")).length, 2);
-  assert.equal(
-    server.requests.filter((r) => r === "PUT /record/api/" + session.meta.id + "/part/0").length,
-    2,
-    "part 0 sent again"
-  );
-  assert.equal(storedMeta(ctx2, session.meta.id).state, "uploaded");
-  assert.equal(server.file.toString().split(";").length - 1, N + 1);
+  assert.equal(storedMeta(ctx, session.meta.id).job.filename, "Föreläsning 3 – Ångström");
 });
 
 test("offline keeps the recording and retries with a growing backoff", async () => {

@@ -22,21 +22,14 @@
 // audio is written to IndexedDB as it is recorded, so what a crash, a reload,
 // a flat battery or a closed tab costs is the last second -- not the lecture.
 //
-// Getting it to Scribe is a separate, restartable job that never holds the
-// only copy of anything:
-//
-//   - While recording, every complete part (PART_CHUNKS seconds) is sent to
-//     the server in the background, so when the lecture ends most of it is
-//     already there.  A part is immutable once complete, so sending one twice
-//     is harmless and a part that got no answer is simply sent again.
-//   - When the reader asks for it to be transcribed, the rest is sent and
-//     the server is asked to hand the joined file to the backend.
-//   - Before sending anything the server is asked what it already holds, so
-//     a reload half way through sends only what is missing -- and a server
-//     that lost its staging (restart, sweep) is simply sent everything again.
-//   - Failures are sorted into "later" (offline, server or backend down),
-//     "after signing in again" and "never as sent", and only the last one
-//     stops the retrying.  Nothing is ever deleted because a send failed.
+// **Nothing leaves the device until the reader presses Upload.**  Then the
+// whole recording is sent in one request, which the web server streams on
+// to the backend without writing it anywhere -- so the only copy that is
+// ever stored outside this browser is the backend's, encrypted.  Sending is
+// a separate, restartable job that never holds the only copy of anything:
+// failures are sorted into "later" (offline, server or backend down), "after
+// signing in again" and "never as sent", only the last one stops the
+// retrying, and nothing is ever deleted because a send failed.
 //
 // Uploading goes through plain fetch(), not the page's websocket: the
 // websocket is what a phone loses first, and NiceGUI reloads the page when it
@@ -60,10 +53,6 @@
 
   // One chunk a second: what a crash can cost at most.
   const CHUNK_MS = 1000;
-  // Thirty chunks to a part: about 240 KB at BITRATE, small enough to get
-  // through a poor connection in one go and few enough requests for an hour
-  // (120) not to matter.
-  const PART_CHUNKS = 30;
   // Speech, not music: 64 kbit/s Opus is transparent for a voice, and it is
   // under 30 MB an hour -- which decides how long a phone can record before
   // its storage runs out, and how long the upload takes afterwards.
@@ -263,10 +252,6 @@
     return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
   }
 
-  function partCount(chunks) {
-    return Math.ceil(chunks / PART_CHUNKS);
-  }
-
   class SyncError extends Error {
     constructor(kind, message) {
       super(message || kind);
@@ -338,24 +323,56 @@
 
     // -- Talking to the server --
 
-    async function api(method, path, body, headers) {
+    // fetch() cannot say how far an upload has got, and an hour of audio
+    // over a slow connection is minutes of a button saying nothing -- so in
+    // a browser the upload goes through XMLHttpRequest, answering in the
+    // same shape as fetch so everything after it is one code path.
+    function sendWithProgress(url, init, onProgress) {
+      const XHR = env.XMLHttpRequest || g.XMLHttpRequest;
+      if (!onProgress || !XHR || env.fetch) return fetchFn(url, init);
+
+      return new Promise((resolve, reject) => {
+        const xhr = new XHR();
+        xhr.open(init.method, url);
+        xhr.withCredentials = true;
+        Object.entries(init.headers || {}).forEach(([k, v]) => xhr.setRequestHeader(k, v));
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable) onProgress(event.loaded, event.total);
+        };
+        xhr.onload = () =>
+          resolve({
+            ok: xhr.status >= 200 && xhr.status < 300,
+            status: xhr.status,
+            json: async () => JSON.parse(xhr.responseText || "{}"),
+          });
+        xhr.onerror = () => reject(new TypeError("network error"));
+        xhr.onabort = () => reject(new TypeError("aborted"));
+        xhr.send(init.body);
+      });
+    }
+
+    async function api(method, path, body, headers, onProgress) {
       if (!fetchFn) throw new SyncError("offline", "no fetch");
 
       let response;
 
       try {
-        response = await fetchFn(API + path, {
-          method: method,
-          body: body,
-          credentials: "same-origin",
-          cache: "no-store",
-          headers: Object.assign({ "X-Scribe-Recording": "1" }, headers || {}),
-        });
+        response = await sendWithProgress(
+          API + path,
+          {
+            method: method,
+            body: body,
+            credentials: "same-origin",
+            cache: "no-store",
+            headers: Object.assign({ "X-Scribe-Recording": "1" }, headers || {}),
+          },
+          onProgress
+        );
       } catch (e) {
         throw new SyncError("offline", "No connection to Scribe.");
       }
 
-      if (response.ok || response.status === 409) {
+      if (response.ok) {
         try {
           return await response.json();
         } catch (e) {
@@ -397,98 +414,58 @@
       remember(meta);
     }
 
-    // One attempt at moving a recording on: send what the server lacks and,
-    // if the reader has asked for it, finish.  Throws a SyncError to say why
-    // it stopped; returns what state it reached.
+    // One attempt at uploading a recording the reader has asked to upload.
+    // Throws a SyncError to say why it stopped; returns what it reached.
     async function syncOnce(id) {
-      const meta = (session && session.meta.id === id && session.meta) || (await store.getMeta(id));
+      if (session && session.meta.id === id) return "idle";
 
-      if (!meta || meta.owner !== owner || meta.state === "uploaded") return "idle";
+      const meta = await store.getMeta(id);
 
-      const live = meta.state === "recording";
-      const total = partCount(meta.chunks);
-      const ready = live ? Math.floor(meta.chunks / PART_CHUNKS) : total;
-      const finishing = meta.submit && !live;
+      if (!meta || meta.owner !== owner || meta.state !== "stopped" || !meta.submit) {
+        return "idle";
+      }
 
-      if (ready === 0 && !finishing) return "idle";
-
-      if (finishing && total === 0) {
+      if (meta.chunks === 0) {
         throw new SyncError("refused", "Nothing was recorded.");
       }
 
-      const status = await api("GET", "/" + id);
+      const chunks = await store.getChunks(id, 0, meta.chunks);
 
-      if (status.done) {
-        await markUploaded(meta, status.done);
+      if (chunks.length !== meta.chunks) {
+        // Chunks written are always a contiguous run from 0, so this is
+        // storage having lost something underneath us.  Sending it anyway
+        // would stitch a gap into the file without anyone knowing.
+        throw new SyncError("refused", "Part of the recording is missing on this device.");
+      }
+
+      const file = new Blob(chunks, { type: meta.mime });
+      setSync(id, { phase: "uploading", sent: 0, total: file.size });
+
+      const answer = await api(
+        "POST",
+        "/" + id + "/upload",
+        file,
+        {
+          "Content-Type": meta.mime,
+          // A header carries only Latin-1; a recording's name is whatever
+          // the reader typed.
+          "X-Recording-Name": encodeURIComponent(meta.name || ""),
+        },
+        (sent, total) => setSync(id, { phase: "uploading", sent: sent, total: total })
+      );
+
+      if (answer && answer.done) {
+        await markUploaded(meta, answer.done);
         return "done";
       }
 
-      const have = new Set(status.parts || []);
-
-      // Forty rounds is far more than a correct server ever needs (one to
-      // send, one more if it lost parts while we sent), and bounds a server
-      // that keeps claiming parts are missing.
-      for (let round = 0; round < 40; round++) {
-        setSync(id, { phase: "uploading", sent: Math.min(have.size, ready), total: live ? null : total });
-
-        for (let part = 0; part < ready; part++) {
-          if (have.has(part)) continue;
-
-          const data = await store.getChunks(
-            id,
-            part * PART_CHUNKS,
-            Math.min((part + 1) * PART_CHUNKS, meta.chunks)
-          );
-          const expected = Math.min((part + 1) * PART_CHUNKS, meta.chunks) - part * PART_CHUNKS;
-
-          if (data.length !== expected) {
-            // Chunks written are always a contiguous run from 0, so this is
-            // storage having lost something underneath us.  Sending a short
-            // part would stitch a gap into the file without anyone knowing.
-            throw new SyncError("refused", "Part of the recording is missing on this device.");
-          }
-
-          await api("PUT", "/" + id + "/part/" + part, new Blob(data, { type: meta.mime }), {
-            "Content-Type": "application/octet-stream",
-          });
-          have.add(part);
-          setSync(id, { phase: "uploading", sent: have.size, total: live ? null : total });
-        }
-
-        if (!finishing) {
-          setSync(id, { phase: "backed-up", sent: have.size, total: null });
-          return "backed-up";
-        }
-
-        setSync(id, { phase: "finishing", sent: total, total: total });
-
-        const answer = await api(
-          "POST",
-          "/" + id + "/finish",
-          JSON.stringify({ parts: total, name: meta.name, mime: meta.mime }),
-          { "Content-Type": "application/json" }
-        );
-
-        if (answer && answer.done) {
-          await markUploaded(meta, answer.done);
-          return "done";
-        }
-
-        if (answer && Array.isArray(answer.missing)) {
-          answer.missing.forEach((part) => have.delete(part));
-          continue;
-        }
-
-        throw new SyncError("unavailable", "Scribe gave an unexpected answer.");
-      }
-
-      throw new SyncError("unavailable", "Scribe keeps losing parts of the recording.");
+      throw new SyncError("unavailable", "Scribe gave an unexpected answer.");
     }
 
     // Single flight per recording: a kick while one is running is folded
     // into one more run afterwards rather than a second one alongside it.
     // Across tabs, a Web Lock keeps two tabs from sending the same recording
-    // at once; the server is idempotent either way, this only saves bytes.
+    // at once -- which would make two jobs of it.
     function kick(id) {
       if (retry.has(id)) {
         timers.clear(retry.get(id).handle);
@@ -608,7 +585,7 @@
     // Whether another tab is recording this right now.  A Web Lock is held
     // for the whole of a recording, so where locks exist the answer is exact
     // -- which matters, because declaring a recording over while it is not
-    // gets its last, still-growing part sent as if it were final.  Timing
+    // offers it for upload, cut short, while it is still growing.  Timing
     // alone is the fallback, with a wider margin: a background tab can go
     // quiet for a while without being gone.
     async function recordingElsewhere(meta) {
@@ -808,7 +785,6 @@
             emit();
           }
 
-          if (this.meta.chunks % PART_CHUNKS === 0) kick(this.meta.id);
         }
 
         remember(this.meta);
@@ -1161,9 +1137,8 @@
       if (session && session.meta.id === id) throw new Error("still recording");
       const meta = await store.getMeta(id);
       if (meta && meta.owner !== owner) return;
+      // Only this browser's copy: an uploaded recording stays in My files.
       await store.deleteRecording(id);
-      // Removing an uploaded recording from the device leaves Scribe's copy
-      // alone; only an unfinished one has staging worth clearing.
       metas.delete(id);
       sync.delete(id);
       if (retry.has(id)) {
@@ -1171,8 +1146,6 @@
         retry.delete(id);
       }
       emit();
-      // Best effort: the server sweeps what it is not told about anyway.
-      if (!meta || meta.state !== "uploaded") api("DELETE", "/" + id).catch(() => {});
     }
 
     async function blob(id) {
@@ -1289,7 +1262,6 @@
 
   return {
     CHUNK_MS: CHUNK_MS,
-    PART_CHUNKS: PART_CHUNKS,
     BITRATE: BITRATE,
     LIVE_STALE_MS: LIVE_STALE_MS,
     KEEP_UPLOADED_MS: KEEP_UPLOADED_MS,
