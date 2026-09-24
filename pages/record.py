@@ -60,7 +60,7 @@ def create() -> None:
             else:
                 ui.navigate.to(settings.OIDC_APP_LOGOUT_ROUTE)
 
-        page_init(use_drawer=True, title="Record", on_session_end=session_ended)
+        page_init(use_drawer=True, title="Recorder", on_session_end=session_ended)
 
         # Signed in, or nothing. Every other page is gated by page_init's
         # token refresh navigating to the logout route when it fails, a

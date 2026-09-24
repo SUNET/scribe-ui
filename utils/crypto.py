@@ -35,7 +35,7 @@ def get_browser_id() -> str:
     return app.storage.browser["id"]
 
 
-def _derive_key(key: str, salt: bytes) -> bytes:
+def _derive_key(key: str, salt: bytes, info: bytes = b"scribe-storage-key") -> bytes:
     """
     Derive a key from the given key and salt using HKDF.
 
@@ -53,7 +53,7 @@ def _derive_key(key: str, salt: bytes) -> bytes:
         algorithm=hashes.SHA256(),
         length=32,
         salt=salt,
-        info=b"scribe-storage-key",
+        info=info,
     )
 
     return hkdf.derive(key.encode())

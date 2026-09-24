@@ -18,15 +18,16 @@
 """
 Recording: the server's half.
 
-What the browser does to keep a recording -- IndexedDB, retrying, recovering
-a crashed tab -- is tested in tests/js/recorder_engine.test.js, run from here
-when node is available.  What is tested here is the one route a recording
-passes through on this server: that it reaches the backend whole and is
-never kept here, and which status it answers with, since the browser's retry
-logic is built on exactly which status means what.
+What the browser does to keep a recording -- IndexedDB, encryption, retrying,
+recovering a crashed tab -- is tested in tests/js/recorder_engine.test.js,
+run from here when node is available.  What is tested here is the routes a
+recording passes through on this server: that each part reaches the backend
+as sent and is never kept here, and which status each answers with, since
+the browser's retry logic is built on exactly which status means what.
 """
 
 import asyncio
+import base64
 import json
 import pathlib
 import re
@@ -46,10 +47,10 @@ OWNER = "0" * 32
 RID = "f" * 32
 
 
-# -- The route --------------------------------------------------------------
+# -- The routes --------------------------------------------------------------
 
 
-def request(body=b"", headers=None, pieces=None):
+def request(body=b"", headers=None, pieces=None, method="PUT"):
     """
     A request as the browser sends it, its body arriving in `pieces`.
     """
@@ -57,8 +58,7 @@ def request(body=b"", headers=None, pieces=None):
     chunks = list(pieces) if pieces is not None else [body]
     base = {
         "x-scribe-recording": "1",
-        "content-type": "audio/webm",
-        "x-recording-name": "Lecture%3A%20week%203",
+        "content-type": "application/octet-stream",
         "content-length": str(sum(len(c) for c in chunks)),
     }
     base.update(headers or {})
@@ -69,7 +69,7 @@ def request(body=b"", headers=None, pieces=None):
         return queue.pop(0) if queue else {"type": "http.disconnect"}
 
     return Request(
-        {"type": "http", "method": "POST", "path": "/", "headers": raw, "query_string": b""},
+        {"type": "http", "method": method, "path": "/", "headers": raw, "query_string": b""},
         receive,
     )
 
@@ -77,25 +77,20 @@ def request(body=b"", headers=None, pieces=None):
 @pytest.fixture
 def backend(monkeypatch):
     """
-    A signed-in caller and a backend that parses what it is sent the way
-    FastAPI's UploadFile does.
+    A signed-in caller and a backend that answers the recording routes.
     """
 
-    got = {"calls": 0, "status": 200, "raise": None, "files": []}
+    got = {"calls": [], "status": 200, "answer": {"ok": True}, "raise": None}
 
     def handle(request: httpx.Request) -> httpx.Response:
-        got["calls"] += 1
+        got["calls"].append((request.method, request.url.path, request.read()))
         got["headers"] = dict(request.headers)
         if got["raise"]:
             raise got["raise"]
-        body = request.read()
-        # Parse the multipart body as a real server would.
-        boundary = request.headers["content-type"].split("boundary=")[1]
-        part = body.split(b"--" + boundary.encode())[1]
-        head, _, content = part.partition(b"\r\n\r\n")
-        got["files"].append((head.decode("utf-8"), content[: -len(b"\r\n")]))
-        got["length_ok"] = int(request.headers.get("content-length", len(body))) == len(body)
-        return httpx.Response(got["status"], json={"result": {"uuid": f"job-{got['calls']}"}})
+        status = got["status"]
+        if isinstance(status, list):
+            status = status.pop(0)
+        return httpx.Response(status, json=got["answer"])
 
     transport = httpx.MockTransport(handle)
     real = httpx.AsyncClient
@@ -103,85 +98,125 @@ def backend(monkeypatch):
         recording_api.httpx, "AsyncClient", lambda **kw: real(transport=transport, **kw)
     )
     monkeypatch.setattr(recording_api, "_caller", lambda request: OWNER)
-    monkeypatch.setattr(recording_api, "_token", lambda: "token")
+
+    class Storage:
+        user = {"token": "token"}
+
+    monkeypatch.setattr(recording_api.app, "storage", Storage)
+
+    refreshes = []
 
     async def refreshed():
+        refreshes.append(1)
+        Storage.user["token"] = "fresh"
         return True
 
     monkeypatch.setattr(recording_api, "token_refresh", refreshed)
-    monkeypatch.setattr(recording_api, "_uploaded", recording_api.OrderedDict())
+    got["refreshes"] = refreshes
     return got
 
 
-def upload(req, rid=RID):
-    return asyncio.run(recording_api.recording_upload(rid, req))
+def run(coroutine):
+    return asyncio.run(coroutine)
 
 
 def payload(response):
     return response.status_code, json.loads(response.body)
 
 
-def test_the_recording_reaches_the_backend_whole_and_named(backend):
-    status, body = payload(upload(request(pieces=[b"aa", b"bb", b"cc"])))
+def test_a_part_reaches_the_backend_as_sent(backend):
+    status, body = payload(
+        run(recording_api.recording_part(RID, 3, request(pieces=[b"aa", b"bb", b"cc"])))
+    )
+
+    assert (status, body) == (200, {"ok": True})
+    method, path, sent = backend["calls"][0]
+    assert (method, path, sent) == ("PUT", f"/api/v1/recordings/{RID}/part/3", b"aabbcc")
+    assert backend["headers"]["authorization"] == "Bearer token"
+
+
+def test_an_expired_token_is_refreshed_and_the_part_sent_again(backend):
+    backend["status"] = [401, 200]
+
+    status, _ = payload(run(recording_api.recording_part(RID, 0, request(b"aa"))))
 
     assert status == 200
-    assert body["done"] == {"uuid": "job-1", "filename": "Lecture_ week 3.webm"}
-    head, content = backend["files"][0]
-    assert content == b"aabbcc"
-    assert 'name="file"; filename="Lecture_ week 3.webm"' in head
-    assert "Content-Type: audio/webm" in head
-    assert backend["headers"]["authorization"] == "Bearer token"
-    assert backend["length_ok"], "the length given the backend is the length sent"
+    assert len(backend["refreshes"]) == 1
+    assert [c[2] for c in backend["calls"]] == [b"aa", b"aa"]
+    assert backend["headers"]["authorization"] == "Bearer fresh"
 
 
-def test_nothing_is_written_to_this_servers_disk(backend, tmp_path, monkeypatch):
-    # The route never opens a file: the only copy that is stored anywhere
-    # but the browser is the backend's, encrypted.
+def test_nothing_is_written_to_this_servers_disk(backend, monkeypatch):
+    # The routes never open a file: the only copy stored anywhere but the
+    # browser is the backend's, encrypted.
     import builtins
 
     opened = []
     real_open = builtins.open
     monkeypatch.setattr(builtins, "open", lambda *a, **k: opened.append(a) or real_open(*a, **k))
-    upload(request(pieces=[b"aa", b"bb"]))
+    run(recording_api.recording_part(RID, 0, request(pieces=[b"aa", b"bb"])))
     assert opened == []
-    assert not hasattr(recording_api, "staging")
 
 
-def test_a_name_in_any_language_survives(backend):
-    req = request(b"aa", {"x-recording-name": "F%C3%B6rel%C3%A4sning%20%C3%85"})
-    _, body = payload(upload(req))
-    assert body["done"]["filename"] == "Föreläsning Å.webm"
-    assert 'filename="Föreläsning Å.webm"' in backend["files"][0][0]
+def test_status_finish_and_discard_are_passed_on(backend):
+    backend["answer"] = {"parts": [0, 1], "done": None}
+    assert payload(run(recording_api.recording_status(RID, request(method="GET"))))[1] == {
+        "parts": [0, 1],
+        "done": None,
+    }
+
+    finish = request(
+        json.dumps({"parts": 2, "name": "Föreläsning", "mime": "audio/webm", "extra": 1}).encode(),
+        {"content-type": "application/json"},
+        method="POST",
+    )
+    backend["answer"] = {"done": {"uuid": "job-1", "filename": "Föreläsning.webm"}}
+    status, body = payload(run(recording_api.recording_finish(RID, finish)))
+    assert status == 200
+    assert body["done"]["uuid"] == "job-1"
+    method, path, sent = backend["calls"][-1]
+    assert (method, path) == ("POST", f"/api/v1/recordings/{RID}/finish")
+    assert json.loads(sent) == {"parts": 2, "name": "Föreläsning", "mime": "audio/webm"}
+
+    run(recording_api.recording_discard(RID, request(method="DELETE")))
+    assert backend["calls"][-1][:2] == ("DELETE", f"/api/v1/recordings/{RID}")
 
 
-def test_an_upload_repeated_after_its_answer_was_lost_makes_no_second_job(backend):
-    first = payload(upload(request(b"aa")))[1]
-    again = payload(upload(request(b"aa")))[1]
-    assert again == first
-    assert backend["calls"] == 1
+def test_missing_parts_are_passed_back_to_the_browser(backend):
+    backend["status"] = 409
+    backend["answer"] = {"missing": [0, 2]}
+    finish = request(json.dumps({"parts": 3, "name": "", "mime": "audio/webm"}).encode(), method="POST")
+
+    assert payload(run(recording_api.recording_finish(RID, finish))) == (409, {"missing": [0, 2]})
 
 
 @pytest.mark.parametrize(
     "backend_status, answer",
-    [(500, 503), (502, 503), (503, 503), (429, 503), (401, 401), (400, 422), (413, 422)],
+    [(500, 503), (502, 503), (503, 503), (404, 503), (429, 503), (400, 422), (422, 422)],
 )
 def test_backend_answers_become_retry_or_give_up(backend, backend_status, answer):
     backend["status"] = backend_status
 
     with pytest.raises(HTTPException) as caught:
-        upload(request(b"aa"))
+        run(recording_api.recording_part(RID, 0, request(b"aa")))
 
     assert caught.value.status_code == answer
-    # A failure is not remembered as done: the next try reaches the backend.
-    backend["status"] = 200
-    assert payload(upload(request(b"aa")))[0] == 200
+
+
+def test_a_backend_that_still_says_signed_out_is_signed_out(backend):
+    backend["status"] = 401
+
+    with pytest.raises(HTTPException) as caught:
+        run(recording_api.recording_part(RID, 0, request(b"aa")))
+
+    assert caught.value.status_code == 401
 
 
 def test_an_unreachable_backend_is_try_again(backend):
     backend["raise"] = httpx.ConnectError("down")
 
     with pytest.raises(HTTPException) as caught:
-        upload(request(b"aa"))
+        run(recording_api.recording_part(RID, 0, request(b"aa")))
 
     assert caught.value.status_code == 503
 
@@ -190,38 +225,78 @@ def test_a_session_that_cannot_be_refreshed_is_signed_out(backend, monkeypatch):
     async def refused():
         return False
 
+    backend["status"] = 401
     monkeypatch.setattr(recording_api, "token_refresh", refused)
     with pytest.raises(HTTPException) as caught:
-        upload(request(b"aa"))
+        run(recording_api.recording_part(RID, 0, request(b"aa")))
     assert caught.value.status_code == 401
-    assert backend["calls"] == 0
+    assert len(backend["calls"]) == 1
 
 
-def test_an_oversized_recording_is_refused_before_it_is_read(backend):
-    big = str(recording_api.MAX_RECORDING_BYTES + 1)
-    with pytest.raises(HTTPException) as caught:
-        upload(request(b"", {"content-length": big}))
-    assert caught.value.status_code == 422
-    assert backend["calls"] == 0
-
-
-def test_only_audio_types_are_accepted(backend):
-    with pytest.raises(HTTPException) as caught:
-        upload(request(b"aa", {"content-type": "text/html"}))
-    assert caught.value.status_code == 422
+def test_an_oversized_or_empty_part_is_refused_before_it_is_sent(backend):
+    big = str(recording_api.MAX_PART_BYTES + 1)
+    for req in (request(b"", {"content-length": big}), request(b"")):
+        with pytest.raises(HTTPException) as caught:
+            run(recording_api.recording_part(RID, 0, req))
+        assert caught.value.status_code == 422
+    assert backend["calls"] == []
 
 
 def test_recording_ids_have_one_shape(backend):
     with pytest.raises(HTTPException) as caught:
-        upload(request(b"aa"), rid="../" + "f" * 29)
+        run(recording_api.recording_part("../" + "f" * 29, 0, request(b"aa")))
     assert caught.value.status_code == 422
+    assert backend["calls"] == []
 
 
-def test_file_names_get_the_extension_their_audio_has():
-    assert recording_api._file_name("Lecture", "audio/mp4") == "Lecture.m4a"
-    assert recording_api._file_name("Lecture.webm", "audio/webm;codecs=opus") == "Lecture.webm"
-    assert recording_api._file_name("", "audio/ogg") == "Recording.ogg"
-    assert "/" not in recording_api._file_name("../../x", "audio/webm")
+def test_recent_recordings_are_the_jobs_with_an_original_newest_first(backend, monkeypatch):
+    monkeypatch.setattr(recording_api, "_encryption_password", lambda: "secret")
+    backend["answer"] = {
+        "result": {
+            "jobs": [
+                {"uuid": "a", "filename": "Old", "created_at": "2026-09-01 10:00", "has_original": True},
+                {"uuid": "b", "filename": "Uploaded file", "created_at": "2026-09-24 10:00", "has_original": False},
+                {"uuid": "c", "filename": "New", "created_at": "2026-09-24 11:00", "has_original": True, "status": "completed"},
+            ]
+        }
+    }
+
+    status, body = payload(run(recording_api.recording_recent(request(method="GET"))))
+
+    assert status == 200
+    assert [job["uuid"] for job in body["recordings"]] == ["c", "a"]
+    assert body["recordings"][0]["status"] == "completed"
+    method, path, sent = backend["calls"][0]
+    assert (method, path) == ("GET", "/api/v1/transcriber")
+    assert json.loads(sent) == {"encryption_password": "secret"}, "so the names come back readable"
+
+
+def test_the_store_key_is_per_user_and_per_browser(monkeypatch):
+    from utils import helpers
+
+    class Storage:
+        browser = {"_scribe_bk": "browser-key", "id": "browser-1"}
+
+    monkeypatch.setattr(helpers.app, "storage", Storage)
+    monkeypatch.setattr("utils.crypto.app.storage", Storage)
+
+    mine = helpers.recording_store_key(OWNER)
+    assert len(mine) == 32
+    assert mine == helpers.recording_store_key(OWNER)
+    assert mine != helpers.recording_store_key("1" * 32)
+
+    Storage.browser = {"_scribe_bk": "other-key", "id": "browser-2"}
+    assert mine != helpers.recording_store_key(OWNER)
+
+
+def test_the_key_route_hands_over_the_key_uncached(monkeypatch):
+    monkeypatch.setattr(recording_api, "_caller", lambda request: OWNER)
+    monkeypatch.setattr(recording_api, "recording_store_key", lambda owner: b"k" * 32)
+
+    response = run(recording_api.recording_key(request(method="GET")))
+
+    assert json.loads(response.body) == {"key": base64.b64encode(b"k" * 32).decode()}
+    assert response.headers["cache-control"] == "no-store"
 
 
 def test_the_route_wants_the_custom_header():
@@ -278,9 +353,8 @@ def test_the_recorder_is_not_logged_out_mid_recording():
     assert "on_session_end=" in source
 
 
-def test_the_files_page_offers_recording_and_resumes_uploads():
+def test_the_files_page_resumes_uploads():
     home = (ROOT / "pages" / "home.py").read_text()
-    assert '"Record audio"' in home
     assert "RecorderReminder(" in home
     assert "engine_script()" in home
 
@@ -294,6 +368,7 @@ def test_no_blocking_http_in_the_recording_routes():
 def test_the_browser_and_the_server_agree_on_where_the_routes_are():
     engine = (ROOT / "static" / "recorder_engine.js").read_text()
     assert f'const API = "{recording_api.API_PREFIX}";' in engine
+    assert not recording_api.ORIGINAL_PREFIX.startswith("/api")
     # /api/* is scribe-backend's behind the reverse proxy.
     assert not recording_api.API_PREFIX.startswith("/api")
 
@@ -319,6 +394,18 @@ def test_the_nicegui_reloads_the_recorder_guards_are_still_there():
     guard = (ROOT / "utils" / "recorder.js").read_text()
     for event in ("connect", "connect_error", "try_reconnect"):
         assert f'"{event}"' in guard
+
+
+def test_the_audio_test_keeps_and_sends_nothing():
+    # Test audio records a sample to play back; it lives in memory and goes
+    # when the dialog closes. Nothing in it may reach storage or Scribe.
+    component = (ROOT / "utils" / "recorder.js").read_text()
+    test = component[component.index("// -- Test audio --") : component.index("async estimate()")]
+    for forbidden in ("indexedDB", "fetch(", "XMLHttpRequest", "this.engine", "sessionStorage"):
+        assert forbidden not in test, forbidden
+    assert "URL.revokeObjectURL(this.testUrl)" in test
+    assert 'track.stop()' in test, "the microphone is let go"
+    assert '@hide="closeTest"' in component
 
 
 # -- The browser half -------------------------------------------------------

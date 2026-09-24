@@ -3259,11 +3259,94 @@ theme_styles = """
     }
     .recorder-help-row {
         display: flex;
+        flex-wrap: wrap;
         justify-content: center;
+        gap: 4px 16px;
     }
     .recorder-help-card {
         width: 100%;
         max-width: 520px;
+    }
+    /* Test audio.  A dialog is drawn at the body, outside the hero that
+       defines the meter's colours, so it defines its own. */
+    .recorder-test-card {
+        width: 100%;
+        max-width: 480px;
+        --recorder-meter: var(--color-brand-primary);
+        --recorder-meter-paused: var(--color-text-muted);
+    }
+    .recorder-test-intro {
+        margin: 0 0 14px;
+        font-size: 0.9rem;
+        line-height: 1.45;
+        color: var(--color-text-secondary);
+    }
+    .recorder-test-history {
+        max-width: none;
+        margin-top: 16px;
+    }
+    .recorder-level {
+        width: 100%;
+    }
+    .recorder-hero .recorder-level {
+        max-width: 320px;
+    }
+    .recorder-hero .recorder-test-verdict {
+        justify-content: center;
+        text-align: center;
+    }
+    .recorder-test-bar {
+        position: relative;
+        height: 14px;
+        border-radius: 7px;
+        overflow: hidden;
+        background-color: var(--color-bg-surface-alt);
+        border: 1px solid var(--color-border-subtle);
+    }
+    .recorder-test-bar-fill {
+        height: 100%;
+        background-color: var(--color-text-muted);
+    }
+    .recorder-test-bar-fill.is-ok { background-color: var(--color-brand-primary); }
+    .recorder-test-bar-fill.is-warn { background-color: var(--color-severity-maint-icon); }
+    .recorder-test-bar-fill.is-danger { background-color: var(--color-text-danger); }
+    .recorder-test-bar-peak {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 2px;
+        margin-left: -1px;
+        background-color: var(--color-text-primary);
+    }
+    .recorder-test-scale {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 2px;
+        font-size: 0.75rem;
+        color: var(--color-text-muted);
+    }
+    .recorder-test-verdict {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 10px;
+        min-height: 2.9em;
+        font-size: 0.9rem;
+        line-height: 1.45;
+        color: var(--color-text-secondary);
+    }
+    .recorder-test-verdict.is-ok .q-icon { color: var(--color-brand-primary); }
+    .recorder-test-verdict.is-warn .q-icon { color: var(--color-severity-maint-icon); }
+    .recorder-test-verdict.is-danger { color: var(--color-text-danger); }
+    .recorder-test-sample {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+        margin-top: 12px;
+    }
+    .recorder-test-player {
+        width: 100%;
     }
     .recorder-help-title {
         font-size: 1.2rem;
@@ -3354,9 +3437,6 @@ theme_styles = """
         display: flex;
         flex-wrap: wrap;
         gap: 6px;
-    }
-    .recorder-player {
-        width: 100%;
     }
     .recorder-reminder {
         display: flex;

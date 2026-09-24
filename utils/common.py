@@ -570,7 +570,7 @@ def page_init(
         # Menu items: (path, icon, label)
         menu_items = [
             ("/home", "folder", "My files"),
-            ("/record", "mic", "Record"),
+            ("/record", "mic", "Recorder"),
             ("/user", "person", "User settings"),
         ]
 
