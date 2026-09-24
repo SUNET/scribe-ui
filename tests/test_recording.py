@@ -374,7 +374,7 @@ def test_the_browser_and_the_server_agree_on_where_the_routes_are():
 
 
 def test_the_nicegui_reloads_the_recorder_guards_are_still_there():
-    # utils/recorder.js replaces three of nicegui.js's own socket handlers
+    # utils/recorder.js replaces four of nicegui.js's own socket handlers
     # while recording, because each of them reloads the page, and a reload
     # stops the recording. If NiceGUI renames or moves them, the guard
     # silently stops guarding -- this is what says so.
@@ -388,12 +388,18 @@ def test_the_nicegui_reloads_the_recorder_guards_are_still_there():
         "try_reconnect: async () => {",
         'window.socket.emit("handshake", options.query, finishHandshake);',
         "window.socket.on(event,",
+        "run_javascript: (msg) => runJavascript(msg.code, msg.request_id),",
     ):
         assert needle in client, needle
 
+    # The server's own reload, when it cannot replay what a reconnect missed.
+    outbox = (pathlib.Path(nicegui.__file__).parent / "outbox.py").read_text()
+    assert "self.client.run_javascript('window.location.reload()')" in outbox
+
     guard = (ROOT / "utils" / "recorder.js").read_text()
-    for event in ("connect", "connect_error", "try_reconnect"):
+    for event in ("connect", "connect_error", "try_reconnect", "run_javascript"):
         assert f'"{event}"' in guard
+    assert 'const SERVER_RELOAD = "window.location.reload()";' in guard
 
 
 def test_the_audio_test_keeps_and_sends_nothing():

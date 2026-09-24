@@ -181,6 +181,40 @@ function fakeNavigator() {
   };
 }
 
+// Web Locks shared by the tabs of one browser.  Each tab asks through its
+// own navigator; closing a tab lets go of everything it held.
+function fakeLocks() {
+  const held = new Map();
+  return {
+    held: held,
+    tab(name) {
+      return {
+        request(lock, opts, callback) {
+          if (typeof opts === "function") {
+            callback = opts;
+            opts = {};
+          }
+          if (held.has(lock)) {
+            if (opts.ifAvailable) return Promise.resolve(callback(null));
+            return new Promise(() => {});
+          }
+          held.set(lock, name);
+          return Promise.resolve(callback({ name: lock })).finally(() => {
+            if (held.get(lock) === name) held.delete(lock);
+          });
+        },
+      };
+    },
+    close(name) {
+      for (const [lock, tab] of held) if (tab === name) held.delete(lock);
+    },
+  };
+}
+
+function navigatorWithLocks(locks, tab) {
+  return Object.assign(fakeNavigator(), { locks: locks.tab(tab) });
+}
+
 const settle = () => new Promise((resolve) => setImmediate(resolve)).then(
   () => new Promise((resolve) => setImmediate(resolve))
 );
@@ -560,6 +594,64 @@ test("a recording another tab is still writing is left alone", async () => {
   assert.equal(seen.state, "recording");
   assert.equal(seen.elsewhere, true);
   assert.equal(other.engine.list()[0].error, null, "not sent from a tab that does not hold it");
+});
+
+test("with locks, a recording another tab holds is shown as elsewhere however quiet it is", async () => {
+  const locks = fakeLocks();
+  const ctx = makeEngine({ navigator: navigatorWithLocks(locks, "a") });
+  const session = await record(ctx, 3);
+
+  // Long past what timing alone would call gone.
+  const other = makeEngine({
+    server: ctx.server,
+    store: ctx.store,
+    clock: 1_700_000_000_000 + 10 * 60_000,
+    navigator: navigatorWithLocks(locks, "b"),
+  });
+  await other.engine.init();
+  await settled();
+  const seen = other.engine.list().find((r) => r.id === session.meta.id);
+  assert.equal(seen.state, "recording");
+  assert.equal(seen.elsewhere, true);
+});
+
+test("a page reloaded mid-recording is not told its recording is in another tab", async () => {
+  // The wifi drops, NiceGUI reloads the page: the old document -- and its
+  // lock -- are gone at once, but what it wrote a second ago looks fresh.
+  const locks = fakeLocks();
+  const ctx = makeEngine({ navigator: navigatorWithLocks(locks, "a") });
+  const session = await record(ctx, N + 2);
+  locks.close("a");
+
+  const reloaded = makeEngine({
+    server: ctx.server,
+    store: ctx.store,
+    clock: 1_700_000_000_000 + (N + 2) * 1000 + 500,
+    navigator: navigatorWithLocks(locks, "a2"),
+  });
+  await reloaded.engine.init();
+  await settled();
+  const seen = reloaded.engine.list().find((r) => r.id === session.meta.id);
+  assert.equal(seen.elsewhere, false);
+  assert.equal(seen.state, "stopped");
+  assert.equal(seen.interrupted, true, "offered to continue, not left running");
+});
+
+test("the live lock is taken before the recording is first written, and let go after its last", async () => {
+  const locks = fakeLocks();
+  const ctx = makeEngine({ navigator: navigatorWithLocks(locks, "a") });
+  const put = ctx.store.putMeta.bind(ctx.store);
+  let heldAtFirstWrite = null;
+  ctx.store.putMeta = async (meta) => {
+    if (heldAtFirstWrite === null) heldAtFirstWrite = locks.held.has("scribe-live-" + meta.id);
+    return put(meta);
+  };
+  const session = await record(ctx, 2);
+  assert.equal(heldAtFirstWrite, true);
+
+  await session.stop();
+  await settled();
+  assert.equal(locks.held.has("scribe-live-" + session.meta.id), false);
 });
 
 test("another user's recordings on the same device are neither shown nor sent", async () => {

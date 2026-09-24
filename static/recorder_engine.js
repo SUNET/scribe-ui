@@ -344,6 +344,9 @@
     const running = new Set();
     const again = new Set();
     let session = null;
+    // Recordings another tab holds the live lock on, as of the last refresh().
+    const liveElsewhere = new Set();
+    const locksExact = () => !!(nav.locks && nav.locks.request);
     let initialised = null;
 
     const emit = () => {
@@ -869,23 +872,23 @@
     // -- Recovering what an earlier page left behind --
 
     // Whether another tab is recording this right now.  A Web Lock is held
-    // for the whole of a recording, so where locks exist the answer is exact
-    // -- which matters, because declaring a recording over while it is not
-    // gets its last, still-growing part sent as if it were final.  Timing
-    // alone is the fallback, with a wider margin: a background tab can go
-    // quiet for a while without being gone.
+    // for the whole of a recording -- taken before the recording is first
+    // written, let go after its last write -- so where locks exist the
+    // answer is exact, and immediate: a page reloaded mid-recording (the
+    // wifi dropping is enough for NiceGUI to do it) must not go on being
+    // told its own recording is running in another tab.  Exact matters the
+    // other way too, because declaring a recording over while it is not
+    // gets its last, still-growing part sent as if it were final.  Answers
+    // null where there are no locks to ask.
     async function recordingElsewhere(meta) {
       if (session && session.meta.id === meta.id) return false;
+      if (!nav.locks || !nav.locks.request) return null;
 
-      if (nav.locks && nav.locks.request) {
-        try {
-          return await nav.locks.request("scribe-live-" + meta.id, { ifAvailable: true }, (lock) => !lock);
-        } catch (e) {
-          /* fall through to timing */
-        }
+      try {
+        return await nav.locks.request("scribe-live-" + meta.id, { ifAvailable: true }, (lock) => !lock);
+      } catch (e) {
+        return null;
       }
-
-      return now() - meta.updatedAt <= LIVE_STALE_MS * 4;
     }
 
     // Read what storage holds -- other tabs write to it too -- and settle
@@ -917,11 +920,17 @@
 
         // Running, as far as storage knows, but the tab that was recording
         // it is gone.  What it wrote is a valid recording up to that point.
-        if (
-          meta.state === "recording" &&
-          now() - meta.updatedAt > LIVE_STALE_MS &&
-          !(await recordingElsewhere(meta))
-        ) {
+        // Without locks only timing can say, with a wide margin: a
+        // background tab can go quiet for a while without being gone.
+        let gone = false;
+        liveElsewhere.delete(meta.id);
+        if (meta.state === "recording") {
+          const held = await recordingElsewhere(meta);
+          gone = held === null ? now() - meta.updatedAt > LIVE_STALE_MS * 4 : !held;
+          if (held) liveElsewhere.add(meta.id);
+        }
+
+        if (gone) {
           meta.state = "stopped";
           meta.interrupted = true;
           meta.chunks = await available(meta);
@@ -943,7 +952,10 @@
 
       // Discarded or finished in another tab.
       for (const id of Array.from(metas.keys())) {
-        if (!seen.has(id)) metas.delete(id);
+        if (!seen.has(id)) {
+          metas.delete(id);
+          liveElsewhere.delete(id);
+        }
       }
 
       emit();
@@ -1367,6 +1379,22 @@
         sent: [],
       };
 
+      // Held until the recording is finalised: how another tab knows,
+      // exactly, that this one is still recording it.  Taken before the
+      // recording is first written, or another tab could find it marked
+      // running with nobody holding it and settle it as interrupted.
+      let letGo = () => {};
+      if (nav.locks && nav.locks.request) {
+        await new Promise((held) => {
+          nav.locks
+            .request("scribe-live-" + meta.id, () => {
+              held();
+              return new Promise((resolve) => (letGo = resolve));
+            })
+            .catch(() => held());
+        });
+      }
+
       try {
         await store.putMeta(meta);
       } catch (e) {
@@ -1394,11 +1422,7 @@
       live.fellBack = fellBack;
       session = live;
 
-      // Held until the recording is finalised: how another tab knows,
-      // exactly, that this one is still recording it.
-      if (nav.locks && nav.locks.request) {
-        nav.locks.request("scribe-live-" + meta.id, () => live.done).catch(() => {});
-      }
+      live.done.then(() => letGo());
 
       recorder.ondataavailable = (event) => {
         if (event.data && event.data.size) {
@@ -1512,7 +1536,11 @@
           const live = session && session.meta.id === meta.id;
           const current = live ? session.meta : meta;
           const elsewhere =
-            !live && current.state === "recording" && now() - current.updatedAt <= LIVE_STALE_MS;
+            !live &&
+            current.state === "recording" &&
+            (locksExact()
+              ? liveElsewhere.has(meta.id)
+              : now() - current.updatedAt <= LIVE_STALE_MS);
           return Object.assign({}, current, {
             name: current.name == null ? "Recording" : current.name,
             live: !!live,
