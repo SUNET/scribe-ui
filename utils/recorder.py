@@ -18,9 +18,9 @@
 """
 Recording from the browser's microphone.
 
-The server's part in a recording is small on purpose: it names the owner,
-receives parts over plain HTTP (utils/recording_api.py) and hands the joined
-file to the backend.  Everything that keeps a recording from being lost --
+The server's part in a recording is small on purpose: it names the owner
+and streams a finished recording through to the backend without storing it
+(utils/recording_api.py).  Everything that keeps a recording from being lost --
 writing each second to IndexedDB, sending parts while recording, retrying,
 recovering what a crashed tab left -- happens in the browser
 (static/recorder_engine.js), because the browser is the one place the audio
@@ -38,8 +38,7 @@ import pathlib
 
 from nicegui import ui
 
-from utils.recording_api import recording_owner
-from utils.settings import get_settings
+from utils.recording_api import API_PREFIX, ORIGINAL_PREFIX, recording_owner
 from utils.token import get_user_info
 
 ENGINE_PATH = pathlib.Path(__file__).resolve().parent.parent / "static" / "recorder_engine.js"
@@ -74,19 +73,20 @@ class Recorder(ui.element, component="recorder.js"):
         self._props["owner"] = owner
         self._props["filesUrl"] = files_url
         self._props["sessionEnded"] = False
-        # Said in the help text, so it has to be the setting, not a copy.
-        self._props["stagingHours"] = float(
-            get_settings().RECORDING_STAGING_MAX_AGE_HOURS
-        )
+        self._props["logoutUrl"] = ""
+        self._props["originalUrl"] = ORIGINAL_PREFIX
+        self._props["recentUrl"] = API_PREFIX + "/recent"
 
-    def end_session(self) -> None:
+    def end_session(self, logout_url: str) -> None:
         """
-        The sign-in is over.  Said on the page rather than acted on: a
-        navigation away would stop a recording in progress, and everything
-        already recorded is kept on the device for after the reader has
-        signed in again.
+        The sign-in is over.  With no recording running the page goes to
+        `logout_url` at once, as every other page does.  With one running
+        it says so instead -- a navigation would stop the recording -- and
+        goes when the recording stops; everything recorded is kept in the
+        browser for after the reader has signed in again.
         """
 
+        self._props["logoutUrl"] = logout_url
         self._props["sessionEnded"] = True
         self.update()
 

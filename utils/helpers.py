@@ -21,7 +21,7 @@ from typing import Optional
 
 import httpx
 from nicegui import app, ui
-from utils.crypto import decrypt_string, encrypt_string, get_browser_id
+from utils.crypto import _derive_key, decrypt_string, encrypt_string, get_browser_id
 from utils.settings import get_settings
 from utils.token import get_auth_header
 
@@ -51,6 +51,24 @@ def storage_encrypt(plaintext: str) -> str:
         app.storage.browser["_scribe_bk"] + settings.STORAGE_SECRET,
         get_browser_id().encode(),
         b"scribe-secret",
+    )
+
+
+def recording_store_key(owner: str) -> bytes:
+    """
+    The key the recorder encrypts audio with in this browser's IndexedDB.
+
+    Bound to this browser and this user, from the same material as
+    storage_encrypt: the browser key, the server's secret and the browser
+    id.  Handed to the page and held there in memory only, so what the
+    recorder leaves on the device is unreadable without a signed-in session
+    in this same browser.
+    """
+
+    return _derive_key(
+        app.storage.browser["_scribe_bk"] + settings.STORAGE_SECRET,
+        get_browser_id().encode(),
+        b"scribe-recording-store:" + owner.encode(),
     )
 
 

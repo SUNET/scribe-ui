@@ -87,18 +87,6 @@ class Settings(BaseSettings):
     REVIEW_SENSITIVITY_MEDIUM: float = 0.50
     REVIEW_SENSITIVITY_HIGH: float = 0.75
 
-    # Where a recording's parts wait on this server between the browser and
-    # the backend (see utils/recording_staging.py). Empty means a directory
-    # under the system temp dir. Staging is never the only copy -- the
-    # browser keeps every chunk until the backend has the file -- so losing
-    # it costs a re-send, never a recording.
-    RECORDING_STAGING_DIR: str = ""
-
-    # How long staged parts nobody has touched are kept before the sweep
-    # removes them. A professor who records on Friday and opens Scribe again
-    # on Monday gets the parts re-sent from the phone, which is fine.
-    RECORDING_STAGING_MAX_AGE_HOURS: float = 72.0
-
     WHISPER_MODELS: list[str] = [
         "Fast transcription (normal accuracy)",
         "Slower transcription (higher accuracy)",

@@ -17,26 +17,35 @@
 
 // The recorder's engine: capture, keeping, and getting a recording to Scribe.
 //
-// The one rule everything here follows is that **a recording exists on the
-// device until the backend has said it holds the file**.  Every second of
-// audio is written to IndexedDB as it is recorded, so what a crash, a reload,
-// a flat battery or a closed tab costs is the last second -- not the lecture.
+// The rule everything here follows is that **audio is kept on this device
+// only while it cannot be sent to Scribe**:
 //
-// Getting it to Scribe is a separate, restartable job that never holds the
-// only copy of anything:
-//
-//   - While recording, every complete part (PART_CHUNKS seconds) is sent to
-//     the server in the background, so when the lecture ends most of it is
-//     already there.  A part is immutable once complete, so sending one twice
-//     is harmless and a part that got no answer is simply sent again.
-//   - When the reader asks for it to be transcribed, the rest is sent and
-//     the server is asked to hand the joined file to the backend.
-//   - Before sending anything the server is asked what it already holds, so
-//     a reload half way through sends only what is missing -- and a server
-//     that lost its staging (restart, sweep) is simply sent everything again.
+//   - While recording, audio is held in memory, and every complete part
+//     (PART_CHUNKS seconds) is sent to the backend, which encrypts it as it
+//     arrives.  Once the backend has confirmed a part it is dropped.
+//     Online, nothing but a small record of the recording is written to the
+//     device, and what a crash costs is the part not yet sent.
+//   - The moment a send fails -- offline, Scribe down, signed out -- what is
+//     held in memory is written to IndexedDB, and so is everything recorded
+//     after it, so a crash, a reload or a flat battery then costs the last
+//     second rather than everything since the connection went.  Each part
+//     is deleted from IndexedDB as soon as it gets through, and once the
+//     backlog is cleared recording goes back to memory.
+//   - Whatever is written is encrypted (AES-GCM) first -- the audio and the
+//     recording's name alike.  The key comes from the server for this user
+//     and this browser and is held in memory only, so what is left in
+//     IndexedDB is unreadable without signing in.
+//   - Stop sends the rest and asks the backend to make the recording a job
+//     at once; the recording then leaves this device altogether.  Its
+//     original is downloaded from Scribe, not from here.
+//   - Before sending anything the backend is asked what it already holds,
+//     so a reload half way through sends only what is missing.  A part is
+//     immutable once complete, so sending one twice is harmless and a part
+//     that got no answer is simply sent again.
 //   - Failures are sorted into "later" (offline, server or backend down),
 //     "after signing in again" and "never as sent", and only the last one
-//     stops the retrying.  Nothing is ever deleted because a send failed.
+//     stops the retrying.  Nothing is ever deleted because a send failed:
+//     offline, parts simply wait here until they can go.
 //
 // Uploading goes through plain fetch(), not the page's websocket: the
 // websocket is what a phone loses first, and NiceGUI reloads the page when it
@@ -60,10 +69,10 @@
 
   // One chunk a second: what a crash can cost at most.
   const CHUNK_MS = 1000;
-  // Thirty chunks to a part: about 240 KB at BITRATE, small enough to get
-  // through a poor connection in one go and few enough requests for an hour
-  // (120) not to matter.
-  const PART_CHUNKS = 30;
+  // Five chunks to a part: about 40 KB at BITRATE.  A part is only in memory
+  // until it is sent, so this is what a crash costs while online -- set
+  // against the number of requests, 720 an hour, which is still nothing.
+  const PART_CHUNKS = 5;
   // Speech, not music: 64 kbit/s Opus is transparent for a voice, and it is
   // under 30 MB an hour -- which decides how long a phone can record before
   // its storage runs out, and how long the upload takes afterwards.
@@ -74,10 +83,7 @@
   const HEARTBEAT_MS = 5000;
   const RETRY_MIN_MS = 2000;
   const RETRY_MAX_MS = 60000;
-  // Uploaded recordings, audio and all, stay on the device this long -- so
-  // the original can still be downloaded -- and are then removed.  The
-  // reader can remove one sooner themselves.
-  const KEEP_UPLOADED_MS = 7 * 24 * 3600 * 1000;
+  const IV_BYTES = 12;
 
   // Kept in step with API_PREFIX in utils/recording_api.py (the test there
   // checks).  Not under /api: behind the proxy that is the backend's.
@@ -180,9 +186,21 @@
           const request = tx.objectStore("chunks").getAll(chunkRange(rid, from, to));
           request.onsuccess = () => set((request.result || []).map((c) => c.data));
         }),
+      getChunkMap: (rid, from, to) =>
+        run(["chunks"], "readonly", (tx, set) => {
+          const request = tx.objectStore("chunks").getAll(chunkRange(rid, from, to));
+          request.onsuccess = () => set(new Map((request.result || []).map((c) => [c.seq, c.data])));
+        }),
       deleteChunks: (rid) =>
         run(["chunks"], "readwrite", (tx) => {
           tx.objectStore("chunks").delete(chunkRange(rid, 0, Infinity));
+        }),
+      // Chunks the backend has confirmed, dropped in the same transaction
+      // as the meta saying so: after a crash the two still agree.
+      dropChunks: (meta, from, to) =>
+        run(["recordings", "chunks"], "readwrite", (tx) => {
+          tx.objectStore("chunks").delete(chunkRange(meta.id, from, to));
+          tx.objectStore("recordings").put(meta);
         }),
       deleteRecording: (rid) =>
         run(["recordings", "chunks"], "readwrite", (tx) => {
@@ -221,10 +239,22 @@
         }
         return out;
       },
+      getChunkMap: async (rid, from, to) => {
+        const out = new Map();
+        for (let seq = from; seq < to; seq++) {
+          const data = chunks.get(rid + "/" + seq);
+          if (data !== undefined) out.set(seq, data);
+        }
+        return out;
+      },
       deleteChunks: async (rid) => {
         for (const key of Array.from(chunks.keys())) {
           if (key.startsWith(rid + "/")) chunks.delete(key);
         }
+      },
+      dropChunks: async (meta, from, to) => {
+        for (let seq = from; seq < to; seq++) chunks.delete(meta.id + "/" + seq);
+        metas.set(meta.id, copy(meta));
       },
       deleteRecording: async (rid) => {
         for (const key of Array.from(chunks.keys())) {
@@ -336,6 +366,198 @@
       emit();
     };
 
+    // Recordings that became a job while this page was open.  They are gone
+    // from storage by then; this is only so the page can say where they went.
+    const finishedHere = new Map();
+
+    // -- The key audio is encrypted with on this device --
+
+    // Asked of the server, for this user in this browser, and held in memory
+    // only: a reload asks again.  Not extractable once imported, so nothing
+    // on the page can read it back out.
+    const subtle = cryptoApi && cryptoApi.subtle;
+    const encoder = typeof TextEncoder !== "undefined" ? new TextEncoder() : null;
+    let keyPromise = null;
+
+    function getKey() {
+      if (!keyPromise) {
+        keyPromise = (async () => {
+          if (!subtle || !encoder) throw new SyncError("refused", "This browser cannot encrypt the recording.");
+          let raw;
+          if (env.key) {
+            raw = await env.key();
+          } else {
+            const answer = await api("GET", "/key");
+            raw = Uint8Array.from(atob(String(answer.key || "")), (c) => c.charCodeAt(0));
+          }
+          if (!raw || raw.length !== 32) throw new SyncError("unavailable", "Scribe did not hand over a key.");
+          return subtle.importKey("raw", raw, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
+        })();
+        keyPromise.catch(() => {
+          keyPromise = null;
+        });
+      }
+      return keyPromise;
+    }
+
+    // Each chunk is bound to its recording and position, so a chunk cannot
+    // be moved to another place -- or another recording -- and still read.
+    const chunkLabel = (rid, seq) => encoder.encode(rid + "/" + seq);
+
+    async function seal(rid, seq, data) {
+      const key = await getKey();
+      const iv = cryptoApi.getRandomValues(new Uint8Array(IV_BYTES));
+      const sealed = await subtle.encrypt({ name: "AES-GCM", iv: iv, additionalData: chunkLabel(rid, seq) }, key, data);
+      const out = new Uint8Array(IV_BYTES + sealed.byteLength);
+      out.set(iv, 0);
+      out.set(new Uint8Array(sealed), IV_BYTES);
+      return out.buffer;
+    }
+
+    async function unseal(rid, seq, stored) {
+      const key = await getKey();
+      const bytes = new Uint8Array(stored);
+      try {
+        return await subtle.decrypt(
+          { name: "AES-GCM", iv: bytes.slice(0, IV_BYTES), additionalData: chunkLabel(rid, seq) },
+          key,
+          bytes.slice(IV_BYTES)
+        );
+      } catch (e) {
+        throw new SyncError("refused", "This recording can no longer be read in this browser.");
+      }
+    }
+
+    // -- The recording's own record, kept encrypted too --
+
+    // A recording's record (its id, how many chunks, which parts Scribe has)
+    // is written from the start, online or not: without it a crash would
+    // lose track of the parts already on Scribe, and the backend would sweep
+    // them.  It holds no audio, and its name -- whatever the reader typed,
+    // often a course and a date, sometimes a person -- is encrypted.
+    const decoder = typeof TextDecoder !== "undefined" ? new TextDecoder() : null;
+    const toBase64 = (buffer) => btoa(String.fromCharCode(...new Uint8Array(buffer)));
+    const fromBase64 = (text) => Uint8Array.from(atob(text), (c) => c.charCodeAt(0)).buffer;
+
+    async function sealName(meta) {
+      const out = Object.assign({}, meta);
+      delete out.name;
+      delete out.nameFor;
+      // A name that could not be read (no key right now) is carried over
+      // sealed as it was, never overwritten by a stand-in.
+      if (meta.name == null) return out;
+      if (!(meta.nameSealed && meta.nameFor === meta.name)) {
+        meta.nameSealed = toBase64(await seal(meta.id, "name", encoder.encode(meta.name)));
+        meta.nameFor = meta.name;
+      }
+      out.nameSealed = meta.nameSealed;
+      return out;
+    }
+
+    async function openName(stored) {
+      if (!stored || !stored.nameSealed) return stored;
+      try {
+        stored.name = decoder.decode(await unseal(stored.id, "name", fromBase64(stored.nameSealed)));
+        stored.nameFor = stored.name;
+      } catch (e) {
+        stored.name = null;
+      }
+      return stored;
+    }
+
+    const rawStore = store;
+    store = {
+      persistent: rawStore.persistent,
+      putMeta: async (meta) => rawStore.putMeta(await sealName(meta)),
+      getMeta: async (id) => openName(await rawStore.getMeta(id)),
+      listMeta: async () => Promise.all((await rawStore.listMeta()).map(openName)),
+      appendChunk: async (meta, seq, data) => rawStore.appendChunk(await sealName(meta), seq, data),
+      dropChunks: async (meta, from, to) => rawStore.dropChunks(await sealName(meta), from, to),
+      getChunkMap: (rid, from, to) => rawStore.getChunkMap(rid, from, to),
+      deleteChunks: (rid) => rawStore.deleteChunks(rid),
+      deleteRecording: (rid) => rawStore.deleteRecording(rid),
+    };
+
+    // -- Audio held in memory until it is sent --
+
+    // By recording id, then chunk number: plaintext, never written anywhere
+    // unless sending fails (spill()).  Only the tab that recorded it has it.
+    const buffers = new Map();
+
+    // Chunks from..to-1, readable, or a SyncError.  From memory where this
+    // tab still holds them, from storage otherwise.  Chunks are always a
+    // contiguous run, so one missing is storage having lost something
+    // underneath us -- and sending round it would stitch a gap into the file.
+    async function readChunks(meta, from, to) {
+      const held = buffers.get(meta.id);
+      const stored = await store.getChunkMap(meta.id, from, to);
+      const out = [];
+      for (let seq = from; seq < to; seq++) {
+        if (held && held.has(seq)) {
+          out.push(held.get(seq));
+        } else if (stored.has(seq)) {
+          out.push(meta.encrypted ? await unseal(meta.id, seq, stored.get(seq)) : stored.get(seq));
+        } else {
+          throw new SyncError("refused", "Part of the recording is missing on this device.");
+        }
+      }
+      return out;
+    }
+
+    // Sending has failed: what is held in memory goes to storage, encrypted,
+    // and so does everything recorded from now on (writeAll() reads the
+    // flag), until the backlog is sent.  A chunk that cannot be written
+    // stays in memory; it is still sent if the tab lives.
+    async function spill(meta) {
+      meta.spilled = true;
+      const held = buffers.get(meta.id);
+      if (held) {
+        for (const seq of Array.from(held.keys()).sort((a, b) => a - b)) {
+          const data = held.get(seq);
+          if (data === undefined) continue;
+          await store.appendChunk(meta, seq, await seal(meta.id, seq, data));
+          held.delete(seq);
+        }
+      }
+      remember(meta);
+    }
+
+    // Everything this tab still holds in memory for a recording, sent now.
+    // Throws a SyncError if any of it cannot be.
+    async function sendHeld(meta) {
+      const total = Math.ceil(meta.chunks / PART_CHUNKS);
+      for (let part = 0; part < total; part++) {
+        if ((meta.sent || []).includes(part)) continue;
+        const from = part * PART_CHUNKS;
+        const to = Math.min(from + PART_CHUNKS, meta.chunks);
+        const data = await readChunks(meta, from, to);
+        await api("PUT", "/" + meta.id + "/part/" + part, new Blob(data, { type: meta.mime }), {
+          "Content-Type": "application/octet-stream",
+        });
+        await confirmPart(meta, part);
+      }
+    }
+
+    // How much of a recording whose tab is gone can still be had: parts on
+    // Scribe, then chunks in storage, up to the first gap.  What was only in
+    // that tab's memory went with it.
+    async function available(meta) {
+      const sent = new Set(meta.sent || []);
+      const stored = await store.getChunkMap(meta.id, 0, meta.chunks);
+      let n = 0;
+      while (n < meta.chunks) {
+        const part = Math.floor(n / PART_CHUNKS);
+        if (sent.has(part)) {
+          n = Math.min((part + 1) * PART_CHUNKS, meta.chunks);
+        } else if (stored.has(n)) {
+          n += 1;
+        } else {
+          break;
+        }
+      }
+      return n;
+    }
+
     // -- Talking to the server --
 
     async function api(method, path, body, headers) {
@@ -384,18 +606,38 @@
       throw new SyncError("unavailable", "Scribe is not answering right now (" + response.status + ").");
     }
 
+    // The backend holds it now, original and all, so nothing of it stays on
+    // this device.  The original is downloaded from Scribe's file list.
     async function markUploaded(meta, done) {
       meta.state = "uploaded";
       meta.job = done || {};
       meta.uploadedAt = now();
       meta.error = null;
-      // The audio stays on the device: the reader may want the original
-      // file for themselves, and the recorder page is where they download
-      // it -- before transcribing it or after.  It goes when they remove it,
-      // or after KEEP_UPLOADED_MS.
-      await store.putMeta(meta);
+      await store.deleteRecording(meta.id);
+      buffers.delete(meta.id);
+      metas.delete(meta.id);
+      finishedHere.set(meta.id, Object.assign({}, meta));
+      emit();
+    }
+
+    // A part the backend has confirmed: its audio is dropped here.
+    async function confirmPart(meta, part) {
+      const from = part * PART_CHUNKS;
+      const to = Math.min(from + PART_CHUNKS, meta.chunks);
+      const held = buffers.get(meta.id);
+      if (held) for (let seq = from; seq < to; seq++) held.delete(seq);
+      const sent = new Set(meta.sent || []);
+      if (sent.has(part)) return;
+      sent.add(part);
+      meta.sent = Array.from(sent).sort((a, b) => a - b);
+      // The record is written with it either way: it is what says, after a
+      // crash, that this part is on Scribe.
+      await store.dropChunks(meta, from, to);
       remember(meta);
     }
+
+    const lostPart = () =>
+      new SyncError("refused", "Part of this recording was lost on Scribe before it was finished.");
 
     // One attempt at moving a recording on: send what the server lacks and,
     // if the reader has asked for it, finish.  Throws a SyncError to say why
@@ -406,6 +648,9 @@
       if (!meta || meta.owner !== owner || meta.state === "uploaded") return "idle";
 
       const live = meta.state === "recording";
+
+      // Its audio is in another tab's memory; that tab sends it.
+      if (live && !(session && session.meta.id === id)) return "idle";
       const total = partCount(meta.chunks);
       const ready = live ? Math.floor(meta.chunks / PART_CHUNKS) : total;
       const finishing = meta.submit && !live;
@@ -425,6 +670,10 @@
 
       const have = new Set(status.parts || []);
 
+      for (const part of meta.sent || []) {
+        if (!have.has(part)) throw lostPart();
+      }
+
       // Forty rounds is far more than a correct server ever needs (one to
       // send, one more if it lost parts while we sent), and bounds a server
       // that keeps claiming parts are missing.
@@ -432,30 +681,35 @@
         setSync(id, { phase: "uploading", sent: Math.min(have.size, ready), total: live ? null : total });
 
         for (let part = 0; part < ready; part++) {
-          if (have.has(part)) continue;
+          if (have.has(part)) {
+            // Held there already -- its answer was lost on the way back.
+            await confirmPart(meta, part);
+            continue;
+          }
 
-          const data = await store.getChunks(
-            id,
+          if ((meta.sent || []).includes(part)) throw lostPart();
+
+          const data = await readChunks(
+            meta,
             part * PART_CHUNKS,
             Math.min((part + 1) * PART_CHUNKS, meta.chunks)
           );
-          const expected = Math.min((part + 1) * PART_CHUNKS, meta.chunks) - part * PART_CHUNKS;
-
-          if (data.length !== expected) {
-            // Chunks written are always a contiguous run from 0, so this is
-            // storage having lost something underneath us.  Sending a short
-            // part would stitch a gap into the file without anyone knowing.
-            throw new SyncError("refused", "Part of the recording is missing on this device.");
-          }
 
           await api("PUT", "/" + id + "/part/" + part, new Blob(data, { type: meta.mime }), {
             "Content-Type": "application/octet-stream",
           });
           have.add(part);
+          await confirmPart(meta, part);
           setSync(id, { phase: "uploading", sent: have.size, total: live ? null : total });
         }
 
         if (!finishing) {
+          // Caught up: what is recorded from now on is held in memory again.
+          // Chunks already in storage stay there until their part is sent.
+          if (live && meta.spilled) {
+            meta.spilled = false;
+            remember(meta);
+          }
           setSync(id, { phase: "backed-up", sent: have.size, total: null });
           return "backed-up";
         }
@@ -567,6 +821,15 @@
       // seconds forever instead of backing off.
       const attempts = (sync.get(id) || {}).attempts || 0;
 
+      if (session && session.meta.id === id) {
+        try {
+          await spill(session.meta);
+        } catch (e) {
+          session.writeProblem = (e && e.name) || "write failed";
+          emit();
+        }
+      }
+
       if (error.kind === "refused") {
         const meta = await store.getMeta(id);
         if (meta) {
@@ -646,7 +909,8 @@
           continue;
         }
 
-        if (meta.state === "uploaded" && now() - (meta.uploadedAt || 0) > KEEP_UPLOADED_MS) {
+        // Left by an earlier version, which kept uploaded audio around.
+        if (meta.state === "uploaded") {
           await store.deleteRecording(meta.id);
           continue;
         }
@@ -660,7 +924,17 @@
         ) {
           meta.state = "stopped";
           meta.interrupted = true;
-          await store.putMeta(meta);
+          meta.chunks = await available(meta);
+          if (meta.chunks === 0) {
+            await store.deleteRecording(meta.id);
+            api("DELETE", "/" + meta.id).catch(() => {});
+            continue;
+          }
+          try {
+            await store.putMeta(meta);
+          } catch (e) {
+            /* no key right now: settled again next time */
+          }
         }
 
         seen.add(meta.id);
@@ -714,7 +988,7 @@
         this.recorder = recorder;
         this.analyser = extras.analyser;
         this.audio = extras.audio;
-        this.samples = this.analyser ? new Uint8Array(this.analyser.fftSize) : null;
+        this.samples = this.analyser ? new Float32Array(this.analyser.fftSize) : null;
         this.pending = [];
         this.flushing = null;
         this.flushAgain = false;
@@ -736,15 +1010,24 @@
         return this.activeMs + (this.paused || !this.activeSince ? 0 : now() - this.activeSince);
       }
 
-      level() {
-        if (!this.analyser) return 0;
-        this.analyser.getByteTimeDomainData(this.samples);
+      // Peak and RMS of the last frame, 0..1.  Float samples, not bytes: a
+      // byte has nothing below about -42 dB, which is exactly where "is the
+      // microphone hearing anything at all" is decided.
+      loudness() {
+        if (!this.analyser) return { peak: 0, rms: 0 };
+        this.analyser.getFloatTimeDomainData(this.samples);
         let peak = 0;
+        let sum = 0;
         for (let i = 0; i < this.samples.length; i++) {
-          const value = Math.abs(this.samples[i] - 128) / 128;
+          const value = Math.abs(this.samples[i]);
           if (value > peak) peak = value;
+          sum += value * value;
         }
-        return peak;
+        return { peak: peak, rms: Math.sqrt(sum / this.samples.length) };
+      }
+
+      level() {
+        return this.loudness().peak;
       }
 
       savedMs() {
@@ -790,8 +1073,18 @@
           this.meta.updatedAt = now();
           this.meta.durationMs = this.elapsedMs();
 
+          // Sending is keeping up: memory only.  No await between the check
+          // and the set, so spill() cannot miss a chunk put here.
+          if (!this.meta.spilled) {
+            buffers.get(this.meta.id).set(seq, data);
+            this.pending.shift();
+            if (this.meta.chunks % PART_CHUNKS === 0) kick(this.meta.id);
+            continue;
+          }
+
           try {
-            await store.appendChunk(this.meta, seq, data);
+            const stored = this.meta.encrypted ? await seal(this.meta.id, seq, data) : data;
+            await store.appendChunk(this.meta, seq, stored);
           } catch (e) {
             this.meta.chunks = seq;
             this.meta.bytes -= data.byteLength || 0;
@@ -936,6 +1229,25 @@
         this.meta.durationMs = this.activeMs;
         this.meta.updatedAt = now();
 
+        // Nothing holds this tab's memory once the session ends, so what is
+        // still only there is sent now, while the recording is still marked
+        // as live here (no other tab touches it) -- or, if it cannot be,
+        // written to storage.  A long backlog is not waited on: it is
+        // written, and sent from storage like any other.
+        const held = buffers.get(this.meta.id);
+        if (held && held.size && this.meta.chunks) {
+          try {
+            if (held.size > PART_CHUNKS * 2 || this.meta.spilled) throw new SyncError("unavailable", "backlog");
+            await sendHeld(this.meta);
+          } catch (e) {
+            try {
+              await spill(this.meta);
+            } catch (e2) {
+              /* storage refused too: sent from memory while this tab lives */
+            }
+          }
+        }
+
         if (this.meta.chunks === 0) {
           await store.deleteRecording(this.meta.id);
           metas.delete(this.meta.id);
@@ -947,6 +1259,10 @@
 
         this.meta.state = "stopped";
         this.meta.interrupted = !this.stoppedByUser;
+        // Stopped on purpose is finished: it goes to Scribe at once.  One
+        // that was cut short (a call took the microphone, the tab died)
+        // waits for the reader, who may carry on recording it.
+        if (this.stoppedByUser) this.meta.submit = true;
         try {
           await store.putMeta(this.meta);
         } catch (e) {
@@ -975,6 +1291,16 @@
       }
 
       await init();
+
+      // Without the key nothing can be kept, so nothing is recorded: the
+      // page is open, so the server was reachable a moment ago.
+      try {
+        await getKey();
+      } catch (e) {
+        const error = new Error(e && e.message ? e.message : "no key");
+        error.name = "NoKey";
+        throw error;
+      }
 
       // Echo cancellation is for a call, where the speaker plays back into
       // the microphone; here nothing plays back, and it colours a voice
@@ -1037,6 +1363,8 @@
         interrupted: false,
         error: null,
         follows: settings.follows || null,
+        encrypted: true,
+        sent: [],
       };
 
       try {
@@ -1061,6 +1389,7 @@
         extras.analyser = null;
       }
 
+      buffers.set(meta.id, new Map());
       const live = new Session(meta, stream, recorder, extras);
       live.fellBack = fellBack;
       session = live;
@@ -1161,9 +1490,9 @@
       if (session && session.meta.id === id) throw new Error("still recording");
       const meta = await store.getMeta(id);
       if (meta && meta.owner !== owner) return;
+      finishedHere.delete(id);
+      buffers.delete(id);
       await store.deleteRecording(id);
-      // Removing an uploaded recording from the device leaves Scribe's copy
-      // alone; only an unfinished one has staging worth clearing.
       metas.delete(id);
       sync.delete(id);
       if (retry.has(id)) {
@@ -1171,25 +1500,13 @@
         retry.delete(id);
       }
       emit();
-      // Best effort: the server sweeps what it is not told about anyway.
-      if (!meta || meta.state !== "uploaded") api("DELETE", "/" + id).catch(() => {});
-    }
-
-    async function blob(id) {
-      const meta = await store.getMeta(id);
-      if (!meta || meta.owner !== owner) return null;
-      const chunks = await store.getChunks(id, 0, meta.chunks);
-      return new Blob(chunks, { type: meta.mime });
-    }
-
-    function fileName(meta) {
-      const extension = (KINDS.find((kind) => kind[0].split(";")[0] === meta.mime) || [0, ".webm"])[1];
-      const stem = String(meta.name || "Recording").replace(/[\/\\:*?"<>|\x00-\x1f]/g, "").trim();
-      return (stem || "Recording") + extension;
+      // Best effort: the backend sweeps what it is not told about anyway.
+      if (meta) api("DELETE", "/" + id).catch(() => {});
     }
 
     function list() {
       return Array.from(metas.values())
+        .concat(Array.from(finishedHere.values()).filter((meta) => !metas.has(meta.id)))
         .filter((meta) => meta.owner === owner)
         .map((meta) => {
           const live = session && session.meta.id === meta.id;
@@ -1197,6 +1514,7 @@
           const elsewhere =
             !live && current.state === "recording" && now() - current.updatedAt <= LIVE_STALE_MS;
           return Object.assign({}, current, {
+            name: current.name == null ? "Recording" : current.name,
             live: !!live,
             elsewhere: elsewhere,
             sync: sync.get(meta.id) || { phase: "idle" },
@@ -1223,8 +1541,6 @@
       submit: submit,
       rename: (id, name) => update(id, { name: String(name || "").trim() }),
       discard: discard,
-      blob: blob,
-      fileName: fileName,
       startRecording: startRecording,
       supported: supported,
       storageEstimate: storageEstimate,
@@ -1237,6 +1553,7 @@
       },
       // For tests.
       _syncOnce: syncOnce,
+      _readChunks: readChunks,
       _store: store,
     };
   }
@@ -1292,7 +1609,6 @@
     PART_CHUNKS: PART_CHUNKS,
     BITRATE: BITRATE,
     LIVE_STALE_MS: LIVE_STALE_MS,
-    KEEP_UPLOADED_MS: KEEP_UPLOADED_MS,
     createEngine: createEngine,
     memoryStore: memoryStore,
     defaultName: defaultName,

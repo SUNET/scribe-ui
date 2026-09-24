@@ -206,6 +206,7 @@ function makeEngine(overrides) {
     MediaRecorder: FakeMediaRecorder,
     AudioContext: null,
     crypto: require("node:crypto").webcrypto,
+    key: (overrides && overrides.key) || (async () => new Uint8Array(32).fill(7)),
     watch: false,
   });
 
@@ -236,17 +237,105 @@ function storedMeta(ctx, id) {
   return ctx.store.metas.get(id);
 }
 
+// What the device holds for a recording, decrypted the way the engine does.
+async function plain(ctx, id, from, to) {
+  const chunks = await ctx.engine._readChunks(storedMeta(ctx, id), from, to);
+  return chunks.map((c) => Buffer.from(c).toString()).join("");
+}
+
+// How many of a recording's chunks are still on the device.
+function chunksHeld(ctx, id) {
+  return Array.from(ctx.store.chunks.keys()).filter((k) => k.startsWith(id + "/")).length;
+}
+
+const seconds = (file) => file.toString().split(";").length - 1;
+
 // -- Tests -----------------------------------------------------------------
 
-test("every chunk is on the device as it arrives, in order", async () => {
+test("online, no audio is written to the device at all", async () => {
   const ctx = makeEngine();
-  const session = await record(ctx, 5);
+  const session = await record(ctx, N * 3 + 2);
   const id = session.meta.id;
 
-  assert.equal(storedMeta(ctx, id).chunks, 5);
-  assert.equal(storedMeta(ctx, id).state, "recording");
-  const text = (await ctx.store.getChunks(id, 0, 5)).map((c) => Buffer.from(c).toString()).join("");
-  assert.equal(text, "c0;c1;c2;c3;c4;");
+  assert.equal(ctx.store.chunks.size, 0);
+  assert.deepEqual(storedMeta(ctx, id).sent, [0, 1, 2], "the record says what Scribe has");
+  assert.equal(await plain(ctx, id, N * 3, N * 3 + 2), "c" + N * 3 + ";c" + (N * 3 + 1) + ";", "the growing part is in memory");
+});
+
+test("the recording's name is never written in the clear", async () => {
+  const ctx = makeEngine();
+  const session = await record(ctx, N + 1, { name: "Seminar with Anna Svensson" });
+  const stored = JSON.stringify(storedMeta(ctx, session.meta.id));
+
+  assert.ok(!stored.includes("Anna"), stored);
+  assert.equal(ctx.engine.list()[0].name, "Seminar with Anna Svensson");
+
+  const later = makeEngine({ server: ctx.server, store: ctx.store, clock: 1_700_000_000_000 + 10 * 60_000 });
+  await later.engine.init();
+  assert.equal(later.engine.list()[0].name, "Seminar with Anna Svensson", "read back with the key");
+});
+
+test("when sending fails, audio is written to the device, encrypted, and in order", async () => {
+  const ctx = makeEngine();
+  const session = await record(ctx, N - 2);
+  ctx.server.down = true;
+  for (let i = N - 2; i < N + 3; i++) {
+    FakeMediaRecorder.last.emit("c" + i + ";");
+    await settle();
+  }
+  await settled();
+  const id = session.meta.id;
+
+  assert.equal(chunksHeld(ctx, id), N + 3, "what was in memory, and everything after it");
+  const expected = Array.from({ length: N + 3 }, (_, i) => "c" + i + ";").join("");
+  assert.equal(await plain(ctx, id, 0, N + 3), expected);
+  const raw = Buffer.concat(Array.from(ctx.store.chunks.values()).map((c) => Buffer.from(c)));
+  assert.ok(!raw.includes("c0;"), "no audio is kept in the clear");
+});
+
+test("once the backlog is sent, the device is emptied and recording goes back to memory", async () => {
+  const ctx = makeEngine();
+  ctx.server.down = true;
+  const session = await record(ctx, N * 2 + 1);
+  const id = session.meta.id;
+  assert.equal(chunksHeld(ctx, id), N * 2 + 1);
+
+  ctx.server.down = false;
+  await ctx.timers.fire();
+  await settled();
+  assert.equal(chunksHeld(ctx, id), 1, "only the growing part's chunk is left");
+
+  for (let i = 0; i < N; i++) {
+    FakeMediaRecorder.last.emit("n" + i + ";");
+    await settle();
+  }
+  await settled();
+  assert.equal(chunksHeld(ctx, id), 0, "and new audio is not written");
+  assert.deepEqual(storedMeta(ctx, id).sent, [0, 1, 2]);
+});
+
+test("a chunk moved to another place no longer reads", async () => {
+  const ctx = makeEngine();
+  ctx.server.down = true;
+  const session = await record(ctx, N + 1);
+  const id = session.meta.id;
+  const first = ctx.store.chunks.get(id + "/0");
+  ctx.store.chunks.set(id + "/0", ctx.store.chunks.get(id + "/1"));
+  ctx.store.chunks.set(id + "/1", first);
+
+  await assert.rejects(ctx.engine._readChunks(storedMeta(ctx, id), 0, 2), /can no longer be read/);
+});
+
+test("without a key nothing is recorded", async () => {
+  const ctx = makeEngine({
+    key: async () => {
+      throw new TypeError("Failed to fetch");
+    },
+  });
+
+  await assert.rejects(ctx.engine.startRecording({}), (e) => e.name === "NoKey");
+  assert.equal(ctx.engine.session(), null);
+  assert.equal(ctx.store.metas.size, 0);
 });
 
 test("the recorder asks for speech-rate audio in a timeslice", async () => {
@@ -256,122 +345,110 @@ test("the recorder asks for speech-rate audio in a timeslice", async () => {
   assert.equal(FakeMediaRecorder.last.options.audioBitsPerSecond, Recorder.BITRATE);
 });
 
-test("complete parts are backed up while recording, the growing one is not", async () => {
+test("complete parts are sent while recording, the growing one is not", async () => {
   const ctx = makeEngine();
-  const session = await record(ctx, N * 2 + 5);
+  const session = await record(ctx, N * 2 + 3);
   const held = ctx.server.parts.get(session.meta.id);
 
   assert.deepEqual(Array.from(held.keys()).sort(), [0, 1]);
-  assert.equal(ctx.server.finishes, 0, "nothing is transcribed until asked");
+  assert.equal(ctx.server.finishes, 0, "nothing is a job while recording");
 });
 
-test("stop then submit sends the rest, finishes once, and keeps the original", async () => {
+test("a crash while online costs only the part not yet sent", async () => {
+  const ctx = makeEngine();
+  const session = await record(ctx, N * 2 + 3);
+  const id = session.meta.id;
+  // The tab dies: its memory goes with it.
+
+  const later = makeEngine({ server: ctx.server, store: ctx.store, clock: 1_700_000_000_000 + 10 * 60_000 });
+  await later.engine.init();
+  const recovered = later.engine.list().find((r) => r.id === id);
+  assert.equal(recovered.interrupted, true);
+  assert.equal(recovered.chunks, N * 2, "what reached Scribe");
+
+  await later.engine.submit(id);
+  await settled();
+  assert.equal(later.engine.list()[0].state, "uploaded");
+  assert.equal(seconds(ctx.server.file), N * 2);
+});
+
+test("a crash before anything reached Scribe leaves nothing behind", async () => {
+  const ctx = makeEngine();
+  const session = await record(ctx, 2);
+
+  const later = makeEngine({ server: ctx.server, store: ctx.store, clock: 1_700_000_000_000 + 10 * 60_000 });
+  await later.engine.init();
+  assert.equal(later.engine.list().length, 0);
+  assert.equal(ctx.store.metas.size, 0);
+  assert.ok(ctx.server.requests.includes("DELETE /record/api/" + session.meta.id));
+});
+
+test("stop sends the rest and finishes at once, leaving nothing on the device", async () => {
   const ctx = makeEngine();
   const session = await record(ctx, N + 3);
+  const id = session.meta.id;
   const result = await session.stop();
   await settled();
 
   assert.equal(result.interrupted, false);
-  await ctx.engine.submit(session.meta.id, "Lecture 1");
-  await settled();
-
-  const meta = storedMeta(ctx, session.meta.id);
-  assert.equal(meta.state, "uploaded");
-  assert.equal(meta.job.uuid, "job-1");
   assert.equal(ctx.server.finishes, 1);
-  assert.equal(ctx.server.file.toString().split(";").length - 1, N + 3, "every chunk made it, once");
-  // The original stays downloadable from the device after the upload.
-  const kept = await ctx.engine.blob(session.meta.id);
-  assert.equal((await kept.text()).split(";").length - 1, N + 3);
+  assert.equal(seconds(ctx.server.file), N + 3, "every chunk made it, once");
+  assert.equal(ctx.store.metas.size, 0);
+  assert.equal(ctx.store.chunks.size, 0);
+
+  const shown = ctx.engine.list().find((r) => r.id === id);
+  assert.equal(shown.state, "uploaded");
+  assert.equal(shown.job.uuid, "job-1");
 });
 
-test("an uploaded recording is removed from the device after the keep period", async () => {
+test("a finished recording is not on the device after a reload", async () => {
   const ctx = makeEngine();
   const session = await record(ctx, 2);
   await session.stop();
   await settled();
-  await ctx.engine.submit(session.meta.id);
-  await settled();
 
-  const later = makeEngine({
-    server: ctx.server,
-    store: ctx.store,
-    clock: 1_700_000_000_000 + Recorder.KEEP_UPLOADED_MS + 60_000,
-  });
+  const later = makeEngine({ server: ctx.server, store: ctx.store });
   await later.engine.init();
   assert.equal(later.engine.list().length, 0);
+});
+
+test("a recording left by an earlier version, uploaded and kept, is removed", async () => {
+  const ctx = makeEngine();
+  ctx.store.metas.set("f".repeat(32), { id: "f".repeat(32), owner: OWNER, state: "uploaded", chunks: 1 });
+  ctx.store.chunks.set("f".repeat(32) + "/0", Buffer.from("old;"));
+
+  await ctx.engine.init();
+  assert.equal(ctx.engine.list().length, 0);
   assert.equal(ctx.store.chunks.size, 0);
 });
 
-test("removing an uploaded recording from the device leaves Scribe's copy alone", async () => {
+test("a part the backend lost after the device let it go is reported, not looped", async () => {
   const ctx = makeEngine();
-  const session = await record(ctx, 2);
-  await session.stop();
-  await settled();
-  await ctx.engine.submit(session.meta.id);
+  const session = await record(ctx, N + 2);
+  const id = session.meta.id;
+  // The tab dies after part 0 was confirmed and dropped; the backend's
+  // sweep then takes the unfinished recording.
+  ctx.server.parts.clear();
+
+  const later = makeEngine({ server: ctx.server, store: ctx.store, clock: 1_700_000_000_000 + 10 * 60_000 });
+  await later.engine.init();
+  await later.engine.submit(id);
   await settled();
 
-  await ctx.engine.discard(session.meta.id);
-  await settled();
-  assert.equal(ctx.engine.list().length, 0);
-  assert.ok(!ctx.server.requests.some((r) => r.startsWith("DELETE")));
+  const shown = later.engine.list().find((r) => r.id === id);
+  assert.equal(shown.sync.phase, "error");
+  assert.match(shown.error, /lost on Scribe/);
+  assert.equal(ctx.server.finishes, 0);
 });
 
-test("a server that lost its staging is sent everything again", async () => {
+test("offline, everything waits on the device and goes when the connection is back", async () => {
   const ctx = makeEngine();
-  const session = await record(ctx, N * 2 + 1);
-  await session.stop();
-  await settled();
-
-  ctx.server.parts.clear(); // a restart
-  await ctx.engine.submit(session.meta.id);
-  await settled();
-
-  assert.equal(storedMeta(ctx, session.meta.id).state, "uploaded");
-  assert.equal(ctx.server.file.toString().split(";").length - 1, N * 2 + 1);
-});
-
-test("parts lost between sending and finishing are sent again (409)", async () => {
-  const ctx = makeEngine();
-  const session = await record(ctx, N + 1);
-  await session.stop();
-  await settled();
-
-  const originalFetch = ctx.server.fetch;
-  let dropped = false;
-  // Drop part 0 on the server the moment finish is asked for, once.
-  const server = ctx.server;
-  const wrapped = async (url, init) => {
-    if (!dropped && init.method === "POST") {
-      dropped = true;
-      server.parts.get(session.meta.id).delete(0);
-    }
-    return originalFetch(url, init);
-  };
-  const ctx2 = makeEngine({ server: Object.assign(server, { fetch: wrapped }), store: ctx.store });
-  await ctx2.engine.init();
-  await ctx2.engine.submit(session.meta.id);
-  await settled();
-
-  assert.equal(dropped, true);
-  assert.equal(server.requests.filter((r) => r.startsWith("POST")).length, 2);
-  assert.equal(
-    server.requests.filter((r) => r === "PUT /record/api/" + session.meta.id + "/part/0").length,
-    2,
-    "part 0 sent again"
-  );
-  assert.equal(storedMeta(ctx2, session.meta.id).state, "uploaded");
-  assert.equal(server.file.toString().split(";").length - 1, N + 1);
-});
-
-test("offline keeps the recording and retries with a growing backoff", async () => {
-  const ctx = makeEngine();
-  const session = await record(ctx, 3);
-  await session.stop();
-  await settled();
-
   ctx.server.down = true;
-  await ctx.engine.submit(session.meta.id);
+  const session = await record(ctx, N + 3);
+  const id = session.meta.id;
+  assert.equal(chunksHeld(ctx, id), N + 3, "nothing is dropped that was not confirmed");
+
+  await session.stop();
   await settled();
 
   let state = ctx.engine.list()[0];
@@ -391,17 +468,17 @@ test("offline keeps the recording and retries with a growing backoff", async () 
   state = ctx.engine.list()[0];
   assert.equal(state.state, "uploaded");
   assert.equal(ctx.server.finishes, 1);
+  assert.equal(seconds(ctx.server.file), N + 3);
+  assert.equal(ctx.store.chunks.size, 0);
 });
 
 test("a backend that is down is waited out, not given up on", async () => {
   const ctx = makeEngine();
+  ctx.server.backendDown = true;
   const session = await record(ctx, 2);
   await session.stop();
   await settled();
 
-  ctx.server.backendDown = true;
-  await ctx.engine.submit(session.meta.id);
-  await settled();
   assert.equal(ctx.engine.list()[0].sync.phase, "unavailable");
   assert.equal(storedMeta(ctx, session.meta.id).submit, true);
 
@@ -413,26 +490,19 @@ test("a backend that is down is waited out, not given up on", async () => {
 
 test("a signed-out session keeps the recording and waits", async () => {
   const ctx = makeEngine();
+  ctx.server.status401 = true;
   const session = await record(ctx, 2);
   await session.stop();
   await settled();
 
-  ctx.server.status401 = true;
-  await ctx.engine.submit(session.meta.id);
-  await settled();
   const state = ctx.engine.list()[0];
   assert.equal(state.sync.phase, "auth");
   assert.equal(state.state, "stopped");
-  assert.equal((await ctx.store.getChunks(session.meta.id, 0, 10)).length, 2);
+  assert.equal(await plain(ctx, session.meta.id, 0, 2), "c0;c1;");
 });
 
-test("an answer lost after the backend took the file does not make a second job", async () => {
-  const ctx = makeEngine();
-  const session = await record(ctx, 2);
-  await session.stop();
-  await settled();
-
-  const server = ctx.server;
+test("an answer lost after the backend made the job does not make a second job", async () => {
+  const server = fakeServer();
   const original = server.fetch;
   let lose = true;
   server.fetch = async (url, init) => {
@@ -443,21 +513,23 @@ test("an answer lost after the backend took the file does not make a second job"
     }
     return response;
   };
-  const ctx2 = makeEngine({ server: server, store: ctx.store });
-  await ctx2.engine.init();
-  await ctx2.engine.submit(session.meta.id);
+  const ctx = makeEngine({ server: server });
+  const session = await record(ctx, 2);
+  await session.stop();
   await settled();
-  assert.equal(ctx2.engine.list()[0].state, "stopped");
+  assert.equal(ctx.engine.list()[0].state, "stopped");
 
-  await ctx2.timers.fire();
+  await ctx.timers.fire();
   await settled();
-  assert.equal(ctx2.engine.list()[0].state, "uploaded");
+  assert.equal(ctx.engine.list()[0].state, "uploaded");
   assert.equal(server.finishes, 1);
 });
 
-test("a crashed tab's recording is recovered as interrupted, whole", async () => {
+test("a crashed tab's recording is recovered as interrupted, whole, when it was offline", async () => {
   const ctx = makeEngine();
+  ctx.server.down = true;
   const session = await record(ctx, N + 4);
+  ctx.server.down = false;
   const id = session.meta.id;
   // The tab dies: nothing stops the recorder, nothing more is written.
 
@@ -469,29 +541,35 @@ test("a crashed tab's recording is recovered as interrupted, whole", async () =>
   assert.equal(recovered.state, "stopped");
   assert.equal(recovered.interrupted, true);
   assert.equal(recovered.chunks, N + 4);
+  assert.equal(ctx.server.finishes, 0, "cut short: the reader decides");
 
   await later.engine.submit(id);
   await settled();
   assert.equal(later.engine.list()[0].state, "uploaded");
-  assert.equal(ctx.server.file.toString().split(";").length - 1, N + 4);
+  assert.equal(seconds(ctx.server.file), N + 4);
 });
 
 test("a recording another tab is still writing is left alone", async () => {
   const ctx = makeEngine();
-  const session = await record(ctx, 3);
+  const session = await record(ctx, N + 3);
 
-  const other = makeEngine({ server: ctx.server, store: ctx.store, clock: 1_700_000_000_000 + 3000 });
+  const other = makeEngine({ server: ctx.server, store: ctx.store, clock: 1_700_000_000_000 + N * 1000 + 3000 });
   await other.engine.init();
+  await settled();
   const seen = other.engine.list().find((r) => r.id === session.meta.id);
   assert.equal(seen.state, "recording");
   assert.equal(seen.elsewhere, true);
+  assert.equal(other.engine.list()[0].error, null, "not sent from a tab that does not hold it");
 });
 
 test("another user's recordings on the same device are neither shown nor sent", async () => {
   const ctx = makeEngine();
+  ctx.server.down = true;
   const session = await record(ctx, N + 1);
-  await session.stop();
+  ctx.nav.track.onended();
+  await session.done;
   await settled();
+  ctx.server.down = false;
   const sent = ctx.server.requests.length;
 
   const stranger = makeEngine({ server: ctx.server, store: ctx.store, owner: "b".repeat(32) });
@@ -501,6 +579,20 @@ test("another user's recordings on the same device are neither shown nor sent", 
   await stranger.engine.discard(session.meta.id);
   assert.ok(ctx.store.metas.has(session.meta.id), "not the stranger's to discard");
   assert.equal(ctx.server.requests.length, sent);
+});
+
+test("discarding an unfinished recording tells the backend too", async () => {
+  const ctx = makeEngine();
+  const session = await record(ctx, N + 1);
+  ctx.nav.track.onended();
+  await session.done;
+  await settled();
+
+  await ctx.engine.discard(session.meta.id);
+  await settled();
+  assert.equal(ctx.engine.list().length, 0);
+  assert.equal(ctx.store.chunks.size, 0);
+  assert.ok(ctx.server.requests.includes("DELETE /record/api/" + session.meta.id));
 });
 
 test("a storage failure keeps chunks in order and loses none", async () => {
@@ -517,33 +609,41 @@ test("a storage failure keeps chunks in order and loses none", async () => {
   };
 
   const ctx = makeEngine({ store: store });
-  const session = await ctx.engine.startRecording({});
-  FakeMediaRecorder.last.emit("a;");
-  await settled();
+  ctx.server.down = true;
+  const session = await record(ctx, N); // the part's send fails: from now on it is written
+  const id = session.meta.id;
+  assert.equal(chunksHeld(ctx, id), N);
+
   fail = true;
   FakeMediaRecorder.last.emit("b;");
   FakeMediaRecorder.last.emit("c;");
   await settled();
   assert.equal(session.writeProblem, "QuotaExceededError");
-  assert.equal(store.metas.get(session.meta.id).chunks, 1);
+  assert.equal(store.metas.get(id).chunks, N);
 
   fail = false;
-  await ctx.timers.fire();
+  // Only the storage retry, not the send retry: the server is still down.
+  const retries = ctx.timers.queue.splice(0).filter((h) => h.ms === 5000);
+  retries.forEach((h) => h.fn());
   await settled();
   assert.equal(session.writeProblem, null);
-  const text = (await store.getChunks(session.meta.id, 0, 10)).map((c) => Buffer.from(c).toString()).join("");
-  assert.equal(text, "a;b;c;");
+  const expected = Array.from({ length: N }, (_, i) => "c" + i + ";").join("") + "b;c;";
+  assert.equal(await plain(ctx, id, 0, N + 2), expected);
 });
 
-test("the microphone taken away ends the recording as interrupted, kept", async () => {
+test("the microphone taken away ends the recording as interrupted, kept for the reader", async () => {
   const ctx = makeEngine();
   const session = await record(ctx, 4);
   ctx.nav.track.onended();
   const result = await session.done;
+  await settled();
 
   assert.equal(result.interrupted, true);
   assert.equal(storedMeta(ctx, session.meta.id).state, "stopped");
   assert.equal(storedMeta(ctx, session.meta.id).chunks, 4);
+  assert.equal(storedMeta(ctx, session.meta.id).submit, false);
+  assert.equal(ctx.server.finishes, 0);
+  assert.equal(ctx.store.chunks.size, 0, "the tail was sent, not written");
   assert.equal(ctx.engine.session(), null);
 });
 
@@ -557,6 +657,7 @@ test("a recording with nothing in it is not kept", async () => {
 
 test("paused time is not counted", async () => {
   const ctx = makeEngine();
+  ctx.server.down = true;
   const session = await record(ctx, 2);
   session.pause();
   ctx.tick(60_000);
@@ -566,12 +667,6 @@ test("paused time is not counted", async () => {
   await settled();
   const result = await session.stop();
   assert.equal(result.meta.durationMs, 3000);
-});
-
-test("the file is named after the recording, safely", () => {
-  const ctx = makeEngine();
-  assert.equal(ctx.engine.fileName({ name: "Lecture: 1/2", mime: "audio/webm" }), "Lecture 12.webm");
-  assert.equal(ctx.engine.fileName({ name: "", mime: "audio/mp4" }), "Recording.m4a");
 });
 
 test("a default name says when it was recorded", () => {

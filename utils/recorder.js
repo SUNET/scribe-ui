@@ -22,27 +22,43 @@
 // Built for a phone lying on a lectern for an hour and a half, which decides
 // most of what is here:
 //
-//   - **One filled action at a time** (Start, then Stop, then Upload), large
-//     enough for a thumb, so what the page is for is never in question.
+//   - **One filled action at a time** (Start, then Stop), large enough for a
+//     thumb, so what the page is for is never in question.  Stopping is
+//     finishing: the recording goes to Scribe by itself.
 //   - **Stop asks twice.**  A phone in a hand or a pocket gets tapped, and a
 //     stopped lecture cannot be un-stopped -- only continued in a new part.
 //   - **It says where the recording is**: seconds kept on this device, and
-//     how much of it Scribe already has.  "Saved" is the reassurance a
-//     professor needs before walking away from the phone.
+//     how much of it Scribe already has.  "Sent to Scribe" is the
+//     reassurance a professor needs before walking away from the phone.
 //   - **It says when something is wrong, in words**: the microphone paused
 //     by the phone, storage full, the screen allowed to lock, signed out.
 //     None of these stop the page; each changes what the reader should do.
 //
 // The level meter is drawn from a live analyser on the stream already open
 // -- never by decoding the recording, which for an hour is over a gigabyte of
-// PCM.  The preview after stopping is the browser's own <audio> player:
-// accessible from the keyboard and a screen reader as it is, which a canvas
-// scrubber is not.
+// PCM.  Nothing is played back here: the recording leaves this browser when
+// it stops, and its original is downloaded from Scribe.
 
 const METER_MS = 100;
 // Which microphone was chosen last, remembered per browser.
 const DEVICE_KEY = "scribe-recorder-device";
 const METER_SAMPLES = 300; // thirty seconds of level history
+// The sample the audio test records to play back: long enough for a
+// sentence, short enough to be kept in memory without a thought.
+const TEST_SAMPLE_MS = 5000;
+// The verdict on the level reads back over a window of meter samples rather
+// than the instant, since speech has gaps: a second and a half while
+// testing, three seconds while recording, where a speaker pausing for
+// breath must not be told the microphone has gone.
+const TEST_WINDOW = 15;
+const LIVE_WINDOW = 30;
+// How fast the bar falls back, in dB per meter tick, so it does not flicker
+// to nothing between words.  The peak marker lingers longer.
+const LEVEL_FALL = 3.6;
+const PEAK_FALL = 1.8;
+// The same capture the recorder asks for (static/recorder_engine.js), so
+// what the test hears is what a recording would.
+const CAPTURE = { echoCancellation: false, noiseSuppression: false, autoGainControl: true };
 
 const pad = (n) => String(n).padStart(2, "0");
 
@@ -70,6 +86,7 @@ const FAILURES = {
   TrackStartError: "The microphone is being used by another app.",
   InsecureContext: "Recording needs an https connection.",
   NotSupported: "This browser cannot record audio. Try an up-to-date Chrome, Edge, Firefox or Safari.",
+  NoKey: "Scribe could not be reached to start recording. Check the connection and try again.",
 };
 
 // NiceGUI's own client reloads the page by itself in three places: a
@@ -141,7 +158,75 @@ function guardReloads(busy, onStale) {
   return true;
 }
 
+const toDb = (value) => (value > 0 ? Math.max(-60, 20 * Math.log10(value)) : -60);
+const fallTo = (shown, now, fall) => (now > shown ? now : Math.max(-60, shown - fall));
+
+// What the reader should do about the level, in words, from recent peaks.
+function levelVerdict(levels, window, paused) {
+  if (paused) return { tone: "muted", icon: "pause", text: "Paused." };
+  const recent = levels.slice(-window);
+  if (recent.length < window) {
+    return { tone: "muted", icon: "hearing", text: "Listening… say something." };
+  }
+  const loudest = Math.max(...recent);
+  if (loudest >= 0.98) {
+    return { tone: "danger", icon: "volume_up", text: "Too loud – the sound is clipping. Move the microphone further away." };
+  }
+  const db = loudest > 0 ? 20 * Math.log10(loudest) : -100;
+  if (db < -50) {
+    return { tone: "warn", icon: "volume_off", text: "Almost nothing is heard. Check that this is the right audio source, and that it is not muted." };
+  }
+  if (db < -30) {
+    return { tone: "warn", icon: "volume_down", text: "Quiet. Speak up, or move the microphone closer to whoever is speaking." };
+  }
+  return { tone: "ok", icon: "check_circle", text: "Good level." };
+}
+
+// The level in dB with a peak marker, and the verdict under it.  One piece,
+// used by the recording itself and by Test audio, so the two always read
+// the same way.
+const LevelMeter = {
+  props: {
+    db: { type: Number, default: -60 },
+    peakDb: { type: Number, default: -60 },
+    verdict: { type: Object, required: true },
+  },
+  computed: {
+    percent() {
+      return Math.max(0, Math.min(100, ((this.db + 60) / 60) * 100));
+    },
+    peakPercent() {
+      return Math.max(0, Math.min(100, ((this.peakDb + 60) / 60) * 100));
+    },
+  },
+  template: `
+    <div class="recorder-level">
+      <div
+        class="recorder-test-bar"
+        role="meter"
+        aria-label="Sound level"
+        aria-valuemin="-60"
+        aria-valuemax="0"
+        :aria-valuenow="Math.round(db)"
+        :aria-valuetext="Math.round(db) + ' dB'"
+      >
+        <div class="recorder-test-bar-fill" :class="'is-' + verdict.tone" :style="{ width: percent + '%' }"></div>
+        <div class="recorder-test-bar-peak" :style="{ left: peakPercent + '%' }"></div>
+      </div>
+      <div class="recorder-test-scale" aria-hidden="true">
+        <span>−60 dB</span><span>−30</span><span>0 dB</span>
+      </div>
+      <div class="recorder-test-verdict" :class="'is-' + verdict.tone" role="status" aria-live="polite">
+        <q-icon :name="verdict.icon" size="18px" aria-hidden="true" />
+        {{ verdict.text }}
+      </div>
+    </div>
+  `,
+};
+
 export default {
+  components: { LevelMeter },
+
   template: `
     <div class="recorder">
       <div v-if="unsupported" class="recorder-banner recorder-banner-danger" role="alert">
@@ -149,13 +234,13 @@ export default {
       </div>
 
       <div v-if="sessionEnded" class="recorder-banner recorder-banner-warn" role="alert">
-        You have been signed out. <template v-if="live">The recording goes on and is saved in
-        this browser.</template> Sign in again afterwards to upload it – nothing is lost.
+        You have been signed out. The recording goes on and is saved in this browser; when you
+        stop it you are taken to sign in again, and it is sent to Scribe once you have.
       </div>
 
       <div v-if="!persistent" class="recorder-banner recorder-banner-danger" role="alert">
         This browser does not let Scribe save recordings while they are made (a private
-        window?). If this page closes before the recording is uploaded or downloaded, it is lost.
+        window?). If this page closes, whatever has not yet reached Scribe is lost.
       </div>
 
       <div v-if="stale && !live" class="recorder-banner recorder-banner-warn" role="status">
@@ -188,6 +273,7 @@ export default {
           </div>
           <div class="recorder-clock" role="timer" aria-label="Recording time">{{ clock(elapsed) }}</div>
           <canvas ref="meter" class="recorder-meter" aria-hidden="true"></canvas>
+          <level-meter v-if="live" :db="liveDb" :peak-db="livePeakDb" :verdict="liveVerdict" />
           <q-btn
             v-if="live"
             outline
@@ -201,12 +287,12 @@ export default {
 
         <div v-if="live" class="recorder-safety" role="status" aria-live="polite">
           <span class="recorder-safety-item">
-            <q-icon name="save" size="16px" aria-hidden="true" />
-            Saved in this browser: {{ clock(savedMs) }}
+            <q-icon :name="sentMs ? 'cloud_done' : 'cloud_queue'" size="16px" aria-hidden="true" />
+            Sent to Scribe: {{ sentMs ? clock(sentMs) : "not yet" }}
           </span>
-          <span class="recorder-safety-item">
-            <q-icon :name="backedUpMs ? 'cloud_done' : 'cloud_queue'" size="16px" aria-hidden="true" />
-            Backed up to Scribe: {{ backedUpMs ? clock(backedUpMs) : "not yet" }}
+          <span v-if="liveMeta.spilled" class="recorder-safety-item">
+            <q-icon name="save" size="16px" aria-hidden="true" />
+            Kept in this browser until it can be sent: {{ clock(Math.max(0, savedMs - sentMs)) }}
           </span>
         </div>
 
@@ -261,11 +347,78 @@ export default {
             no-caps
             dense
             class="recorder-quiet"
+            icon="graphic_eq"
+            label="Test audio"
+            :disable="!!micRefused && !devices.length"
+            @click="openTest"
+          />
+          <q-btn
+            flat
+            no-caps
+            dense
+            class="recorder-quiet"
             icon="help_outline"
             label="How recording works"
             @click="helpOpen = true"
           />
         </div>
+
+        <!-- Hearing the microphone before the lecture starts, rather than
+             finding out afterwards that it recorded the ventilation.  What
+             is recorded here is kept in memory for playing back and is
+             gone when the dialog closes: never stored, never sent. -->
+        <q-dialog v-model="testOpen" aria-labelledby="recorder-test-title" @hide="closeTest">
+          <q-card class="recorder-test-card">
+            <q-card-section>
+              <h2 id="recorder-test-title" class="recorder-help-title">Test audio</h2>
+              <p class="recorder-test-intro">Speak as you will while recording, from where you will be. The meter shows what the microphone hears.</p>
+
+              <div class="recorder-setting">
+                <label :for="testSelectId" class="recorder-setting-label">Audio source</label>
+                <select
+                  :id="testSelectId"
+                  v-model="deviceId"
+                  class="recorder-field"
+                  :disabled="!devices.length || testState === 'recording'"
+                  @change="testDeviceChanged"
+                >
+                  <option v-if="!devices.length" value="">Not available</option>
+                  <option v-for="d in devices" :key="d.deviceId" :value="d.deviceId">{{ d.label }}</option>
+                </select>
+              </div>
+
+              <div v-if="testError" class="recorder-banner recorder-banner-warn q-mt-md" role="alert">{{ testError }}</div>
+
+              <template v-else>
+                <canvas ref="testMeter" class="recorder-meter recorder-test-history" aria-hidden="true"></canvas>
+                <level-meter :db="testDb" :peak-db="testPeakDb" :verdict="testVerdict" />
+
+                <div class="recorder-test-sample">
+                  <q-btn
+                    outline
+                    no-caps
+                    class="recorder-secondary recorder-small"
+                    :icon="testState === 'recording' ? 'stop' : 'fiber_manual_record'"
+                    :label="testState === 'recording' ? 'Recording… ' + Math.ceil(testLeftMs / 1000) + ' s' : 'Record 5 seconds and listen'"
+                    :disable="!testStream"
+                    @click="testState === 'recording' ? stopSample() : recordSample()"
+                  />
+                  <audio
+                    v-if="testUrl"
+                    class="recorder-test-player"
+                    controls
+                    playsinline
+                    :src="testUrl"
+                    aria-label="Test recording"
+                  ></audio>
+                </div>
+              </template>
+            </q-card-section>
+            <q-card-actions align="right">
+              <q-btn flat no-caps label="Done" color="black" v-close-popup />
+            </q-card-actions>
+          </q-card>
+        </q-dialog>
 
         <q-dialog v-model="helpOpen" aria-labelledby="recorder-help-title">
           <q-card class="recorder-help-card">
@@ -282,17 +435,20 @@ export default {
                 <p>For a long recording, connect the charger.</p>
               </div>
               <div class="recorder-help-section">
+                <h3 class="recorder-help-heading">When you stop</h3>
+                <p>The recording goes to Scribe by itself and appears in My files, ready to transcribe. Nothing of it is left in this browser.</p>
+              </div>
+              <div class="recorder-help-section">
                 <h3 class="recorder-help-heading">If something goes wrong</h3>
-                <p>The recording is saved in this browser second by second. If the browser or the device crashes, it is here when you open this page again.</p>
+                <p>If the connection drops, the recording is kept in this browser second by second and sent when the connection is back. If the browser or the device crashes, open this page again: everything that reached Scribe or was kept in this browser is there. While connected, a crash loses at most the last few seconds.</p>
               </div>
               <div class="recorder-help-section">
                 <h3 class="recorder-help-heading">Keeping the original</h3>
-                <p>Before transcribing, you can listen to the recording and download the original file. It stays here, ready to download, for {{ keepDays }} days after uploading.</p>
+                <p>Scribe keeps the original recording with the transcription, for 7 days like everything else. Download it from My files.</p>
               </div>
               <div class="recorder-help-section">
                 <h3 class="recorder-help-heading">Privacy and security</h3>
-                <p>While it is being recorded, and until it is removed, the recording is stored unencrypted in this browser on this device. Anyone who can use this browser on this device could get to it, so on a shared computer, remove recordings from this browser once they are uploaded.</p>
-                <p>It is sent to Scribe over an encrypted connection and stored encrypted there, under your account only. While recording, parts of it are already sent to the Scribe server as a backup; they are deleted from there as soon as the recording is stored, or after {{ stagingLabel }} if it is never uploaded.</p>
+                <p>The recording is sent to Scribe while you record, a few seconds at a time, over an encrypted connection, and stored encrypted there under your account only. Nothing of it is stored in this browser while it can be sent. Only if it cannot is it kept here until it can, encrypted with a key this browser gets from Scribe when you are signed in, and deleted as soon as it has been sent.</p>
                 <p>A downloaded original is an ordinary file on your device. Keep it the way your organisation asks you to keep recordings of people.</p>
               </div>
             </q-card-section>
@@ -303,14 +459,13 @@ export default {
         </q-dialog>
       </template>
 
-      <section v-if="others.length" class="recorder-list" aria-labelledby="recorder-list-heading">
-        <h2 id="recorder-list-heading" class="recorder-list-heading">Recordings in this browser</h2>
+      <section v-if="others.length || inScribe.length" class="recorder-list" aria-labelledby="recorder-list-heading">
+        <h2 id="recorder-list-heading" class="recorder-list-heading">Recordings</h2>
 
         <article
           v-for="item in others"
           :key="item.id"
           class="recorder-item"
-          :class="{ 'is-open': openId === item.id }"
         >
           <div class="recorder-item-head">
             <div class="recorder-item-text">
@@ -328,7 +483,7 @@ export default {
                  button that wrapped onto a line of its own.  Armed, it says
                  in words what the second press does. -->
             <q-btn
-              v-if="!item.elsewhere && !(item.submit && item.state !== 'uploaded' && !item.error)"
+              v-if="!item.elsewhere && item.state !== 'uploaded' && !(item.submit && !item.error)"
               flat
               no-caps
               dense
@@ -336,11 +491,11 @@ export default {
               class="recorder-quiet recorder-discard"
               :class="{ 'is-armed': discardArmed === item.id }"
               icon="delete"
-              :label="discardArmed === item.id ? (item.state === 'uploaded' ? 'Press again to remove' : 'Press again to delete') : undefined"
-              :aria-label="discardArmed === item.id ? 'Confirm: ' + (item.state === 'uploaded' ? 'remove ' + item.name + ' from this browser; the uploaded copy is kept' : 'delete ' + item.name) : (item.state === 'uploaded' ? 'Remove ' + item.name + ' from this browser; the uploaded copy is kept' : 'Delete ' + item.name)"
+              :label="discardArmed === item.id ? 'Press again to delete' : undefined"
+              :aria-label="discardArmed === item.id ? 'Confirm: delete ' + item.name : 'Delete ' + item.name"
               @click="discard(item)"
             >
-              <q-tooltip v-if="discardArmed !== item.id">{{ item.state === 'uploaded' ? 'Remove from this browser' : 'Delete' }}</q-tooltip>
+              <q-tooltip v-if="discardArmed !== item.id">Delete</q-tooltip>
             </q-btn>
           </div>
 
@@ -356,16 +511,6 @@ export default {
             />
           </div>
 
-          <audio
-            v-if="openId === item.id && playUrl"
-            ref="player"
-            class="recorder-player"
-            controls
-            playsinline
-            :src="playUrl"
-            @loadedmetadata="fixDuration"
-          ></audio>
-
           <div class="recorder-item-actions">
             <q-btn
               v-if="item.state === 'stopped' && !item.submit"
@@ -378,7 +523,7 @@ export default {
               @click="upload(item)"
             />
             <q-btn
-              v-if="item.submit && item.state !== 'uploaded' && item.sync.phase !== 'uploading' && item.sync.phase !== 'finishing'"
+              v-if="item.submit && item.state !== 'uploaded' && item.sync.phase !== 'uploading'"
               outline
               no-caps
               class="recorder-secondary recorder-small"
@@ -398,27 +543,56 @@ export default {
               @click="continueFrom(item)"
             />
             <q-btn
-              v-if="!item.elsewhere"
-              flat
-              no-caps
-              class="recorder-quiet recorder-small"
-              :icon="openId === item.id ? 'close' : 'play_arrow'"
-              :label="openId === item.id ? 'Close' : 'Listen'"
-              :aria-label="(openId === item.id ? 'Close player for ' : 'Listen to ') + item.name"
-              @click="togglePlay(item)"
-            />
-            <q-btn
-              v-if="!item.elsewhere"
+              v-if="item.state === 'uploaded' && item.job && item.job.uuid"
               flat
               no-caps
               class="recorder-quiet recorder-small"
               icon="download"
               label="Download original"
-              :aria-label="'Download the original recording of ' + item.name"
-              @click="save(item)"
+              type="a"
+              :href="originalUrl + '/' + encodeURIComponent(item.job.uuid)"
+              :aria-label="'Download the original recording of ' + item.name + ' from Scribe'"
             />
             <q-btn
               v-if="item.state === 'uploaded'"
+              flat
+              no-caps
+              class="recorder-quiet recorder-small"
+              icon="folder_open"
+              label="My files"
+              @click="goToFiles"
+            />
+          </div>
+        </article>
+
+        <!-- Recordings already in Scribe, asked of the server each time the
+             page opens: a finished recording leaves this browser altogether,
+             so nothing here would remember it otherwise. -->
+        <article v-for="job in inScribe" :key="job.uuid" class="recorder-item">
+          <div class="recorder-item-head">
+            <div class="recorder-item-text">
+              <div class="recorder-item-name">{{ job.filename }}</div>
+              <div class="recorder-item-meta">
+                {{ stamp(job.created_at) }}<template v-if="job.deletion_date"> · deleted {{ String(job.deletion_date).slice(0, 10) }}</template>
+              </div>
+              <div class="recorder-item-state" :class="'is-' + jobState(job).tone">
+                <q-icon :name="jobState(job).icon" size="16px" aria-hidden="true" />
+                {{ jobState(job).text }}
+              </div>
+            </div>
+          </div>
+          <div class="recorder-item-actions">
+            <q-btn
+              flat
+              no-caps
+              class="recorder-quiet recorder-small"
+              icon="download"
+              label="Download original"
+              type="a"
+              :href="originalUrl + '/' + encodeURIComponent(job.uuid)"
+              :aria-label="'Download the original recording of ' + job.filename + ' from Scribe'"
+            />
+            <q-btn
               flat
               no-caps
               class="recorder-quiet recorder-small"
@@ -436,7 +610,9 @@ export default {
     owner: { type: String, required: true },
     filesUrl: { type: String, default: "/home" },
     sessionEnded: { type: Boolean, default: false },
-    stagingHours: { type: Number, default: 72 },
+    logoutUrl: { type: String, default: "" },
+    originalUrl: { type: String, default: "/record/original" },
+    recentUrl: { type: String, default: "/record/api/recent" },
   },
 
   data() {
@@ -451,7 +627,7 @@ export default {
       paused: false,
       elapsed: 0,
       savedMs: 0,
-      backedUpMs: 0,
+      sentMs: 0,
       warnings: [],
       status: "",
       unsupported: "",
@@ -460,8 +636,6 @@ export default {
       deviceId: "",
       deviceSelectId: "recorder-device-" + Math.random().toString(36).slice(2),
       nameInputId: "recorder-name-" + Math.random().toString(36).slice(2),
-      openId: null,
-      playUrl: null,
       stopArmed: false,
       discardArmed: null,
       freeHours: null,
@@ -469,21 +643,39 @@ export default {
       helpOpen: false,
       stale: false,
       micRefused: "",
-      keepDays: Math.round(window.ScribeRecorder ? window.ScribeRecorder.KEEP_UPLOADED_MS / 86400000 : 7),
       hiddenSince: null,
       awayMs: 0,
       levels: [],
+      recent: [],
+      liveDb: -60,
+      livePeakDb: -60,
+      testOpen: false,
+      testSelectId: "recorder-test-device-" + Math.random().toString(36).slice(2),
+      testStream: null,
+      testLevels: [],
+      testDb: -60,
+      testPeakDb: -60,
+      testError: "",
+      testState: "idle",
+      testLeftMs: 0,
+      testUrl: null,
     };
   },
 
   computed: {
-    stagingLabel() {
-      const hours = this.stagingHours;
-      if (hours >= 48 && hours % 24 === 0) return hours / 24 + " days";
-      return hours === 1 ? "an hour" : Math.round(hours) + " hours";
+    testVerdict() {
+      return levelVerdict(this.testLevels, TEST_WINDOW, false);
+    },
+    liveVerdict() {
+      return levelVerdict(this.levels, LIVE_WINDOW, this.paused);
     },
     others() {
       return this.items.filter((item) => !item.live);
+    },
+    // Scribe's list, less anything already shown above as finished here.
+    inScribe() {
+      const here = new Set(this.items.map((item) => item.job && item.job.uuid).filter(Boolean));
+      return this.recent.filter((job) => !here.has(job.uuid));
     },
     sessionElsewhere() {
       return this.items.find((item) => item.elsewhere) || null;
@@ -491,6 +683,15 @@ export default {
     latestInterruptedId() {
       const found = this.items.find((item) => item.interrupted && item.state === "stopped");
       return found ? found.id : null;
+    },
+  },
+
+  watch: {
+    // Signed out: leave now, unless a recording is running -- then leave
+    // the moment it stops (see follow()), with everything it recorded
+    // saved in the browser.
+    sessionEnded(ended) {
+      if (ended) this.leaveIfSignedOut();
     },
   },
 
@@ -514,6 +715,7 @@ export default {
       this.persistent = this.engine.persistent();
       this.redraw();
     });
+    this.loadRecent();
 
     try {
       this.deviceId = window.localStorage.getItem(DEVICE_KEY) || "";
@@ -576,7 +778,7 @@ export default {
     if (this.onDeviceChange) navigator.mediaDevices.removeEventListener("devicechange", this.onDeviceChange);
     document.removeEventListener("visibilitychange", this.onVisibility);
     window.removeEventListener("resize", this.onResize);
-    if (this.playUrl) URL.revokeObjectURL(this.playUrl);
+    this.closeTest();
   },
 
   methods: {
@@ -598,12 +800,60 @@ export default {
         this.liveMeta = Object.assign({}, running.meta);
         this.paused = running.paused;
         this.savedMs = running.savedMs();
-        const mine = this.items.find((item) => item.id === running.meta.id);
-        const sent = mine && mine.sync && mine.sync.sent ? mine.sync.sent : 0;
-        this.backedUpMs = sent * window.ScribeRecorder.PART_CHUNKS * window.ScribeRecorder.CHUNK_MS;
+        const sent = (running.meta.sent || []).length;
+        this.sentMs = Math.min(this.savedMs, sent * window.ScribeRecorder.PART_CHUNKS * window.ScribeRecorder.CHUNK_MS);
       }
 
       this.warnings = this.currentWarnings(running);
+
+      // A recording has just become a job: Scribe's list is asked again, so
+      // it is still there once this page is left and opened again.
+      const known = new Set(this.recent.map((job) => job.uuid));
+      if (this.items.some((item) => item.job && item.job.uuid && !known.has(item.job.uuid))) {
+        this.loadRecent();
+      }
+    },
+
+    async loadRecent() {
+      if (this.loadingRecent) return;
+      this.loadingRecent = true;
+      try {
+        const response = await fetch(this.recentUrl, {
+          credentials: "same-origin",
+          cache: "no-store",
+          headers: { "X-Scribe-Recording": "1" },
+        });
+        if (response.ok) this.recent = (await response.json()).recordings || [];
+      } catch (e) {
+        /* the list is a convenience; My files has everything */
+      } finally {
+        // Not asked again straight away if it failed or the new job is not
+        // listed yet: the per-second redraw would otherwise ask every second.
+        setTimeout(() => (this.loadingRecent = false), 5000);
+      }
+    },
+
+    // The backend's times are UTC without saying so (as My files knows too,
+    // see add_timezone_to_timestamp); shown in the reader's own time.
+    stamp(value) {
+      const text = String(value || "").trim().replace(" ", "T");
+      const date = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(text) ? text : text + "Z");
+      return isNaN(date) ? String(value || "") : this.when(date.getTime());
+    },
+
+    jobState(job) {
+      switch (String(job.status || "").toLowerCase()) {
+        case "completed":
+          return { tone: "ok", icon: "check_circle", text: "Transcribed – in My files" };
+        case "pending":
+        case "in_progress":
+        case "transcribing":
+          return { tone: "muted", icon: "hourglass_empty", text: "Being transcribed" };
+        case "failed":
+          return { tone: "danger", icon: "error", text: "Transcription failed" };
+        default:
+          return { tone: "ok", icon: "check_circle", text: "In My files, ready to transcribe" };
+      }
     },
 
     currentWarnings(running) {
@@ -628,9 +878,9 @@ export default {
       const sync = (mine && mine.sync) || {};
       if (["offline", "auth", "unavailable", "error"].includes(sync.phase)) {
         out.push(
-          "Not backed up to Scribe right now: " +
+          "Not reaching Scribe right now: " +
             (sync.message || "no answer") +
-            " The recording is still being saved in this browser, and the backup catches up by itself."
+            " The recording is still being saved in this browser and is sent as soon as Scribe can be reached."
         );
       }
       if (running.fellBack) {
@@ -676,6 +926,135 @@ export default {
       }
     },
 
+    // -- Test audio --
+
+    async openTest() {
+      this.testOpen = true;
+      this.testError = "";
+      await this.startTest();
+    },
+
+    async startTest() {
+      this.stopTestStream();
+      this.testLevels = [];
+      this.testDb = -60;
+      this.testPeakDb = -60;
+      try {
+        this.testStream = await navigator.mediaDevices.getUserMedia({
+          audio: this.deviceId ? Object.assign({ deviceId: { exact: this.deviceId } }, CAPTURE) : CAPTURE,
+        });
+      } catch (e) {
+        this.testError = FAILURES[e && e.name] || "The microphone could not be opened.";
+        return;
+      }
+      await this.listDevices();
+
+      const AudioContextImpl = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextImpl) {
+        this.testError = "This browser cannot show a sound level.";
+        return;
+      }
+      this.testAudio = new AudioContextImpl();
+      const analyser = this.testAudio.createAnalyser();
+      analyser.fftSize = 2048;
+      this.testAudio.createMediaStreamSource(this.testStream).connect(analyser);
+      const samples = new Float32Array(analyser.fftSize);
+
+      // Drawn every frame; the history the verdict reads moves on at the
+      // main meter's own rate, so the two look the same.
+      let lastSample = 0;
+      const frame = (time) => {
+        if (!this.testStream) return;
+        analyser.getFloatTimeDomainData(samples);
+        let peak = 0;
+        let sum = 0;
+        for (let i = 0; i < samples.length; i++) {
+          const value = Math.abs(samples[i]);
+          if (value > peak) peak = value;
+          sum += samples[i] * samples[i];
+        }
+        // Every frame here, so the fall is a sixth of a meter tick's.
+        this.testDb = fallTo(this.testDb, toDb(Math.sqrt(sum / samples.length)), LEVEL_FALL / 6);
+        this.testPeakDb = fallTo(this.testPeakDb, toDb(peak), PEAK_FALL / 6);
+        if (time - lastSample >= METER_MS) {
+          lastSample = time;
+          this.testLevels.push(peak);
+          if (this.testLevels.length > METER_SAMPLES) this.testLevels.shift();
+        }
+        this.drawLevels(this.$refs.testMeter, this.testLevels, false);
+        this.testFrame = requestAnimationFrame(frame);
+      };
+      this.testFrame = requestAnimationFrame(frame);
+    },
+
+    testDeviceChanged() {
+      this.rememberDevice();
+      this.discardSample();
+      this.startTest();
+    },
+
+    recordSample() {
+      if (!this.testStream || !window.MediaRecorder) return;
+      this.discardSample();
+      const pieces = [];
+      const recorder = new MediaRecorder(this.testStream);
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size) pieces.push(event.data);
+      };
+      recorder.onstop = () => {
+        clearInterval(this.testCountdown);
+        this.testState = "idle";
+        if (pieces.length && this.testOpen) {
+          this.testUrl = URL.createObjectURL(new Blob(pieces, { type: recorder.mimeType || "audio/webm" }));
+        }
+      };
+      this.testRecorder = recorder;
+      this.testState = "recording";
+      this.testLeftMs = TEST_SAMPLE_MS;
+      recorder.start();
+      const began = Date.now();
+      this.testCountdown = setInterval(() => {
+        this.testLeftMs = Math.max(0, TEST_SAMPLE_MS - (Date.now() - began));
+        if (this.testLeftMs === 0) this.stopSample();
+      }, 200);
+    },
+
+    stopSample() {
+      clearInterval(this.testCountdown);
+      if (this.testRecorder && this.testRecorder.state !== "inactive") this.testRecorder.stop();
+      this.testRecorder = null;
+    },
+
+    discardSample() {
+      if (this.testUrl) URL.revokeObjectURL(this.testUrl);
+      this.testUrl = null;
+    },
+
+    stopTestStream() {
+      if (this.testFrame) cancelAnimationFrame(this.testFrame);
+      this.testFrame = null;
+      if (this.testStream) this.testStream.getTracks().forEach((track) => track.stop());
+      this.testStream = null;
+      if (this.testAudio) {
+        try {
+          this.testAudio.close();
+        } catch (e) {
+          /* already closed */
+        }
+      }
+      this.testAudio = null;
+    },
+
+    // The microphone is let go the moment the dialog closes, and the
+    // sample goes with it: nothing from the test outlives it.
+    closeTest() {
+      this.stopSample();
+      this.stopTestStream();
+      this.discardSample();
+      this.testState = "idle";
+      this.testLevels = [];
+    },
+
     async estimate() {
       const room = await this.engine.storageEstimate();
       if (!room) return;
@@ -696,7 +1075,7 @@ export default {
         this.name = "";
         this.follow(running);
         this.listDevices();
-        this.status = "Recording. It is saved in this browser as it is recorded.";
+        this.status = "Recording. It is sent to Scribe as it is recorded.";
       } catch (e) {
         this.status = FAILURES[e && e.name] || "Could not start recording: " + ((e && (e.name || e.message)) || e);
       } finally {
@@ -706,6 +1085,8 @@ export default {
 
     follow(running) {
       this.levels = [];
+      this.liveDb = -60;
+      this.livePeakDb = -60;
       this.live = true;
       this.redraw();
 
@@ -713,7 +1094,10 @@ export default {
       this.ticker = setInterval(() => {
         this.elapsed = running.elapsedMs();
         this.savedMs = running.savedMs();
-        this.levels.push(running.paused ? 0 : running.level());
+        const loud = running.paused ? { peak: 0, rms: 0 } : running.loudness();
+        this.levels.push(loud.peak);
+        this.liveDb = fallTo(this.liveDb, toDb(loud.rms), LEVEL_FALL);
+        this.livePeakDb = fallTo(this.livePeakDb, toDb(loud.peak), PEAK_FALL);
         if (this.levels.length > METER_SAMPLES) this.levels.shift();
         this.drawMeter();
       }, METER_MS);
@@ -735,11 +1119,11 @@ export default {
             clock(result.meta.durationMs) +
             " is saved below.";
         } else if (result) {
-          this.status = "Stopped. Listen to it, download the original, or upload it for transcription below.";
-          this.openId = null;
+          this.status = "Stopped. It is going to My files in Scribe, ready to transcribe.";
         }
         this.elapsed = 0;
         this.redraw();
+        this.leaveIfSignedOut();
       });
     },
 
@@ -784,48 +1168,6 @@ export default {
       this.engine.kick(item.id);
     },
 
-    async togglePlay(item) {
-      if (this.playUrl) {
-        URL.revokeObjectURL(this.playUrl);
-        this.playUrl = null;
-      }
-      if (this.openId === item.id) {
-        this.openId = null;
-        return;
-      }
-      const blob = await this.engine.blob(item.id);
-      if (!blob) return;
-      this.openId = item.id;
-      this.playUrl = URL.createObjectURL(blob);
-    },
-
-    // A webm straight out of MediaRecorder carries no duration, and Chrome
-    // answers Infinity until the player has been seeked once -- which leaves
-    // the player unable to scrub.  Seeking far past the end makes it work
-    // the duration out; the position is put back before anyone sees it.
-    fixDuration(event) {
-      const player = event.target;
-      if (player.duration !== Infinity) return;
-      player.currentTime = 1e101;
-      player.ontimeupdate = () => {
-        player.ontimeupdate = null;
-        player.currentTime = 0;
-      };
-    },
-
-    async save(item) {
-      const blob = await this.engine.blob(item.id);
-      if (!blob) return;
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = this.engine.fileName(item);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 60000);
-    },
-
     discard(item) {
       if (this.discardArmed !== item.id) {
         this.discardArmed = item.id;
@@ -835,8 +1177,13 @@ export default {
       }
       clearTimeout(this.discardTimer);
       this.discardArmed = null;
-      if (this.openId === item.id) this.togglePlay(item);
       this.engine.discard(item.id);
+    },
+
+    leaveIfSignedOut() {
+      if (!this.sessionEnded || !this.logoutUrl) return;
+      if (this.engine && this.engine.session()) return;
+      window.location.href = this.logoutUrl;
     },
 
     reloadPage() {
@@ -892,10 +1239,8 @@ export default {
 
     describe(item) {
       if (item.elsewhere) return "Being recorded in another tab";
-      if (item.state === "uploaded") {
-        return "Uploaded, can be downloaded until " + this.when(item.uploadedAt + window.ScribeRecorder.KEEP_UPLOADED_MS);
-      }
-      if (item.error) return item.error + " It is still saved in this browser.";
+      if (item.state === "uploaded") return "In My files, ready to transcribe";
+      if (item.error) return item.error;
 
       const sync = item.sync || {};
       const retry = sync.retryAt ? " Trying again in " + Math.max(1, Math.round((sync.retryAt - Date.now()) / 1000)) + " s." : "";
@@ -903,32 +1248,35 @@ export default {
       if (item.submit) {
         switch (sync.phase) {
           case "uploading":
-            return sync.total ? "Uploading " + Math.round((100 * (sync.sent || 0)) / sync.total) + "%" : "Uploading";
+            return sync.total ? "Sending to Scribe " + Math.round((100 * (sync.sent || 0)) / sync.total) + "%" : "Sending to Scribe";
           case "finishing":
             return "Handing over to Scribe";
           case "offline":
             return "Waiting for a connection. Saved in this browser." + retry;
           case "auth":
-            return "Signed out. Sign in again to finish the upload – it is saved in this browser.";
+            return "Signed out. Sign in again to send the rest – it is saved in this browser.";
           case "unavailable":
             return (sync.message || "Scribe is not answering right now.") + " Saved in this browser." + retry;
           case "elsewhere":
-            return "Being uploaded from another tab";
+            return "Being sent from another tab";
           default:
-            return "Waiting to upload";
+            return "Waiting to be sent";
         }
       }
 
       if (item.interrupted) {
-        return "Stopped unexpectedly – everything up to here is saved. Not uploaded yet.";
+        return "Stopped unexpectedly – everything up to here is saved. Upload it, or continue recording in a new part.";
       }
-      return "Not uploaded yet";
+      return "Not sent yet";
     },
 
     // Thirty seconds of level, newest on the right.  A canvas cannot read a
     // stylesheet, so the colours come from the theme's custom properties.
     drawMeter() {
-      const canvas = this.$refs.meter;
+      this.drawLevels(this.$refs.meter, this.levels, this.paused);
+    },
+
+    drawLevels(canvas, history, paused) {
       if (!canvas) return;
       const ratio = window.devicePixelRatio || 1;
       const width = Math.max(1, Math.round(canvas.clientWidth * ratio));
@@ -943,8 +1291,8 @@ export default {
       const style = getComputedStyle(canvas);
       // At rest a row of short, quiet bars: says where the level will be
       // drawn without pretending to be one.
-      const levels = this.levels.length ? this.levels : null;
-      c.fillStyle = !levels || this.paused
+      const levels = history.length ? history : null;
+      c.fillStyle = !levels || paused
         ? style.getPropertyValue("--recorder-meter-paused").trim() || "#9ca3af"
         : style.getPropertyValue("--recorder-meter").trim() || "#d32f2f";
 
