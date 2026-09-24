@@ -27,6 +27,7 @@ from utils.common import (
     table_bulk_export,
     table_bulk_transcribe,
 )
+from utils.recorder import RecorderReminder, current_owner, engine_script
 from utils.styles import default_styles, jobs_columns
 
 
@@ -38,6 +39,13 @@ def create() -> None:
         Main page of the application.
         """
         page_init(use_drawer=True, title="My files")
+
+        # Recordings left on this device -- a recorder closed before its
+        # upload finished, a phone that went offline -- are resumed from
+        # here too, so they reach this list without the recorder being
+        # opened again.
+        engine_script()
+        reminder = RecorderReminder(owner=current_owner())
 
         def toggle_buttons(selected: list) -> None:
             """
@@ -189,7 +197,18 @@ def create() -> None:
         table.on("deselect_all", deselect_all)
 
         def table_handle_row_click(e: events.GenericEventArguments) -> None:
-            if e.args.get("status") == "Completed":
+            if not e.args.get("uuid"):
+                # The row is the table's own placeholder for a file still
+                # being registered by the backend -- it is marked "Uploaded"
+                # (so it draws this very button) a moment before the real
+                # row replaces it, and it has no job to act on.
+                ui.notify(
+                    "That upload is still being registered. "
+                    "Try again in a moment.",
+                    type="warning",
+                    position="top",
+                )
+            elif e.args.get("status") == "Completed":
                 table_click(e)
             else:
                 table_transcribe(
@@ -313,10 +332,21 @@ def create() -> None:
                         "Select one or more files to transcribe"
                     )
 
+                # Two ways in, asked before any dialog rather than inside
+                # one: someone who came to record should not have to find a
+                # recorder under a drop target, and someone uploading a file
+                # should not have to read past a recorder.  Recording is its
+                # own page (pages/record.py) -- see there for why.
                 with ui.button("Upload", icon="upload") as upload:
-                    upload.props("color=black flat")
+                    upload.props('color=black flat aria-haspopup="menu"')
                     upload.classes("default-style")
-                    upload.on("click", lambda: table_upload(table))
+                    with ui.menu():
+                        ui.menu_item(
+                            "Upload files", lambda: table_upload(table)
+                        ).props('aria-label="Upload audio or video files"')
+                        ui.menu_item(
+                            "Record audio", lambda: ui.navigate.to("/record")
+                        ).props('aria-label="Record audio with the microphone"')
 
         async def update_rows():
             """
@@ -344,6 +374,16 @@ def create() -> None:
             poll_timer.interval = 5.0 if has_active else 30.0
 
         poll_timer = ui.timer(30.0, update_rows, active=False)
+
+        async def recording_arrived(e: events.GenericEventArguments) -> None:
+            ui.notify(
+                f"Recording uploaded: {e.args.get('name', '')}",
+                type="positive",
+                position="top",
+            )
+            await update_rows()
+
+        reminder.on("uploaded", recording_arrived)
 
         async def initial_load():
             poll_timer.activate()

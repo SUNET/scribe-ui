@@ -2470,6 +2470,348 @@ theme_styles = """
             display: none !important;
         }
     }
+
+    /* ── Recorder (pages/record.py, utils/recorder.js) ──
+       Built for a phone on a lectern: one column, the width of a hand on a
+       phone and no wider than a card on a desk, and the one filled action
+       large enough for a thumb. */
+    .recorder-page {
+        max-width: 560px;
+        margin: 0 auto;
+        padding: 8px 16px 48px;
+    }
+    .recorder {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+    }
+    .recorder-live-name {
+        font-weight: 600;
+        font-size: 1rem;
+        color: var(--color-text-primary);
+        overflow-wrap: anywhere;
+        text-align: center;
+        margin-bottom: 14px;
+    }
+    /* The record button is the card: round, red, in the middle, with the
+       clock under it and the level beneath that. */
+    .recorder-hero {
+        width: 100%;
+        border-radius: 18px;
+        background-color: var(--color-bg-surface-alt);
+        border: 1px solid var(--color-border-subtle);
+        padding: 28px 20px 20px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        --recorder-meter: var(--color-text-danger);
+        --recorder-meter-paused: var(--color-text-muted);
+    }
+    .recorder-record {
+        width: 96px;
+        height: 96px;
+        border-radius: 50%;
+        border: 6px solid var(--color-bg-surface);
+        background-color: var(--color-text-danger);
+        color: #ffffff;
+        box-shadow: 0 0 0 2px var(--color-text-danger),
+            0 6px 18px rgba(211, 47, 47, 0.25);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        transition: transform 0.12s ease;
+    }
+    .recorder-record:hover:not(:disabled) {
+        transform: scale(1.04);
+    }
+    .recorder-record:focus-visible {
+        outline: 3px solid var(--color-brand-primary);
+        outline-offset: 4px;
+    }
+    .recorder-record:disabled {
+        opacity: 0.5;
+        cursor: default;
+    }
+    /* Stop asks twice: armed, the button says so by changing shape rather
+       than colour alone. */
+    .recorder-record.is-armed {
+        border-radius: 22px;
+    }
+    .recorder-record-icon {
+        display: flex;
+    }
+    .recorder-record-caption {
+        margin-top: 12px;
+        font-weight: 600;
+        color: var(--color-text-primary);
+    }
+    .recorder-clock {
+        font-family: var(--font-mono);
+        font-size: 2rem;
+        font-weight: 600;
+        color: var(--color-text-muted);
+        margin-top: 2px;
+    }
+    .recorder-hero.is-live .recorder-clock {
+        color: var(--color-text-primary);
+    }
+    .recorder-meter {
+        display: block;
+        width: 100%;
+        max-width: 320px;
+        height: 40px;
+        margin: 8px 0 4px;
+    }
+    .recorder-hero .q-btn {
+        margin-top: 8px;
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .recorder-record { transition: none; }
+        .recorder-record:hover:not(:disabled) { transform: none; }
+    }
+    /* Name and microphone: two equal columns, one control style, so the
+       two are the same height and width wherever they sit. */
+    .recorder-settings {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 12px;
+        width: 100%;
+    }
+    .recorder-setting {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 0;
+    }
+    .recorder-setting-label {
+        font-size: 0.8rem;
+        color: var(--color-text-secondary);
+    }
+    .recorder-field {
+        box-sizing: border-box;
+        width: 100%;
+        height: 44px;
+        padding: 0 12px;
+        border-radius: 8px;
+        border: 1px solid var(--color-border);
+        background-color: var(--color-bg-surface);
+        color: var(--color-text-primary);
+        font: inherit;
+        font-size: 0.95rem;
+        text-overflow: ellipsis;
+    }
+    .recorder-field::placeholder {
+        color: var(--color-text-muted);
+    }
+    .recorder-field:focus-visible {
+        outline: 2px solid var(--color-brand-primary);
+        outline-offset: 1px;
+    }
+    .recorder-field:disabled {
+        color: var(--color-text-muted);
+    }
+    @media (max-width: 400px) {
+        .recorder-settings {
+            grid-template-columns: minmax(0, 1fr);
+        }
+    }
+    .recorder-safety {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 18px;
+        font-size: 0.85rem;
+        color: var(--color-text-secondary);
+    }
+    .recorder-safety-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .recorder-primary,
+    .recorder-secondary {
+        border-radius: 999px !important;
+        min-height: 52px;
+        padding: 0 26px !important;
+        font-size: 1rem;
+        font-weight: 600;
+    }
+    .recorder-primary {
+        background-color: var(--color-brand-accent) !important;
+        color: var(--color-text-primary) !important;
+        border: 1px solid var(--color-border);
+    }
+    .recorder-secondary {
+        color: var(--color-text-primary) !important;
+        background-color: var(--color-bg-surface) !important;
+    }
+    .recorder-stop.is-armed {
+        background-color: var(--color-status-error-bg) !important;
+        border-color: var(--color-status-error-border);
+        color: var(--color-text-danger) !important;
+    }
+    .recorder-small {
+        min-height: 40px;
+        padding: 0 16px !important;
+        font-size: 0.9rem;
+    }
+    .recorder-quiet {
+        color: var(--color-text-secondary) !important;
+    }
+    .body--dark .recorder-quiet {
+        border-color: transparent !important;
+    }
+    .recorder-discard.is-armed {
+        color: var(--color-text-danger) !important;
+    }
+    .recorder-status {
+        font-size: 0.9rem;
+        color: var(--color-text-secondary);
+        text-align: center;
+        min-height: 1.2rem;
+    }
+    .recorder-banner {
+        border-radius: 10px;
+        padding: 10px 14px;
+        font-size: 0.9rem;
+        line-height: 1.35;
+        color: var(--color-text-primary);
+        border: 1px solid;
+    }
+    .recorder-banner-warn {
+        background-color: var(--color-severity-maint-bg);
+        border-color: var(--color-severity-maint-border);
+    }
+    .recorder-banner-danger {
+        background-color: var(--color-status-error-bg);
+        border-color: var(--color-status-error-border);
+    }
+    .recorder-help-row {
+        display: flex;
+        justify-content: center;
+    }
+    .recorder-help-card {
+        width: 100%;
+        max-width: 520px;
+    }
+    .recorder-help-title {
+        font-size: 1.2rem;
+        font-weight: 700;
+        line-height: 1.4;
+        margin: 0 0 8px;
+    }
+    /* Short headed sections rather than one list: read once, before the
+       first recording, and each part answers a question of its own. */
+    .recorder-help-section {
+        margin-top: 14px;
+    }
+    .recorder-help-heading {
+        font-size: 0.95rem;
+        font-weight: 700;
+        line-height: 1.4;
+        margin: 0 0 4px;
+        color: var(--color-text-primary);
+    }
+    .recorder-help-section p {
+        margin: 0 0 6px;
+        font-size: 0.9rem;
+        line-height: 1.45;
+        color: var(--color-text-secondary);
+    }
+    .recorder-list {
+        width: 100%;
+        margin-top: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+    .recorder-list-heading {
+        font-size: 1.1rem;
+        font-weight: 700;
+        margin: 0;
+        line-height: 1.4;
+        color: var(--color-text-primary);
+    }
+    .recorder-item {
+        border: 1px solid var(--color-border-subtle);
+        border-radius: 12px;
+        padding: 12px 14px;
+        background-color: var(--color-bg-surface);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+    .recorder-item-head {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    .recorder-item-text {
+        flex: 1;
+        min-width: 0;
+    }
+    .recorder-discard {
+        flex: none;
+        margin: -4px -6px 0 0;
+    }
+    .recorder-item-name {
+        font-weight: 600;
+        color: var(--color-text-primary);
+        overflow-wrap: anywhere;
+    }
+    .recorder-item-meta {
+        font-size: 0.8rem;
+        color: var(--color-text-muted);
+    }
+    .recorder-item-state {
+        display: flex;
+        align-items: flex-start;
+        gap: 6px;
+        margin-top: 4px;
+        font-size: 0.85rem;
+        color: var(--color-text-secondary);
+    }
+    .recorder-item-state .q-icon {
+        margin-top: 1px;
+        flex: none;
+    }
+    .recorder-item-state.is-ok .q-icon { color: var(--color-brand-primary); }
+    .recorder-item-state.is-warn .q-icon { color: var(--color-severity-maint-icon); }
+    .recorder-item-state.is-danger { color: var(--color-text-danger); }
+    .recorder-item-state.is-live .q-icon { color: var(--color-text-danger); }
+    .recorder-item-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+    .recorder-player {
+        width: 100%;
+    }
+    .recorder-reminder {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        padding: 8px 14px;
+        border-radius: 10px;
+        border: 1px solid var(--color-severity-info-border);
+        background-color: var(--color-severity-info-bg);
+        color: var(--color-text-primary);
+        font-size: 0.9rem;
+    }
+    .recorder-reminder-text {
+        flex: 1;
+    }
+    @media (max-width: 700px) {
+        .recorder-page {
+            padding: 4px 12px 40px;
+        }
+        .recorder-reminder {
+            flex-wrap: wrap;
+        }
+    }
 </style>
 <script>
 if (!window._scribeFocusModality) {

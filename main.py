@@ -21,6 +21,7 @@ from fastapi import Request
 from nicegui import app, ui
 from pages.admin import create as create_admin
 from pages.home import create as create_files_table
+from pages.record import create as create_record
 from pages.srt import create as create_srt
 from pages.status import create as create_status
 from pages.user import create as create_user_page
@@ -48,6 +49,7 @@ create_admin()
 create_user_page()
 create_status()
 create_view()
+create_record()
 
 
 @ui.page("/")
