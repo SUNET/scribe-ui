@@ -40,12 +40,15 @@ export default {
         class="transcript-body"
         contenteditable="true"
         spellcheck="false"
+        :aria-label="subtitleMode ? 'Captions' : 'Transcript'"
+        aria-multiline="true"
         @input="onInput"
         @keydown="onKeydown"
         @keyup="updateCaretBlock"
         @click="onClick"
         @blur="onBlur"
         @paste="onPaste"
+        @cut="onCut"
         @drop.prevent
         @dragover.prevent
         ref="body"
@@ -72,7 +75,15 @@ export default {
             v-else
             class="transcript-speaker"
             title="Who is speaking. Click to assign a different speaker, rename one, or add one."
+            role="button"
+            :aria-label="'Speaker: ' + block.speaker + '. Activate to change.'"
+            aria-haspopup="true"
+            :aria-expanded="String(menu.open && menu.id === block.id)"
+            :tabindex="controlTabindex(block.id, 'speaker')"
             :data-id="block.id"
+            data-col="speaker"
+            @focus="setActiveControl(block.id, 'speaker')"
+            @keydown="onControlKeydown($event, block.id, 'speaker')"
           >{{ block.speaker }}</span><span v-if="!subtitleMode" class="transcript-colon">:</span></div><div
           class="transcript-cell"
           :class="{ 'transcript-cell-active': block.id === activeId, 'transcript-cell-editing': block.id === caretId, 'transcript-cell-invalid': block.invalid, 'transcript-cell-highlighted': block.highlighted, 'transcript-cell-found': block.id === flashedId }"
@@ -85,16 +96,26 @@ export default {
           ><input
               class="transcript-time-input"
               title="When this caption appears (HH:MM:SS.mmm). Click to edit."
+              aria-label="Start time"
+              :tabindex="controlTabindex(block.id, 'start')"
+              :data-id="block.id"
+              data-col="start"
               :value="block.start_label"
               @click.stop
-              @keydown="onTimeInputKeydown($event)"
+              @focus="setActiveControl(block.id, 'start')"
+              @keydown="onTimeInputKeydown($event, block.id, 'start')"
               @blur="retimeBlock(block.id, 'start', $event)"
             /><span class="transcript-dash">-</span><input
               class="transcript-time-input"
               title="When this caption disappears (HH:MM:SS.mmm). Click to edit."
+              aria-label="End time"
+              :tabindex="controlTabindex(block.id, 'end')"
+              :data-id="block.id"
+              data-col="end"
               :value="block.end_label"
               @click.stop
-              @keydown="onTimeInputKeydown($event)"
+              @focus="setActiveControl(block.id, 'end')"
+              @keydown="onTimeInputKeydown($event, block.id, 'end')"
               @blur="retimeBlock(block.id, 'end', $event)"
             /></div><div
             v-if="subtitleMode"
@@ -106,44 +127,89 @@ export default {
             ><div class="transcript-subtitle-timing"><input
                   class="transcript-time-input"
                   title="When this caption appears (HH:MM:SS.mmm). Click to edit."
+                  aria-label="Start time"
+                  :tabindex="controlTabindex(block.id, 'start')"
+                  :data-id="block.id"
+                  data-col="start"
                   :value="block.start_label"
                   @click.stop
-                  @keydown="onTimeInputKeydown($event)"
+                  @focus="setActiveControl(block.id, 'start')"
+                  @keydown="onTimeInputKeydown($event, block.id, 'start')"
                   @blur="retimeBlock(block.id, 'start', $event)"
                 /><span class="transcript-dash">-</span><input
                   class="transcript-time-input"
                   title="When this caption disappears (HH:MM:SS.mmm). Click to edit."
+                  aria-label="End time"
+                  :tabindex="controlTabindex(block.id, 'end')"
+                  :data-id="block.id"
+                  data-col="end"
                   :value="block.end_label"
                   @click.stop
-                  @keydown="onTimeInputKeydown($event)"
+                  @focus="setActiveControl(block.id, 'end')"
+                  @keydown="onTimeInputKeydown($event, block.id, 'end')"
                   @blur="retimeBlock(block.id, 'end', $event)"
                 /></div><div
                 class="transcript-cell-actions"
               ><div
                   class="transcript-action transcript-action-split"
+                  role="button"
+                  aria-label="Split caption"
+                  :tabindex="controlTabindex(block.id, 'split')"
+                  :data-id="block.id"
+                  data-col="split"
                   @mousedown.prevent.stop
+                  @focus="setActiveControl(block.id, 'split')"
+                  @keydown="onControlKeydown($event, block.id, 'split')"
                   @click.stop="splitAt(block.id)"
                 ><q-icon name="call_split" size="16px" /><q-tooltip>Split</q-tooltip></div><div
                   class="transcript-action transcript-action-merge"
+                  role="button"
+                  aria-label="Merge with next caption"
+                  :tabindex="controlTabindex(block.id, 'merge')"
+                  :data-id="block.id"
+                  data-col="merge"
+                  @focus="setActiveControl(block.id, 'merge')"
+                  @keydown="onControlKeydown($event, block.id, 'merge')"
                   @click.stop="mergeWithNext(block.id)"
                 ><q-icon name="merge_type" size="16px" /><q-tooltip>Merge with next caption</q-tooltip></div><div
                   class="transcript-action transcript-action-note"
+                  role="button"
+                  aria-label="Insert music note"
+                  :tabindex="controlTabindex(block.id, 'note')"
+                  :data-id="block.id"
+                  data-col="note"
                   @mousedown.prevent.stop
+                  @focus="setActiveControl(block.id, 'note')"
+                  @keydown="onControlKeydown($event, block.id, 'note')"
                   @click.stop="insertNote(block.id)"
                 ><span class="transcript-note-glyph">♪</span><q-tooltip>Insert music note</q-tooltip></div><div
                   class="transcript-action transcript-action-add"
+                  role="button"
+                  aria-label="Add caption after"
+                  :tabindex="controlTabindex(block.id, 'add')"
+                  :data-id="block.id"
+                  data-col="add"
+                  @focus="setActiveControl(block.id, 'add')"
+                  @keydown="onControlKeydown($event, block.id, 'add')"
                   @click.stop="$emit('addblock', { id: block.id })"
                 ><q-icon name="add" size="16px" /><q-tooltip>Add caption after</q-tooltip></div><div
                   class="transcript-action transcript-action-delete"
+                  role="button"
+                  aria-label="Delete caption"
+                  :tabindex="controlTabindex(block.id, 'delete')"
+                  :data-id="block.id"
+                  data-col="delete"
+                  @focus="setActiveControl(block.id, 'delete')"
+                  @keydown="onControlKeydown($event, block.id, 'delete')"
                   @click.stop="$emit('deleteblock', { id: block.id })"
                 ><q-icon name="delete_outline" size="16px" /><q-tooltip>Delete caption</q-tooltip></div></div></div><div
               class="transcript-text"
               :data-id="block.id"
-            ><span v-for="(run, i) in block.runs" :key="i" :class="run.flag ? 'review-word' : (run.edit ? 'edit-word' : null)" :data-review="run.flag ? reviewLabel : null" :data-edit="editLabel" :data-s="run.s" :data-e="run.e">{{ run.t }}</span><br v-if="!block.runs || block.runs.length === 0"></div></div><div
+            ><span v-for="(run, i) in block.runs" :key="i" :class="run.flag ? 'review-word' : (run.edit ? 'edit-word' : null)" :data-review="run.flag ? reviewLabel : null" :data-edit="editLabel" :aria-label="run.flag ? reviewLabel : (run.edit ? editLabel : null)" :data-s="run.s" :data-e="run.e">{{ run.t }}</span><br v-if="!block.runs || block.runs.length === 0"></div></div><div
             v-else
             class="transcript-text"
             :data-id="block.id"
-          ><span v-for="(run, i) in block.runs" :key="i" :class="run.flag ? 'review-word' : (run.edit ? 'edit-word' : null)" :data-review="run.flag ? reviewLabel : null" :data-edit="editLabel" :data-s="run.s" :data-e="run.e">{{ run.t }}</span><br v-if="!block.runs || block.runs.length === 0"></div></div></template></div>
+          ><span v-for="(run, i) in block.runs" :key="i" :class="run.flag ? 'review-word' : (run.edit ? 'edit-word' : null)" :data-review="run.flag ? reviewLabel : null" :data-edit="editLabel" :aria-label="run.flag ? reviewLabel : (run.edit ? editLabel : null)" :data-s="run.s" :data-e="run.e">{{ run.t }}</span><br v-if="!block.runs || block.runs.length === 0"></div></div></template></div>
 
       <!-- Outside the contenteditable, or it would become editable content.
            Positioned against this component's own root rather than the
@@ -154,10 +220,22 @@ export default {
       <div
         v-if="menu.open"
         class="speaker-menu"
+        role="menu"
+        aria-label="Speaker"
         :style="{ top: menu.y + 'px', left: menu.x + 'px' }"
         @click.stop
+        @keydown="onMenuKeydown($event)"
+        @focusout="onMenuFocusOut($event)"
       >
-        <div class="speaker-menu-add" @click="$emit('addspeaker', {})">
+        <div
+          class="speaker-menu-add"
+          role="menuitem"
+          tabindex="0"
+          data-menu-item="add"
+          @click="$emit('addspeaker', {})"
+          @keydown.enter="$emit('addspeaker', {})"
+          @keydown.space.prevent="$emit('addspeaker', {})"
+        >
           <span>Add new</span>
           <q-icon name="add" size="20px" />
         </div>
@@ -166,7 +244,13 @@ export default {
           :key="name"
           class="speaker-menu-row"
           :class="{ 'speaker-menu-row-current': name === menu.speaker }"
+          role="menuitem"
+          tabindex="0"
+          :aria-label="'Assign ' + name"
+          :data-menu-item="name === menu.speaker ? 'current' : null"
           @click="assign(name)"
+          @keydown.enter="assign(name)"
+          @keydown.space.prevent="assign(name)"
         >
           <span class="speaker-menu-name">{{ name }}</span>
           <!-- sym_o_ is Quasar's prefix for Material Symbols Outlined, which
@@ -177,14 +261,24 @@ export default {
             name="sym_o_person_edit"
             size="18px"
             class="speaker-menu-icon"
+            role="button"
+            tabindex="0"
+            :aria-label="'Rename ' + name"
             @click.stop="$emit('renamespeaker', { speaker: name })"
+            @keydown.enter.stop="$emit('renamespeaker', { speaker: name })"
+            @keydown.space.stop.prevent="$emit('renamespeaker', { speaker: name })"
           ><q-tooltip>Rename speaker</q-tooltip></q-icon>
           <q-icon
             v-if="unused.includes(name)"
             name="delete_outline"
             size="18px"
             class="speaker-menu-icon speaker-menu-remove"
+            role="button"
+            tabindex="0"
+            :aria-label="'Remove ' + name"
             @click.stop="$emit('removespeaker', { speaker: name })"
+            @keydown.enter.stop="$emit('removespeaker', { speaker: name })"
+            @keydown.space.stop.prevent="$emit('removespeaker', { speaker: name })"
           />
         </div>
       </div>
@@ -377,6 +471,25 @@ export default {
       // is the caption the recording is playing -- the reader is very
       // often editing one caption while listening to another.
       caretId: null,
+      // Roving tabindex over the gutter and cell controls (speaker, the two
+      // timings, and -- subtitles only -- the five action icons): exactly
+      // one control across the *entire* transcript carries a real tabindex
+      // at any moment, everything else is tabindex="-1". That is what keeps
+      // the whole editor down to two stops in the native Tab order --
+      // its text, then this one control -- rather than one stop per input
+      // per caption. Arrow keys move which control this is (see
+      // moveControl); Tab from the text jumps straight to it instead of
+      // walking through whatever comes before it in a long transcription.
+      // Null until the reader first tabs or clicks into a control, at
+      // which point controlTabindex() falls back to the first block's own
+      // default column so there is always exactly one reachable control.
+      activeControl: null,
+      // Where in the text to put the caret back when Shift+Tab leaves the
+      // controls -- recorded the moment Tab leaves the text, since the
+      // caret itself is long gone by the time the controls are done with
+      // it. See onKeydown's Tab branch and onControlKeydown's Shift+Tab
+      // branch.
+      returnCaret: null,
       // A block's own guess at its character-count guideline, from the text
       // as typed rather than what the server last rendered -- keyed by
       // block id, and only ever set for subtitles. See onInput and the
@@ -397,7 +510,7 @@ export default {
       if (!event.target.closest(".speaker-menu")) this.closeMenu();
     };
     this.onEscape = (event) => {
-      if (event.key === "Escape") this.closeMenu();
+      if (event.key === "Escape") this.closeMenu(true);
     };
     document.addEventListener("pointerdown", this.onOutside, true);
     document.addEventListener("keydown", this.onEscape, true);
@@ -429,24 +542,85 @@ export default {
       return (text || "").replace(/\u200B/g, "");
     },
 
+    // Offset from the start of a block's text, not of the text node, so a
+    // block split across highlight spans still reports one number.
+    offsetIn(block, container, offset) {
+      const measure = document.createRange();
+      measure.selectNodeContents(block);
+      measure.setEnd(container, offset);
+      return this.plainText(measure.toString()).length;
+    },
+
     caret() {
       const selection = window.getSelection();
       if (!selection || selection.rangeCount === 0) return null;
       const range = selection.getRangeAt(0);
       const block = this.blockOf(range.startContainer);
       if (!block) return null;
-      // Offset from the start of the block's text, not of the text node,
-      // so a block split across highlight spans still reports one number.
-      const measure = range.cloneRange();
-      measure.selectNodeContents(block);
-      measure.setEnd(range.startContainer, range.startOffset);
       return {
         id: Number(block.dataset.id),
-        offset: this.plainText(measure.toString()).length,
+        offset: this.offsetIn(block, range.startContainer, range.startOffset),
         length: this.plainText(block.textContent).length,
         collapsed: range.collapsed,
         block,
       };
+    },
+
+    // A selection that reaches across two or more blocks, as the pair of
+    // ends the server needs to act on it -- or null for the ordinary case
+    // of a selection inside one block, which the browser can be left to.
+    //
+    // Nothing in a contenteditable stops a reader dragging across the
+    // gutters between blocks, and a native edit over such a selection
+    // deletes them: the timings, the numbers and the block elements
+    // themselves go with the text, and the page is left as wreckage rather
+    // than as captions. So every key that would edit over one is
+    // intercepted (see onKeydown) and reported as a deleterange instead.
+    //
+    // getRangeAt reports its ends in document order, which is caption
+    // order, however the drag itself went.
+    selectionSpan() {
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0) return null;
+
+      const range = selection.getRangeAt(0);
+      if (range.collapsed) return null;
+
+      const start = this.blockOf(range.startContainer);
+      const end = this.blockOf(range.endContainer);
+
+      if (!start || !end || start === end) return null;
+
+      return {
+        startId: Number(start.dataset.id),
+        startOffset: this.offsetIn(start, range.startContainer, range.startOffset),
+        endId: Number(end.dataset.id),
+        endOffset: this.offsetIn(end, range.endContainer, range.endOffset),
+      };
+    },
+
+    // What a cross-block selection actually holds, for the clipboard. Built
+    // from the blocks' own text rather than from selection.toString(),
+    // which sweeps up the gutters in between -- the numbers, the speaker
+    // and the timings are not part of any caption's text.
+    spanText(span) {
+      const blocks = Array.from(
+        this.$refs.body?.querySelectorAll(".transcript-text") ?? []
+      );
+      const first = blocks.findIndex((block) => Number(block.dataset.id) === span.startId);
+      const last = blocks.findIndex((block) => Number(block.dataset.id) === span.endId);
+
+      if (first < 0 || last < 0) return "";
+
+      return blocks
+        .slice(first, last + 1)
+        .map((block, offset) => {
+          const text = this.plainText(block.textContent);
+          const from = offset === 0 ? span.startOffset : 0;
+          const to = first + offset === last ? span.endOffset : text.length;
+          return text.slice(from, to);
+        })
+        .join("\n");
     },
 
     // The inverse of caret()'s own offset -- used to put the caret back
@@ -1059,6 +1233,20 @@ export default {
     // Shift+Enter's own "\n"); a trailing one gets insertLineBreak's
     // zero-width space so it earns a line box, and plainText strips that
     // back out before the text is read for anything.
+    // Cut over a cross-block selection, same hazard as the keys above and
+    // the same answer -- with the clipboard filled by hand first, since
+    // preventing the default prevents the copy half of the cut too.
+    onCut(event) {
+      const span = this.selectionSpan();
+
+      if (!span) return;
+
+      event.preventDefault();
+      event.clipboardData?.setData("text/plain", this.spanText(span));
+      this.flush();
+      this.$emit("deleterange", { ...span, text: "" });
+    },
+
     onPaste(event) {
       event.preventDefault();
 
@@ -1071,11 +1259,18 @@ export default {
       const block = this.blockOf(range.startContainer);
       if (!block) return;
 
-      // A selection reaching into another block would take that block's
-      // own structure with it when deleted -- the gutters between are not
-      // editable text. The browser's native handling of such a selection
-      // is its own hazard, but this handler is not adding one of ours.
-      if (this.blockOf(range.endContainer) !== block) return;
+      // A selection reaching into another block cannot be deleted here --
+      // the gutters between are not editable text, and taking them out
+      // takes the block structure with them. The server owns that, so the
+      // whole gesture goes to it as one deleterange carrying the pasted
+      // text (see selectionSpan).
+      const span = this.selectionSpan();
+
+      if (span) {
+        this.flush();
+        this.$emit("deleterange", { ...span, text });
+        return;
+      }
 
       if (!text) return;
 
@@ -1243,16 +1438,256 @@ export default {
     // Typing in a time input must not reach the document's own keydown
     // handling below -- Enter there splits a caption, not this. Enter and
     // Escape here just commit or abandon the edit, the same as leaving the
-    // field any other way.
-    onTimeInputKeydown(event) {
+    // field any other way. Also where a start or end input takes part in
+    // the roving tabindex, alongside every other control -- see
+    // onControlKeydown, which this otherwise mirrors exactly. Kept as its
+    // own method rather than folded into onControlKeydown because a time
+    // input's Left/Right and Enter mean something to the field itself
+    // first, and only fall through to onControlKeydown once the field is
+    // done with them.
+    onTimeInputKeydown(event, id, col) {
       event.stopPropagation();
 
       if (event.key === "Enter" || event.key === "Escape") {
         event.target.blur();
+        return;
+      }
+
+      if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+        // The field's own text caret keeps Left/Right until it has nowhere
+        // left within the value to go -- only then does the key move which
+        // control has focus instead. A collapsed caret already at that
+        // edge satisfies this on its own; a selection reaching all the way
+        // to it (focusControl leaves a freshly-focused field selected end
+        // to end, see its own comment) satisfies both edges at once,
+        // which is what lets the very first Left or Right after tabbing
+        // or arrowing into a field move straight on to the next control.
+        const atStart = event.target.selectionStart === 0;
+        const atEnd = event.target.selectionEnd === event.target.value.length;
+
+        if (event.key === "ArrowLeft" && !atStart) return;
+        if (event.key === "ArrowRight" && !atEnd) return;
+      }
+
+      this.onControlKeydown(event, id, col);
+    },
+
+    // Which column a control sits in gets its own list per format --
+    // subtitles have the five action icons a transcription does not, and
+    // the two share no default first stop either (see defaultColumn).
+    // Left/Right in moveControl clamp against whichever list this is
+    // rather than wrapping, so overrunning a row's own end leaves the
+    // reader at its last control instead of skipping to the next caption's
+    // first one -- Up/Down already do that, deliberately, and overloading
+    // Left/Right with it too would make the two pairs mean the same thing.
+    controlColumns() {
+      return this.subtitleMode
+        ? ["start", "end", "split", "merge", "note", "add", "delete"]
+        : ["speaker", "start", "end"];
+    },
+
+    // The control Tab lands on coming out of the text. Confirmed against
+    // the two formats' own editing habits rather than assumed: retiming is
+    // the rare edit in a transcription, where the timestamps already come
+    // from the recording and speaker is the one thing a reader actually
+    // reaches for, but a common one in subtitles, where getting a caption's
+    // timing right is often the point of the edit.
+    defaultColumn() {
+      return this.subtitleMode ? "start" : "speaker";
+    },
+
+    // The single control the roving tabindex currently sits on, or the
+    // first caption's own default column when nothing has set it yet --
+    // there is always exactly one, so Shift+Tab from below the editor (the
+    // player controls, say) always has a real control to land back on.
+    activeControlOrDefault() {
+      return this.activeControl || { id: this.blocks[0]?.id, col: this.defaultColumn() };
+    },
+
+    // Whether a given control is that one -- "0" for a real Tab stop, "-1"
+    // for every other control in the whole transcript. Read by every
+    // control's own :tabindex binding.
+    controlTabindex(id, col) {
+      const active = this.activeControlOrDefault();
+      return active.id === id && active.col === col ? "0" : "-1";
+    },
+
+    // Point the roving tabindex at a control without necessarily moving
+    // the browser's own focus there too -- a control reached by mouse
+    // click focuses itself; this just keeps the tabindex bookkeeping in
+    // step with it, or the next Tab press would jump back to wherever the
+    // keyboard last left it instead of where the reader's mouse just was.
+    setActiveControl(id, col) {
+      this.activeControl = { id, col };
+    },
+
+    // Point the roving tabindex at a control and actually focus it --
+    // what Tab out of the text and the arrow keys within the controls
+    // both do. Waits a tick for Vue to have applied the new tabindex
+    // bindings first; focusing a control still marked tabindex="-1" would
+    // work (tabindex only governs sequential Tab navigation, not direct
+    // focus()), but leaves the DOM tabindex a step behind the element that
+    // actually holds focus until the next unrelated re-render catches it
+    // up.
+    focusControl(id, col) {
+      this.setActiveControl(id, col);
+      this.$nextTick(() => {
+        const el = this.$refs.body?.querySelector(`[data-id="${id}"][data-col="${col}"]`);
+        if (!el) return;
+
+        el.focus();
+
+        // A time input lands fully selected, the same convention a
+        // spreadsheet cell reached by keyboard does: ready to be
+        // overtyped outright, and it is also what satisfies
+        // onTimeInputKeydown's own boundary check on both sides at once,
+        // so the very next Left or Right carries straight on to the next
+        // control instead of first spending a press collapsing the
+        // selection to whichever edge it points toward.
+        if (el.tagName === "INPUT") el.select();
+      });
+    },
+
+    // Left/Right within a caption's own row of controls, Up/Down to the
+    // same control one caption up or down -- the two axes of the roving
+    // tabindex grid. Both clamp at the edges rather than wrapping: running
+    // past the last caption stays on the last caption, the same as running
+    // past the last column stays on it, rather than either one looping
+    // back around to the opposite end of a transcription that reader may
+    // not even remember the start of.
+    moveControl(direction) {
+      const active = this.activeControlOrDefault();
+      const columns = this.controlColumns();
+      const ids = this.blocks.map((block) => block.id);
+      const colIndex = columns.indexOf(active.col);
+      const rowIndex = ids.indexOf(active.id);
+
+      if (colIndex < 0 || rowIndex < 0) return;
+
+      let col = active.col;
+      let id = active.id;
+
+      if (direction === "left") col = columns[Math.max(0, colIndex - 1)];
+      if (direction === "right") col = columns[Math.min(columns.length - 1, colIndex + 1)];
+      if (direction === "up") id = ids[Math.max(0, rowIndex - 1)];
+      if (direction === "down") id = ids[Math.min(ids.length - 1, rowIndex + 1)];
+
+      this.focusControl(id, col);
+    },
+
+    // Keyboard handling shared by every gutter and cell control once the
+    // roving tabindex has put the browser's real focus on one of them --
+    // the speaker span and, in subtitles, the five action icons. Time
+    // inputs go through onTimeInputKeydown instead, which defers to this
+    // for everything past its own field-editing keys.
+    onControlKeydown(event, id, col) {
+      // Every one of these controls sits inside the contenteditable, so a
+      // key left to bubble would also reach onKeydown below -- which reads
+      // Tab, the arrows and Enter as text-editing keys in their own right,
+      // and did, in testing, re-trigger the very Tab-out-of-the-text
+      // branch this control's own Tab handling was trying to move past.
+      // onTimeInputKeydown already stops it for the fields; this is the
+      // same guard for every other control.
+      event.stopPropagation();
+
+      if (event.key === "Tab" && event.shiftKey) {
+        // Back to the text, at the exact spot Tab left it from -- see
+        // returnCaret's own comment. Falls back to this caption's own
+        // start if the reader has since arrowed to a different caption
+        // than the one they tabbed out of, where the recorded offset
+        // would belong to the wrong block.
+        event.preventDefault();
+        const back =
+          this.returnCaret && this.returnCaret.id === id ? this.returnCaret : { id, offset: 0 };
+        this.focusBlock(back.id, back.offset);
+        return;
+      }
+
+      if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+        event.preventDefault();
+        this.moveControl(event.key === "ArrowUp" ? "up" : "down");
+        return;
+      }
+
+      if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+        event.preventDefault();
+        this.moveControl(event.key === "ArrowLeft" ? "left" : "right");
+        return;
+      }
+
+      // Activation, for the controls that are buttons rather than fields --
+      // the same as a click, dispatched as a real one so it runs through
+      // the one place each control's own click handling already lives
+      // (delegated up to onClick for the speaker span, bound directly for
+      // an action icon) instead of a second copy of it living here too.
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        event.target.click();
       }
     },
 
+    // Arrow keys move between the speaker menu's own rows and icons the
+    // ordinary way already, since each is a real tabindex="0" element in
+    // document order and the menu never has more than a handful -- nothing
+    // here needs the roving-tabindex treatment the transcript's hundreds
+    // of captions do. This only adds Up/Down as a convenience alongside
+    // the Tab a reader could already use, moving among the menu's own
+    // items rather than escaping it.
+    onMenuKeydown(event) {
+      if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+
+      const items = Array.from(
+        event.currentTarget.querySelectorAll('[role="menuitem"], .speaker-menu-icon')
+      );
+      const at = items.indexOf(document.activeElement);
+      if (at < 0) return;
+
+      event.preventDefault();
+      const next =
+        event.key === "ArrowDown"
+          ? items[Math.min(items.length - 1, at + 1)]
+          : items[Math.max(0, at - 1)];
+      next?.focus();
+    },
+
+    // Tab and Shift+Tab are deliberately left native within the menu --
+    // its own items are plain tabindex="0" elements in document order, and
+    // stepping off either end of that order is exactly how a reader
+    // leaves a short, ordinary list of them. But nothing else was
+    // watching for that: closeMenu previously only ran from a pointer
+    // click outside, Escape, or picking an item, and tabbing past the
+    // menu's own last (or first) control left it open with focus already
+    // somewhere else on the page entirely -- reported directly, testing
+    // this by keyboard. relatedTarget is the element about to take focus,
+    // so a focusout landing on another control inside the menu itself
+    // (moving from "Add new" to a speaker row, say) is left alone; only a
+    // focusout that leaves the whole menu closes it, and without pulling
+    // focus back -- it has already gone where the reader's own Tab sent
+    // it, and yanking it back to the speaker label would undo that.
+    onMenuFocusOut(event) {
+      const next = event.relatedTarget;
+      if (next && event.currentTarget.contains(next)) return;
+      this.closeMenu();
+    },
+
     onKeydown(event) {
+      // Tab out of the text and straight to this caption's own controls,
+      // rather than to whichever input a hundred captions down happens to
+      // be next in the browser's native tab order -- see activeControl's
+      // own comment. Shift+Tab is left alone: going backward out of the
+      // text is already exactly one native stop, out of the editor
+      // entirely, and there is nothing of this editor's own before it to
+      // aim at instead.
+      if (event.key === "Tab" && !event.shiftKey) {
+        const at = this.caret();
+        if (at) {
+          event.preventDefault();
+          this.returnCaret = { id: at.id, offset: at.offset };
+          this.focusControl(at.id, this.defaultColumn());
+        }
+        return;
+      }
+
       // Undo and redo are the server's alone. It holds the real history --
       // every block, speaker and timing, not just the text of the one being
       // typed into -- and this key reaches it too, through the page's own
@@ -1269,6 +1704,30 @@ export default {
         event.preventDefault();
         this.flush();
         return;
+      }
+
+      // Anything that would edit over a selection reaching across blocks is
+      // the server's, not the browser's: see selectionSpan for what the
+      // browser does with the gutters otherwise. flush first, so the text
+      // typed into a block before the selection was made reaches the server
+      // ahead of the offsets measured against it.
+      //
+      // A printable key is sent along as the replacement text, the same as
+      // the paste is; Backspace, Delete and Enter replace with nothing.
+      // Enter does not also split at the seam -- one gesture, one edit, one
+      // undo step, and a second Enter there splits as it always does.
+      const span = this.selectionSpan();
+
+      if (span) {
+        const typed =
+          event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey;
+
+        if (typed || ["Backspace", "Delete", "Enter"].includes(event.key)) {
+          event.preventDefault();
+          this.flush();
+          this.$emit("deleterange", { ...span, text: typed ? event.key : "" });
+          return;
+        }
       }
 
       const at = this.caret();
@@ -1414,11 +1873,16 @@ export default {
 
     assign(name) {
       const id = this.menu.id;
-      this.closeMenu();
+      this.closeMenu(true);
       if (id !== null) this.$emit("assignspeaker", { id, speaker: name });
     },
 
     openMenu(label) {
+      // Not part of the reactive menu object: a plain DOM reference has no
+      // business going through Vue's reactivity, and closeMenu only ever
+      // needs it back once, to restore focus.
+      this.menuInvoker = label;
+
       const box = label.getBoundingClientRect();
       const root = this.$el.getBoundingClientRect();
 
@@ -1449,10 +1913,31 @@ export default {
         id: Number(label.dataset.id),
         speaker: label.textContent.trim(),
       };
+
+      // Into the menu, not left behind on the label: a menu that opens
+      // without moving focus into it reads, to a screen reader, as though
+      // nothing happened. The current speaker's own row when it is in the
+      // list -- naming the block's speaker again first is exactly what a
+      // reader opening this menu already knows -- and the first item
+      // otherwise.
+      this.$nextTick(() => {
+        const current = this.$el.querySelector('[data-menu-item="current"]');
+        const first = this.$el.querySelector('.speaker-menu [role="menuitem"]');
+        (current || first)?.focus();
+      });
     },
 
-    closeMenu() {
+    // restoreFocus puts focus back on whatever label opened the menu --
+    // right after an action taken inside it (Escape, or assigning a
+    // speaker) finishes with it, so the reader ends up back where they
+    // started rather than wherever the removed menu's own DOM node used to
+    // be. Left false for a plain click outside the menu: the reader's
+    // pointer is already wherever they meant it to be, and pulling focus
+    // back to the label would undo that.
+    closeMenu(restoreFocus = false) {
       this.menu = { open: false, x: 0, y: 0, id: null, speaker: null };
+      if (restoreFocus) this.menuInvoker?.focus();
+      this.menuInvoker = null;
     },
 
     onClick(event) {

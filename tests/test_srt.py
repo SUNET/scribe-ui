@@ -842,7 +842,7 @@ class TestSpacePlaysAndPauses:
 
         page = self.page()
         handler = page[page.index("if (e.key === ' '"):]
-        handler = handler[: handler.index("// Handle Escape")]
+        handler = handler[: handler.index("}, true);")]
 
         assert "BUTTON" in handler
 

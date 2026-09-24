@@ -37,7 +37,7 @@ class Group:
         ui.navigate.to(f"/admin/edit/{self.group_id}")
 
     def delete_group_dialog(self) -> None:
-        with ui.dialog() as delete_group_dialog:
+        with ui.dialog().props('aria-label="Delete group"') as delete_group_dialog:
             with ui.card():
                 ui.label("Delete group").classes("text-h6")
                 ui.label(

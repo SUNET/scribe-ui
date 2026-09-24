@@ -188,7 +188,16 @@ class ExportMixin:
         bulk_needs_preview = is_bulk and self.data_format == "txt"
 
         ui.add_head_html(default_styles)
-        with ui.dialog() as dialog:
+        with ui.dialog().props('aria-label="Export transcript"') as dialog:
+            # A fresh ui.dialog() is built on every call (Ctrl+E is bound
+            # straight to show_export_dialog), and closing one only hides
+            # it -- the element stays in the DOM. Deleting it once closed
+            # keeps that from piling up over a long editing session, the
+            # same accumulation problem as the search dialog above it.
+            def _close_and_delete() -> None:
+                dialog.close()
+                dialog.delete()
+
             card = (
                 ui.card()
                 .classes("p-6")
@@ -203,8 +212,8 @@ class ExportMixin:
                 # Header
                 with ui.row().classes("w-full items-center justify-between mb-4"):
                     ui.label("Export transcript").classes("text-h5 font-bold")
-                    ui.button(icon="close", on_click=dialog.close).props(
-                        "flat round dense color=grey-7"
+                    ui.button(icon="close", on_click=_close_and_delete).props(
+                        "flat round dense color=grey-7 aria-label='Close export dialog'"
                     )
 
                 ui.separator().classes("mb-4")
@@ -777,7 +786,7 @@ class ExportMixin:
                             "text-body2"
                         )
                     with ui.row().classes("gap-2"):
-                        ui.button("Close", on_click=dialog.close).props(
+                        ui.button("Close", on_click=_close_and_delete).props(
                             "outline color=black"
                         )
 
@@ -1038,7 +1047,7 @@ class ExportMixin:
                                         type="positive",
                                     )
                             except Exception as e:
-                                ui.notify(f"Export failed: {str(e)}", type="negative")
+                                ui.notify(f"Export failed: {str(e)}", type="negative", timeout=None, close_button="Close")
 
                         ui.button("Export", icon="download", on_click=exp).props(
                             "flat color=white"

@@ -159,7 +159,7 @@ def create() -> None:
         no save.
         """
 
-        page_init(use_drawer=True)
+        page_init(use_drawer=True, title="View transcription")
 
         try:
             UUID(uuid)
@@ -201,7 +201,9 @@ def create() -> None:
             with ui.row().classes("view-header w-full items-center"):
                 ui.button(
                     icon="arrow_back", on_click=lambda: ui.navigate.to("/home")
-                ).props("flat round color=black").tooltip("Back to my files")
+                ).props(
+                    'flat round color=black aria-label="Back to my files"'
+                ).tooltip("Back to my files")
                 ui.label(filename).classes("view-title")
 
             with ui.element("div").classes("view-video w-full"):

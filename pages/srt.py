@@ -62,7 +62,7 @@ def create() -> None:
         """
         Display the result of the transcription job.
         """
-        page_init(use_drawer=True)
+        page_init(use_drawer=True, title="Editor")
 
         try:
             UUID(uuid)
@@ -135,15 +135,17 @@ def create() -> None:
                 }
             }
 
-            // Handle Escape key globally (even when video player has focus)
-            if (e.key === 'Escape' && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
-                // Blur active element
-                if (document.activeElement && typeof document.activeElement.blur === 'function') {
-                    document.activeElement.blur();
-                }
-                // Dispatch custom event that Python can listen to
-                window.dispatchEvent(new CustomEvent('escape-pressed'));
-            }
+            // There used to be a global Escape handler here that
+            // unconditionally blurred document.activeElement (2.4.3: it
+            // fired even inside dialogs and the transcript editor's own
+            // controls, throwing focus to <body> with nothing to show for
+            // it -- the CustomEvent it dispatched had no listener anywhere
+            // in the codebase). Removed rather than fixed to move focus
+            // "back" somewhere: this handler has no notion of which block
+            // or dialog Escape was meant for, so it cannot know where focus
+            // should go instead. Each component now handles its own
+            // Escape (the speaker menu's closeMenu, a q-dialog's own
+            // close-and-restore-focus, ...) without this blunt override.
         }, true);
         </script>
         """
@@ -179,7 +181,7 @@ def create() -> None:
             data = response.json()
 
         except httpx.HTTPError as e:
-            ui.notify(f"Error: Failed to get result: {e}")
+            ui.notify(f"Error: Failed to get result: {e}", type="negative", timeout=None, close_button="Close")
             return
 
         # Per-word timings are optional: jobs transcribed before they existed
@@ -418,7 +420,9 @@ def create() -> None:
         # server cannot know how wide a phone is, and a reader who turns
         # the tablet in their hands should not have to reload.
         with ui.element("div").classes("editor-too-small w-full"):
-            ui.icon("desktop_windows").style("font-size: 2.5rem;")
+            ui.icon("desktop_windows").style("font-size: 2.5rem;").props(
+                'role="img" aria-hidden="true"'
+            )
             ui.label("Editing needs a bigger screen").classes(
                 "editor-too-small-title"
             )
@@ -454,6 +458,23 @@ def create() -> None:
                 # so a percentage inside one resolves to auto (see the same
                 # note on the other side).
                 with ui.card().classes("editor-panel w-full"):
+                    # A long transcription can put well over a hundred
+                    # keyboard stops (two time fields per block) between here
+                    # and the video/settings panel, with nothing in between
+                    # to jump past them (WCAG 2.4.1). Same skip-link pattern
+                    # as "Skip to content" in common.py: an invisible link,
+                    # revealed on focus, targeting a tabindex="-1" landmark
+                    # at the top of the other panel.
+                    ui.link(
+                        "Skip to video and settings", "#srt-player-panel"
+                    ).classes("skip-link")
+                    ui.element("div").props(
+                        'id=srt-transcript-panel tabindex=-1'
+                        ' aria-label="Transcript"'
+                    ).style(
+                        "position: absolute; width: 0; height: 0;"
+                        " overflow: hidden; outline: none;"
+                    )
                     # Everything the card's padding leaves. height: auto
                     # takes off NiceGUI's own 16rem, and min-height: 0 is
                     # what lets it scroll rather than grow the card.
@@ -483,6 +504,16 @@ def create() -> None:
                     # Analyse strip at the foot can take what the video and
                     # the controls leave.
                     with ui.card().classes("editor-panel w-full"):
+                        ui.link(
+                            "Skip to transcript", "#srt-transcript-panel"
+                        ).classes("skip-link")
+                        ui.element("div").props(
+                            'id=srt-player-panel tabindex=-1'
+                            ' aria-label="Video and settings"'
+                        ).style(
+                            "position: absolute; width: 0; height: 0;"
+                            " overflow: hidden; outline: none;"
+                        )
                         # Not h-full: the frame takes the height the picture
                         # needs, so what is left of the pane goes to the
                         # Analyse strip at the foot of it.
@@ -686,7 +717,22 @@ def create() -> None:
                                     "Follow audio" if following_words else "Autoscroll",
                                     value=editor.autoscroll,
                                 ).props("dense").classes("editor-switch")
-                                follow.on("click", save_follow)
+                                # Click only fires from a mouse. Quasar's
+                                # QToggle answers Enter/Space with its own
+                                # internal onClick(), which only emits
+                                # update:model-value -- never a DOM click.
+                                # Measured: with "click" here, Enter/Space
+                                # visibly flips the switch but save_follow
+                                # never runs, so nothing is persisted and
+                                # nothing downstream updates -- the switch
+                                # was a mouse-only control despite looking
+                                # like any other. update:model-value fires
+                                # for a mouse click too, with the same
+                                # event.sender.value, so save_follow needs
+                                # no change of its own. The sensitivity
+                                # toggle below already listens on
+                                # update:model-value for the same reason.
+                                follow.on("update:model-value", save_follow)
 
                                 if following_words:
                                     with follow:
@@ -711,7 +757,14 @@ def create() -> None:
                                         "Subtitle overlay",
                                         value=editor.show_subtitle_overlay,
                                     ).props("dense").classes("editor-switch")
-                                    overlay_switch.on("click", save_show_overlay)
+                                    # Same reason as the Follow audio /
+                                    # Autoscroll switch above: "click" is
+                                    # mouse-only on a QToggle, and
+                                    # update:model-value fires for a
+                                    # keyboard activation too.
+                                    overlay_switch.on(
+                                        "update:model-value", save_show_overlay
+                                    )
                                     with overlay_switch:
                                         ui.tooltip(
                                             "Show captions as an overlay on the "
@@ -733,7 +786,13 @@ def create() -> None:
                                         "Timeline",
                                         value=editor.show_timeline,
                                     ).props("dense").classes("editor-switch")
-                                    timeline_switch.on("click", save_show_timeline)
+                                    # Same reason as the switches above:
+                                    # "click" is mouse-only on a QToggle,
+                                    # and update:model-value fires for a
+                                    # keyboard activation too.
+                                    timeline_switch.on(
+                                        "update:model-value", save_show_timeline
+                                    )
                                     with timeline_switch:
                                         ui.tooltip(
                                             "Show the caption timeline under "
@@ -756,7 +815,13 @@ def create() -> None:
                                         "My edits",
                                         value=editor.show_my_edits,
                                     ).props("dense").classes("editor-switch edits-switch")
-                                    edits_switch.on("click", save_show_edits)
+                                    # Same reason as the switches above:
+                                    # "click" is mouse-only on a QToggle,
+                                    # and update:model-value fires for a
+                                    # keyboard activation too.
+                                    edits_switch.on(
+                                        "update:model-value", save_show_edits
+                                    )
                                     with edits_switch:
                                         ui.tooltip(
                                             "Highlight words you have added or "

@@ -28,6 +28,14 @@ from utils.settings import get_settings
 settings = get_settings()
 
 
+# Both pages that show a recording -- the editor and the read-only view --
+# ask for this route at import time, and each of them has to, since either
+# can be the only one imported. Registering it twice is not an error in
+# FastAPI, it just leaves a second route nothing will ever match; the flag
+# keeps the route table saying what it means.
+_video_proxy_registered = False
+
+
 def create_video_proxy() -> Response:
     """
     Create a video proxy endpoint to handle video streaming requests
@@ -35,6 +43,13 @@ def create_video_proxy() -> Response:
 
     This function sets up the FastAPI route for video streaming.
     """
+
+    global _video_proxy_registered
+
+    if _video_proxy_registered:
+        return
+
+    _video_proxy_registered = True
 
     @app.get("/video/{job_id}")
     async def video_proxy(request: Request, job_id: str) -> Response:

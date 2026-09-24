@@ -55,13 +55,27 @@ theme_styles = """
         --color-text-primary: #111827;
         --color-text-secondary: #374151;
         --color-text-tertiary: #626b7a;
-        --color-text-muted: #6b7280;
+        /* #6b7280 measured 4.83:1 against white but fell under the 4.5:1
+           minimum (1.4.3) against the surfaces this token is actually read
+           on -- 4.39:1 on --color-bg-surface-alt, 4.01:1 on
+           --color-bg-surface-hover (the dropzone's own hover state, among
+           others). #5f5f5f clears all three with room: 6.39:1, 5.8:1,
+           5.3:1. */
+        --color-text-muted: #5f5f5f;
         --color-text-on-brand: #ffffff;
 
         /* A grey rule, not a black one. Pure black borders drew every button
-           and table cell as hard as the text inside it. */
-        --color-border: #d0d5dd;
-        --color-border-subtle: #e5e7eb;
+           and table cell as hard as the text inside it.
+           #d0d5dd/#e5e7eb measured 1.47:1 and 1.24:1 against the white
+           surfaces these borders actually sit on -- both far under the 3:1
+           1.4.11 needs for a component boundary. --color-border-subtle also
+           has to hold against --color-bg-surface-alt (the upload dropzone),
+           which is the tighter case. #6b7280 clears white at 4.83:1;
+           #80858c clears white at 3.56:1 and surface-alt at 3.23:1 -- kept
+           darker than --color-border itself so the two still read as
+           "regular" vs "subtle" the way they did before. */
+        --color-border: #6b7280;
+        --color-border-subtle: #80858c;
         --color-border-disabled: #bdbdbd;
 
         --color-bg-disabled: #e0e0e0;
@@ -90,7 +104,12 @@ theme_styles = """
         --color-severity-incident-link: #b71c1c;
 
         --color-warning-bg: #fff3cd;
-        --color-warning-border: #ffc107;
+        /* #ffc107 measured 1.63:1 against the page and 1.51:1 against its
+           own highlighted-transcript-cell tint -- both far under 1.4.11's
+           3:1 for a state border. #b45309 clears both (5.02:1 / 4.14:1).
+           Only in light mode: dark already clears 3:1 by a wide margin
+           (8.55-12.88:1) with the original colour, which stays. */
+        --color-warning-border: #b45309;
         --color-warning-icon: #ff9800;
 
         /* Words flagged for review. A violet used nowhere else in the app, so
@@ -142,13 +161,19 @@ theme_styles = """
         --color-btn-delete-border: #d0d5dd;
 
         --color-chart-bar-current: #4F46E5;
-        --color-chart-bar-previous: #10B981;
+        /* #10b981/#4caf50/#f59e0b measured 2.54:1, 2.78:1 and 2.15:1 against
+           the white chart surface -- all under 1.4.11's 3:1. Darkened one
+           step within the same hue so the series stay recognisable: emerald
+           #059669 (3.77:1), green #388e3c (4.12:1), amber #b45309 (5.02:1,
+           the same value chosen for --color-warning-border above). Dark
+           mode's own values already clear 7.0-12.6:1 and are unchanged. */
+        --color-chart-bar-previous: #059669;
         --color-chart-bar-primary: #082954;
-        --color-chart-bar-secondary: #4caf50;
+        --color-chart-bar-secondary: #388e3c;
         --color-chart-line-cpu: #3b82f6;
-        --color-chart-line-memory: #10b981;
+        --color-chart-line-memory: #059669;
         --color-chart-line-gpu: #8b5cf6;
-        --color-chart-line-gpu-mem: #f59e0b;
+        --color-chart-line-gpu-mem: #b45309;
         --color-chart-wow-positive: #2e7d32;
         --color-chart-wow-negative: #c62828;
         --color-chart-wow-neutral: #757575;
@@ -174,8 +199,15 @@ theme_styles = """
         --color-text-muted: #9aa1ab;
         --color-text-on-brand: #ffffff;
 
-        --color-border: #3a3f47;
-        --color-border-subtle: #2c3038;
+        /* #3a3f47/#2c3038 measured 1.98:1 and 1.34:1 against the dark
+           surfaces they sit on (the audit's own #555555/#3a3a3a no longer
+           match this codebase's palette at all -- both are stale). #868b95
+           clears the darkest case, the page itself, at 6.14:1 (5.19:1 on
+           --color-bg-surface, 4.71:1 on --color-bg-surface-alt); #6b7280
+           clears the same three at 4.34/3.67/3.33:1 -- kept dimmer than
+           --color-border so "regular" still reads stronger than "subtle". */
+        --color-border: #868b95;
+        --color-border-subtle: #6b7280;
         --color-border-disabled: #444444;
 
         --color-bg-disabled: #2a2e36;
@@ -283,7 +315,14 @@ theme_styles = """
     .body--dark .q-card {
         background-color: var(--color-bg-surface);
         box-shadow: none !important;
-        border: none !important;
+        /* --color-bg-surface (#16181d) measured 1.18:1 against the page
+           (#000000) -- effectively no visible edge at all once the shadow
+           above is turned off. A rgba(0,0,0,0.5) shadow over a black page
+           does not help either, since black-over-black is still black.
+           --color-border (see its own definition) clears 3:1 against both
+           the page and this card's own surface, so a real border replaces
+           the shadow as the card's boundary. */
+        border: 1px solid var(--color-border) !important;
     }
     .body--dark .q-header {
         background-color: var(--color-header-bg);
@@ -401,7 +440,10 @@ theme_styles = """
         background-color: var(--color-btn-delete-bg);
         color: var(--color-btn-delete-text) !important;
         border: 1px solid var(--color-btn-delete-border);
-        width: 150px;
+        /* min-width, not width: a fixed width clips the label instead of
+           growing when the browser's text-zoom/reflow makes it wider
+           (1.4.4, 1.4.10). */
+        min-width: 150px;
     }
     .delete-style.disabled {
         background-color: var(--color-bg-disabled) !important;
@@ -412,24 +454,25 @@ theme_styles = """
         background-color: var(--color-bg-surface);
         color: var(--color-text-primary) !important;
         border: 1px solid var(--color-border);
-        width: 150px;
+        /* min-width, not width -- see .delete-style above. */
+        min-width: 150px;
     }
     .button-default-style {
         background-color: var(--color-btn-primary-bg) !important;
         color: var(--color-btn-primary-text) !important;
         border: 1px solid var(--color-btn-primary-border) !important;
-        width: 150px;
+        min-width: 150px;
     }
     .button-replace {
         background-color: var(--color-bg-surface);
         color: var(--color-brand-primary) !important;
         border: 1px solid var(--color-brand-primary);
-        width: 150px;
+        min-width: 150px;
     }
     .button-replace-current {
         background-color: var(--color-brand-accent);
         color: var(--color-text-primary) !important;
-        width: 150px;
+        min-width: 150px;
     }
     .button-replace-prev-next {
         background-color: var(--color-bg-surface);
@@ -438,19 +481,36 @@ theme_styles = """
     .button-close {
         background-color: var(--color-bg-surface);
         color: var(--color-text-primary) !important;
-        width: 150px;
+        min-width: 150px;
         border: 1px solid var(--color-border);
     }
     .button-user-status {
         background-color: var(--color-bg-surface);
-        width: 150px;
+        min-width: 150px;
         border: 1px solid var(--color-border);
     }
     .button-edit {
         background-color: var(--color-btn-edit-bg) !important;
         color: var(--color-btn-edit-text) !important;
         border: 1px solid var(--color-btn-edit-border) !important;
-        width: 150px;
+        min-width: 150px;
+    }
+
+    /* ── Username "view API token" control ── */
+    /* Was a plain underlined ui.label; is now a ui.button so it is
+       reachable and activatable from the keyboard (see pages/user.py). A
+       flat QBtn carries its own padding and minimum height, and in dark
+       mode -- from the global override just below -- its own border too.
+       Reset here so the control still looks like the underlined username
+       it replaces rather than a boxed button. */
+    .user-token-btn {
+        padding: 0 !important;
+        min-height: 0 !important;
+        font-weight: normal !important;
+        text-decoration: underline;
+    }
+    .body--dark .q-btn--flat.user-token-btn {
+        border: none !important;
     }
 
     /* ── Upload dropzone ── */
@@ -474,6 +534,33 @@ theme_styles = """
     .body--dark .q-btn--flat .q-icon,
     .body--dark .q-btn--flat .q-btn__content {
         color: var(--color-text-primary) !important;
+    }
+    /* .default-style's green background (var(--color-brand-accent),
+       #3d7a2e in dark mode) is set unconditionally further down, in both
+       themes, and the flat-button override above sets every flat button's
+       text to var(--color-text-primary) regardless of what it sits on.
+       #e6e8eb on #3d7a2e measures 4.25:1, short of the 4.5:1 that 1.4.11
+       Non-text Contrast (AA) requires for a control's own label; plain
+       white clears it at 5.22:1. */
+    .body--dark .q-btn.default-style {
+        color: #ffffff !important;
+    }
+    /* .block, not just .q-btn__content: on /home this button sits inside
+       the files table's own toolbar slot, which is a descendant of
+       .q-table (class table-style), and .table-style span further down
+       this file sets every span in the table -- .block, the innermost
+       span a QBtn actually paints its label text in, included -- to
+       var(--color-text-primary) with its own !important. Both rules are
+       unlayered and !important, so between them specificity decides;
+       .block needs naming here explicitly; .q-btn__content alone does not
+       reach it, since color set on a parent is overridden, not inherited
+       away, by a rule that names the child directly. Measured: without
+       this line the button's own color read back as white while the text
+       node inside it still measured 4.25:1. */
+    .body--dark .q-btn.default-style .q-icon,
+    .body--dark .q-btn.default-style .q-btn__content,
+    .body--dark .q-btn.default-style .block {
+        color: #ffffff !important;
     }
 
     /* ── Editor toolbar ── */
@@ -1126,10 +1213,33 @@ theme_styles = """
         opacity: 0.4;
     }
 
-    /* ── Dark mode primary button contrast ── */
-    .body--dark .q-btn.bg-primary {
-        background-color: var(--color-btn-primary-bg) !important;
-        border: 1px solid var(--color-btn-primary-border) !important;
+    /* ── Primary button contrast (Quasar color=primary / toggle-color=primary) ── */
+    /* Found while re-checking F-72 with axe rather than by eye, and not
+       actually dark-mode-specific despite where the old version of this
+       rule lived: Quasar's own "bg-primary" utility paints #5898d4 from
+       its JS config regardless of .body--light/dark, and white text on it
+       measures 3.06:1 in both -- on the theme toggle's own selected
+       segment (pages/user.py) and on any plain color=primary button
+       (several Save/Close buttons elsewhere use it). --color-btn-primary-*
+       already carries a themed pair meant for exactly this (see
+       .button-default-style above, a custom class that already reads
+       them without trouble), so the fix is applying that pair here too,
+       not one theme's version of it.
+       Doing so needs @layer: "bg-primary" and "text-white" both carry
+       !important from inside the quasar_importants layer, and for
+       !important declarations the cascade runs layer priority in
+       reverse, so an unlayered rule -- this one, before this change --
+       loses to every layered !important no matter its own specificity.
+       @layer theme is declared first, which for !important rules makes it
+       the strongest layer of all; the focus-ring fix above already
+       relies on the same thing. Measured after moving it in and adding
+       color: #5898d4/white becomes the themed pair, in both themes. */
+    @layer theme {
+        .q-btn.bg-primary {
+            background-color: var(--color-btn-primary-bg) !important;
+            color: var(--color-btn-primary-text) !important;
+            border: 1px solid var(--color-btn-primary-border) !important;
+        }
     }
 
     /* ── Table action buttons ── */
@@ -1155,7 +1265,10 @@ theme_styles = """
     /* ── Upload area ── */
     .upload-style {
         width: 100%;
-        height: 200px;
+        /* min-height, not height: a fixed height clips the dropzone's own
+           label/icon instead of growing when text-zoom/reflow makes its
+           content taller (1.4.4, 1.4.10). */
+        min-height: 200px;
     }
 
     /* ── Deletion warning ── */
@@ -1202,9 +1315,152 @@ theme_styles = """
         margin-right: 12px;
     }
 
+    /* Skip to content (WCAG 2.4.1) */
+    .skip-link {
+        position: absolute;
+        left: -9999px;
+        top: 0;
+        z-index: 10000;
+        padding: 10px 16px;
+        background-color: var(--color-bg-surface);
+        color: var(--color-text-primary);
+        border: 2px solid var(--color-brand-primary);
+        border-radius: 0 0 4px 0;
+        text-decoration: underline;
+        font-weight: 600;
+    }
+    .skip-link:focus,
+    .skip-link:focus-visible {
+        left: 0;
+    }
+
+    /* Global focus indicator (WCAG 2.4.7) - NEW
+       Two things are needed here, both verified in the browser:
+
+       1. !important. Quasar resets the outline on its own components.
+       2. @layer theme. NiceGUI declares
+          @layer theme, base, quasar, nicegui, components, utilities, overrides,
+          quasar_importants
+          and imports Quasar into those layers. For !important declarations the
+          cascade REVERSES layer order, so an earlier layer wins - and an unlayered
+          !important loses to every layered one. A plain
+          ":focus-visible { outline: ... !important }" in an unlayered <style>
+          therefore has no effect on q-btn, even though :focus-visible matches.
+          Putting it in the first layer, theme, makes it win.
+
+       Measured on the collapsed/expanded drawer button: without this the computed
+       style stays outline: none 0px; with it, outline: solid 3px.
+
+       Two exclusions were added after the rule shipped, both found by testing
+       the running page rather than by reading this rule:
+
+       -- [tabindex] excludes tabindex="-1" (the closing :not()). That value is
+          used for two different things: a control reachable by script but
+          skipped by Tab, and a plain landmark used only as a fragment/script
+          focus target -- see the skip-link target in common.py. The second is
+          not a control, and a ring around one is a box with nothing in it to
+          explain why it's there, which is exactly what a PR reviewer flagged
+          against that target. The bare :focus-visible on the first line needs
+          the same exclusion: activating the skip link focuses that target from
+          a keyboard action, and the browser carries the keyboard modality over,
+          so it matched :focus-visible on arrival same as anything else would.
+          Measured: without :not() here, the skip-link target still took the
+          ring even though [tabindex] on its own line already excluded it.
+
+       -- input, textarea and [contenteditable] are excluded too, and handled
+          by their own rule just below instead. Reported directly: clicking a
+          text input with the mouse left it ringed, and so did a field that
+          autofocuses with no interaction at all (the encryption passphrase
+          dialog). Measured cause: the browser's own :focus-visible heuristic,
+          which correctly tells keyboard from pointer focus for buttons and
+          links, does not do the same job for text-entry controls -- a plain
+          mouse click still matches it there. CSS alone cannot tell those cases
+          apart for text entry, so this rule leaves them out and the modality
+          script below decides for them instead. */
+    @layer theme {
+        :is(
+            :focus-visible,
+            a:focus-visible,
+            .q-btn:focus-visible,
+            .q-item:focus-visible,
+            .q-checkbox:focus-visible,
+            .q-toggle:focus-visible,
+            [tabindex]:focus-visible
+        ):not([tabindex="-1"]):not(input):not(textarea):not([contenteditable]) {
+            outline: 3px solid var(--color-brand-primary) !important;
+            outline-offset: 2px !important;
+        }
+    }
+
+    /* Text inputs, textareas and contenteditable, carved out above and
+       handled here instead -- see the exclusion note in the rule above for
+       why. scribe-user-is-tabbing is set by the script at the bottom of this
+       file from a Tab keydown and cleared from mousedown/pointerdown, so the
+       ring only appears once the browser has actually seen a keyboard.
+
+       The outline: none just below is deliberately not gated and not
+       !important: Quasar's own inputs already reset their outline in Quasar's
+       base styles, so this changes nothing for a q-field, but a plain
+       [contenteditable] built without Quasar has no such reset and would
+       otherwise fall back to the browser's own default focus outline, which
+       is not gated on anything. The transcript editor's own contenteditable
+       (utils/transcript_editor.py/.js) already has its own focus-visible
+       rules for word-marking (see below) and was not re-measured here -- this
+       is precautionary for [contenteditable] in general, not a claim about
+       what that element does today. Un-!important, so the gated rule after it
+       still wins whenever scribe-user-is-tabbing applies. */
+    @layer theme {
+        input:focus-visible,
+        textarea:focus-visible,
+        [contenteditable]:focus-visible {
+            outline: none;
+        }
+    }
+    @layer theme {
+        body.scribe-user-is-tabbing input:focus-visible,
+        body.scribe-user-is-tabbing textarea:focus-visible,
+        body.scribe-user-is-tabbing [contenteditable]:focus-visible {
+            outline: 3px solid var(--color-brand-primary) !important;
+            outline-offset: 2px !important;
+        }
+    }
+
+    /* Hidden visually, still read by screen readers */
+    .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+    }
+
     /* ── Drawer / menu ── */
+    /* The hover/active fill (--color-bg-surface-hover, set here and in
+       menu_active_style below) measured 1.1:1 (light, vs its own
+       --color-bg-surface-alt drawer background) and 1.18:1 (dark) -- both far
+       under 1.4.11's 3:1 for a state indicator. Making the fill itself hit
+       3:1 turned out to be a dead end for dark mode: the darkest value that
+       clears 3:1 against the drawer (#1e2128) has a luminance of ~0.146,
+       but the menu text (--color-text-primary, #e6e8eb, inherited onto
+       every label) needs the fill's luminance under ~0.140 to keep its own
+       4.5:1 (1.4.3) -- the two requirements do not overlap, so no single
+       fill colour satisfies both at once. An inset left-edge stripe sidesteps
+       the conflict: it is a graphical object the text does not sit on, so
+       only 1.4.11 applies to it, and --color-border already clears 3:1
+       against both drawers (4.39:1 light, 4.71:1 dark -- see its own
+       definition) with no new token needed. The existing background tint is
+       left in place as a secondary, non-required cue; box-shadow (not a
+       real border) so no element changes size when the stripe appears. */
+    .menu-item {
+        box-shadow: inset 3px 0 0 0 transparent;
+    }
     .menu-item:hover {
         background-color: var(--color-bg-surface-hover);
+        box-shadow: inset 3px 0 0 0 var(--color-border);
     }
     .q-drawer--mini .menu-header {
         display: none;
@@ -1220,8 +1476,20 @@ theme_styles = """
     .q-drawer--mini .menu-item .q-icon {
         margin: 0;
     }
+    /* Mini mode used to hide the label with display: none, which removed the
+       link's accessible name and left the icon ligature ("folder") as the only
+       text. Clip it visually instead so the name remains available to screen
+       readers. (WCAG 4.1.2) */
     .q-drawer--mini .menu-label {
-        display: none;
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
     }
 
     /* ── Announcement banners ── */
@@ -1428,7 +1696,21 @@ theme_styles = """
     }
 
     /* Shared hover message. A CSS box rather than title=, which the browser
-       draws itself and stylesheets cannot reach. */
+       draws itself and stylesheets cannot reach.
+
+       Note for 1.4.13 (Content on Hover or Focus): inside the live editor
+       this box never actually renders at all, for anyone, in any input
+       modality -- see .transcript-text .review-word::after further down,
+       which unconditionally sets content: none there to protect the text
+       caret, and the editor is the only place these spans are rendered
+       today (get_review_html/review_runs's other caller is test-only). So
+       there is currently no hover/focus-triggered content in the live app
+       for 1.4.13's Hoverable/Dismissible/Persistent to apply to; the actual
+       gap is that the explanation was not reaching anyone at all, sighted
+       or not, since data-review/data-edit are plain data attributes with no
+       accessibility-tree presence. aria-label (added on the spans in
+       transcript_editor.js) is the fix for that: it works with or without
+       the ::after box. */
     .review-word::after,
     .edit-word::after,
     .transcript-show-edits [data-changed]::after {
@@ -1891,6 +2173,32 @@ theme_styles = """
             box-shadow: 0 0 0 2px
                 color-mix(in srgb, var(--color-brand-primary) 70%, transparent);
         }
+    }
+
+    /* The timing row is not part of the caption's text, so a selection
+       dragged across captions must not paint it as though it were: a
+       reader selecting two captions is selecting words, and a highlighted
+       timestamp between them reads as text that is about to be deleted
+       with them (it never is -- see selectionSpan in transcript_editor.js,
+       which acts on the blocks' own text alone). The gutter already opts
+       out the same way. The fields themselves opt back in below, or their
+       own value could not be selected to be retyped. */
+    .transcript-time,
+    .transcript-subtitle-time {
+        user-select: none;
+    }
+    /* The field opts back in only while it has focus. A document selection
+       that merely encloses an input still paints that input's own value as
+       selected, so an unconditional user-select: text here was exactly what
+       kept the timestamps highlighted as a selection was dragged past them
+       -- and none of that value is ever part of what a cross-block delete
+       takes. Focus is enough for editing it: a click focuses the field on
+       mousedown, before any drag inside it begins. */
+    .transcript-time-input {
+        user-select: none;
+    }
+    .transcript-time-input:focus {
+        user-select: text;
     }
 
     .transcript-time {
@@ -2731,7 +3039,369 @@ theme_styles = """
             display: none !important;
         }
     }
+
+    /* ── Recorder (pages/record.py, utils/recorder.js) ──
+       Built for a phone on a lectern: one column, the width of a hand on a
+       phone and no wider than a card on a desk, and the one filled action
+       large enough for a thumb. */
+    .recorder-page {
+        max-width: 560px;
+        margin: 0 auto;
+        padding: 8px 16px 48px;
+    }
+    .recorder {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+    }
+    .recorder-live-name {
+        font-weight: 600;
+        font-size: 1rem;
+        color: var(--color-text-primary);
+        overflow-wrap: anywhere;
+        text-align: center;
+        margin-bottom: 14px;
+    }
+    /* The record button is the card: round, red, in the middle, with the
+       clock under it and the level beneath that. */
+    .recorder-hero {
+        width: 100%;
+        border-radius: 18px;
+        background-color: var(--color-bg-surface-alt);
+        border: 1px solid var(--color-border-subtle);
+        padding: 28px 20px 20px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        --recorder-meter: var(--color-text-danger);
+        --recorder-meter-paused: var(--color-text-muted);
+    }
+    .recorder-record {
+        width: 96px;
+        height: 96px;
+        border-radius: 50%;
+        border: 6px solid var(--color-bg-surface);
+        background-color: var(--color-text-danger);
+        color: #ffffff;
+        box-shadow: 0 0 0 2px var(--color-text-danger),
+            0 6px 18px rgba(211, 47, 47, 0.25);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        transition: transform 0.12s ease;
+    }
+    .recorder-record:hover:not(:disabled) {
+        transform: scale(1.04);
+    }
+    .recorder-record:focus-visible {
+        outline: 3px solid var(--color-brand-primary);
+        outline-offset: 4px;
+    }
+    .recorder-record:disabled {
+        opacity: 0.5;
+        cursor: default;
+    }
+    /* Stop asks twice: armed, the button says so by changing shape rather
+       than colour alone. */
+    .recorder-record.is-armed {
+        border-radius: 22px;
+    }
+    .recorder-record-icon {
+        display: flex;
+    }
+    .recorder-record-caption {
+        margin-top: 12px;
+        font-weight: 600;
+        color: var(--color-text-primary);
+    }
+    .recorder-clock {
+        font-family: var(--font-mono);
+        font-size: 2rem;
+        font-weight: 600;
+        color: var(--color-text-muted);
+        margin-top: 2px;
+    }
+    .recorder-hero.is-live .recorder-clock {
+        color: var(--color-text-primary);
+    }
+    .recorder-meter {
+        display: block;
+        width: 100%;
+        max-width: 320px;
+        height: 40px;
+        margin: 8px 0 4px;
+    }
+    .recorder-hero .q-btn {
+        margin-top: 8px;
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .recorder-record { transition: none; }
+        .recorder-record:hover:not(:disabled) { transform: none; }
+    }
+    /* Name and microphone: two equal columns, one control style, so the
+       two are the same height and width wherever they sit. */
+    .recorder-settings {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 12px;
+        width: 100%;
+    }
+    .recorder-setting {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 0;
+    }
+    .recorder-setting-label {
+        font-size: 0.8rem;
+        color: var(--color-text-secondary);
+    }
+    .recorder-field {
+        box-sizing: border-box;
+        width: 100%;
+        height: 44px;
+        padding: 0 12px;
+        border-radius: 8px;
+        border: 1px solid var(--color-border);
+        background-color: var(--color-bg-surface);
+        color: var(--color-text-primary);
+        font: inherit;
+        font-size: 0.95rem;
+        text-overflow: ellipsis;
+    }
+    .recorder-field::placeholder {
+        color: var(--color-text-muted);
+    }
+    .recorder-field:focus-visible {
+        outline: 2px solid var(--color-brand-primary);
+        outline-offset: 1px;
+    }
+    .recorder-field:disabled {
+        color: var(--color-text-muted);
+    }
+    @media (max-width: 400px) {
+        .recorder-settings {
+            grid-template-columns: minmax(0, 1fr);
+        }
+    }
+    .recorder-safety {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 18px;
+        font-size: 0.85rem;
+        color: var(--color-text-secondary);
+    }
+    .recorder-safety-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .recorder-primary,
+    .recorder-secondary {
+        border-radius: 999px !important;
+        min-height: 52px;
+        padding: 0 26px !important;
+        font-size: 1rem;
+        font-weight: 600;
+    }
+    .recorder-primary {
+        background-color: var(--color-brand-accent) !important;
+        color: var(--color-text-primary) !important;
+        border: 1px solid var(--color-border);
+    }
+    .recorder-secondary {
+        color: var(--color-text-primary) !important;
+        background-color: var(--color-bg-surface) !important;
+    }
+    .recorder-stop.is-armed {
+        background-color: var(--color-status-error-bg) !important;
+        border-color: var(--color-status-error-border);
+        color: var(--color-text-danger) !important;
+    }
+    .recorder-small {
+        min-height: 40px;
+        padding: 0 16px !important;
+        font-size: 0.9rem;
+    }
+    .recorder-quiet {
+        color: var(--color-text-secondary) !important;
+    }
+    .body--dark .recorder-quiet {
+        border-color: transparent !important;
+    }
+    .recorder-discard.is-armed {
+        color: var(--color-text-danger) !important;
+    }
+    .recorder-status {
+        font-size: 0.9rem;
+        color: var(--color-text-secondary);
+        text-align: center;
+        min-height: 1.2rem;
+    }
+    .recorder-banner {
+        border-radius: 10px;
+        padding: 10px 14px;
+        font-size: 0.9rem;
+        line-height: 1.35;
+        color: var(--color-text-primary);
+        border: 1px solid;
+    }
+    .recorder-banner-warn {
+        background-color: var(--color-severity-maint-bg);
+        border-color: var(--color-severity-maint-border);
+    }
+    .recorder-banner-danger {
+        background-color: var(--color-status-error-bg);
+        border-color: var(--color-status-error-border);
+    }
+    .recorder-help-row {
+        display: flex;
+        justify-content: center;
+    }
+    .recorder-help-card {
+        width: 100%;
+        max-width: 520px;
+    }
+    .recorder-help-title {
+        font-size: 1.2rem;
+        font-weight: 700;
+        line-height: 1.4;
+        margin: 0 0 8px;
+    }
+    /* Short headed sections rather than one list: read once, before the
+       first recording, and each part answers a question of its own. */
+    .recorder-help-section {
+        margin-top: 14px;
+    }
+    .recorder-help-heading {
+        font-size: 0.95rem;
+        font-weight: 700;
+        line-height: 1.4;
+        margin: 0 0 4px;
+        color: var(--color-text-primary);
+    }
+    .recorder-help-section p {
+        margin: 0 0 6px;
+        font-size: 0.9rem;
+        line-height: 1.45;
+        color: var(--color-text-secondary);
+    }
+    .recorder-list {
+        width: 100%;
+        margin-top: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+    .recorder-list-heading {
+        font-size: 1.1rem;
+        font-weight: 700;
+        margin: 0;
+        line-height: 1.4;
+        color: var(--color-text-primary);
+    }
+    .recorder-item {
+        border: 1px solid var(--color-border-subtle);
+        border-radius: 12px;
+        padding: 12px 14px;
+        background-color: var(--color-bg-surface);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+    .recorder-item-head {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    .recorder-item-text {
+        flex: 1;
+        min-width: 0;
+    }
+    .recorder-discard {
+        flex: none;
+        margin: -4px -6px 0 0;
+    }
+    .recorder-item-name {
+        font-weight: 600;
+        color: var(--color-text-primary);
+        overflow-wrap: anywhere;
+    }
+    .recorder-item-meta {
+        font-size: 0.8rem;
+        color: var(--color-text-muted);
+    }
+    .recorder-item-state {
+        display: flex;
+        align-items: flex-start;
+        gap: 6px;
+        margin-top: 4px;
+        font-size: 0.85rem;
+        color: var(--color-text-secondary);
+    }
+    .recorder-item-state .q-icon {
+        margin-top: 1px;
+        flex: none;
+    }
+    .recorder-item-state.is-ok .q-icon { color: var(--color-brand-primary); }
+    .recorder-item-state.is-warn .q-icon { color: var(--color-severity-maint-icon); }
+    .recorder-item-state.is-danger { color: var(--color-text-danger); }
+    .recorder-item-state.is-live .q-icon { color: var(--color-text-danger); }
+    .recorder-item-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+    .recorder-player {
+        width: 100%;
+    }
+    .recorder-reminder {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        padding: 8px 14px;
+        border-radius: 10px;
+        border: 1px solid var(--color-severity-info-border);
+        background-color: var(--color-severity-info-bg);
+        color: var(--color-text-primary);
+        font-size: 0.9rem;
+    }
+    .recorder-reminder-text {
+        flex: 1;
+    }
+    @media (max-width: 700px) {
+        .recorder-page {
+            padding: 4px 12px 40px;
+        }
+        .recorder-reminder {
+            flex-wrap: wrap;
+        }
+    }
 </style>
+<script>
+if (!window._scribeFocusModality) {
+    window._scribeFocusModality = true;
+    // Capture phase so a component that stops propagation on its own
+    // container still lets the document see the keydown/pointerdown.
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Tab') {
+            document.body.classList.add('scribe-user-is-tabbing');
+        }
+    }, true);
+    document.addEventListener('mousedown', function () {
+        document.body.classList.remove('scribe-user-is-tabbing');
+    }, true);
+    document.addEventListener('pointerdown', function (e) {
+        if (e.pointerType !== 'keyboard') {
+            document.body.classList.remove('scribe-user-is-tabbing');
+        }
+    }, true);
+}
+</script>
 """
 
 # Keep backward-compatible alias so existing `from utils.common import default_styles`
@@ -2819,10 +3489,21 @@ menu_item_style = (
     " cursor: pointer; font-size: 1.05rem;"
     " transition: background-color 0.15s; width: 100%;"
     " white-space: nowrap; overflow: hidden;"
+    # text-decoration and color are required, not cosmetic changes: the menu
+    # entries are now <a> elements, which browsers underline and paint in the
+    # link colour by default. Resetting both keeps the rendering identical to
+    # the current div-based menu.
+    " text-decoration: none; color: inherit;"
 )
 
 menu_active_style = (
     " background-color: var(--color-bg-surface-hover); font-weight: 600;"
+    # Same left-edge accent stripe as .menu-item:hover in styles.py, inlined
+    # here because this is an inline style (higher specificity than the
+    # external :hover rule) and the current-page item needs the stripe
+    # whether or not the pointer happens to be over it. See that rule's
+    # comment for why a stripe rather than the fill itself carries 1.4.11.
+    " box-shadow: inset 3px 0 0 0 var(--color-border);"
 )
 
 # ---------------------------------------------------------------------------

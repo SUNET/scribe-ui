@@ -375,7 +375,7 @@ class TranscriptEditor:
             # The strip is already drawing the caption it thought it was
             # making; nothing else would take it back off.
             self.refresh()
-            ui.notify("A caption already covers part of that", type="warning")
+            ui.notify("A caption already covers part of that", type="warning", timeout=None, close_button="Close")
 
             return
 
@@ -469,6 +469,7 @@ class TranscriptEditor:
         self.body.on("blocktext", lambda event: self.set_text(event.args))
         self.body.on("splitblock", lambda event: self.split(event.args))
         self.body.on("mergeblock", lambda event: self.merge(event.args))
+        self.body.on("deleterange", lambda event: self.delete_range(event.args))
         self.body.on("moveword", lambda event: self.move_word(event.args))
         self.body.on("addblock", lambda event: self.add_after(event.args))
         self.body.on("deleteblock", lambda event: self.delete(event.args))
@@ -552,16 +553,17 @@ class TranscriptEditor:
         return None
 
     @staticmethod
-    def block_id(args) -> Optional[int]:
+    def block_id(args, key: str = "id") -> Optional[int]:
         """
         Pull a block id out of an event payload, which came from the browser
-        and so is not trusted.
+        and so is not trusted. The key is named for the events that carry
+        more than one id -- a selection reaching across blocks has two ends.
         """
 
         if not isinstance(args, dict):
             return None
 
-        block_id = args.get("id")
+        block_id = args.get(key)
 
         return int(block_id) if isinstance(block_id, (int, float)) else None
 
@@ -739,6 +741,54 @@ class TranscriptEditor:
         self.refresh()
         self.changed()
         self.focus(survivor.index, offset)
+
+    def delete_range(self, args) -> None:
+        """
+        Apply a selection that reached across blocks -- Backspace, Delete,
+        a typed character, a paste or a cut over one, all of which the
+        component refuses to let the browser handle itself (see
+        selectionSpan in transcript_editor.js: a native edit there deletes
+        the gutters between the blocks along with the text, and the editor
+        comes apart).
+
+        One event, so one undo step, and the caret lands at the seam the way
+        it does after a merge -- the blocks the selection ended in are gone
+        from the DOM, and a caret left inside one of them does not survive
+        the render.
+        """
+
+        if not isinstance(args, dict):
+            return
+
+        first = self.caption(self.block_id(args, "startId"))
+        last = self.caption(self.block_id(args, "endId"))
+        start_offset = args.get("startOffset")
+        end_offset = args.get("endOffset")
+        text = args.get("text")
+
+        if first is None or last is None:
+            return
+
+        if not isinstance(start_offset, (int, float)):
+            return
+
+        if not isinstance(end_offset, (int, float)):
+            return
+
+        seam = self.editor.delete_range(
+            first,
+            last,
+            int(start_offset),
+            int(end_offset),
+            text if isinstance(text, str) else "",
+        )
+
+        if seam is None:
+            return
+
+        self.refresh()
+        self.changed()
+        self.focus(first.index, seam)
 
     def move_word(self, args) -> None:
         """
@@ -990,7 +1040,7 @@ class TranscriptEditor:
             return
 
         if name in self.editor.speakers:
-            ui.notify(f'"{name}" already exists', type="warning")
+            ui.notify(f'"{name}" already exists', type="warning", timeout=None, close_button="Close")
             return
 
         # A history entry of its own. The speaker list rides the undo snapshot
@@ -1032,7 +1082,7 @@ class TranscriptEditor:
             return
 
         if new in self.editor.speakers and new != old:
-            ui.notify(f'"{new}" already exists', type="warning")
+            ui.notify(f'"{new}" already exists', type="warning", timeout=None, close_button="Close")
             return
 
         renamed = [
@@ -1069,7 +1119,10 @@ class TranscriptEditor:
 
         if not self.remove_speaker(speaker):
             ui.notify(
-                f'"{speaker}" is still used by some blocks', type="warning"
+                f'"{speaker}" is still used by some blocks',
+                type="warning",
+                timeout=None,
+                close_button="Close",
             )
             return
 
@@ -1139,7 +1192,7 @@ class TranscriptEditor:
         """
 
         if end <= start:
-            ui.notify("A block has to end after it starts", type="warning")
+            ui.notify("A block has to end after it starts", type="warning", timeout=None, close_button="Close")
             return False
 
         self.editor.save_state_for_undo()
