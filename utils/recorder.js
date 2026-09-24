@@ -72,6 +72,75 @@ const FAILURES = {
   NotSupported: "This browser cannot record audio. Try an up-to-date Chrome, Edge, Firefox or Safari.",
 };
 
+// NiceGUI's own client reloads the page by itself in three places: a
+// reconnect attempt that times out (nicegui.js, "reloading because
+// connection timed out" -- which is exactly what a computer waking from
+// sleep, or a laptop between two wifi networks, runs into), a handshake the
+// server refuses, and a reconnect the server asks for.  A reload stops the
+// MediaRecorder.  What was recorded is safe either way, but a lecture must
+// not be cut in two because the lid was closed for a minute.
+//
+// So while a recording runs, those three are answered here instead: the
+// socket goes on reconnecting by itself, a handshake is made without the
+// reload behind it, and anything that really needs a fresh page is put off
+// until the recording has stopped -- and then only offered, not done,
+// since nothing on this page needs the socket to go on working: recording
+// and uploading are both the browser's own.  Every other moment the
+// original handlers run untouched.  Pinned against the NiceGUI release in
+// tests/test_recording.py, since it reaches into nicegui.js.
+const RELOAD_EVENTS = ["connect", "connect_error", "try_reconnect"];
+
+function guardReloads(busy, onStale) {
+  const socket = window.socket;
+  if (!socket || socket.__scribeGuarded) return !!socket;
+  socket.__scribeGuarded = true;
+
+  const original = {};
+  RELOAD_EVENTS.forEach((event) => {
+    original[event] = socket.listeners(event).slice();
+    socket.off(event);
+  });
+  const passOn = (event, args) => original[event].forEach((handler) => handler(...args));
+
+  socket.on("connect_error", (...args) => {
+    const error = args[0] || {};
+    if (busy() && (error.message === "timeout" || error.message === "Implicit handshake failed")) {
+      // socket.io keeps trying on its own; only the reload is skipped.
+      onStale();
+      return;
+    }
+    passOn("connect_error", args);
+  });
+
+  socket.on("try_reconnect", (...args) => {
+    if (busy()) {
+      onStale();
+      return;
+    }
+    passOn("try_reconnect", args);
+  });
+
+  socket.on("connect", (...args) => {
+    const query = (socket.io && socket.io.opts && socket.io.opts.query) || {};
+    if (!busy() || query.implicit_handshake) {
+      passOn("connect", args);
+      return;
+    }
+    // The handshake nicegui.js would make, without its reload on refusal.
+    socket.emit("handshake", query, (ok) => {
+      if (!ok) {
+        onStale();
+        return;
+      }
+      window.did_handshake = true;
+      const popup = document.getElementById("popup");
+      if (popup) popup.ariaHidden = true;
+    });
+  });
+
+  return true;
+}
+
 export default {
   template: `
     <div class="recorder">
@@ -87,6 +156,12 @@ export default {
       <div v-if="!persistent" class="recorder-banner recorder-banner-danger" role="alert">
         This browser does not let Scribe save recordings while they are made (a private
         window?). If this page closes before the recording is uploaded or downloaded, it is lost.
+      </div>
+
+      <div v-if="stale && !live" class="recorder-banner recorder-banner-warn" role="status">
+        The connection to Scribe was interrupted while recording. Your recordings are safe and
+        uploads carry on; reload the page to reconnect the rest of Scribe.
+        <q-btn flat no-caps dense class="recorder-quiet" icon="refresh" label="Reload" @click="reloadPage" />
       </div>
 
       <template v-if="!unsupported">
@@ -392,6 +467,7 @@ export default {
       freeHours: null,
       wakeLockSupported: !!(navigator.wakeLock && navigator.wakeLock.request),
       helpOpen: false,
+      stale: false,
       micRefused: "",
       keepDays: Math.round(window.ScribeRecorder ? window.ScribeRecorder.KEEP_UPLOADED_MS / 86400000 : 7),
       hiddenSince: null,
@@ -467,6 +543,21 @@ export default {
       this.redraw();
     }, 1000);
 
+    const guard = () =>
+      guardReloads(
+        () => !!(this.engine && this.engine.session()),
+        () => {
+          this.stale = true;
+        }
+      );
+    // window.socket is made when NiceGUI's root app mounts, which is after
+    // this component mounts; wait for it.
+    if (!guard()) {
+      this.guardTimer = setInterval(() => {
+        if (guard()) clearInterval(this.guardTimer);
+      }, 100);
+    }
+
     this.onResize = () => this.drawMeter();
     window.addEventListener("resize", this.onResize);
     this.$nextTick(() => this.drawMeter());
@@ -481,6 +572,7 @@ export default {
     if (this.unwatch) this.unwatch();
     if (this.ticker) clearInterval(this.ticker);
     if (this.slow) clearInterval(this.slow);
+    if (this.guardTimer) clearInterval(this.guardTimer);
     if (this.onDeviceChange) navigator.mediaDevices.removeEventListener("devicechange", this.onDeviceChange);
     document.removeEventListener("visibilitychange", this.onVisibility);
     window.removeEventListener("resize", this.onResize);
@@ -530,6 +622,15 @@ export default {
       if (this.awayMs > 2000) {
         out.push(
           "This page was in the background for " + clock(this.awayMs) + ". Some devices stop the microphone meanwhile; the level meter shows whether it is still hearing you."
+        );
+      }
+      const mine = this.items.find((item) => item.id === running.meta.id);
+      const sync = (mine && mine.sync) || {};
+      if (["offline", "auth", "unavailable", "error"].includes(sync.phase)) {
+        out.push(
+          "Not backed up to Scribe right now: " +
+            (sync.message || "no answer") +
+            " The recording is still being saved in this browser, and the backup catches up by itself."
         );
       }
       if (running.fellBack) {
@@ -738,6 +839,10 @@ export default {
       this.engine.discard(item.id);
     },
 
+    reloadPage() {
+      window.location.reload();
+    },
+
     goToFiles() {
       window.location.href = this.filesUrl;
     },
@@ -806,7 +911,7 @@ export default {
           case "auth":
             return "Signed out. Sign in again to finish the upload – it is saved in this browser.";
           case "unavailable":
-            return "Scribe is not answering right now. Saved in this browser." + retry;
+            return (sync.message || "Scribe is not answering right now.") + " Saved in this browser." + retry;
           case "elsewhere":
             return "Being uploaded from another tab";
           default:

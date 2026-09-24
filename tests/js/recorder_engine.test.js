@@ -52,7 +52,7 @@ function fakeServer() {
     if (init.headers["X-Scribe-Recording"] !== "1") return reply(400, {});
     if (server.status401) return reply(401, {});
 
-    const match = url.match(/^\/api\/recording\/([0-9a-f]{32})(\/part\/(\d+)|\/finish)?$/);
+    const match = url.match(/^\/record\/api\/([0-9a-f]{32})(\/part\/(\d+)|\/finish)?$/);
     if (!match) return reply(404, {});
     const rid = match[1];
     const held = server.parts.get(rid) || new Map();
@@ -356,7 +356,7 @@ test("parts lost between sending and finishing are sent again (409)", async () =
   assert.equal(dropped, true);
   assert.equal(server.requests.filter((r) => r.startsWith("POST")).length, 2);
   assert.equal(
-    server.requests.filter((r) => r === "PUT /api/recording/" + session.meta.id + "/part/0").length,
+    server.requests.filter((r) => r === "PUT /record/api/" + session.meta.id + "/part/0").length,
     2,
     "part 0 sent again"
   );

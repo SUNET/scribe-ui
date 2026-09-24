@@ -70,7 +70,11 @@ from utils.token import RefreshUnavailable, get_user_info, token_refresh
 settings = get_settings()
 log = logging.getLogger(__name__)
 
-API_PREFIX = "/api/recording"
+# Under /record, not /api: behind the reverse proxy /api/* belongs to
+# scribe-backend, so routes of this app there were answered 404 by the
+# backend and never reached. /record is the recorder page's own path, which
+# has to reach this app for the page to load at all.
+API_PREFIX = "/record/api"
 
 # The header every route requires.  Its value is not a secret; what matters
 # is that a cross-site page cannot set it without a preflight.
