@@ -38,7 +38,6 @@ from utils.helpers import (
     dark_mode_save,
     sanitize_filename,
 )
-from utils.recorder import record_panel
 from utils.styles import (
     default_styles,
     menu_active_style,
@@ -998,18 +997,12 @@ def _dropzone(upload) -> None:
     )
 
 
-def table_upload(table, mode: str = "files") -> None:
+def table_upload(table) -> None:
     """
     Open the upload dialog.
 
     Parameters:
         table: The jobs table a finished upload adds its row to.
-        mode: "files" for the drop target, "record" for the microphone.  The
-            two are separate dialogs rather than one holding both: the reader
-            has already said which they came for, and a recorder sitting under
-            a drop target is a second thing to read past every time a file is
-            uploaded.  Both are the same uploader underneath, so a recording
-            and a dropped file take exactly the same path from here.
     """
 
     ui.add_head_html(default_styles)
@@ -1080,10 +1073,7 @@ def table_upload(table, mode: str = "files") -> None:
 
                 upload.on("byte_progress", on_byte_progress)
 
-                if mode == "record":
-                    record_panel(upload)
-                else:
-                    _dropzone(upload)
+                _dropzone(upload)
 
                 with ui.row().style("justify-content: flex-end; gap: 12px;"):
                     with ui.button(

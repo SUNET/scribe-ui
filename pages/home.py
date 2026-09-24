@@ -281,22 +281,10 @@ def create() -> None:
                         "Select one or more files to transcribe"
                     )
 
-                # Two ways in, asked before the dialog rather than inside it:
-                # a reader who came to record should not have to find the
-                # recorder under a drop target, and one uploading a file
-                # should not have to read past a recorder to get to it.
                 with ui.button("Upload", icon="upload") as upload:
                     upload.props("color=black flat")
                     upload.classes("default-style")
-                    with ui.menu():
-                        ui.menu_item(
-                            "Upload files",
-                            lambda: table_upload(table, mode="files"),
-                        )
-                        ui.menu_item(
-                            "Record audio",
-                            lambda: table_upload(table, mode="record"),
-                        )
+                    upload.on("click", lambda: table_upload(table))
 
         async def update_rows():
             """
