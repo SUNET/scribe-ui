@@ -80,12 +80,18 @@ export default {
 
     this.engine = window.ScribeRecorder.engine(this.owner);
     this.seen = new Set();
+    // Only an upload that finishes while this page is open is news.  The
+    // engine announces a change while it is still reading storage, so
+    // without `ready` every recording uploaded on some earlier visit was
+    // announced again on every load of this page.
+    this.ready = false;
     this.unwatch = this.engine.onChange(() => this.redraw());
     this.engine.init().then(() => {
-      this.items = this.engine.list();
-      this.items.forEach((item) => {
+      this.engine.list().forEach((item) => {
         if (item.state === "uploaded") this.seen.add(item.id);
       });
+      this.ready = true;
+      this.redraw();
     });
   },
 
@@ -96,6 +102,7 @@ export default {
   methods: {
     redraw() {
       this.items = this.engine.list();
+      if (!this.ready) return;
       for (const item of this.items) {
         if (item.state === "uploaded" && !this.seen.has(item.id)) {
           this.seen.add(item.id);
