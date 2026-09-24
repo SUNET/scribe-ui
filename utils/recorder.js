@@ -89,15 +89,17 @@ const FAILURES = {
   NoKey: "Scribe could not be reached to start recording. Check the connection and try again.",
 };
 
-// NiceGUI's own client reloads the page by itself in three places: a
-// reconnect attempt that times out (nicegui.js, "reloading because
-// connection timed out" -- which is exactly what a computer waking from
-// sleep, or a laptop between two wifi networks, runs into), a handshake the
-// server refuses, and a reconnect the server asks for.  A reload stops the
-// MediaRecorder.  What was recorded is safe either way, but a lecture must
-// not be cut in two because the lid was closed for a minute.
+// NiceGUI reloads the page by itself in four places: a reconnect attempt
+// that times out (nicegui.js, "reloading because connection timed out" --
+// which is exactly what a computer waking from sleep, or a laptop between
+// two wifi networks, runs into), a handshake the server refuses, a
+// reconnect the server asks for, and -- from the server, as a plain
+// run_javascript -- a reconnect whose missed messages it can no longer
+// replay (outbox.py, try_rewind).  A reload stops the MediaRecorder.  What
+// was recorded is safe either way, but a lecture must not be cut in two
+// because the wifi went for a minute.
 //
-// So while a recording runs, those three are answered here instead: the
+// So while a recording runs, those four are answered here instead: the
 // socket goes on reconnecting by itself, a handshake is made without the
 // reload behind it, and anything that really needs a fresh page is put off
 // until the recording has stopped -- and then only offered, not done,
@@ -105,7 +107,9 @@ const FAILURES = {
 // and uploading are both the browser's own.  Every other moment the
 // original handlers run untouched.  Pinned against the NiceGUI release in
 // tests/test_recording.py, since it reaches into nicegui.js.
-const RELOAD_EVENTS = ["connect", "connect_error", "try_reconnect"];
+const RELOAD_EVENTS = ["connect", "connect_error", "try_reconnect", "run_javascript"];
+// What the server sends when it cannot replay a reconnect's missed messages.
+const SERVER_RELOAD = "window.location.reload()";
 
 function guardReloads(busy, onStale) {
   const socket = window.socket;
@@ -127,6 +131,17 @@ function guardReloads(busy, onStale) {
       return;
     }
     passOn("connect_error", args);
+  });
+
+  socket.on("run_javascript", (...args) => {
+    const message = args[0] || {};
+    if (busy() && typeof message.code === "string" && message.code.trim() === SERVER_RELOAD) {
+      // Passed on emptied rather than dropped: nicegui.js's own handler is
+      // what keeps count of the messages it has had.
+      onStale();
+      args[0] = Object.assign({}, message, { code: "undefined" });
+    }
+    passOn("run_javascript", args);
   });
 
   socket.on("try_reconnect", (...args) => {
