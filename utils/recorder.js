@@ -125,8 +125,13 @@ function guardReloads(busy, onStale) {
 
   socket.on("connect_error", (...args) => {
     const error = args[0] || {};
-    if (busy() && (error.message === "timeout" || error.message === "Implicit handshake failed")) {
-      // socket.io keeps trying on its own; only the reload is skipped.
+    if (busy() && error.message === "timeout") {
+      // socket.io keeps trying on its own; only the reload is skipped.  Not
+      // stale: the reconnect that follows either succeeds -- the page is
+      // whole again -- or is refused, and that refusal says so itself.
+      return;
+    }
+    if (busy() && error.message === "Implicit handshake failed") {
       onStale();
       return;
     }
