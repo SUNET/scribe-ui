@@ -335,9 +335,8 @@ def test_the_recorder_is_not_logged_out_mid_recording():
     assert "on_session_end=" in source
 
 
-def test_the_files_page_offers_recording_and_resumes_uploads():
+def test_the_files_page_resumes_uploads():
     home = (ROOT / "pages" / "home.py").read_text()
-    assert '"Record audio"' in home
     assert "RecorderReminder(" in home
     assert "engine_script()" in home
 

@@ -52,7 +52,24 @@ def create() -> None:
             if recorder["element"] is not None:
                 recorder["element"].end_session()
 
+<<<<<<< Updated upstream
         page_init(use_drawer=True, title="Record", on_session_end=session_ended)
+=======
+        page_init(use_drawer=True, title="Recorder", on_session_end=session_ended)
+
+        # Signed in, or nothing. Every other page is gated by page_init's
+        # token refresh navigating to the logout route when it fails, a
+        # moment after the page is drawn -- and this page asks page_init not
+        # to navigate (session_ended above), so it has to check for itself,
+        # before anything is drawn. Everything here runs in the browser: a
+        # page left open to a visitor who is not signed in is a working
+        # recorder, whatever the upload route then refuses.
+        owner = current_owner()
+        if not owner:
+            ui.navigate.to("/")
+            return
+
+>>>>>>> Stashed changes
         ui.add_head_html(default_styles)
         engine_script()
 

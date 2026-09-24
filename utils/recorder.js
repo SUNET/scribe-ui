@@ -231,7 +231,7 @@ export default {
             />
           </div>
           <div class="recorder-setting">
-            <label :for="deviceSelectId" class="recorder-setting-label">Microphone</label>
+            <label :for="deviceSelectId" class="recorder-setting-label">Audio source</label>
             <select
               :id="deviceSelectId"
               v-model="deviceId"
@@ -274,7 +274,7 @@ export default {
               <div class="recorder-help-section">
                 <h3 class="recorder-help-heading">Before you start</h3>
                 <p>Any up-to-date browser on a computer, phone or tablet works.</p>
-                <p>The browser asks for permission to use the microphone. Choose which microphone under "Microphone", and place it close to whoever is speaking.</p>
+                <p>The browser asks for permission to use the microphone. Choose which microphone under "Audio source", and place it close to whoever is speaking.</p>
               </div>
               <div class="recorder-help-section">
                 <h3 class="recorder-help-heading">While recording</h3>

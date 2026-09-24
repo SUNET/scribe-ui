@@ -332,21 +332,10 @@ def create() -> None:
                         "Select one or more files to transcribe"
                     )
 
-                # Two ways in, asked before any dialog rather than inside
-                # one: someone who came to record should not have to find a
-                # recorder under a drop target, and someone uploading a file
-                # should not have to read past a recorder.  Recording is its
-                # own page (pages/record.py) -- see there for why.
                 with ui.button("Upload", icon="upload") as upload:
-                    upload.props('color=black flat aria-haspopup="menu"')
+                    upload.props("color=black flat")
                     upload.classes("default-style")
-                    with ui.menu():
-                        ui.menu_item(
-                            "Upload files", lambda: table_upload(table)
-                        ).props('aria-label="Upload audio or video files"')
-                        ui.menu_item(
-                            "Record audio", lambda: ui.navigate.to("/record")
-                        ).props('aria-label="Record audio with the microphone"')
+                    upload.on("click", lambda: table_upload(table))
 
         async def update_rows():
             """
