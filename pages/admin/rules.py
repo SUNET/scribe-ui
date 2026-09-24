@@ -1097,7 +1097,10 @@ def rules_page() -> None:
                 # a whole-page reload for flipping one switch is an
                 # unannounced context change (3.2.2) and throws focus back
                 # to the top of the page, away from the switch just used.
-                for rule in rules_list:
+                # Match against rules_table.rows, not rules_list: NiceGUI
+                # wraps a prop's value in observable copies, so rules_list
+                # is not what the table renders from.
+                for rule in rules_table.rows:
                     if rule["id"] == rule_id:
                         rule["enabled"] = new_enabled
                         rule["enabled_label"] = "Yes" if new_enabled else "No"
