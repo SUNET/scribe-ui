@@ -182,6 +182,19 @@ def test_status_finish_and_discard_are_passed_on(backend):
     assert backend["calls"][-1][:2] == ("DELETE", f"/api/v1/recordings/{RID}")
 
 
+def test_a_finished_recording_is_deleted_as_a_job(backend):
+    run(recording_api.recording_job_delete("job-1", request(method="DELETE")))
+    assert backend["calls"][-1][:2] == ("DELETE", "/api/v1/transcriber/job-1")
+
+    # Already gone counts as deleted, not as a backend to retry.
+    backend["status"] = 404
+    assert payload(run(recording_api.recording_job_delete("job-1", request(method="DELETE"))))[0] == 200
+
+    with pytest.raises(HTTPException) as caught:
+        run(recording_api.recording_job_delete("../x", request(method="DELETE")))
+    assert caught.value.status_code == 404
+
+
 def test_missing_parts_are_passed_back_to_the_browser(backend):
     backend["status"] = 409
     backend["answer"] = {"missing": [0, 2]}

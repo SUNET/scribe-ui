@@ -68,14 +68,14 @@ class Recorder(ui.element, component="recorder.js"):
     this device with what has become of each.
     """
 
-    def __init__(self, owner: str, files_url: str = "/home") -> None:
+    def __init__(self, owner: str) -> None:
         super().__init__()
         self._props["owner"] = owner
-        self._props["filesUrl"] = files_url
         self._props["sessionEnded"] = False
         self._props["logoutUrl"] = ""
         self._props["originalUrl"] = ORIGINAL_PREFIX
         self._props["recentUrl"] = API_PREFIX + "/recent"
+        self._props["jobUrl"] = API_PREFIX + "/job"
 
     def end_session(self, logout_url: str) -> None:
         """

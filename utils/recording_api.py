@@ -373,6 +373,27 @@ async def recording_finish(rid: str, request: Request) -> JSONResponse:
     )
 
 
+@app.delete(API_PREFIX + "/job/{job_id}")
+async def recording_job_delete(job_id: str, request: Request) -> JSONResponse:
+    """
+    Delete a recording that has already become a job -- the same delete
+    My files makes.  The backend only deletes the caller's own jobs.
+    """
+
+    _caller(request)
+
+    if not JOB_PATTERN.match(job_id or ""):
+        raise HTTPException(status_code=404, detail="not found")
+
+    response = await _backend("DELETE", f"/transcriber/{job_id}")
+
+    # Gone already is as good as deleted.
+    if response.status_code == 404:
+        return JSONResponse({"deleted": job_id})
+
+    return _answer(response)
+
+
 @app.delete(API_PREFIX + "/{rid}")
 async def recording_discard(rid: str, request: Request) -> JSONResponse:
     _caller(request)
