@@ -510,8 +510,10 @@ def page_init(
         menu_btn_tooltip_ref = None
 
         def navigate_closing_menu(path: str) -> None:
-            if app.storage.user.get("drawer_open", False):
-                toggle_drawer()
+            # Only remembered, not drawn: collapsing this page's menu first
+            # showed Quasar's mini rail of icons for a moment before the next
+            # page, drawn closed, replaced it.
+            app.storage.user["drawer_open"] = False
             ui.navigate.to(path)
 
         # menu_item_style, menu_active_style imported from utils.styles
