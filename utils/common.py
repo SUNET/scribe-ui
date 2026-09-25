@@ -976,6 +976,26 @@ async def jobs_get() -> list | None:
     return jobs
 
 
+async def job_has_original(uuid: str) -> bool:
+    """
+    Whether the backend kept an original for this job, i.e. whether it was
+    made in the recorder.  False whenever it cannot be asked: the editor
+    then simply does not offer the original.
+    """
+
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.get(
+                f"{settings.API_URL}/api/v1/transcriber",
+                params={"job_id": uuid},
+                headers=get_auth_header(),
+            )
+            response.raise_for_status()
+            return bool((response.json().get("result") or {}).get("has_original"))
+    except (httpx.HTTPError, ValueError, AttributeError):
+        return False
+
+
 def open_result(event, page: str) -> None:
     """
     Open a completed job on one of the two pages that can show it.
@@ -1779,7 +1799,9 @@ async def __delete_files(table: ui.table, dialog: ui.dialog) -> None:
 def table_bulk_export(table: ui.table) -> None:
     """
     Handle bulk export of selected completed jobs as a zip file.
-    All selected jobs must be of the same type (output_format).
+    All selected completed jobs must be of the same type (output_format).
+    Recordings among the selection, transcribed or not, offer their original
+    too; with nothing transcribed, the originals are the whole export.
     """
 
     selected = table.selected
@@ -1787,8 +1809,21 @@ def table_bulk_export(table: ui.table) -> None:
         ui.notify("No files selected", type="warning", position="top", timeout=None, close_button="Close")
         return
 
+    # Recordings offer their original whether they are transcribed or not.
+    originals = [
+        (r["filename"], r["uuid"])
+        for r in selected
+        if r.get("is_recording") and r.get("uuid")
+    ]
+
     completed = [r for r in selected if r.get("status") == "Completed"]
     if not completed:
+        if originals:
+            from utils.srt_export import show_originals_dialog
+
+            show_originals_dialog(originals)
+            return
+
         ui.notify("No already completed files selected", type="warning", position="top", timeout=None, close_button="Close")
         return
 
@@ -1865,7 +1900,9 @@ def table_bulk_export(table: ui.table) -> None:
         progress_dialog.close()
         # Use the first editor to show the export dialog with all editors
         first_filename, first_editor = editors[0]
-        first_editor.show_export_dialog(first_filename, bulk_editors=editors)
+        first_editor.show_export_dialog(
+            first_filename, bulk_editors=editors, originals=originals
+        )
 
     ui.timer(0.1, fetch_and_show, once=True)
 

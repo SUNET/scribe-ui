@@ -420,10 +420,31 @@ def test_the_recorder_lists_only_what_has_not_reached_my_files():
     assert "Download original" not in component
 
 
-def test_my_files_marks_recordings_and_offers_their_original():
+def test_my_files_marks_recordings_and_exports_their_original():
     home = (ROOT / "pages" / "home.py").read_text()
     common = (ROOT / "utils" / "common.py").read_text()
     assert '"is_recording": bool(job.get("has_original"))' in common
-    assert home.count("props.row.is_recording && props.row.uuid") == 2, "table and card"
     assert home.count("jobs-recording-badge") == 2, "table and card"
-    assert '.replace("__ORIGINAL__", ORIGINAL_PREFIX)' in home
+    # No per-row download: the original is part of Export.
+    assert "Download original" not in home
+    assert "ORIGINAL_PREFIX" not in home
+    assert "originals=originals" in common
+    assert "show_originals_dialog(originals)" in common
+
+
+def test_originals_are_downloaded_from_scribe_one_by_one(monkeypatch):
+    from utils import srt_export
+
+    urls = []
+    monkeypatch.setattr(
+        srt_export.ui.download, "from_url", lambda url, *a, **k: urls.append(url)
+    )
+
+    srt_export.download_originals([("Lecture", "job-1"), ("Seminar", "a/b")])
+
+    assert urls == [
+        recording_api.ORIGINAL_PREFIX + "/job-1",
+        recording_api.ORIGINAL_PREFIX + "/a%2Fb",
+    ]
+    assert srt_export.originals_label([("x", "1")]) == "Download the original recording"
+    assert srt_export.originals_label([("x", "1"), ("y", "2")]).endswith("(2)")

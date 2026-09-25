@@ -28,12 +28,97 @@ import json
 
 from nicegui import ui
 
+from urllib.parse import quote
+
 from utils.helpers import sanitize_filename
+from utils.recording_api import ORIGINAL_PREFIX
 from utils.settings import get_settings
 from utils.styles import default_styles
 
 settings = get_settings()
 
+
+
+def download_originals(originals: list[tuple[str, str]]) -> None:
+    """
+    Download the original of each recording in `originals` ((filename,
+    uuid) pairs).  Each is its own download, streamed from Scribe through
+    ORIGINAL_PREFIX rather than packed into a ZIP here: an original of a
+    long lecture is tens of megabytes, and this process would otherwise
+    hold every one of them in memory at once.  The backend's own
+    Content-Disposition names the file.
+    """
+
+    for _, uuid in originals:
+        ui.download.from_url(f"{ORIGINAL_PREFIX}/{quote(uuid, safe='')}")
+
+
+def originals_label(originals: list[tuple[str, str]]) -> str:
+    """The wording of the option, for one recording or several."""
+
+    if len(originals) == 1:
+        return "Download the original recording"
+
+    return f"Download the original recordings ({len(originals)})"
+
+
+def show_originals_dialog(originals: list[tuple[str, str]]) -> None:
+    """
+    Export for a selection with recordings in it and nothing transcribed:
+    the originals are all there is to export.
+    """
+
+    with ui.dialog().props('aria-label="Download original recordings"') as dialog:
+
+        def _close_and_delete() -> None:
+            dialog.close()
+            dialog.delete()
+
+        with ui.card().classes("p-6").style(
+            "min-width: min(480px, 100%); background-color: var(--color-bg-surface-alt);"
+        ):
+            with ui.row().classes("w-full items-center justify-between no-wrap"):
+                ui.label(
+                    "Download original recording"
+                    if len(originals) == 1
+                    else "Download original recordings"
+                ).classes("text-h5 font-bold")
+                ui.button(icon="close", on_click=_close_and_delete).props(
+                    "flat round dense color=grey-7 aria-label='Close'"
+                )
+
+            ui.label(
+                "None of the selected files is transcribed yet. The original "
+                "recording is downloaded exactly as it was recorded."
+            ).classes("text-body2")
+
+            with ui.column().classes("gap-1 w-full"):
+                for name, _ in originals:
+                    with ui.row().classes("items-center no-wrap gap-2"):
+                        ui.icon("mic", size="18px").props('aria-hidden="true"')
+                        ui.label(name).classes("text-body1").style(
+                            "overflow-wrap: anywhere;"
+                        )
+
+            if len(originals) > 1:
+                ui.label(
+                    "Each recording is downloaded as its own file; your browser "
+                    "may ask before allowing several downloads."
+                ).classes("text-caption").style("color: var(--color-text-muted);")
+
+            def download() -> None:
+                download_originals(originals)
+                _close_and_delete()
+
+            with ui.row().classes("w-full justify-end gap-2"):
+                ui.button("Close", on_click=_close_and_delete).props(
+                    "outline color=black"
+                )
+                ui.button("Download", icon="download", on_click=download).props(
+                    "flat color=white"
+                ).classes("button-default-style")
+
+    dialog.open()
 
 class ExportMixin:
     """
@@ -168,12 +253,20 @@ class ExportMixin:
 
 
     def show_export_dialog(
-        self, filename: str, bulk_editors: list | None = None
+        self,
+        filename: str,
+        bulk_editors: list | None = None,
+        originals: list[tuple[str, str]] | None = None,
     ) -> None:
         """
         Show comprehensive export dialog with format options and live preview.
         When bulk_editors is provided (list of (filename, editor) tuples),
         the preview is skipped and files are exported as a zip archive.
+
+        `originals` ((filename, uuid) pairs) are recordings whose original
+        can be downloaded alongside -- transcribed or not, in a bulk export.
+        Left out, a single export offers the open job's own original when it
+        is a recording.
         """
         import io
         import zipfile
@@ -184,8 +277,13 @@ class ExportMixin:
             bulk_editors = [(sanitize_filename(fn), ed) for fn, ed in bulk_editors]
 
         is_bulk = bulk_editors is not None and len(bulk_editors) > 0
-        # For bulk mode with txt formats: show preview using first file
-        bulk_needs_preview = is_bulk and self.data_format == "txt"
+        if originals is None and not is_bulk and self.has_original:
+            originals = [(filename, self.uuid)]
+        originals = originals or []
+        # Bulk export shows the same dialog as a single one, previewing the
+        # first file -- subtitles included, which once got a narrow dialog
+        # with no preview at all.
+        bulk_needs_preview = is_bulk
 
         ui.add_head_html(default_styles)
         with ui.dialog().props('aria-label="Export transcript"') as dialog:
@@ -202,9 +300,15 @@ class ExportMixin:
                 ui.card()
                 .classes("p-6")
                 .style(
-                    f"min-width: {'1000' if (not is_bulk or bulk_needs_preview) else '500'}px; "
-                    f"max-width: {'1400' if (not is_bulk or bulk_needs_preview) else '700'}px; "
-                    "max-height: 90vh; overflow-y: auto; "
+                    # A fixed width, not a range the content settles in:
+                    # with short captions the preview is narrow, and the
+                    # dialog shrank to 1000px around it.
+                    (
+                        "width: min(1400px, 95vw); max-width: 95vw; "
+                        if (not is_bulk or bulk_needs_preview)
+                        else "min-width: min(500px, 95vw); max-width: min(700px, 95vw); "
+                    )
+                    + "max-height: 90vh; overflow-y: auto; "
                     "background-color: var(--color-bg-surface-alt);"
                 )
             )
@@ -227,10 +331,31 @@ class ExportMixin:
                 with ui.row().classes("w-full gap-6"):
                     # Left: Options (fixed width when preview shown)
                     with ui.column().classes("gap-4").style(
-                        "flex: 0 0 400px;"
+                        "flex: 0 0 400px; min-width: 0;"
                         if (not is_bulk or bulk_needs_preview)
                         else "width: 100%;"
                     ):
+                        # A recording's original, first in the dialog: below
+                        # the preview it had to be scrolled to.  Off by
+                        # default: it is a large download nobody asked for by
+                        # opening Export.
+                        include_originals = None
+                        if originals:
+                            ui.label(
+                                "Original recording"
+                                if len(originals) == 1
+                                else "Original recordings"
+                            ).classes("text-subtitle1 font-semibold")
+                            include_originals = ui.checkbox(
+                                originals_label(originals), value=False
+                            )
+                            ui.label(
+                                "Exactly as it was recorded, as its own download."
+                            ).classes("text-caption").style(
+                                "color: var(--color-text-muted); margin-top: -8px;"
+                            )
+                            ui.separator()
+
                         # Format
                         ui.label("Format").classes("text-subtitle1 font-semibold")
                         if self.data_format == "srt":
@@ -258,11 +383,11 @@ class ExportMixin:
                         ui.separator()
 
                         # Options container - will show/hide based on format
-                        options_container = ui.column().classes("gap-4")
+                        options_container = ui.column().classes("w-full gap-4")
 
                         with options_container:
                             # Timestamps (for txt, json, csv, tsv)
-                            ts_section = ui.column().classes("gap-2")
+                            ts_section = ui.column().classes("w-full gap-2")
                             with ts_section:
                                 ui.label("Timestamps").classes(
                                     "text-subtitle1 font-semibold"
@@ -314,7 +439,7 @@ class ExportMixin:
                                 ui.separator()
 
                             # Text options (for txt only)
-                            txt_section = ui.column().classes("gap-2")
+                            txt_section = ui.column().classes("w-full gap-2")
                             with txt_section:
                                 ui.label("Text options").classes(
                                     "text-subtitle1 font-semibold"
@@ -354,7 +479,7 @@ class ExportMixin:
                                 ui.separator()
 
                             # RTF options
-                            rtf_section = ui.column().classes("gap-2")
+                            rtf_section = ui.column().classes("w-full gap-2")
                             with rtf_section:
                                 ui.label("RTF Options").classes(
                                     "text-subtitle1 font-semibold"
@@ -368,7 +493,7 @@ class ExportMixin:
                                 ui.separator()
 
                             # CSV options (for csv only)
-                            csv_section = ui.column().classes("gap-2")
+                            csv_section = ui.column().classes("w-full gap-2")
                             with csv_section:
                                 ui.label("CSV Options").classes(
                                     "text-subtitle1 font-semibold"
@@ -390,7 +515,7 @@ class ExportMixin:
                                 ui.separator()
 
                             # TSV options (for tsv only)
-                            tsv_section = ui.column().classes("gap-2")
+                            tsv_section = ui.column().classes("w-full gap-2")
                             with tsv_section:
                                 ui.label("TSV Options").classes(
                                     "text-subtitle1 font-semibold"
@@ -431,7 +556,7 @@ class ExportMixin:
                                 ui.separator()
 
                             # JSON options (for json only)
-                            json_section = ui.column().classes("gap-2")
+                            json_section = ui.column().classes("w-full gap-2")
                             with json_section:
                                 ui.label("JSON Options").classes(
                                     "text-subtitle1 font-semibold"
@@ -450,8 +575,6 @@ class ExportMixin:
                                     "Escape non-ASCII characters", value=False
                                 )
                                 ui.separator()
-
-                        bulk_preview_col = None
 
                         def update_options_visibility():
                             """
@@ -473,17 +596,6 @@ class ExportMixin:
                             json_section.visible = current_fmt == "json"
                             rtf_section.visible = current_fmt == "rtf"
 
-                            # In bulk mode, show/hide preview based on format
-                            if bulk_needs_preview and bulk_preview_col is not None:
-                                show_prev = current_fmt not in ["srt", "vtt"]
-                                bulk_preview_col.visible = show_prev
-                                # Resize dialog based on preview visibility
-                                card.style(
-                                    f"min-width: {'1000' if show_prev else '500'}px; "
-                                    f"max-width: {'1400' if show_prev else '700'}px; "
-                                    "background-color: var(--color-bg-surface);"
-                                )
-
                         fmt.on(
                             "update:model-value", lambda: update_options_visibility()
                         )
@@ -492,8 +604,6 @@ class ExportMixin:
                     show_preview = not is_bulk or bulk_needs_preview
                     if show_preview:
                         preview_col = ui.column().classes("flex-1")
-                        if bulk_needs_preview:
-                            bulk_preview_col = preview_col
                         with preview_col:
                             if bulk_needs_preview:
                                 first_fn = (
@@ -506,7 +616,7 @@ class ExportMixin:
                                 ui.label("Preview").classes(
                                     "text-subtitle1 font-semibold mb-2"
                                 )
-                            with ui.card().classes("bg-gray-900 p-4").style(
+                            with ui.card().classes("w-full bg-gray-900 p-4").style(
                                 "height: 550px; overflow-y: auto;"
                             ):
                                 prev = (
@@ -1048,6 +1158,10 @@ class ExportMixin:
                                     )
                             except Exception as e:
                                 ui.notify(f"Export failed: {str(e)}", type="negative", timeout=None, close_button="Close")
+                                return
+
+                            if include_originals is not None and include_originals.value:
+                                download_originals(originals)
 
                         ui.button("Export", icon="download", on_click=exp).props(
                             "flat color=white"

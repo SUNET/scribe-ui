@@ -73,6 +73,9 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         """
 
         self.uuid = uuid
+        # A recording made in the recorder: Export offers its original.
+        # Asked of the backend once the page is up (pages/srt.py).
+        self.has_original = False
         self.srt_format = srt_format
         self.captions: List[SRTCaption] = []
         self.selected_caption: Optional[SRTCaption] = None
