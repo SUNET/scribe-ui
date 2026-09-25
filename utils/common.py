@@ -663,7 +663,7 @@ def page_init(
         ):
             with ui.element("div").style(
                 "display: flex; gap: 0px; align-items: center; margin-left: -12px;"
-            ):
+            ).classes("header-brand"):
                 # Skip to content. The first focusable element on the page.
                 # Without it the main menu entries would precede the page content
                 # in the tab order on every page load (WCAG 2.4.1).
@@ -709,7 +709,9 @@ def page_init(
                     "text-h6 text-theme-primary topbar-text"
                 )
 
-            with ui.element("div").style("display: flex; gap: 0px;"):
+            with ui.element("div").style("display: flex; gap: 0px;").classes(
+                "header-actions"
+            ):
                 dark_val = app.storage.user.get("dark_mode", None)
                 dark_icon = (
                     "dark_mode"
