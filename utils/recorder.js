@@ -460,30 +460,38 @@ export default {
               <h2 id="recorder-help-title" class="recorder-help-title">How recording works</h2>
               <div class="recorder-help-section">
                 <h3 class="recorder-help-heading">Before you start</h3>
-                <p>Any up-to-date browser on a computer, phone or tablet works.</p>
-                <p>The browser asks for permission to use the microphone. Choose which microphone under "Audio source", and place it close to whoever is speaking.</p>
+                <p>Choose the microphone you want to use under Audio source.</p>
+                <p>Check the audio level while you speak. If you want to make sure the recording sounds good, use Test audio to record and play back a short test.</p>
+                <p>Place the microphone close to whoever is speaking. For a long recording, connect your device to a charger.</p>
               </div>
               <div class="recorder-help-section">
-                <h3 class="recorder-help-heading">While recording</h3>
-                <p>Keep this page open. On a computer, keep it from going to sleep; on a phone or tablet, keep the screen on{{ wakeLockSupported ? " – Scribe asks the device to stay awake for you" : "" }}.</p>
-                <p>For a long recording, connect the charger.</p>
+                <h3 class="recorder-help-heading">Start recording</h3>
+                <p>Select Start recording to begin.</p>
+                <p>Keep this page open while recording. On a computer, prevent it from going to sleep. On a phone or tablet, keep the screen on. Scribe asks the device to stay awake for you, but some devices may still turn the screen off.</p>
+                <p>You can see how long you have been recording on the timer.</p>
               </div>
               <div class="recorder-help-section">
-                <h3 class="recorder-help-heading">When you stop</h3>
-                <p>The recording goes to Scribe by itself and appears in My files, ready to transcribe. Nothing of it is left in this browser.</p>
+                <h3 class="recorder-help-heading">Stop recording</h3>
+                <p>Select Stop recording when you are finished.</p>
+                <p>Sunet Scribe completes the upload and the recording appears in My files. You can then transcribe it in the same way as any other audio file.</p>
+                <p>Do not close the page until Sunet Scribe confirms that the recording has been saved.</p>
               </div>
               <div class="recorder-help-section">
                 <h3 class="recorder-help-heading">If something goes wrong</h3>
-                <p>If the connection drops, the recording is kept in this browser second by second and sent when the connection is back. If the browser or the device crashes, open this page again: everything that reached Scribe or was kept in this browser is there. While connected, a crash loses at most the last few seconds.</p>
+                <p>Sunet Scribe saves the recording continuously while you record. When you are online, recorded audio is sent to Sunet Scribe every few seconds.</p>
+                <p>If the connection is lost, recording continues in this browser and uploading resumes when the connection returns.</p>
+                <p>If the browser or device crashes, open this page again. Sunet Scribe will recover anything that had already reached the service or was saved in this browser. While connected, only the last few seconds may be lost.</p>
               </div>
               <div class="recorder-help-section">
-                <h3 class="recorder-help-heading">Keeping the original</h3>
-                <p>Scribe keeps the original recording with the transcription, for 7 days like everything else. Download it from My files.</p>
+                <h3 class="recorder-help-heading">Your original recording</h3>
+                <p>Sunet Scribe keeps the original recording in My files for 7 days, just like other uploaded files. You can download it during that time.</p>
               </div>
               <div class="recorder-help-section">
                 <h3 class="recorder-help-heading">Privacy and security</h3>
-                <p>The recording is sent to Scribe while you record, a few seconds at a time, over an encrypted connection, and stored encrypted there under your account only. Nothing of it is stored in this browser while it can be sent. Only if it cannot is it kept here until it can, encrypted with a key this browser gets from Scribe when you are signed in, and deleted as soon as it has been sent.</p>
-                <p>A downloaded original is an ordinary file on your device. Keep it the way your organisation asks you to keep recordings of people.</p>
+                <p>While you are online, recorded audio is sent to Scribe over an encrypted connection and stored encrypted under your account.</p>
+                <p>If audio cannot be sent immediately, it is temporarily stored in this browser. It is encrypted using a key provided by Scribe while you are signed in and is removed from the browser after it has been successfully sent.</p>
+                <p>Anyone who can use this browser may be able to access locally stored recordings while you are signed in. Avoid leaving unfinished recordings on a shared device.</p>
+                <p>A downloaded recording is an ordinary file on your device. Store and handle it according to your organisation's requirements.</p>
               </div>
             </q-card-section>
             <q-card-actions align="right">
@@ -673,7 +681,6 @@ export default {
       stopArmed: false,
       discardArmed: null,
       freeHours: null,
-      wakeLockSupported: !!(navigator.wakeLock && navigator.wakeLock.request),
       helpOpen: false,
       stale: false,
       micRefused: "",
