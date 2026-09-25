@@ -122,6 +122,15 @@ function guardReloads(busy, onStale) {
     socket.off(event);
   });
   const passOn = (event, args) => original[event].forEach((handler) => handler(...args));
+  // A page that is stale -- above all one whose client the server no longer
+  // has, after a restart -- never reconnects: socket.io does not retry a
+  // refused connection.  NiceGUI's "Connection lost" popup would stay up for
+  // good, over a recording that is going on fine; the page says so itself.
+  const stale = () => {
+    const popup = document.getElementById("popup");
+    if (popup) popup.ariaHidden = true;
+    onStale();
+  };
 
   // nicegui.js puts next_message_id in the socket's query once, at page
   // load, and never moves it on -- so every reconnect asks the server to
@@ -146,7 +155,7 @@ function guardReloads(busy, onStale) {
       return;
     }
     if (busy() && error.message === "Implicit handshake failed") {
-      onStale();
+      stale();
       return;
     }
     passOn("connect_error", args);
@@ -157,7 +166,7 @@ function guardReloads(busy, onStale) {
     if (busy() && typeof message.code === "string" && message.code.trim() === SERVER_RELOAD) {
       // Passed on emptied rather than dropped: nicegui.js's own handler is
       // what keeps count of the messages it has had.
-      onStale();
+      stale();
       args[0] = Object.assign({}, message, { code: "undefined" });
     }
     passOn("run_javascript", args);
@@ -165,7 +174,7 @@ function guardReloads(busy, onStale) {
 
   socket.on("try_reconnect", (...args) => {
     if (busy()) {
-      onStale();
+      stale();
       return;
     }
     passOn("try_reconnect", args);
@@ -180,7 +189,7 @@ function guardReloads(busy, onStale) {
     // The handshake nicegui.js would make, without its reload on refusal.
     socket.emit("handshake", query, (ok) => {
       if (!ok) {
-        onStale();
+        stale();
         return;
       }
       window.did_handshake = true;
@@ -277,6 +286,13 @@ export default {
         window?). If this page closes, whatever has not yet reached Scribe is lost.
       </div>
 
+      <!-- Stands in for NiceGUI's own "Connection lost" popup, which
+           guardReloads() hides once the page is stale: that popup never
+           goes away by itself then, and the recording is not affected. -->
+      <div v-if="stale && live" class="recorder-banner recorder-banner-warn" role="status">
+        The connection to Scribe was interrupted. Recording and uploading carry on; reload the
+        page after you stop to reconnect the rest of Scribe.
+      </div>
       <div v-if="stale && !live" class="recorder-banner recorder-banner-warn" role="status">
         The connection to Scribe was interrupted while recording. Your recordings are safe and
         uploads carry on; reload the page to reconnect the rest of Scribe.
