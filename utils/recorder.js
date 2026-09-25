@@ -518,6 +518,7 @@ export default {
                 <h3 class="recorder-help-heading">Privacy and security</h3>
                 <p>While you are online, recorded audio is sent to Scribe over an encrypted connection and stored encrypted under your account.</p>
                 <p>If audio cannot be sent immediately, it is temporarily stored in this browser. It is encrypted using a key provided by Scribe while you are signed in and is removed from the browser after it has been successfully sent.</p>
+                <p>The key only works in this browser, and only while Scribe remembers it. If you clear this browser's cookies or site data, or do not open Sunet Scribe in this browser for 14 days, audio stored here can no longer be read and is lost. Open this page again as soon as you are back online so the recording can be sent.</p>
                 <p>Anyone who can use this browser may be able to access locally stored recordings while you are signed in. Avoid leaving unfinished recordings on a shared device.</p>
                 <p>A downloaded recording is an ordinary file on your device. Store and handle it according to your organisation's requirements.</p>
               </div>
