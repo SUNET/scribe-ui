@@ -2704,6 +2704,44 @@ theme_styles = """
         background-color: var(--color-status-error-bg);
         border-color: var(--color-status-error-border);
     }
+    /* "Before you record": a note, not a warning -- the brand colour down
+       its edge rather than the warning banners' yellow. */
+    .recorder-notice {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 14px 16px;
+        border-radius: 10px;
+        background-color: var(--color-bg-surface-alt);
+        border: 1px solid var(--color-border-subtle);
+        border-left: 4px solid var(--color-brand-primary);
+    }
+    .recorder-notice-icon {
+        color: var(--color-brand-primary);
+        flex: none;
+        margin-top: 1px;
+    }
+    .recorder-notice-title {
+        margin: 0 0 4px;
+        font-size: 0.95rem;
+        font-weight: 600;
+        line-height: 1.4;
+        color: var(--color-text-primary);
+    }
+    .recorder-notice > div {
+        flex: 1;
+        min-width: 0;
+    }
+    .recorder-notice-close {
+        flex: none;
+        margin: -6px -8px 0 0;
+    }
+    .recorder-notice-text {
+        margin: 0;
+        font-size: 0.9rem;
+        line-height: 1.45;
+        color: var(--color-text-secondary);
+    }
     .recorder-help-row {
         display: flex;
         flex-wrap: wrap;
