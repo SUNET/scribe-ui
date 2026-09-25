@@ -22,7 +22,7 @@ from uuid import UUID
 from nicegui import app, ui
 from utils.common import get_auth_header
 from utils.styles import default_styles
-from utils.common import page_init
+from utils.common import job_has_original, page_init
 from utils.helpers import storage_decrypt
 from utils.settings import get_settings
 from utils.srt import (
@@ -199,6 +199,13 @@ def create() -> None:
             editor.load_words(words_response.json().get("result"))
         except (httpx.HTTPError, ValueError):
             editor.load_words(None)
+
+        # A recording's original can be exported alongside the text.  Asked
+        # after the page is up, so the editor does not wait on it.
+        async def look_up_original() -> None:
+            editor.has_original = await job_has_original(uuid)
+
+        ui.timer(0, look_up_original, once=True)
 
         # Restore the review preferences before the captions are rendered, so
         # the first paint already reflects them rather than flashing unmarked.

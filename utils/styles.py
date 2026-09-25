@@ -753,17 +753,6 @@ theme_styles = """
         color: var(--color-text-secondary) !important;
         border: 1px solid var(--color-border-subtle);
     }
-    .jobs-original-btn {
-        color: var(--color-text-primary) !important;
-    }
-    .jobs-original-spacer {
-        width: 42px;
-        flex: none;
-    }
-    .jobs-action-spacer {
-        width: 120px;
-        flex: none;
-    }
 
     /* ── Table ── */
     .table-style th {
@@ -2368,11 +2357,6 @@ theme_styles = """
         }
         /* A tap target, not a pointer target: the row's own action is the
            whole reason the card is here. */
-        .jobs-card-action {
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
-        }
         .jobs-card-action .q-btn {
             width: 100%;
             min-height: 44px;

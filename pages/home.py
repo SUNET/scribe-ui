@@ -28,7 +28,6 @@ from utils.common import (
     table_bulk_transcribe,
 )
 from utils.recorder import RecorderReminder, current_owner, engine_script
-from utils.recording_api import ORIGINAL_PREFIX
 from utils.styles import default_styles, jobs_columns
 
 
@@ -61,10 +60,16 @@ def create() -> None:
             else:
                 delete_tooltip.text = "Select one or more files to delete"
 
-            # Enable bulk export only when all selected completed jobs share the same type
+            # Enable bulk export when all selected completed jobs share the
+            # same type, or when nothing is transcribed but there are
+            # recordings, whose originals are then the whole export.
             completed = [r for r in selected if r.get("status") == "Completed"]
             formats = set(r.get("output_format", "") for r in completed)
-            bulk_export.set_enabled(len(completed) >= 1 and len(formats) == 1)
+            recordings = [r for r in selected if r.get("is_recording")]
+            bulk_export.set_enabled(
+                (len(completed) >= 1 and len(formats) == 1)
+                or (not completed and len(recordings) >= 1)
+            )
 
             # Update export tooltip
             if not has_selection:
@@ -75,9 +80,11 @@ def create() -> None:
                 )
             elif len(completed) >= 1 and len(formats) == 1:
                 export_tooltip.text = "Export selected files"
+            elif recordings:
+                export_tooltip.text = "Download the original recordings"
             else:
                 export_tooltip.text = (
-                    "Select one or more already completed files to export"
+                    "Select one or more already completed files or recordings to export"
                 )
 
             # Enable bulk transcribe when 1+ uploaded jobs are selected
@@ -163,17 +170,6 @@ def create() -> None:
                     </div>
                     <div class="jobs-card-action">
                         <q-btn
-                            v-if="props.row.is_recording && props.row.uuid"
-                            outline
-                            no-caps
-                            icon="download"
-                            label="Download original"
-                            class="jobs-original-btn"
-                            type="a"
-                            :href="'__ORIGINAL__/' + encodeURIComponent(props.row.uuid)"
-                            :aria-label="'Download the original recording of ' + props.row.filename"
-                        />
-                        <q-btn
                             v-if="props.row.status === 'Uploaded' || props.row.status === 'Completed'"
                             :label="props.row.status === 'Completed' ? 'View' : 'Transcribe'"
                             :aria-label="(props.row.status === 'Completed' ? 'View ' : 'Transcribe ') + props.row.filename"
@@ -183,7 +179,7 @@ def create() -> None:
                     </div>
                 </q-card>
             </div>
-            """.replace("__ORIGINAL__", ORIGINAL_PREFIX),
+            """,
         )
 
         # Custom header checkbox that selects/deselects ALL rows across all pages
@@ -266,9 +262,8 @@ def create() -> None:
             </q-td>
             """,
         )
-        # A recording made in the recorder is marked as one, and its
-        # original is downloaded from here -- the recorder page lists only
-        # what has not reached My files yet.
+        # A recording made in the recorder is marked as one; Export offers
+        # its original, transcribed or not.
         table.add_slot(
             "body-cell-filename",
             """
@@ -293,37 +288,16 @@ def create() -> None:
             "body-cell-action",
             """
             <q-td key="action" :props="props">
-                <div class="row no-wrap items-center justify-center q-gutter-x-sm">
-                    <q-btn
-                        v-if="props.row.is_recording && props.row.uuid"
-                        flat
-                        round
-                        icon="download"
-                        class="jobs-original-btn"
-                        type="a"
-                        :href="'__ORIGINAL__/' + encodeURIComponent(props.row.uuid)"
-                        :aria-label="'Download the original recording of ' + props.row.filename"
-                    >
-                        <q-tooltip>Download original recording</q-tooltip>
-                    </q-btn>
-                    <!-- Holds the download's place in every other row, so the
-                         Edit/Transcribe buttons stay in one column. -->
-                    <div v-else class="jobs-original-spacer" aria-hidden="true"></div>
-                    <q-btn
-                        v-if="props.row.status === 'Uploaded' || props.row.status === 'Completed'"
-                        :label="props.row.status === 'Completed' ? 'Edit' : 'Transcribe'"
-                        :aria-label="(props.row.status === 'Completed' ? 'Edit ' : 'Transcribe ') + props.row.filename"
-                        :class="props.row.status === 'Completed' ? 'table-btn-edit' : 'table-btn-transcribe'"
-                        style="width: 120px; height: 40px;"
-                        @click="$parent.$emit('table_handle_row_click', props.row)"
-                    />
-                    <!-- A failed or running job has no action: its place is
-                         held too, or the download beside it drifts to the
-                         middle of the cell. -->
-                    <div v-else class="jobs-action-spacer" aria-hidden="true"></div>
-                </div>
+                <q-btn
+                    v-if="props.row.status === 'Uploaded' || props.row.status === 'Completed'"
+                    :label="props.row.status === 'Completed' ? 'Edit' : 'Transcribe'"
+                    :aria-label="(props.row.status === 'Completed' ? 'Edit ' : 'Transcribe ') + props.row.filename"
+                    :class="props.row.status === 'Completed' ? 'table-btn-edit' : 'table-btn-transcribe'"
+                    style="width: 120px; height: 40px;"
+                    @click="$parent.$emit('table_handle_row_click', props.row)"
+                />
             </q-td>
-            """.replace("__ORIGINAL__", ORIGINAL_PREFIX),
+            """,
         )
         table.add_slot(
             "body-cell-deletion_date",
