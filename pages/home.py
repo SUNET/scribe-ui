@@ -277,11 +277,14 @@ def create() -> None:
         table.add_slot(
             "body-cell-filename",
             """
-            <q-td key="filename" :props="props">
+            <q-td key="filename" :props="props" class="jobs-filename-cell">
                 <!-- The badge sits at the cell's right edge, so every
-                     row's lines up whatever the filename's length. -->
+                     row's lines up whatever the filename's length. A long
+                     name is cut short with an ellipsis rather than pushing
+                     the badge (and every column after it) out of view; the
+                     whole name is in its tooltip. -->
                 <div class="jobs-filename">
-                    <span>{{ props.value }}</span>
+                    <span class="jobs-filename-text" :title="props.value">{{ props.value }}</span>
                     <q-badge
                         v-if="props.row.is_recording"
                         class="jobs-recording-badge"

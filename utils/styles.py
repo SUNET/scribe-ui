@@ -737,11 +737,30 @@ theme_styles = """
 
     /* A recording made in the recorder, marked at the right edge of its
        filename's cell so the marks form one column. */
+    /* The filename column takes whatever width the other columns leave
+       (width: 100%) but never asks for more than that (max-width: 0), so
+       a long name truncates instead of widening the table -- and shows
+       more of itself as the window grows. */
+    .jobs-filename-cell {
+        width: 100%;
+        max-width: 0;
+        /* A floor, or a narrow window squeezed the name to nothing: the
+           other columns never shrink below their own text.  On the cell,
+           not the text, so the column itself makes room for it. */
+        min-width: 16rem;
+    }
     .jobs-filename {
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 0.75rem;
+        min-width: 0;
+    }
+    .jobs-filename-text {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
     .jobs-recording-badge {
         flex: none;
