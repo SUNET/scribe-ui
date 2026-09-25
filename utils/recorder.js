@@ -42,6 +42,8 @@
 const METER_MS = 100;
 // Which microphone was chosen last, remembered per browser.
 const DEVICE_KEY = "scribe-recorder-device";
+// Set once the reader has closed the "Before you record" note.
+const NOTICE_KEY = "scribe-recorder-notice-dismissed";
 const METER_SAMPLES = 300; // thirty seconds of level history
 // The sample the audio test records to play back: long enough for a
 // sentence, short enough to be kept in memory without a thought.
@@ -403,6 +405,32 @@ export default {
           This browser has room for about {{ freeHours < 1 ? Math.max(1, Math.round(freeHours * 60)) + " minutes" : freeHours.toFixed(1) + " hours" }} of recording.
         </div>
 
+        <!-- Said on the page, not only in the help: it is the one thing
+             to settle before pressing Start, and nobody opens the help
+             first.  Informational, so not a warning banner.  Closed, it
+             stays closed in this browser; the same words remain in the
+             help under Privacy and security. -->
+        <aside v-if="!live && !noticeDismissed" class="recorder-notice" aria-labelledby="recorder-notice-title">
+          <q-icon name="record_voice_over" size="22px" class="recorder-notice-icon" aria-hidden="true" />
+          <div>
+            <h2 id="recorder-notice-title" class="recorder-notice-title">Before you record</h2>
+            <p class="recorder-notice-text">
+              Make sure everyone knows they are being recorded.
+              Follow your organisation's requirements for permission, information and handling of recordings.
+            </p>
+          </div>
+          <q-btn
+            flat
+            round
+            dense
+            size="sm"
+            icon="close"
+            class="recorder-quiet recorder-notice-close"
+            aria-label="Dismiss this note"
+            @click="dismissNotice"
+          />
+        </aside>
+
         <div v-if="!live" class="recorder-help-row">
           <q-btn
             flat
@@ -516,9 +544,10 @@ export default {
               </div>
               <div class="recorder-help-section">
                 <h3 class="recorder-help-heading">Privacy and security</h3>
-                <p>While you are online, recorded audio is sent to Scribe over an encrypted connection and stored encrypted under your account.</p>
-                <p>If audio cannot be sent immediately, it is temporarily stored in this browser. It is encrypted using a key provided by Scribe while you are signed in and is removed from the browser after it has been successfully sent.</p>
-                <p>The key only works in this browser, and only while Scribe remembers it. If you clear this browser's cookies or site data, or do not open Sunet Scribe in this browser for 14 days, audio stored here can no longer be read and is lost. Open this page again as soon as you are back online so the recording can be sent.</p>
+                <p>Make sure everyone knows they are being recorded. Follow your organisation's requirements for permission, information and handling of recordings.</p>
+                <p>While you are online, recorded audio is sent to Sunet Scribe over an encrypted connection and stored encrypted under your account.</p>
+                <p>If audio cannot be sent immediately, it is temporarily stored in this browser. It is encrypted using a key provided by Sunet Scribe while you are signed in and is removed from the browser after it has been successfully sent.</p>
+                <p>Locally stored audio can only be recovered in this browser, and only for a limited time. If you clear this browser's cookies or site data, or do not open Sunet Scribe in this browser for 14 days, the audio can no longer be recovered and is lost. Open this page again as soon as you are back online so the recording can be sent.</p>
                 <p>Anyone who can use this browser may be able to access locally stored recordings while you are signed in. Avoid leaving unfinished recordings on a shared device.</p>
                 <p>A downloaded recording is an ordinary file on your device. Store and handle it according to your organisation's requirements.</p>
               </div>
@@ -727,6 +756,7 @@ export default {
       discardArmed: null,
       freeHours: null,
       helpOpen: false,
+      noticeDismissed: false,
       stale: false,
       removing: null,
       connected: true,
@@ -804,6 +834,12 @@ export default {
       this.redraw();
     });
     this.loadRecent();
+
+    try {
+      this.noticeDismissed = window.localStorage.getItem(NOTICE_KEY) === "1";
+    } catch (e) {
+      this.noticeDismissed = false;
+    }
 
     try {
       this.deviceId = window.localStorage.getItem(DEVICE_KEY) || "";
@@ -991,6 +1027,15 @@ export default {
         this.micRefused = FAILURES[e && e.name] || "The microphone could not be opened.";
       }
       await this.listDevices();
+    },
+
+    dismissNotice() {
+      this.noticeDismissed = true;
+      try {
+        window.localStorage.setItem(NOTICE_KEY, "1");
+      } catch (e) {
+        /* only a convenience: it comes back on the next visit */
+      }
     },
 
     rememberDevice() {
