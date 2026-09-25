@@ -60,20 +60,30 @@ def create() -> None:
             else:
                 delete_tooltip.text = "Select one or more files to delete"
 
-            # Enable bulk export when all selected completed jobs share the
-            # same type, or when nothing is transcribed but there are
+            # Enable bulk export when every selected job is transcribed and
+            # of the same type, or when nothing is transcribed but there are
             # recordings, whose originals are then the whole export.
             completed = [r for r in selected if r.get("status") == "Completed"]
             formats = set(r.get("output_format", "") for r in completed)
             recordings = [r for r in selected if r.get("is_recording")]
+            # Transcribed and untranscribed files are never exported
+            # together: the one exports text, the other only an original.
+            mixed = bool(completed) and len(completed) < len(selected)
             bulk_export.set_enabled(
-                (len(completed) >= 1 and len(formats) == 1)
-                or (not completed and len(recordings) >= 1)
+                not mixed
+                and (
+                    (len(completed) >= 1 and len(formats) == 1)
+                    or (not completed and len(recordings) >= 1)
+                )
             )
 
             # Update export tooltip
             if not has_selection:
                 export_tooltip.text = "Select one or more files to export"
+            elif mixed:
+                export_tooltip.text = (
+                    "Transcribed and untranscribed files can't be exported together."
+                )
             elif len(completed) >= 1 and len(formats) > 1:
                 export_tooltip.text = (
                     "Subtitles and Transcript can't be exported together."

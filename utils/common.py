@@ -1786,9 +1786,10 @@ async def __delete_files(table: ui.table, dialog: ui.dialog) -> None:
 def table_bulk_export(table: ui.table) -> None:
     """
     Handle bulk export of selected completed jobs as a zip file.
-    All selected completed jobs must be of the same type (output_format).
-    Recordings among the selection, transcribed or not, offer their original
-    too; with nothing transcribed, the originals are the whole export.
+    Either every selected job is transcribed, all of the same type
+    (output_format), or none is; the two are never exported together.
+    Recordings offer their original too; with nothing transcribed, the
+    originals are the whole export.
     """
 
     selected = table.selected
@@ -1804,6 +1805,14 @@ def table_bulk_export(table: ui.table) -> None:
     ]
 
     completed = [r for r in selected if r.get("status") == "Completed"]
+    if completed and len(completed) < len(selected):
+        ui.notify(
+            "Transcribed and untranscribed files can't be exported together",
+            type="warning",
+            position="top",
+            timeout=None, close_button="Close")
+        return
+
     if not completed:
         if originals:
             from utils.srt_export import show_originals_dialog

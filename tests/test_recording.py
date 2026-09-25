@@ -448,3 +448,11 @@ def test_originals_are_downloaded_from_scribe_one_by_one(monkeypatch):
     ]
     assert srt_export.originals_label([("x", "1")]) == "Download the original recording"
     assert srt_export.originals_label([("x", "1"), ("y", "2")]).endswith("(2)")
+
+
+def test_transcribed_and_untranscribed_files_are_not_exported_together():
+    home = (ROOT / "pages" / "home.py").read_text()
+    common = (ROOT / "utils" / "common.py").read_text()
+    assert "mixed = bool(completed) and len(completed) < len(selected)" in home
+    assert "not mixed" in home
+    assert "if completed and len(completed) < len(selected):" in common
