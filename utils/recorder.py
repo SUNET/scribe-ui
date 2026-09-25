@@ -38,7 +38,7 @@ import pathlib
 
 from nicegui import ui
 
-from utils.recording_api import API_PREFIX, ORIGINAL_PREFIX, recording_owner
+from utils.recording_api import recording_owner
 from utils.token import get_user_info
 
 ENGINE_PATH = pathlib.Path(__file__).resolve().parent.parent / "static" / "recorder_engine.js"
@@ -73,9 +73,6 @@ class Recorder(ui.element, component="recorder.js"):
         self._props["owner"] = owner
         self._props["sessionEnded"] = False
         self._props["logoutUrl"] = ""
-        self._props["originalUrl"] = ORIGINAL_PREFIX
-        self._props["recentUrl"] = API_PREFIX + "/recent"
-        self._props["jobUrl"] = API_PREFIX + "/job"
 
     def end_session(self, logout_url: str) -> None:
         """

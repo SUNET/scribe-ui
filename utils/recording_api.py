@@ -271,55 +271,6 @@ async def recording_key(request: Request) -> JSONResponse:
     )
 
 
-# How many recent recordings the recorder page lists.
-RECENT_LIMIT = 20
-
-
-@app.get(API_PREFIX + "/recent")
-async def recording_recent(request: Request) -> JSONResponse:
-    """
-    The reader's recordings that are already in Scribe, newest first, for the
-    recorder page to list.  Asked of the backend every time rather than kept
-    in the browser: a finished recording leaves the browser altogether.
-
-    A recording is a job the backend kept an original for, which is exactly
-    what the recorder makes and an uploaded file is not.
-    """
-
-    _caller(request)
-
-    response = await _backend(
-        "GET",
-        "/transcriber",
-        json={"encryption_password": _encryption_password() or ""},
-    )
-
-    if response.status_code >= 400:
-        _answer(response)
-
-    try:
-        jobs = (response.json().get("result") or {}).get("jobs") or []
-    except (ValueError, AttributeError):
-        jobs = []
-
-    recent = [
-        {
-            "uuid": job.get("uuid"),
-            "filename": job.get("filename") or "Recording",
-            "created_at": job.get("created_at"),
-            "deletion_date": job.get("deletion_date"),
-            "status": job.get("status"),
-        }
-        for job in jobs
-        if job.get("has_original") and job.get("uuid")
-    ]
-    recent.sort(key=lambda job: job["created_at"] or "", reverse=True)
-
-    return JSONResponse(
-        {"recordings": recent[:RECENT_LIMIT]}, headers={"Cache-Control": "no-store"}
-    )
-
-
 @app.get(API_PREFIX + "/{rid}")
 async def recording_status(rid: str, request: Request) -> JSONResponse:
     """
@@ -371,27 +322,6 @@ async def recording_finish(rid: str, request: Request) -> JSONResponse:
             "POST", f"/recordings/{rid}/finish", json=payload, timeout=FINISH_TIMEOUT
         )
     )
-
-
-@app.delete(API_PREFIX + "/job/{job_id}")
-async def recording_job_delete(job_id: str, request: Request) -> JSONResponse:
-    """
-    Delete a recording that has already become a job -- the same delete
-    My files makes.  The backend only deletes the caller's own jobs.
-    """
-
-    _caller(request)
-
-    if not JOB_PATTERN.match(job_id or ""):
-        raise HTTPException(status_code=404, detail="not found")
-
-    response = await _backend("DELETE", f"/transcriber/{job_id}")
-
-    # Gone already is as good as deleted.
-    if response.status_code == 404:
-        return JSONResponse({"deleted": job_id})
-
-    return _answer(response)
 
 
 @app.delete(API_PREFIX + "/{rid}")

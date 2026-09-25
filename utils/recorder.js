@@ -37,7 +37,7 @@
 // The level meter is drawn from a live analyser on the stream already open
 // -- never by decoding the recording, which for an hour is over a gigabyte of
 // PCM.  Nothing is played back here: the recording leaves this browser when
-// it stops, and its original is downloaded from Scribe.
+// it stops, and its original is downloaded from My files.
 
 const METER_MS = 100;
 // Which microphone was chosen last, remembered per browser.
@@ -540,7 +540,7 @@ export default {
               </div>
               <div class="recorder-help-section">
                 <h3 class="recorder-help-heading">Your original recording</h3>
-                <p>Sunet Scribe keeps the original recording in My files for 7 days, just like other uploaded files. You can download it during that time.</p>
+                <p>Once a recording is in My files it is no longer listed here. Sunet Scribe keeps the original recording in My files for 7 days, just like other uploaded files, marked as a recording. Download it or delete it from My files.</p>
               </div>
               <div class="recorder-help-section">
                 <h3 class="recorder-help-heading">Privacy and security</h3>
@@ -559,7 +559,7 @@ export default {
         </q-dialog>
       </template>
 
-      <section v-if="others.length || inScribe.length" class="recorder-list" aria-labelledby="recorder-list-heading">
+      <section v-if="others.length" class="recorder-list" aria-labelledby="recorder-list-heading">
         <h2 id="recorder-list-heading" class="recorder-list-heading">Recordings</h2>
 
         <article
@@ -596,24 +596,6 @@ export default {
               @click="discard(item)"
             >
               <q-tooltip v-if="discardArmed !== item.id">Delete</q-tooltip>
-            </q-btn>
-            <!-- Finished here: it is a job in Scribe now, and deleting it
-                 deletes that job, as My files would. -->
-            <q-btn
-              v-if="item.state === 'uploaded' && item.job && item.job.uuid"
-              flat
-              no-caps
-              dense
-              :round="discardArmed !== 'job:' + item.job.uuid"
-              class="recorder-quiet recorder-discard"
-              :class="{ 'is-armed': discardArmed === 'job:' + item.job.uuid }"
-              icon="delete"
-              :loading="removing === 'job:' + item.job.uuid"
-              :label="discardArmed === 'job:' + item.job.uuid ? 'Press again to delete' : undefined"
-              :aria-label="discardArmed === 'job:' + item.job.uuid ? 'Confirm: delete ' + item.name : 'Delete ' + item.name"
-              @click="removeJob(item.job.uuid, item.id)"
-            >
-              <q-tooltip v-if="discardArmed !== 'job:' + item.job.uuid">Delete</q-tooltip>
             </q-btn>
           </div>
 
@@ -660,64 +642,9 @@ export default {
               :aria-label="'Continue recording ' + item.name + ' in a new part'"
               @click="continueFrom(item)"
             />
-            <q-btn
-              v-if="item.state === 'uploaded' && item.job && item.job.uuid"
-              flat
-              no-caps
-              class="recorder-quiet recorder-small"
-              icon="download"
-              label="Download original"
-              type="a"
-              :href="originalUrl + '/' + encodeURIComponent(item.job.uuid)"
-              :aria-label="'Download the original recording of ' + item.name + ' from Scribe'"
-            />
           </div>
         </article>
 
-        <!-- Recordings already in Scribe, asked of the server each time the
-             page opens: a finished recording leaves this browser altogether,
-             so nothing here would remember it otherwise. -->
-        <article v-for="job in inScribe" :key="job.uuid" class="recorder-item">
-          <div class="recorder-item-head">
-            <div class="recorder-item-text">
-              <div class="recorder-item-name">{{ job.filename }}</div>
-              <div class="recorder-item-meta">
-                {{ stamp(job.created_at) }}<template v-if="job.deletion_date"> · deleted {{ String(job.deletion_date).slice(0, 10) }}</template>
-              </div>
-              <div class="recorder-item-state" :class="'is-' + jobState(job).tone">
-                <q-icon :name="jobState(job).icon" size="16px" aria-hidden="true" />
-                {{ jobState(job).text }}
-              </div>
-            </div>
-            <q-btn
-              flat
-              no-caps
-              dense
-              :round="discardArmed !== 'job:' + job.uuid"
-              class="recorder-quiet recorder-discard"
-              :class="{ 'is-armed': discardArmed === 'job:' + job.uuid }"
-              icon="delete"
-              :loading="removing === 'job:' + job.uuid"
-              :label="discardArmed === 'job:' + job.uuid ? 'Press again to delete' : undefined"
-              :aria-label="discardArmed === 'job:' + job.uuid ? 'Confirm: delete ' + job.filename : 'Delete ' + job.filename"
-              @click="removeJob(job.uuid)"
-            >
-              <q-tooltip v-if="discardArmed !== 'job:' + job.uuid">Delete</q-tooltip>
-            </q-btn>
-          </div>
-          <div class="recorder-item-actions">
-            <q-btn
-              flat
-              no-caps
-              class="recorder-quiet recorder-small"
-              icon="download"
-              label="Download original"
-              type="a"
-              :href="originalUrl + '/' + encodeURIComponent(job.uuid)"
-              :aria-label="'Download the original recording of ' + job.filename + ' from Scribe'"
-            />
-          </div>
-        </article>
       </section>
     </div>
   `,
@@ -726,9 +653,6 @@ export default {
     owner: { type: String, required: true },
     sessionEnded: { type: Boolean, default: false },
     logoutUrl: { type: String, default: "" },
-    originalUrl: { type: String, default: "/record/original" },
-    recentUrl: { type: String, default: "/record/api/recent" },
-    jobUrl: { type: String, default: "/record/api/job" },
   },
 
   data() {
@@ -758,13 +682,12 @@ export default {
       helpOpen: false,
       noticeDismissed: false,
       stale: false,
-      removing: null,
       connected: true,
       micRefused: "",
       hiddenSince: null,
       awayMs: 0,
       levels: [],
-      recent: [],
+      announced: new Set(),
       liveDb: -60,
       livePeakDb: -60,
       testOpen: false,
@@ -787,13 +710,10 @@ export default {
     liveVerdict() {
       return levelVerdict(this.levels, LIVE_WINDOW, this.paused);
     },
+    // Only what has not reached My files yet.  A recording that has is
+    // downloaded and deleted there, like any other file.
     others() {
-      return this.items.filter((item) => !item.live);
-    },
-    // Scribe's list, less anything already shown above as finished here.
-    inScribe() {
-      const here = new Set(this.items.map((item) => item.job && item.job.uuid).filter(Boolean));
-      return this.recent.filter((job) => !here.has(job.uuid));
+      return this.items.filter((item) => !item.live && item.state !== "uploaded");
     },
     sessionElsewhere() {
       return this.items.find((item) => item.elsewhere) || null;
@@ -833,7 +753,6 @@ export default {
       this.persistent = this.engine.persistent();
       this.redraw();
     });
-    this.loadRecent();
 
     try {
       this.noticeDismissed = window.localStorage.getItem(NOTICE_KEY) === "1";
@@ -933,53 +852,12 @@ export default {
 
       this.warnings = this.currentWarnings(running);
 
-      // A recording has just become a job: Scribe's list is asked again, so
-      // it is still there once this page is left and opened again.
-      const known = new Set(this.recent.map((job) => job.uuid));
-      if (this.items.some((item) => item.job && item.job.uuid && !known.has(item.job.uuid))) {
-        this.loadRecent();
-      }
-    },
-
-    async loadRecent() {
-      if (this.loadingRecent) return;
-      this.loadingRecent = true;
-      try {
-        const response = await fetch(this.recentUrl, {
-          credentials: "same-origin",
-          cache: "no-store",
-          headers: { "X-Scribe-Recording": "1" },
-        });
-        if (response.ok) this.recent = (await response.json()).recordings || [];
-      } catch (e) {
-        /* the list is a convenience; My files has everything */
-      } finally {
-        // Not asked again straight away if it failed or the new job is not
-        // listed yet: the per-second redraw would otherwise ask every second.
-        setTimeout(() => (this.loadingRecent = false), 5000);
-      }
-    },
-
-    // The backend's times are UTC without saying so (as My files knows too,
-    // see add_timezone_to_timestamp); shown in the reader's own time.
-    stamp(value) {
-      const text = String(value || "").trim().replace(" ", "T");
-      const date = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(text) ? text : text + "Z");
-      return isNaN(date) ? String(value || "") : this.when(date.getTime());
-    },
-
-    jobState(job) {
-      switch (String(job.status || "").toLowerCase()) {
-        case "completed":
-          return { tone: "ok", icon: "check_circle", text: "Transcribed – in My files" };
-        case "pending":
-        case "in_progress":
-        case "transcribing":
-          return { tone: "muted", icon: "hourglass_empty", text: "Being transcribed" };
-        case "failed":
-          return { tone: "danger", icon: "error", text: "Transcription failed" };
-        default:
-          return { tone: "ok", icon: "check_circle", text: "In My files, ready to transcribe" };
+      // A recording has just become a job and leaves this list: said once,
+      // in words, so it does not simply vanish.
+      for (const item of this.items) {
+        if (item.state !== "uploaded" || this.announced.has(item.id)) continue;
+        this.announced.add(item.id);
+        this.status = "“" + item.name + "” is in My files, ready to transcribe.";
       }
     },
 
@@ -1314,36 +1192,6 @@ export default {
       clearTimeout(this.discardTimer);
       this.discardArmed = null;
       this.engine.discard(item.id);
-    },
-
-    // A recording that is already a job in Scribe: deleted there, then
-    // forgotten here.  Pressed twice, like every other delete on this page.
-    async removeJob(uuid, localId) {
-      const key = "job:" + uuid;
-      if (this.discardArmed !== key) {
-        this.discardArmed = key;
-        clearTimeout(this.discardTimer);
-        this.discardTimer = setTimeout(() => (this.discardArmed = null), 4000);
-        return;
-      }
-      clearTimeout(this.discardTimer);
-      this.discardArmed = null;
-      if (this.removing) return;
-      this.removing = key;
-      try {
-        const response = await fetch(this.jobUrl + "/" + encodeURIComponent(uuid), {
-          method: "DELETE",
-          credentials: "same-origin",
-          headers: { "X-Scribe-Recording": "1" },
-        });
-        if (!response.ok) throw new Error(String(response.status));
-        this.recent = this.recent.filter((job) => job.uuid !== uuid);
-        if (localId) await this.engine.discard(localId);
-      } catch (e) {
-        this.status = "Could not delete the recording from Scribe. Try again in a moment.";
-      } finally {
-        this.removing = null;
-      }
     },
 
     leaveIfSignedOut() {

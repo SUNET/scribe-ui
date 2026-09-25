@@ -28,6 +28,7 @@ from utils.common import (
     table_bulk_transcribe,
 )
 from utils.recorder import RecorderReminder, current_owner, engine_script
+from utils.recording_api import ORIGINAL_PREFIX
 from utils.styles import default_styles, jobs_columns
 
 
@@ -135,7 +136,17 @@ def create() -> None:
                             class="q-mr-sm"
                         />
                         <div class="col">
-                            <div class="jobs-card-name">{{ props.row.filename }}</div>
+                            <div class="jobs-card-name jobs-filename">
+                                <span>{{ props.row.filename }}</span>
+                                <q-badge
+                                    v-if="props.row.is_recording"
+                                    class="jobs-recording-badge"
+                                    aria-label="Recorded in Scribe"
+                                >
+                                    <q-icon name="mic" size="14px" aria-hidden="true" />
+                                    Recording
+                                </q-badge>
+                            </div>
                             <div class="jobs-card-meta">
                                 {{ props.row.job_type }} · {{ props.row.status }}
                             </div>
@@ -152,6 +163,17 @@ def create() -> None:
                     </div>
                     <div class="jobs-card-action">
                         <q-btn
+                            v-if="props.row.is_recording && props.row.uuid"
+                            outline
+                            no-caps
+                            icon="download"
+                            label="Download original"
+                            class="jobs-original-btn"
+                            type="a"
+                            :href="'__ORIGINAL__/' + encodeURIComponent(props.row.uuid)"
+                            :aria-label="'Download the original recording of ' + props.row.filename"
+                        />
+                        <q-btn
                             v-if="props.row.status === 'Uploaded' || props.row.status === 'Completed'"
                             :label="props.row.status === 'Completed' ? 'View' : 'Transcribe'"
                             :aria-label="(props.row.status === 'Completed' ? 'View ' : 'Transcribe ') + props.row.filename"
@@ -161,7 +183,7 @@ def create() -> None:
                     </div>
                 </q-card>
             </div>
-            """,
+            """.replace("__ORIGINAL__", ORIGINAL_PREFIX),
         )
 
         # Custom header checkbox that selects/deselects ALL rows across all pages
@@ -244,20 +266,64 @@ def create() -> None:
             </q-td>
             """,
         )
+        # A recording made in the recorder is marked as one, and its
+        # original is downloaded from here -- the recorder page lists only
+        # what has not reached My files yet.
+        table.add_slot(
+            "body-cell-filename",
+            """
+            <q-td key="filename" :props="props">
+                <!-- The badge sits at the cell's right edge, so every
+                     row's lines up whatever the filename's length. -->
+                <div class="jobs-filename">
+                    <span>{{ props.value }}</span>
+                    <q-badge
+                        v-if="props.row.is_recording"
+                        class="jobs-recording-badge"
+                        aria-label="Recorded in Scribe"
+                    >
+                        <q-icon name="mic" size="14px" aria-hidden="true" />
+                        Recording
+                    </q-badge>
+                </div>
+            </q-td>
+            """,
+        )
         table.add_slot(
             "body-cell-action",
             """
             <q-td key="action" :props="props">
-                <q-btn
-                    v-if="props.row.status === 'Uploaded' || props.row.status === 'Completed'"
-                    :label="props.row.status === 'Completed' ? 'Edit' : 'Transcribe'"
-                    :aria-label="(props.row.status === 'Completed' ? 'Edit ' : 'Transcribe ') + props.row.filename"
-                    :class="props.row.status === 'Completed' ? 'table-btn-edit' : 'table-btn-transcribe'"
-                    style="width: 120px; height: 40px;"
-                    @click="$parent.$emit('table_handle_row_click', props.row)"
-                />
+                <div class="row no-wrap items-center justify-center q-gutter-x-sm">
+                    <q-btn
+                        v-if="props.row.is_recording && props.row.uuid"
+                        flat
+                        round
+                        icon="download"
+                        class="jobs-original-btn"
+                        type="a"
+                        :href="'__ORIGINAL__/' + encodeURIComponent(props.row.uuid)"
+                        :aria-label="'Download the original recording of ' + props.row.filename"
+                    >
+                        <q-tooltip>Download original recording</q-tooltip>
+                    </q-btn>
+                    <!-- Holds the download's place in every other row, so the
+                         Edit/Transcribe buttons stay in one column. -->
+                    <div v-else class="jobs-original-spacer" aria-hidden="true"></div>
+                    <q-btn
+                        v-if="props.row.status === 'Uploaded' || props.row.status === 'Completed'"
+                        :label="props.row.status === 'Completed' ? 'Edit' : 'Transcribe'"
+                        :aria-label="(props.row.status === 'Completed' ? 'Edit ' : 'Transcribe ') + props.row.filename"
+                        :class="props.row.status === 'Completed' ? 'table-btn-edit' : 'table-btn-transcribe'"
+                        style="width: 120px; height: 40px;"
+                        @click="$parent.$emit('table_handle_row_click', props.row)"
+                    />
+                    <!-- A failed or running job has no action: its place is
+                         held too, or the download beside it drifts to the
+                         middle of the cell. -->
+                    <div v-else class="jobs-action-spacer" aria-hidden="true"></div>
+                </div>
             </q-td>
-            """,
+            """.replace("__ORIGINAL__", ORIGINAL_PREFIX),
         )
         table.add_slot(
             "body-cell-deletion_date",
