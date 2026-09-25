@@ -140,3 +140,16 @@ def test_the_editor_says_it_needs_a_computer():
 
     assert "display: none" in phone
     assert ".editor-panes {\n            display: none !important;\n        }" in phone
+
+
+def test_the_header_stays_on_one_row():
+    # The theme and help buttons wrapped onto a line of their own under the
+    # logo on a phone: the header is a wrapping row and the logo group did
+    # not shrink.
+    phone = default_styles[default_styles.index("@media (max-width: 700px)") :]
+    assert "flex-wrap: nowrap !important;" in phone
+    assert ".header-brand" in phone and ".header-actions" in phone
+
+    common = pathlib.Path("utils/common.py").read_text()
+    assert '.classes("header-brand")' in common
+    assert '"header-actions"' in common

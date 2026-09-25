@@ -2259,6 +2259,22 @@ theme_styles = """
             text-overflow: ellipsis;
             white-space: nowrap;
             max-width: 40vw;
+            min-width: 0;
+        }
+
+        /* One row: the header is a wrapping flex row, and the logo group
+           would not shrink, so the theme and help buttons wrapped onto a
+           line of their own under it.  The logo group gives way (the name
+           truncates, above); the buttons keep their size. */
+        .q-header {
+            flex-wrap: nowrap !important;
+        }
+        .header-brand {
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+        .header-actions {
+            flex: none;
         }
 
         /* A heading, not a banner. */
