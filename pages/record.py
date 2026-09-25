@@ -78,4 +78,4 @@ def create() -> None:
         engine_script()
 
         with ui.column().classes("recorder-page w-full items-center"):
-            recorder["element"] = Recorder(owner=owner, files_url="/home")
+            recorder["element"] = Recorder(owner=owner)

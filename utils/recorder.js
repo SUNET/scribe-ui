@@ -240,6 +240,10 @@ const LevelMeter = {
     db: { type: Number, default: -60 },
     peakDb: { type: Number, default: -60 },
     verdict: { type: Object, required: true },
+    // In words too: Test audio only.  While recording the bar is enough,
+    // and a sentence changing under the button every few seconds is not
+    // something anyone should be reading in the middle of a lecture.
+    words: { type: Boolean, default: true },
   },
   computed: {
     percent() {
@@ -266,7 +270,7 @@ const LevelMeter = {
       <div class="recorder-test-scale" aria-hidden="true">
         <span>−60 dB</span><span>−30</span><span>0 dB</span>
       </div>
-      <div class="recorder-test-verdict" :class="'is-' + verdict.tone" role="status" aria-live="polite">
+      <div v-if="words" class="recorder-test-verdict" :class="'is-' + verdict.tone" role="status" aria-live="polite">
         <q-icon :name="verdict.icon" size="18px" aria-hidden="true" />
         {{ verdict.text }}
       </div>
@@ -331,7 +335,7 @@ export default {
           </div>
           <div class="recorder-clock" role="timer" aria-label="Recording time">{{ clock(elapsed) }}</div>
           <canvas ref="meter" class="recorder-meter" aria-hidden="true"></canvas>
-          <level-meter v-if="live" :db="liveDb" :peak-db="livePeakDb" :verdict="liveVerdict" />
+          <level-meter v-if="live" :db="liveDb" :peak-db="livePeakDb" :verdict="liveVerdict" :words="false" />
           <q-btn
             v-if="live"
             outline
@@ -563,6 +567,24 @@ export default {
             >
               <q-tooltip v-if="discardArmed !== item.id">Delete</q-tooltip>
             </q-btn>
+            <!-- Finished here: it is a job in Scribe now, and deleting it
+                 deletes that job, as My files would. -->
+            <q-btn
+              v-if="item.state === 'uploaded' && item.job && item.job.uuid"
+              flat
+              no-caps
+              dense
+              :round="discardArmed !== 'job:' + item.job.uuid"
+              class="recorder-quiet recorder-discard"
+              :class="{ 'is-armed': discardArmed === 'job:' + item.job.uuid }"
+              icon="delete"
+              :loading="removing === 'job:' + item.job.uuid"
+              :label="discardArmed === 'job:' + item.job.uuid ? 'Press again to delete' : undefined"
+              :aria-label="discardArmed === 'job:' + item.job.uuid ? 'Confirm: delete ' + item.name : 'Delete ' + item.name"
+              @click="removeJob(item.job.uuid, item.id)"
+            >
+              <q-tooltip v-if="discardArmed !== 'job:' + item.job.uuid">Delete</q-tooltip>
+            </q-btn>
           </div>
 
           <div v-if="item.state === 'stopped' && !item.submit && !item.error" class="recorder-item-edit">
@@ -619,15 +641,6 @@ export default {
               :href="originalUrl + '/' + encodeURIComponent(item.job.uuid)"
               :aria-label="'Download the original recording of ' + item.name + ' from Scribe'"
             />
-            <q-btn
-              v-if="item.state === 'uploaded'"
-              flat
-              no-caps
-              class="recorder-quiet recorder-small"
-              icon="folder_open"
-              label="My files"
-              @click="goToFiles"
-            />
           </div>
         </article>
 
@@ -646,6 +659,21 @@ export default {
                 {{ jobState(job).text }}
               </div>
             </div>
+            <q-btn
+              flat
+              no-caps
+              dense
+              :round="discardArmed !== 'job:' + job.uuid"
+              class="recorder-quiet recorder-discard"
+              :class="{ 'is-armed': discardArmed === 'job:' + job.uuid }"
+              icon="delete"
+              :loading="removing === 'job:' + job.uuid"
+              :label="discardArmed === 'job:' + job.uuid ? 'Press again to delete' : undefined"
+              :aria-label="discardArmed === 'job:' + job.uuid ? 'Confirm: delete ' + job.filename : 'Delete ' + job.filename"
+              @click="removeJob(job.uuid)"
+            >
+              <q-tooltip v-if="discardArmed !== 'job:' + job.uuid">Delete</q-tooltip>
+            </q-btn>
           </div>
           <div class="recorder-item-actions">
             <q-btn
@@ -658,14 +686,6 @@ export default {
               :href="originalUrl + '/' + encodeURIComponent(job.uuid)"
               :aria-label="'Download the original recording of ' + job.filename + ' from Scribe'"
             />
-            <q-btn
-              flat
-              no-caps
-              class="recorder-quiet recorder-small"
-              icon="folder_open"
-              label="My files"
-              @click="goToFiles"
-            />
           </div>
         </article>
       </section>
@@ -674,11 +694,11 @@ export default {
 
   props: {
     owner: { type: String, required: true },
-    filesUrl: { type: String, default: "/home" },
     sessionEnded: { type: Boolean, default: false },
     logoutUrl: { type: String, default: "" },
     originalUrl: { type: String, default: "/record/original" },
     recentUrl: { type: String, default: "/record/api/recent" },
+    jobUrl: { type: String, default: "/record/api/job" },
   },
 
   data() {
@@ -707,6 +727,7 @@ export default {
       freeHours: null,
       helpOpen: false,
       stale: false,
+      removing: null,
       connected: true,
       micRefused: "",
       hiddenSince: null,
@@ -1249,6 +1270,36 @@ export default {
       this.engine.discard(item.id);
     },
 
+    // A recording that is already a job in Scribe: deleted there, then
+    // forgotten here.  Pressed twice, like every other delete on this page.
+    async removeJob(uuid, localId) {
+      const key = "job:" + uuid;
+      if (this.discardArmed !== key) {
+        this.discardArmed = key;
+        clearTimeout(this.discardTimer);
+        this.discardTimer = setTimeout(() => (this.discardArmed = null), 4000);
+        return;
+      }
+      clearTimeout(this.discardTimer);
+      this.discardArmed = null;
+      if (this.removing) return;
+      this.removing = key;
+      try {
+        const response = await fetch(this.jobUrl + "/" + encodeURIComponent(uuid), {
+          method: "DELETE",
+          credentials: "same-origin",
+          headers: { "X-Scribe-Recording": "1" },
+        });
+        if (!response.ok) throw new Error(String(response.status));
+        this.recent = this.recent.filter((job) => job.uuid !== uuid);
+        if (localId) await this.engine.discard(localId);
+      } catch (e) {
+        this.status = "Could not delete the recording from Scribe. Try again in a moment.";
+      } finally {
+        this.removing = null;
+      }
+    },
+
     leaveIfSignedOut() {
       if (!this.sessionEnded || !this.logoutUrl) return;
       if (this.engine && this.engine.session()) return;
@@ -1257,10 +1308,6 @@ export default {
 
     reloadPage() {
       window.location.reload();
-    },
-
-    goToFiles() {
-      window.location.href = this.filesUrl;
     },
 
     visibilityChanged() {
