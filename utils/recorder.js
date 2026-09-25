@@ -413,7 +413,7 @@ export default {
         <aside v-if="!live && !noticeDismissed" class="recorder-notice" aria-labelledby="recorder-notice-title">
           <q-icon name="record_voice_over" size="22px" class="recorder-notice-icon" aria-hidden="true" />
           <div>
-            <h2 id="recorder-notice-title" class="recorder-notice-title">Before you record</h2>
+            <h2 id="recorder-notice-title" class="recorder-notice-title">Before you press Start recording</h2>
             <p class="recorder-notice-text">
               Make sure everyone knows they are being recorded.
               Follow your organisation's requirements for permission, information and handling of recordings.
