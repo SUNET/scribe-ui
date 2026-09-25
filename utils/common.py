@@ -500,6 +500,11 @@ def page_init(
 
         menu_btn_tooltip_ref = None
 
+        def navigate_closing_menu(path: str) -> None:
+            if app.storage.user.get("drawer_open", False):
+                toggle_drawer()
+            ui.navigate.to(path)
+
         # menu_item_style, menu_active_style imported from utils.styles
 
         def menu_style(path: str) -> str:
@@ -521,6 +526,23 @@ def page_init(
             link = ui.link(target=path).style(menu_style(path)).classes("menu-item")
             if current_path == path:
                 link.props('aria-current=page')
+            # On a phone the opened menu is drawn over the page, and it would
+            # be drawn open again on the page the link leads to, since whether
+            # it is open is remembered per user.  A plain click there closes
+            # it first and navigates from the server, so the new page is only
+            # asked for once the menu is marked closed.  The width is only
+            # known in the browser; 700px is the phone breakpoint the
+            # stylesheet and the jobs table use.  A modified or middle click
+            # (new tab) is left to the link.
+            link.on(
+                "click",
+                lambda _, path=path: navigate_closing_menu(path),
+                js_handler=(
+                    "(e) => { if (window.innerWidth < 700 && e.button === 0"
+                    " && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey)"
+                    " { e.preventDefault(); emit(); } }"
+                ),
+            )
             with link:
                 ui.icon(icon).style("font-size: 20px;").props("aria-hidden=true")
                 ui.label(label).classes("menu-label")
