@@ -111,7 +111,7 @@ const RELOAD_EVENTS = ["connect", "connect_error", "try_reconnect", "run_javascr
 // What the server sends when it cannot replay a reconnect's missed messages.
 const SERVER_RELOAD = "window.location.reload()";
 
-function guardReloads(busy, onStale) {
+function guardReloads(busy, onStale, onConnected) {
   const socket = window.socket;
   if (!socket || socket.__scribeGuarded) return !!socket;
   socket.__scribeGuarded = true;
@@ -131,6 +131,13 @@ function guardReloads(busy, onStale) {
     if (popup) popup.ariaHidden = true;
     onStale();
   };
+
+  // Whether the page is connected right now, for the banner shown while
+  // recording: stale is for good, a lost connection is not.  Plain
+  // listeners, next to the replaced ones rather than instead of them.
+  onConnected(socket.connected);
+  socket.on("connect", () => onConnected(true));
+  socket.on("disconnect", () => onConnected(false));
 
   // nicegui.js puts next_message_id in the socket's query once, at page
   // load, and never moves it on -- so every reconnect asks the server to
@@ -288,8 +295,9 @@ export default {
 
       <!-- Stands in for NiceGUI's own "Connection lost" popup, which
            guardReloads() hides once the page is stale: that popup never
-           goes away by itself then, and the recording is not affected. -->
-      <div v-if="stale && live" class="recorder-banner recorder-banner-warn" role="status">
+           goes away by itself then, and the recording is not affected.
+           Gone again once the socket is back. -->
+      <div v-if="stale && live && !connected" class="recorder-banner recorder-banner-warn" role="status">
         The connection to Scribe was interrupted. Recording and uploading carry on; reload the
         page after you stop to reconnect the rest of Scribe.
       </div>
@@ -699,6 +707,7 @@ export default {
       freeHours: null,
       helpOpen: false,
       stale: false,
+      connected: true,
       micRefused: "",
       hiddenSince: null,
       awayMs: 0,
@@ -807,6 +816,9 @@ export default {
         () => !!(this.engine && this.engine.session()),
         () => {
           this.stale = true;
+        },
+        (connected) => {
+          this.connected = connected;
         }
       );
     // window.socket is made when NiceGUI's root app mounts, which is after
