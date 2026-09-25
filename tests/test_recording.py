@@ -389,6 +389,9 @@ def test_the_nicegui_reloads_the_recorder_guards_are_still_there():
         'window.socket.emit("handshake", options.query, finishHandshake);',
         "window.socket.on(event,",
         "run_javascript: (msg) => runJavascript(msg.code, msg.request_id),",
+        # The reconnect's query is brought up to date from these two.
+        "window.nextMessageId = options.query.next_message_id;",
+        "window.nextMessageId = message_id + 1;",
     ):
         assert needle in client, needle
 
@@ -400,6 +403,8 @@ def test_the_nicegui_reloads_the_recorder_guards_are_still_there():
     for event in ("connect", "connect_error", "try_reconnect", "run_javascript"):
         assert f'"{event}"' in guard
     assert 'const SERVER_RELOAD = "window.location.reload()";' in guard
+    assert 'socket.io.on("reconnect_attempt"' in guard
+    assert "query.next_message_id = window.nextMessageId" in guard
 
 
 def test_the_audio_test_keeps_and_sends_nothing():
