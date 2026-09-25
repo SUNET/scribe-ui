@@ -123,6 +123,20 @@ function guardReloads(busy, onStale) {
   });
   const passOn = (event, args) => original[event].forEach((handler) => handler(...args));
 
+  // nicegui.js puts next_message_id in the socket's query once, at page
+  // load, and never moves it on -- so every reconnect asks the server to
+  // replay from the very first message, long since pruned by the acks, and
+  // the server answers with a reload.  That is what showed the stale banner
+  // after every wifi drop that recovered fine.  Telling it where the page
+  // really is lets it replay only what was missed; a reload then means the
+  // messages really are gone.
+  if (socket.io) {
+    socket.io.on("reconnect_attempt", () => {
+      const query = socket.io.opts && socket.io.opts.query;
+      if (query && window.nextMessageId !== undefined) query.next_message_id = window.nextMessageId;
+    });
+  }
+
   socket.on("connect_error", (...args) => {
     const error = args[0] || {};
     if (busy() && error.message === "timeout") {
