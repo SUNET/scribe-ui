@@ -182,19 +182,6 @@ def test_status_finish_and_discard_are_passed_on(backend):
     assert backend["calls"][-1][:2] == ("DELETE", f"/api/v1/recordings/{RID}")
 
 
-def test_a_finished_recording_is_deleted_as_a_job(backend):
-    run(recording_api.recording_job_delete("job-1", request(method="DELETE")))
-    assert backend["calls"][-1][:2] == ("DELETE", "/api/v1/transcriber/job-1")
-
-    # Already gone counts as deleted, not as a backend to retry.
-    backend["status"] = 404
-    assert payload(run(recording_api.recording_job_delete("job-1", request(method="DELETE"))))[0] == 200
-
-    with pytest.raises(HTTPException) as caught:
-        run(recording_api.recording_job_delete("../x", request(method="DELETE")))
-    assert caught.value.status_code == 404
-
-
 def test_missing_parts_are_passed_back_to_the_browser(backend):
     backend["status"] = 409
     backend["answer"] = {"missing": [0, 2]}
@@ -260,28 +247,6 @@ def test_recording_ids_have_one_shape(backend):
         run(recording_api.recording_part("../" + "f" * 29, 0, request(b"aa")))
     assert caught.value.status_code == 422
     assert backend["calls"] == []
-
-
-def test_recent_recordings_are_the_jobs_with_an_original_newest_first(backend, monkeypatch):
-    monkeypatch.setattr(recording_api, "_encryption_password", lambda: "secret")
-    backend["answer"] = {
-        "result": {
-            "jobs": [
-                {"uuid": "a", "filename": "Old", "created_at": "2026-09-01 10:00", "has_original": True},
-                {"uuid": "b", "filename": "Uploaded file", "created_at": "2026-09-24 10:00", "has_original": False},
-                {"uuid": "c", "filename": "New", "created_at": "2026-09-24 11:00", "has_original": True, "status": "completed"},
-            ]
-        }
-    }
-
-    status, body = payload(run(recording_api.recording_recent(request(method="GET"))))
-
-    assert status == 200
-    assert [job["uuid"] for job in body["recordings"]] == ["c", "a"]
-    assert body["recordings"][0]["status"] == "completed"
-    method, path, sent = backend["calls"][0]
-    assert (method, path) == ("GET", "/api/v1/transcriber")
-    assert json.loads(sent) == {"encryption_password": "secret"}, "so the names come back readable"
 
 
 def test_the_store_key_is_per_user_and_per_browser(monkeypatch):
@@ -444,3 +409,21 @@ def test_recorder_engine():
         timeout=120,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_the_recorder_lists_only_what_has_not_reached_my_files():
+    component = (ROOT / "utils" / "recorder.js").read_text()
+    assert 'item.state !== "uploaded"' in component
+    # Downloading and deleting a finished recording is My files' business.
+    assert "/record/api/recent" not in component
+    assert "removeJob" not in component
+    assert "Download original" not in component
+
+
+def test_my_files_marks_recordings_and_offers_their_original():
+    home = (ROOT / "pages" / "home.py").read_text()
+    common = (ROOT / "utils" / "common.py").read_text()
+    assert '"is_recording": bool(job.get("has_original"))' in common
+    assert home.count("props.row.is_recording && props.row.uuid") == 2, "table and card"
+    assert home.count("jobs-recording-badge") == 2, "table and card"
+    assert '.replace("__ORIGINAL__", ORIGINAL_PREFIX)' in home

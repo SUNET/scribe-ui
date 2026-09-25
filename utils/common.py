@@ -963,6 +963,9 @@ async def jobs_get() -> list | None:
             "model_type": job["model_type"].capitalize(),
             "output_format": job["output_format"].upper(),
             "job_type": job_type,
+            # Made by the recorder: the backend keeps its original, which
+            # My files marks and offers for download.
+            "is_recording": bool(job.get("has_original")),
         }
 
         jobs.append(job_data)

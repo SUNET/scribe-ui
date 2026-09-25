@@ -1254,6 +1254,36 @@ theme_styles = """
         border: 1px solid var(--color-btn-primary-border) !important;
     }
 
+    /* A recording made in the recorder, marked at the right edge of its
+       filename's cell so the marks form one column. */
+    .jobs-filename {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+    }
+    .jobs-recording-badge {
+        flex: none;
+        padding: 2px 6px;
+        gap: 2px;
+        vertical-align: middle;
+        font-weight: 500;
+        background-color: var(--color-bg-surface-alt) !important;
+        color: var(--color-text-secondary) !important;
+        border: 1px solid var(--color-border-subtle);
+    }
+    .jobs-original-btn {
+        color: var(--color-text-primary) !important;
+    }
+    .jobs-original-spacer {
+        width: 42px;
+        flex: none;
+    }
+    .jobs-action-spacer {
+        width: 120px;
+        flex: none;
+    }
+
     /* ── Table ── */
     .table-style th {
         font-size: 14px;
@@ -2907,6 +2937,11 @@ theme_styles = """
         }
         /* A tap target, not a pointer target: the row's own action is the
            whole reason the card is here. */
+        .jobs-card-action {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
         .jobs-card-action .q-btn {
             width: 100%;
             min-height: 44px;
