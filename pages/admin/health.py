@@ -24,7 +24,7 @@ import plotly.graph_objects as go
 import httpx
 
 
-from datetime import datetime
+from datetime import datetime, UTC
 from nicegui import app, ui
 from utils.common import page_init, reload_on_theme_change
 from utils.styles import default_styles, chart_colors
@@ -127,7 +127,7 @@ async def health() -> None:
                     ]
 
                 times = [
-                    datetime.fromtimestamp(s["seen"]).strftime("%H:%M:%S")
+                    datetime.fromtimestamp(s["seen"], tz=UTC).strftime("%H:%M:%S")
                     for s in samples
                 ]
 
