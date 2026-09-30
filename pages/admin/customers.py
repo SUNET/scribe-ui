@@ -249,7 +249,11 @@ def edit_customer(customer_id: str) -> None:
         ]
 
     except httpx.HTTPError as e:
-        ui.label(f"Error fetching customer: {e}").classes("text-lg").style("color: var(--color-text-danger);")
+        # See the same fix on users.py's own fetch error for why.
+        print(f"Error fetching customer: {e}")
+        ui.label("Failed to load customer. Please try again later.").classes(
+            "text-lg"
+        ).style("color: var(--color-text-danger);").props("role=alert")
         return
 
     ui.label(f"Edit customer: {customer['name']}").classes("text-3xl font-bold mb-4")

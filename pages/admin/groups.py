@@ -219,7 +219,15 @@ def edit_group(group_id: str) -> None:
             user["active"] = "Yes" if user.get("active", True) else "No"
 
     except httpx.HTTPError as e:
-        ui.label(f"Error fetching group: {e}").classes("text-lg").style("color: var(--color-text-danger);")
+        # See the same fix on users.py's own fetch error for why: raw
+        # exception text replaced with printed detail (matching
+        # utils/helpers.py's existing convention) plus role=alert, since
+        # this too replaces the page body with nothing else announcing it
+        # (WCAG 4.1.3).
+        print(f"Error fetching group: {e}")
+        ui.label("Failed to load group. Please try again later.").classes(
+            "text-lg"
+        ).style("color: var(--color-text-danger);").props("role=alert")
         return
 
     with ui.row().style(
@@ -383,10 +391,12 @@ async def statistics(group_id: str) -> None:
     stats = user_statistics_get(group_id=group_id)
 
     if not stats or "result" not in stats:
+        # role=alert: same reasoning as this page's own fetch-error label
+        # above (WCAG 4.1.3). Text was already generic here, nothing raw
+        # to print.
         ui.label("Error fetching statistics.").classes(
             "text-lg text-center mt-6"
-        ).style("color: var(--color-text-danger);"
-        )
+        ).style("color: var(--color-text-danger);").props("role=alert")
         return
 
     result = stats["result"]
