@@ -24,6 +24,7 @@ from nicegui import background_tasks, ui, app
 from starlette.formparsers import MultiPartParser
 from typing import Optional
 from utils.settings import get_settings
+from utils.cookies import acknowledge_cookie_notice, is_cookie_notice_acknowledged
 from utils.token import (
     get_admin_status,
     get_auth_header,
@@ -193,6 +194,65 @@ def logout() -> None:
     app.storage.user["encryption_password"] = None
 
     ui.navigate.to(settings.OIDC_APP_LOGOUT_ROUTE)
+
+
+def render_cookie_notice_row() -> None:
+    """
+    Show "We use necessary cookies..." as the first row inside the
+    current header, until this browser acknowledges it. See issue #140.
+
+    Deliberately not built on _show_announcement_banners below. Those
+    banners render inside the page's own content area, underneath the
+    already-fixed header, and push the rest of the content down with a
+    hand-rolled --banner-offset CSS variable, recalculated per visible
+    banner. A row placed inside the header itself needs none of that:
+    ui.header already measures its own real rendered height with a
+    ResizeObserver and reports it to NiceGUI's layout, so adding or
+    removing this row reflows the drawer and page content beneath it
+    automatically. It also has to work on pages with no header built by
+    page_init at all -- the sign-in page -- so it is a self-contained
+    function rather than something woven into _show_announcement_banners.
+
+    Must be called from inside a `with ui.header():` block, as the first
+    child, so it sits above the header's own logo/menu row rather than
+    beside it.
+    """
+
+    if is_cookie_notice_acknowledged():
+        return
+
+    with ui.row().classes("cookie-notice-row").style(
+        "width: 100%; align-items: center; justify-content: space-between;"
+        " flex-wrap: wrap; gap: 8px 16px; padding: 4px 0;"
+        " background-color: var(--color-bg-surface-alt);"
+        " border-bottom: 1px solid var(--color-border);"
+    ) as notice_row:
+        ui.label("We use necessary cookies to provide the service.").style(
+            "color: var(--color-text-primary); font-size: 0.9rem;"
+        )
+
+        with ui.row().style("align-items: center; gap: 4px;"):
+            # A real link, not a button: it navigates, it does not act in
+            # place. Same reasoning as the main menu entries elsewhere in
+            # this file.
+            ui.link("Cookie information", "/cookies").classes(
+                "cookie-notice-link"
+            ).style("font-size: 0.9rem;")
+
+            def acknowledge() -> None:
+                acknowledge_cookie_notice()
+                # set_visibility(False), not delete(): the row's own
+                # dismiss handler is still on the call stack when this
+                # runs, so the element needs to still exist a moment
+                # longer. The "hidden" class NiceGUI applies is
+                # display:none, which (unlike visibility:hidden) drops
+                # out of layout, so the header's ResizeObserver still
+                # sees the shrink and the rest of the page moves up.
+                notice_row.set_visibility(False)
+
+            ui.button("OK", on_click=acknowledge).props(
+                "flat dense color=primary"
+            ).classes("cookie-notice-ok")
 
 
 def _show_announcement_banners() -> None:
@@ -612,6 +672,8 @@ def page_init(
             )
             .classes("drop-shadow-md")
         ):
+            render_cookie_notice_row()
+
             with ui.element("div").style(
                 "display: flex; gap: 0px; align-items: center; margin-left: -12px;"
             ):
@@ -697,6 +759,8 @@ def page_init(
             )
             .classes("drop-shadow-md")
         ):
+            render_cookie_notice_row()
+
             with ui.element("div").style("display: flex; gap: 0px;"):
                 ui.image(f"static/{settings.LOGO_TOPBAR_LIGHT}").props(
                     'alt="" aria-hidden="true"'

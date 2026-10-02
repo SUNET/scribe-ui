@@ -20,12 +20,14 @@ import secrets
 from fastapi import Request
 from nicegui import app, ui
 from pages.admin import create as create_admin
+from pages.cookies import create as create_cookies
 from pages.home import create as create_files_table
 from pages.srt import create as create_srt
 from pages.status import create as create_status
 from pages.user import create as create_user_page
 from pages.view import create as create_view
 from utils.styles import default_styles
+from utils.common import render_cookie_notice_row
 from utils.settings import get_settings
 from utils.token import (
     exchange_login_code,
@@ -48,6 +50,7 @@ create_admin()
 create_user_page()
 create_status()
 create_view()
+create_cookies()
 
 
 @ui.page("/")
@@ -61,6 +64,13 @@ async def index(request: Request) -> None:
     ui.page_title(f"{settings.TAB_TITLE} - Sign in")
 
     ui.add_head_html(default_styles)
+
+    # No min-height/padding here on purpose: once the notice is
+    # acknowledged, render_cookie_notice_row renders nothing and this
+    # header should collapse to zero height rather than leave an empty
+    # bar above the sign-in card. See issue #140.
+    with ui.header():
+        render_cookie_notice_row()
 
     # The backend's OIDC callback redirects here with a one-time code, not
     # with the tokens themselves. Anything in a query string ends up in the
