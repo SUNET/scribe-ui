@@ -91,7 +91,7 @@ COOKIES = [
             "encryption key for your uploaded recordings -- so Sunet's own "
             "infrastructure cannot read your files without your browser "
             "having taken part in deriving that key. It also remembers "
-            "whether you have activated OK on this cookie banner."
+            "whether you have closed this cookie banner."
         ),
         duration="14 days, renewed on every visit",
         cookie_type="Strictly necessary",
@@ -115,30 +115,31 @@ COOKIE_NOTICE_ACKNOWLEDGED_KEY = "cookie_notice_acknowledged"
 
 
 def is_cookie_notice_acknowledged() -> bool:
-    """Whether this browser has already dismissed the cookie notice."""
+    """Whether this browser has already closed the cookie banner."""
 
     return bool(app.storage.user.get(COOKIE_NOTICE_ACKNOWLEDGED_KEY, False))
 
 
 def acknowledge_cookie_notice() -> None:
     """
-    Record that this browser has activated OK on the cookie banner.
+    Record that this browser has closed the cookie banner.
 
-    "Activated", not "clicked": this has to be true for a keyboard user
-    pressing Enter or Space on the button as much as for a mouse click
-    (WCAG 2.1.1 Keyboard), and the word in both this docstring and the
-    banner's own text in utils/cookies.py should not quietly assume
-    otherwise.
+    "Closed", not "clicked" or "activated" on some labelled control:
+    the banner's own control is an icon-only close/X (see
+    render_cookie_notice_row), not a button with a word like "OK" to
+    describe activating -- and "closed" reads naturally for a keyboard
+    user pressing Enter or Space on it just as much as for a mouse
+    click (WCAG 2.1.1 Keyboard), without needing a caveat to say so.
 
     Not that the notice was merely shown or seen -- a browser that saw
-    the notice and closed the tab without activating OK gets shown it
-    again next time, which is correct: there is no consent to record
-    either way, since the service uses no cookies that would require
-    it, so nothing is lost by asking again. See the module docstring
-    and issue #140.
+    the notice and left without closing it gets shown it again next
+    time, which is correct: there is no consent to record either way,
+    since the service uses no cookies that would require it, so
+    nothing is lost by asking again. See the module docstring and
+    issue #140.
 
     app.storage.user, not app.storage.browser: this runs from the
-    notice's "OK" button, i.e. always after the page's own first
+    banner's own close button, i.e. always after the page's own first
     response has already been sent, and app.storage.browser raises a
     TypeError if written to at that point ("the response to the browser
     has already been built..."). Reproduced directly by clicking the

@@ -251,10 +251,10 @@ def render_cookie_notice_row() -> None:
                 "font-size: 0.9rem; color: var(--color-severity-info-link);"
             )
 
-            def acknowledge() -> None:
+            def close_notice() -> None:
                 acknowledge_cookie_notice()
                 # set_visibility(False), not delete(): the row's own
-                # dismiss handler is still on the call stack when this
+                # close handler is still on the call stack when this
                 # runs, so the element needs to still exist a moment
                 # longer. The "hidden" class NiceGUI applies is
                 # display:none, which (unlike visibility:hidden) drops
@@ -262,9 +262,19 @@ def render_cookie_notice_row() -> None:
                 # sees the shrink and the rest of the page moves up.
                 notice_row.set_visibility(False)
 
-            ui.button("OK", on_click=acknowledge).props(
-                "flat dense color=primary"
-            ).classes("cookie-notice-ok")
+            # An icon-only close control, same as
+            # _show_announcement_banners' own dismiss button below --
+            # "OK" read as a label to activate rather than a notice to
+            # close, which was both an odd fit for a plain FYI (there is
+            # nothing to agree to) and awkward to describe precisely in
+            # prose (see acknowledge_cookie_notice's docstring). aria-label
+            # is required, not optional: an icon-only button's accessible
+            # name would otherwise just be the icon ligature's name,
+            # which is aria-hidden.
+            ui.button(icon="close", on_click=close_notice).props(
+                "flat round dense size=sm color=grey-7"
+                ' aria-label="Close cookie banner"'
+            ).classes("cookie-notice-close")
 
 
 def _show_announcement_banners() -> None:
