@@ -24,6 +24,7 @@ from nicegui import background_tasks, ui, app
 from starlette.formparsers import MultiPartParser
 from typing import Optional
 from utils.settings import get_settings
+from utils.cookies import acknowledge_cookie_notice, is_cookie_notice_acknowledged
 from utils.token import (
     get_admin_status,
     get_auth_header,
@@ -193,6 +194,105 @@ def logout() -> None:
     app.storage.user["encryption_password"] = None
 
     ui.navigate.to(settings.OIDC_APP_LOGOUT_ROUTE)
+
+
+def render_cookie_notice_row() -> None:
+    """
+    Show "We use necessary cookies..." as the first row inside the
+    current header, until this browser acknowledges it. See issue #140.
+
+    Deliberately not built on _show_announcement_banners below. Those
+    banners render inside the page's own content area, underneath the
+    already-fixed header, and push the rest of the content down with a
+    hand-rolled --banner-offset CSS variable, recalculated per visible
+    banner. A row placed inside the header itself needs none of that:
+    ui.header already measures its own real rendered height with a
+    ResizeObserver and reports it to NiceGUI's layout, so adding or
+    removing this row reflows the drawer and page content beneath it
+    automatically. It also has to work on pages with no header built by
+    page_init at all -- the sign-in page -- so it is a self-contained
+    function rather than something woven into _show_announcement_banners.
+
+    Must be called from inside a `with ui.header():` block, as the first
+    child, so it sits above the header's own logo/menu row rather than
+    beside it.
+    """
+
+    if is_cookie_notice_acknowledged():
+        return
+
+    # Same visual language as an "info" announcement banner below
+    # (severity_styles["info"], utils/styles.py) -- same background,
+    # border and icon colour, same icon + text layout -- so this reads
+    # as the same kind of thing, not an unrelated strip of UI. Not
+    # built on _show_announcement_banners itself, for the reasons in
+    # this function's own docstring above.
+    #
+    # The background bleeds edge-to-edge (left/right) inside whatever
+    # header surrounds it, via a negative margin that exactly cancels
+    # that header's own horizontal padding -- not a hardcoded value,
+    # because this function renders inside three differently-padded
+    # headers (page_init's two, both "padding: 4px 16px", and
+    # main.py's bare `with ui.header():` for the sign-in page, which
+    # Quasar leaves at zero padding by default). Each header that has
+    # horizontal padding declares it once, as the CSS custom property
+    # --cookie-notice-inset-x, alongside its own padding (see
+    # page_init below); a header with no such declaration -- like
+    # main.py's -- falls back to 0px, i.e. no shift, because it is
+    # already edge-to-edge and needs none. This only pulls the row
+    # past its header's own left/right padding, not its top/bottom,
+    # since only the horizontal bleed was asked for.
+    with ui.row().classes("cookie-notice-row").style(
+        "width: calc(100% + 2 * var(--cookie-notice-inset-x, 0px));"
+        " align-items: center; justify-content: space-between;"
+        " flex-wrap: wrap; gap: 8px 16px; padding: 8px 12px;"
+        " margin: 0 calc(-1 * var(--cookie-notice-inset-x, 0px))"
+        " 0 calc(-1 * var(--cookie-notice-inset-x, 0px));"
+        " background-color: var(--color-severity-info-bg);"
+        " border-bottom: 1px solid var(--color-severity-info-border);"
+    ) as notice_row:
+        with ui.row().style("align-items: center; gap: 10px;"):
+            ui.icon("cookie", size="sm").style(
+                "color: var(--color-severity-info-icon);"
+            )
+            ui.label("We use necessary cookies to provide the service.").style(
+                "color: var(--color-text-primary); font-size: 0.95rem;"
+            )
+
+        with ui.row().style("align-items: center; gap: 4px;"):
+            # A real link, not a button: it navigates, it does not act in
+            # place. Same reasoning as the main menu entries elsewhere in
+            # this file.
+            ui.link("Cookie information", "/cookies").classes(
+                "cookie-notice-link"
+            ).style(
+                "font-size: 0.9rem; color: var(--color-severity-info-link);"
+            )
+
+            def close_notice() -> None:
+                acknowledge_cookie_notice()
+                # set_visibility(False), not delete(): the row's own
+                # close handler is still on the call stack when this
+                # runs, so the element needs to still exist a moment
+                # longer. The "hidden" class NiceGUI applies is
+                # display:none, which (unlike visibility:hidden) drops
+                # out of layout, so the header's ResizeObserver still
+                # sees the shrink and the rest of the page moves up.
+                notice_row.set_visibility(False)
+
+            # An icon-only close control, same as
+            # _show_announcement_banners' own dismiss button below --
+            # "OK" read as a label to activate rather than a notice to
+            # close, which was both an odd fit for a plain FYI (there is
+            # nothing to agree to) and awkward to describe precisely in
+            # prose (see acknowledge_cookie_notice's docstring). aria-label
+            # is required, not optional: an icon-only button's accessible
+            # name would otherwise just be the icon ligature's name,
+            # which is aria-hidden.
+            ui.button(icon="close", on_click=close_notice).props(
+                "flat round dense size=sm color=grey-7"
+                ' aria-label="Close cookie banner"'
+            ).classes("cookie-notice-close")
 
 
 def _show_announcement_banners() -> None:
@@ -609,9 +709,12 @@ def page_init(
             ui.header()
             .style(
                 "justify-content: space-between; background-color: var(--color-header-bg); min-height: 50px; padding: 4px 16px;"
+                " --cookie-notice-inset-x: 16px;"
             )
             .classes("drop-shadow-md")
         ):
+            render_cookie_notice_row()
+
             with ui.element("div").style(
                 "display: flex; gap: 0px; align-items: center; margin-left: -12px;"
             ):
@@ -694,9 +797,12 @@ def page_init(
             ui.header()
             .style(
                 "justify-content: space-between; background-color: var(--color-header-bg); min-height: 50px; padding: 4px 16px;"
+                " --cookie-notice-inset-x: 16px;"
             )
             .classes("drop-shadow-md")
         ):
+            render_cookie_notice_row()
+
             with ui.element("div").style("display: flex; gap: 0px;"):
                 ui.image(f"static/{settings.LOGO_TOPBAR_LIGHT}").props(
                     'alt="" aria-hidden="true"'
