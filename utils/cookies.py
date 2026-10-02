@@ -91,7 +91,7 @@ COOKIES = [
             "encryption key for your uploaded recordings -- so Sunet's own "
             "infrastructure cannot read your files without your browser "
             "having taken part in deriving that key. It also remembers "
-            "whether you have closed this cookie banner."
+            "whether you have closed the cookie banner."
         ),
         duration="14 days, renewed on every visit",
         cookie_type="Strictly necessary",
