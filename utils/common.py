@@ -227,9 +227,27 @@ def render_cookie_notice_row() -> None:
     # as the same kind of thing, not an unrelated strip of UI. Not
     # built on _show_announcement_banners itself, for the reasons in
     # this function's own docstring above.
+    #
+    # The background bleeds edge-to-edge (left/right) inside whatever
+    # header surrounds it, via a negative margin that exactly cancels
+    # that header's own horizontal padding -- not a hardcoded value,
+    # because this function renders inside three differently-padded
+    # headers (page_init's two, both "padding: 4px 16px", and
+    # main.py's bare `with ui.header():` for the sign-in page, which
+    # Quasar leaves at zero padding by default). Each header that has
+    # horizontal padding declares it once, as the CSS custom property
+    # --cookie-notice-inset-x, alongside its own padding (see
+    # page_init below); a header with no such declaration -- like
+    # main.py's -- falls back to 0px, i.e. no shift, because it is
+    # already edge-to-edge and needs none. This only pulls the row
+    # past its header's own left/right padding, not its top/bottom,
+    # since only the horizontal bleed was asked for.
     with ui.row().classes("cookie-notice-row").style(
-        "width: 100%; align-items: center; justify-content: space-between;"
+        "width: calc(100% + 2 * var(--cookie-notice-inset-x, 0px));"
+        " align-items: center; justify-content: space-between;"
         " flex-wrap: wrap; gap: 8px 16px; padding: 8px 12px;"
+        " margin: 0 calc(-1 * var(--cookie-notice-inset-x, 0px))"
+        " 0 calc(-1 * var(--cookie-notice-inset-x, 0px));"
         " background-color: var(--color-severity-info-bg);"
         " border-bottom: 1px solid var(--color-severity-info-border);"
     ) as notice_row:
@@ -691,6 +709,7 @@ def page_init(
             ui.header()
             .style(
                 "justify-content: space-between; background-color: var(--color-header-bg); min-height: 50px; padding: 4px 16px;"
+                " --cookie-notice-inset-x: 16px;"
             )
             .classes("drop-shadow-md")
         ):
@@ -778,6 +797,7 @@ def page_init(
             ui.header()
             .style(
                 "justify-content: space-between; background-color: var(--color-header-bg); min-height: 50px; padding: 4px 16px;"
+                " --cookie-notice-inset-x: 16px;"
             )
             .classes("drop-shadow-md")
         ):
