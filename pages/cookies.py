@@ -151,11 +151,3 @@ def create() -> None:
                                 "font-medium text-theme-secondary"
                             ).style("min-width: 160px;")
                             ui.label(cookie.source).classes("text-theme-primary")
-
-            ui.label(
-                "If a cookie that is not strictly necessary is ever added "
-                "to the service, it will be listed here separately and "
-                "will ask for your consent on its own -- acknowledging "
-                "the notice on other pages is never treated as consent "
-                "for a cookie like that."
-            ).classes("text-theme-muted").style("max-width: 70ch;")

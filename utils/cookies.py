@@ -69,11 +69,6 @@ class CookieInfo:
     cookie_type: str
     security: str
     source: str
-    # Structural placeholder for the day a non-necessary cookie is added.
-    # Acknowledging the notice below must never be treated as consent for
-    # one of these -- see issue #140 -- so this field exists to keep that
-    # distinction visible in the data itself, not just in a comment.
-    requires_consent: bool = False
 
 
 COOKIES = [

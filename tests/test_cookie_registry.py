@@ -91,14 +91,6 @@ class TestRegistryIsWellFormed:
         names = [cookie.name for cookie in COOKIES]
         assert len(names) == len(set(names))
 
-    def test_requires_consent_defaults_false_and_is_a_bool(self):
-        # Acknowledging the notice must never be mistaken for consent to a
-        # cookie that actually needs it (see the module docstring), so this
-        # field has to be an explicit, real boolean on every entry, not an
-        # accidental None or string.
-        for cookie in COOKIES:
-            assert cookie.requires_consent in (True, False)
-
 
 class TestRegistryMatchesTheActualCode:
     def test_no_cookie_is_set_outside_session_middleware(self):
