@@ -16,6 +16,7 @@
 # limitations under the License.
 
 from nicegui import app, ui
+from utils.common import page_init
 from utils.cookies import COOKIES
 from utils.settings import get_settings
 from utils.styles import default_styles
@@ -29,47 +30,76 @@ def create() -> None:
         """
         Public cookie information page. See issue #140.
 
-        Deliberately does not call page_init: that function's very first
-        line redirects to "/" for a browser that has not visited yet
-        (utils/common.py), and this page has to work for exactly that
-        browser -- someone who has not signed in, reading what the
-        cookie notice's "Cookie information" button pointed them to.
+        One URL, two headers, picked by whether this browser is signed
+        in -- not two separate pages, so the cookie notice's link and
+        anything else that points here never has to choose between them,
+        and the cookie list itself (the only part that actually differs
+        by content) is identical either way:
 
-        It does, however, load the same theme CSS and respect the same
-        dark-mode preference page_init does (utils/common.py), and copies
-        page_init's own header markup/measurements rather than a
-        hand-rolled approximation -- without this, the page renders with
-        none of the app's CSS custom properties (every var(--color-*) and
-        var(--font-sans) reference in this module resolves to nothing)
-        and reads as a generic, unstyled page instead of Sunet Scribe.
+        - Signed in: page_init() gives this page the exact same header,
+          drawer navigation, theme toggle, help button and announcement
+          banners as every other page in the app (pages/user.py,
+          pages/admin/announcements.py, ...). There is nothing special
+          about this page once someone is already inside the service,
+          so it asks for nothing special.
+        - Not signed in: page_init()'s very first real line redirects an
+          unrecognised browser to "/" (utils/common.py), which is wrong
+          here -- this page has to work for exactly that browser, since
+          it is where the cookie notice's "Cookie information" link
+          points before anyone has signed in. That visitor gets a
+          lighter header instead (the same theme CSS and dark-mode
+          handling page_init applies, without the parts that assume a
+          signed-in session), plus a link back to "/" of its own, since
+          there is no drawer here to provide one.
         """
 
-        ui.page_title(f"{settings.TAB_TITLE} - Cookie information")
-        ui.add_head_html(default_styles)
-        ui.dark_mode(app.storage.user.get("dark_mode", None))
+        is_signed_in = bool(
+            app.storage.user.get("token") and app.storage.user.get("refresh_token")
+        )
 
-        with (
-            ui.header()
-            .style(
-                "justify-content: space-between; background-color:"
-                " var(--color-header-bg); min-height: 50px; padding: 4px 16px;"
-            )
-            .classes("drop-shadow-md")
-        ):
-            with ui.element("div").style("display: flex; gap: 0px; align-items: center;"):
-                ui.image(f"static/{settings.LOGO_TOPBAR_LIGHT}").props(
-                    'alt="" aria-hidden="true"'
-                ).classes("q-mr-sm logo-light").style("height: 30px; width: 30px;")
-                ui.image(f"static/{settings.LOGO_TOPBAR_DARK}").props(
-                    'alt="" aria-hidden="true"'
-                ).classes("q-mr-sm logo-dark").style("height: 30px; width: 30px;")
-                ui.label(settings.TOPBAR_TEXT).classes(
-                    "text-h6 text-theme-primary topbar-text"
+        if is_signed_in:
+            page_init(use_drawer=True, title="Cookie information")
+        else:
+            ui.page_title(f"{settings.TAB_TITLE} - Cookie information")
+            ui.add_head_html(default_styles)
+            ui.dark_mode(app.storage.user.get("dark_mode", None))
+
+            with (
+                ui.header()
+                .style(
+                    "justify-content: space-between; background-color:"
+                    " var(--color-header-bg); min-height: 50px; padding: 4px 16px;"
                 )
+                .classes("drop-shadow-md")
+            ):
+                with ui.element("div").style(
+                    "display: flex; gap: 0px; align-items: center;"
+                ):
+                    ui.image(f"static/{settings.LOGO_TOPBAR_LIGHT}").props(
+                        'alt="" aria-hidden="true"'
+                    ).classes("q-mr-sm logo-light").style(
+                        "height: 30px; width: 30px;"
+                    )
+                    ui.image(f"static/{settings.LOGO_TOPBAR_DARK}").props(
+                        'alt="" aria-hidden="true"'
+                    ).classes("q-mr-sm logo-dark").style(
+                        "height: 30px; width: 30px;"
+                    )
+                    ui.label(settings.TOPBAR_TEXT).classes(
+                        "text-h6 text-theme-primary topbar-text"
+                    )
 
         with ui.column().classes("w-full").style(
             "max-width: 900px; margin: 0 auto; padding: 24px 16px; gap: 16px;"
         ):
+            if not is_signed_in:
+                # The only way back to the service on this branch: there
+                # is no drawer here, and page_init -- which would redirect
+                # this exact visitor away -- is deliberately not called.
+                ui.link("← Back to Sunet Scribe", "/").classes(
+                    "text-theme-primary"
+                )
+
             # Same component, same classes as every other page title in
             # this app (pages/user.py "User settings",
             # pages/admin/announcements.py "Announcements") -- not a raw
