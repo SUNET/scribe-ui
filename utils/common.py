@@ -221,15 +221,25 @@ def render_cookie_notice_row() -> None:
     if is_cookie_notice_acknowledged():
         return
 
+    # Same visual language as an "info" announcement banner below
+    # (severity_styles["info"], utils/styles.py) -- same background,
+    # border and icon colour, same icon + text layout -- so this reads
+    # as the same kind of thing, not an unrelated strip of UI. Not
+    # built on _show_announcement_banners itself, for the reasons in
+    # this function's own docstring above.
     with ui.row().classes("cookie-notice-row").style(
         "width: 100%; align-items: center; justify-content: space-between;"
-        " flex-wrap: wrap; gap: 8px 16px; padding: 4px 0;"
-        " background-color: var(--color-bg-surface-alt);"
-        " border-bottom: 1px solid var(--color-border);"
+        " flex-wrap: wrap; gap: 8px 16px; padding: 8px 12px;"
+        " background-color: var(--color-severity-info-bg);"
+        " border-bottom: 1px solid var(--color-severity-info-border);"
     ) as notice_row:
-        ui.label("We use necessary cookies to provide the service.").style(
-            "color: var(--color-text-primary); font-size: 0.9rem;"
-        )
+        with ui.row().style("align-items: center; gap: 10px;"):
+            ui.icon("cookie", size="sm").style(
+                "color: var(--color-severity-info-icon);"
+            )
+            ui.label("We use necessary cookies to provide the service.").style(
+                "color: var(--color-text-primary); font-size: 0.95rem;"
+            )
 
         with ui.row().style("align-items: center; gap: 4px;"):
             # A real link, not a button: it navigates, it does not act in
@@ -237,7 +247,9 @@ def render_cookie_notice_row() -> None:
             # this file.
             ui.link("Cookie information", "/cookies").classes(
                 "cookie-notice-link"
-            ).style("font-size: 0.9rem;")
+            ).style(
+                "font-size: 0.9rem; color: var(--color-severity-info-link);"
+            )
 
             def acknowledge() -> None:
                 acknowledge_cookie_notice()

@@ -157,7 +157,12 @@ class TestCookieNoticeAcknowledgement:
         import utils.cookies as cookies_module
 
         mock_app = MagicMock()
-        mock_app.storage.browser = {}
+        # app.storage.user, not app.storage.browser: see the module
+        # docstring and acknowledge_cookie_notice's own docstring --
+        # app.storage.browser raises once the page's first response has
+        # already gone out, which is always true by the time the real
+        # "OK" button's click handler runs.
+        mock_app.storage.user = {}
 
         with patch("utils.cookies.app", mock_app):
             assert cookies_module.is_cookie_notice_acknowledged() is False
@@ -166,6 +171,6 @@ class TestCookieNoticeAcknowledgement:
 
             assert cookies_module.is_cookie_notice_acknowledged() is True
             assert (
-                mock_app.storage.browser[cookies_module.COOKIE_NOTICE_ACKNOWLEDGED_KEY]
+                mock_app.storage.user[cookies_module.COOKIE_NOTICE_ACKNOWLEDGED_KEY]
                 is True
             )

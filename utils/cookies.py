@@ -48,10 +48,19 @@ That one cookie carries two distinct things, both strictly necessary:
   so Sunet's own infrastructure cannot read them without that browser
   having taken part in deriving the key.
 
-app.storage.browser["cookie_notice_acknowledged"] (this file) rides in the
-same cookie, for the same reason _scribe_bk does: it needs to survive
-before sign-in, and adding a second cookie just to remember that the first
-one was explained felt like the wrong kind of cookie to add.
+Whether this browser has acknowledged the cookie notice
+(app.storage.user[COOKIE_NOTICE_ACKNOWLEDGED_KEY], this file) is read from
+and written to the server-side storage above, not from the cookie's own
+payload the way _scribe_bk is. That is not a style choice: NiceGUI's own
+app.storage.browser can only be written while a page's first response is
+still being built, and raises if written to afterwards (confirmed by
+clicking the notice's own "OK" button, which calls this from a button's
+click handler -- necessarily after that response has already gone out).
+app.storage.user has no such restriction, and is keyed by the same
+session id that already rides inside the "session" cookie before any
+sign-in, so this still adds no second cookie and still survives a browser
+that never signs in -- the value just lives server-side against that id
+instead of inside the cookie's own bytes.
 """
 
 from dataclasses import dataclass
@@ -82,7 +91,7 @@ COOKIES = [
             "encryption key for your uploaded recordings -- so Sunet's own "
             "infrastructure cannot read your files without your browser "
             "having taken part in deriving that key. It also remembers "
-            "whether you have seen this cookie notice."
+            "whether you have clicked OK on this cookie notice."
         ),
         duration="14 days, renewed on every visit",
         cookie_type="Strictly necessary",
@@ -95,10 +104,11 @@ COOKIES = [
 # payload, documented individually so test_cookie_registry.py can confirm
 # every key actually written anywhere in this codebase is accounted for in
 # the paragraph above -- a key added without updating that text would be a
-# silent, undocumented change to what the cookie carries.
+# silent, undocumented change to what the cookie carries. Does NOT include
+# COOKIE_NOTICE_ACKNOWLEDGED_KEY below: that one lives in app.storage.user,
+# not app.storage.browser -- see the module docstring for why.
 DOCUMENTED_BROWSER_STORAGE_KEYS = {
     "_scribe_bk",
-    "cookie_notice_acknowledged",
 }
 
 COOKIE_NOTICE_ACKNOWLEDGED_KEY = "cookie_notice_acknowledged"
@@ -107,17 +117,26 @@ COOKIE_NOTICE_ACKNOWLEDGED_KEY = "cookie_notice_acknowledged"
 def is_cookie_notice_acknowledged() -> bool:
     """Whether this browser has already dismissed the cookie notice."""
 
-    return bool(app.storage.browser.get(COOKIE_NOTICE_ACKNOWLEDGED_KEY, False))
+    return bool(app.storage.user.get(COOKIE_NOTICE_ACKNOWLEDGED_KEY, False))
 
 
 def acknowledge_cookie_notice() -> None:
     """
-    Record that this browser has seen the cookie notice.
+    Record that this browser has clicked OK on the cookie notice.
 
-    This is acknowledgement that the notice was shown, not consent --
-    there is nothing to consent to here, since the service uses no
-    cookies that would require it. See the module docstring and issue
-    #140.
+    Not that the notice was merely shown or seen -- a browser that saw
+    the notice and closed the tab without clicking OK gets shown it
+    again next time, which is correct: there is no consent to record
+    either way, since the service uses no cookies that would require
+    it, so nothing is lost by asking again. See the module docstring
+    and issue #140.
+
+    app.storage.user, not app.storage.browser: this runs from the
+    notice's "OK" button, i.e. always after the page's own first
+    response has already been sent, and app.storage.browser raises a
+    TypeError if written to at that point ("the response to the browser
+    has already been built..."). Reproduced directly by clicking the
+    real button before this fix existed.
     """
 
-    app.storage.browser[COOKIE_NOTICE_ACKNOWLEDGED_KEY] = True
+    app.storage.user[COOKIE_NOTICE_ACKNOWLEDGED_KEY] = True
