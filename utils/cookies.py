@@ -91,7 +91,7 @@ COOKIES = [
             "encryption key for your uploaded recordings -- so Sunet's own "
             "infrastructure cannot read your files without your browser "
             "having taken part in deriving that key. It also remembers "
-            "whether you have clicked OK on this cookie notice."
+            "whether you have activated OK on this cookie banner."
         ),
         duration="14 days, renewed on every visit",
         cookie_type="Strictly necessary",
@@ -122,10 +122,16 @@ def is_cookie_notice_acknowledged() -> bool:
 
 def acknowledge_cookie_notice() -> None:
     """
-    Record that this browser has clicked OK on the cookie notice.
+    Record that this browser has activated OK on the cookie banner.
+
+    "Activated", not "clicked": this has to be true for a keyboard user
+    pressing Enter or Space on the button as much as for a mouse click
+    (WCAG 2.1.1 Keyboard), and the word in both this docstring and the
+    banner's own text in utils/cookies.py should not quietly assume
+    otherwise.
 
     Not that the notice was merely shown or seen -- a browser that saw
-    the notice and closed the tab without clicking OK gets shown it
+    the notice and closed the tab without activating OK gets shown it
     again next time, which is correct: there is no consent to record
     either way, since the service uses no cookies that would require
     it, so nothing is lost by asking again. See the module docstring
