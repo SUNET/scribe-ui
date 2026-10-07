@@ -161,11 +161,12 @@ async def ensure_connected(status: dict) -> bool:
             "log out of it under User settings."
         ).classes("text-body2 text-theme-muted")
 
-        ui.link(f"Open {name}", login_url, new_tab=True).classes(
-            "button-default-style q-btn q-btn--flat q-px-md q-py-sm"
-        ).props('rel="noopener noreferrer"')
+        with ui.row().classes("w-full justify-center"):
+            ui.link(f"Open {name}", login_url, new_tab=True).classes(
+                "button-default-style q-btn q-btn--flat q-px-md q-py-sm"
+            ).props('rel="noopener noreferrer"')
 
-        with ui.row().classes("items-center gap-2"):
+        with ui.row().classes("w-full items-center justify-center gap-2"):
             ui.spinner(size="sm").props("aria-hidden=true")
             waiting = ui.label("Waiting for you to grant access...").props(
                 "role=status aria-live=polite"
