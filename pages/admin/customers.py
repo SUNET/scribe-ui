@@ -44,22 +44,20 @@ settings = get_settings()
 
 def drive_fields(customer: dict | None = None) -> tuple:
     """
-    The Sunet Drive settings of a customer (SUNET/scribe-backend#64):
-    whether Drive is offered to its users at all, which instance is theirs
-    -- required when it is; users do not choose one -- and what the
-    organisation calls it. The backend only accepts Sunet Drive addresses.
+    The Sunet Drive settings of a customer (SUNET/scribe-backend#64): which
+    instance is theirs -- users do not choose one -- and what the
+    organisation calls it. Always shown. Drive is offered to the customer's
+    users exactly when an instance is set (see drive_enabled), so there is
+    no switch to keep in step with the address. The backend only accepts
+    Sunet Drive addresses.
 
     Returns:
-        tuple: (enabled switch, instance input, display name input).
+        tuple: (instance input, display name input).
     """
 
     customer = customer or {}
 
     ui.label("Sunet Drive").classes("text-lg font-semibold mt-2")
-    enabled = ui.switch(
-        "Offer Get from / Save to Drive to this customer's users",
-        value=bool(customer.get("drive_enabled")),
-    )
     instance = (
         ui.input(
             "Drive instance",
@@ -69,7 +67,7 @@ def drive_fields(customer: dict | None = None) -> tuple:
         .classes("w-full")
         .props(
             'outlined type=url hint="The organisation\'s own Drive, used by all '
-            'its users."'
+            'its users. Leave empty to not offer Drive."'
         )
     )
     display = (
@@ -85,29 +83,13 @@ def drive_fields(customer: dict | None = None) -> tuple:
         )
     )
 
-    def update() -> None:
-        instance.set_visibility(enabled.value)
-        display.set_visibility(enabled.value)
-
-    enabled.on_value_change(lambda _: update())
-    update()
-
-    return enabled, instance, display
+    return instance, display
 
 
-def drive_fields_valid(enabled, instance) -> bool:
-    """
-    Drive offered with no instance would be a switch that does nothing;
-    say so on the field (3.3.1) rather than after a round trip.
-    """
+def drive_enabled(instance) -> bool:
+    """Drive is offered to a customer's users when it has an instance."""
 
-    if enabled.value and not (instance.value or "").strip():
-        instance.props('error error-message="Enter the organisation\'s Drive address."')
-        instance.run_method("focus")
-        return False
-
-    instance.props(remove="error error-message")
-    return True
+    return bool((instance.value or "").strip())
 
 
 def create_customer_dialog(page: callable) -> None:
@@ -181,7 +163,7 @@ def create_customer_dialog(page: callable) -> None:
                 .props("outlined")
             )
 
-            drive_enabled, drive_url_input, drive_name_input = drive_fields()
+            drive_url_input, drive_name_input = drive_fields()
 
             notes_input = ui.textarea("Notes").classes("w-full").props("outlined")
 
@@ -210,9 +192,6 @@ def create_customer_dialog(page: callable) -> None:
                         name_input.run_method("focus")
                         return
                     name_input.props(remove="error error-message")
-
-                    if not drive_fields_valid(drive_enabled, drive_url_input):
-                        return
 
                     selected_realms = realm_select.value if realm_select.value else []
                     new_realms = [
@@ -264,7 +243,7 @@ def create_customer_dialog(page: callable) -> None:
                                 "blocks_purchased": blocks_val,
                                 "realms": realms_str,
                                 "notes": notes_input.value,
-                                "drive_enabled": drive_enabled.value,
+                                "drive_enabled": drive_enabled(drive_url_input),
                                 "drive_url": drive_url_input.value.strip(),
                                 "drive_display_name": drive_name_input.value.strip(),
                             },
@@ -413,7 +392,7 @@ async def edit_customer(customer_id: str) -> None:
                 .props("outlined")
             )
 
-            drive_enabled, drive_url_input, drive_name_input = drive_fields(customer)
+            drive_url_input, drive_name_input = drive_fields(customer)
 
             notes_input = (
                 ui.textarea("Notes", value=customer.get("notes", ""))
@@ -445,9 +424,6 @@ async def edit_customer(customer_id: str) -> None:
             return
         blocks_input.props(remove="error error-message")
 
-        if not drive_fields_valid(drive_enabled, drive_url_input):
-            return
-
         error = await save_customer(
             customer_abbr_input.value,
             customer_id,
@@ -461,7 +437,7 @@ async def edit_customer(customer_id: str) -> None:
             new_realms_input.value,
             notes_input.value,
             blocks_input.value,
-            drive_enabled=drive_enabled.value,
+            drive_enabled=drive_enabled(drive_url_input),
             drive_url=drive_url_input.value.strip(),
             drive_display_name=drive_name_input.value.strip(),
         )
@@ -485,8 +461,8 @@ async def edit_customer(customer_id: str) -> None:
         "justify-content: flex-end; width: 100%; padding: 16px; gap: 8px;"
     ):
         ui.button("Save customer").classes("default-style").props(
-            "color=black flat"
-        ).style("width: 150px").on("click", do_save)
+            "color=black flat no-wrap"
+        ).style("min-width: 150px").on("click", do_save)
         ui.button("Cancel").classes("delete-style").props("color=black flat").on(
             "click", lambda: ui.navigate.to("/admin/customers")
         )

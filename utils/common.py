@@ -420,6 +420,7 @@ async def page_init(
     use_drawer: bool = False,
     title: str = "",
     on_session_end: Optional[Callable[[], None]] = None,
+    public: bool = False,
 ) -> dict | None:
     """
     Initialize the page with a header and background color.
@@ -437,6 +438,13 @@ async def page_init(
         -- the recorder, whose audio is on the device -- and which should
         say so rather than be taken away mid-recording.
 
+    :param public: the page is also meant for a browser that is not signed
+        in (the cookie information page). Signed in, it gets the page it
+        always did. Signed out, it gets the same header and menu but with
+        nothing that needs a session: no redirect to "/", no user data, no
+        token refresh, no account entries, and a theme button that only
+        remembers the choice in this browser.
+
     :param title: name of this page, appended to the service name and set
         as the document title. Every page shared the single title set in
         ui.run() before this, so a tab strip and a screen reader's page
@@ -449,7 +457,11 @@ async def page_init(
     if title:
         ui.page_title(f"{settings.TAB_TITLE} - {title}")
 
-    if "_scribe_bk" not in app.storage.browser:
+    anonymous = public and not (
+        app.storage.user.get("token") and app.storage.user.get("refresh_token")
+    )
+
+    if "_scribe_bk" not in app.storage.browser and not anonymous:
         ui.navigate.to("/")
         return None
 
@@ -460,7 +472,7 @@ async def page_init(
     # whatever the page added after page_init reached the browser over the
     # socket instead.  A <script> in the head arriving that way is never
     # run: the recorder engine was one ("The recorder did not load").
-    user_data = await get_user_data_async()
+    user_data = None if anonymous else await get_user_data_async()
 
     # How many refreshes in a row have failed to reach the provider. A blip,
     # a suspended laptop or a provider restart is not a session that has
@@ -496,7 +508,8 @@ async def page_init(
 
         ui.navigate.to(settings.OIDC_APP_LOGOUT_ROUTE)
 
-    ui.timer(0.1, refresh, once=True)
+    if not anonymous:
+        ui.timer(0.1, refresh, once=True)
 
     # Apply dark mode preference
     ui.add_head_html(default_styles)
@@ -509,7 +522,8 @@ async def page_init(
 
     is_admin = bool((user_data or {}).get("admin"))
     is_bofh = bool((user_data or {}).get("bofh"))
-    ui.timer(30, refresh)
+    if not anonymous:
+        ui.timer(30, refresh)
 
     try:
         client = ui.context.client
@@ -535,7 +549,8 @@ async def page_init(
 
         app.storage.user["dark_mode"] = new_val
         dark_mode_el.value = new_val
-        dark_mode_save(new_val)
+        if not anonymous:
+            dark_mode_save(new_val)
 
         # Resolve the actual dark state (needed for Plotly chart templates)
         if new_val is not None:
@@ -703,6 +718,14 @@ async def page_init(
             ("/user", "person", "User settings"),
         ]
 
+        if anonymous:
+            # Nothing here needs a session: a way back to the sign-in page
+            # and the page being read.
+            menu_items = [
+                ("/", "login", "Sign in"),
+                ("/cookies", "cookie", "Cookie information"),
+            ]
+
         admin_items = [
             ("/admin/users", "people", "Users"),
             ("/admin", "group_work", "Groups"),
@@ -755,9 +778,12 @@ async def page_init(
                     ui.separator().classes("menu-separator")
                     menu_group("System", system_items, "nav-system")
 
-                ui.separator()
+                if not anonymous:
+                    ui.separator()
 
-                menu_group("Account", [("/logout", "logout", "Logout")], "nav-account")
+                    menu_group(
+                        "Account", [("/logout", "logout", "Logout")], "nav-account"
+                    )
 
         with (
             ui.header()
