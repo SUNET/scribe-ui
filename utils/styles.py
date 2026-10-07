@@ -2549,6 +2549,14 @@ theme_styles = """
         .q-header {
             flex-wrap: nowrap !important;
         }
+        /* The cookie notice is the first row of the header and takes its
+           whole width; left in the nowrap row above it shared a line with
+           the logo and buttons and was squeezed to half the page.  Only
+           while it is there -- dismissed, it is display: none and the
+           header is one row again. */
+        .q-header:has(.cookie-notice-row:not(.hidden)) {
+            flex-wrap: wrap !important;
+        }
         .header-brand {
             flex: 1 1 auto;
             min-width: 0;
