@@ -26,10 +26,11 @@ def create() -> None:
         """
         Public cookie information page. See issue #140.
 
-        Signed in or not, this page gets the same header and drawer
-        navigation as every other page: page_init(public=True) builds it
-        either way, leaving out only what needs a session when there is
-        none. One URL, so the cookie notice's link never has to choose.
+        Signed in, this page gets the same header, drawer navigation and
+        banners as every other page. Signed out it gets a plain header --
+        no menu, no cookie banner -- since page_init(public=True) leaves
+        out everything that needs a session. One URL, so the cookie
+        notice's link never has to choose.
         """
 
         is_signed_in = bool(

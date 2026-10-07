@@ -415,6 +415,62 @@ def reload_on_theme_change() -> None:
     )
 
 
+def _anonymous_header(header_text: str, cycle_dark_mode: Callable) -> None:
+    """
+    The header of a public page seen without being signed in: the logo and
+    name, and the theme and help buttons. No menu and no cookie banner --
+    there is nothing to navigate to, and the page itself is where the
+    cookies are explained.
+    """
+
+    with (
+        ui.header()
+        .style(
+            "justify-content: space-between; background-color:"
+            " var(--color-header-bg); min-height: 50px; padding: 4px 16px;"
+        )
+        .classes("drop-shadow-md")
+    ):
+        with ui.element("div").style(
+            "display: flex; gap: 0px; align-items: center;"
+        ).classes("header-brand"):
+            ui.image(f"static/{settings.LOGO_TOPBAR_LIGHT}").props(
+                'alt="" aria-hidden="true"'
+            ).classes("q-mr-sm logo-light").style("height: 30px; width: 30px;")
+            ui.image(f"static/{settings.LOGO_TOPBAR_DARK}").props(
+                'alt="" aria-hidden="true"'
+            ).classes("q-mr-sm logo-dark").style("height: 30px; width: 30px;")
+            ui.label(settings.TOPBAR_TEXT + header_text).classes(
+                "text-h6 text-theme-primary topbar-text"
+            )
+
+        with ui.element("div").style("display: flex; gap: 0px;").classes(
+            "header-actions"
+        ):
+            dark_val = app.storage.user.get("dark_mode", None)
+            dark_icon = (
+                "dark_mode"
+                if dark_val
+                else ("brightness_auto" if dark_val is None else "light_mode")
+            )
+            dark_btn = (
+                ui.button(
+                    icon=dark_icon,
+                    on_click=lambda: cycle_dark_mode(dark_btn),
+                )
+                .props('flat aria-label="Toggle theme"')
+                .classes("header-btn")
+            )
+            with dark_btn:
+                ui.tooltip("Toggle theme")
+            with ui.button(
+                icon="help", on_click=lambda: show_help_dialog()
+            ).props('flat aria-label="Help and documentation"').classes(
+                "header-btn"
+            ):
+                ui.tooltip("Help")
+
+
 async def page_init(
     header_text: Optional[str] = "",
     use_drawer: bool = False,
@@ -589,7 +645,9 @@ async def page_init(
             app.storage.user["_scribe_restore_theme_focus"] = True
             ui.run_javascript("location.reload()")
 
-    if use_drawer:
+    if anonymous:
+        _anonymous_header(header_text, _cycle_dark_mode)
+    elif use_drawer:
         drawer_open = app.storage.user.get("drawer_open", False)
         drawer = ui.left_drawer(value=True, elevated=True).style(
             "background-color: var(--color-bg-surface-alt); padding: 0;"
@@ -718,14 +776,6 @@ async def page_init(
             ("/user", "person", "User settings"),
         ]
 
-        if anonymous:
-            # Nothing here needs a session: a way back to the sign-in page
-            # and the page being read.
-            menu_items = [
-                ("/", "login", "Sign in"),
-                ("/cookies", "cookie", "Cookie information"),
-            ]
-
         admin_items = [
             ("/admin/users", "people", "Users"),
             ("/admin", "group_work", "Groups"),
@@ -778,12 +828,9 @@ async def page_init(
                     ui.separator().classes("menu-separator")
                     menu_group("System", system_items, "nav-system")
 
-                if not anonymous:
-                    ui.separator()
+                ui.separator()
 
-                    menu_group(
-                        "Account", [("/logout", "logout", "Logout")], "nav-account"
-                    )
+                menu_group("Account", [("/logout", "logout", "Logout")], "nav-account")
 
         with (
             ui.header()
