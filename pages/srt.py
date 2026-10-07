@@ -20,7 +20,7 @@ import httpx
 from uuid import UUID
 
 from nicegui import app, ui
-from utils.common import get_auth_header
+from utils.common import focus_element, get_auth_header
 from utils.styles import default_styles
 from utils.common import job_has_original, page_init
 from utils.helpers import storage_decrypt
@@ -320,9 +320,19 @@ def create() -> None:
                     editor.set_status_elements(**figures)
 
                     with ui.row().classes("w-full justify-end"):
-                        ui.button("Close", on_click=info_dialog.close).props(
-                            "flat"
-                        ).classes("editor-btn")
+                        info_close_button = ui.button(
+                            "Close", on_click=info_dialog.close
+                        ).props("flat").classes("editor-btn")
+
+                def focus_info_close_button_on_open(event) -> None:
+                    # Move focus into the dialog when it opens rather than
+                    # leaving it on the toolbar button, which would leave
+                    # Space free to fall through to the browser's native
+                    # video play/pause shortcut (F-74).
+                    if event.sender.value:
+                        focus_element(info_close_button)
+
+                info_dialog.on("update:model-value", focus_info_close_button_on_open)
 
                 ui.button(icon="info").props(
                     'flat aria-label="Information"'
@@ -598,6 +608,18 @@ def create() -> None:
                                     transcript.set_follow(value)
                                     transcript.set_highlight_word(value)
 
+                                    # A click on this switch (or the ones
+                                    # below) can leave real DOM focus on a
+                                    # presentational wrapper around it
+                                    # rather than on the switch itself; a
+                                    # later Space keypress then falls
+                                    # through to the browser's native video
+                                    # play/pause shortcut instead of doing
+                                    # nothing or toggling the switch again
+                                    # (see F-74). Re-focusing the switch
+                                    # after every change closes that gap.
+                                    focus_element(event.sender)
+
                                 # Scrolling to the block and marking the word
                                 # in it are two halves of one thing --
                                 # following the recording -- so the switch
@@ -646,6 +668,9 @@ def create() -> None:
                                         app.storage.user[OVERLAY_SHOW_KEY] = value
                                         transcript.set_overlay_enabled(value)
 
+                                        # See save_follow above (F-74).
+                                        focus_element(event.sender)
+
                                     overlay_switch = ui.switch(
                                         "Subtitle overlay",
                                         value=editor.show_subtitle_overlay,
@@ -675,6 +700,9 @@ def create() -> None:
                                         app.storage.user[TIMELINE_SHOW_KEY] = value
                                         timeline.set_shown(value)
 
+                                        # See save_follow above (F-74).
+                                        focus_element(event.sender)
+
                                     timeline_switch = ui.switch(
                                         "Timeline",
                                         value=editor.show_timeline,
@@ -703,6 +731,9 @@ def create() -> None:
                                         value = bool(event.sender.value)
                                         transcript.set_show_my_edits(value)
                                         app.storage.user[EDITS_SHOW_KEY] = value
+
+                                        # See save_follow above (F-74).
+                                        focus_element(event.sender)
 
                                     edits_switch = ui.switch(
                                         "My edits",

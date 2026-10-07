@@ -32,6 +32,7 @@ from typing import Optional
 from nicegui import ui
 
 from utils.caption import SRTCaption
+from utils.common import focus_element
 from utils.settings import get_settings
 
 settings = get_settings()
@@ -619,9 +620,24 @@ class RenderMixin:
                     "background-color: var(--color-bg-surface); "
                     "padding-bottom: 8px; z-index: 1;"
                 ):
-                    ui.button("Close").props("flat color=primary").on(
-                        "click", dialog.close
-                    )
+                    close_button = ui.button("Close").props(
+                        "flat color=primary"
+                    ).on("click", dialog.close)
+
+        def focus_close_button_on_open(event) -> None:
+            # The dialog is opened two ways below (open_window, and the
+            # toolbar button), so focus is moved here, on the dialog's
+            # own value change, rather than duplicated at each open()
+            # call site. Without this, focus stays on whatever
+            # triggered the open -- the toolbar button, or nowhere in
+            # particular when opened programmatically -- and a Space
+            # keypress meant for a control inside the dialog instead
+            # falls through to the browser's native video play/pause
+            # shortcut (see F-74).
+            if event.sender.value:
+                focus_element(close_button)
+
+        dialog.on("update:model-value", focus_close_button_on_open)
 
         if open_window:
             dialog.open()

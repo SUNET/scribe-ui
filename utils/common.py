@@ -1190,6 +1190,29 @@ UPLOAD_MAX_FILES = 5
 UPLOAD_MAX_TOTAL_BYTES = 4 * 1024**3 - 1024**2
 
 
+def focus_element(element) -> None:
+    """
+    Move the browser's focus onto the given NiceGUI element.
+
+    A click (or a Quasar-internal keyboard activation) on a switch,
+    toggle or button can leave the DOM's real focus on a small
+    presentational wrapper around the control -- SPAN.no-outline after
+    a switch, SPAN.q-focus-helper after a button -- rather than on the
+    control itself. That wrapper, unlike the control, does not consume
+    a later Space keypress (no stopPropagation), so the keystroke
+    falls through to the browser's own default action, such as toggling
+    video playback via its native Space shortcut (see F-74). Re-focusing
+    the control right after it is activated, or moving focus into a
+    dialog right after it opens, closes that gap. Same idea as
+    toggle_upload_status above, generalised for reuse.
+    """
+    ui.run_javascript(
+        f"const b = getElement({element.id});"
+        "const el = b && (b.$el || b);"
+        "if (el && el.focus) el.focus();"
+    )
+
+
 def table_upload(table) -> None:
     """
     Handle the click event on the Upload button with improved UX.

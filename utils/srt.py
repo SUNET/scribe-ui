@@ -371,15 +371,18 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
             return
 
         match event.key:
-            # Play/pause video, Ctrl+Space
+            # Play/pause video, Ctrl+Space. self._play_pause is set
+            # optimistically here and reconciled against the player's
+            # own play/pause events in _set_play_pause_state (see
+            # set_video_player) -- see F-40.
             case " " if event.modifiers.ctrl and not event.modifiers.shift and not event.modifiers.alt and not event.modifiers.meta:
                 if self._video_player:
                     if self._play_pause:
                         self._video_player.pause()
-                        self._play_pause = False
+                        self._set_play_pause_state(False)
                     else:
                         self._video_player.play()
-                        self._play_pause = True
+                        self._set_play_pause_state(True)
 
             # Undo, Ctrl+Z
             case "z" if event.modifiers.ctrl and not event.modifiers.shift:
@@ -545,10 +548,44 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
 
     def set_video_player(self, player) -> None:
         """
-        Set the video player for the editor.
+        Set the video player for the editor, and keep self._play_pause
+        in sync with the player's own play/pause state from here on.
+
+        Without this, self._play_pause was only ever written by
+        handle_key_event's Ctrl+Space branch below, so it reflected
+        what Ctrl+Space last did, not what the player is actually
+        doing. The moment a user reaches play/pause some other way --
+        the native video controls being the obvious case -- the flag
+        and the player disagree, and the next Ctrl+Space does the
+        opposite of what the user expects (see F-40). Listening to the
+        player's own "play"/"pause" events, the same way follow_video
+        already listens to "timeupdate" elsewhere in this editor, makes
+        the flag track reality regardless of who or what started or
+        stopped playback.
         """
 
         self._video_player = player
+
+        # Some tests pass a minimal player double that only implements
+        # seek() -- it is not this editor's job to require more of it
+        # than the feature under test actually needs, so the play/pause
+        # sync below is skipped for a player that cannot report it.
+        if hasattr(player, "on"):
+            player.on("play", lambda: self._set_play_pause_state(True))
+            player.on("pause", lambda: self._set_play_pause_state(False))
+
+    def _set_play_pause_state(self, is_playing: bool) -> None:
+        """
+        Record whether the video is currently playing.
+
+        Called both from the player's own "play"/"pause" events (set
+        up in set_video_player) and optimistically from Ctrl+Space in
+        handle_key_event, so a keyboard-only user sees no round-trip
+        delay while a mouse user reaching the native controls directly
+        still keeps the flag honest (see F-40).
+        """
+
+        self._play_pause = is_playing
 
     def parse_txt(self, data: dict) -> None:
         """
