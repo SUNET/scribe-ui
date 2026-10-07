@@ -1202,9 +1202,16 @@ theme_styles = """
     }
 
     /* ── NiceGUI content padding ── */
+    /* The content's own padding, named so the banners that cancel it (cookie
+       notice, announcements) cancel exactly what is there at any width. */
+    :root {
+        --content-pad-x: 2rem;
+        --content-pad-top: 1rem;
+    }
+
     .nicegui-content {
-        padding-left: 2rem;
-        padding-right: 2rem;
+        padding-left: var(--content-pad-x);
+        padding-right: var(--content-pad-x);
         max-width: 100%;
     }
 
@@ -2505,10 +2512,15 @@ theme_styles = """
        a window and a hand, and everything below reads as either. */
     @media (max-width: 700px) {
         /* The page's own margins are most of a phone's width. */
+        :root {
+            --content-pad-x: 0.75rem;
+            --content-pad-top: 0.75rem;
+        }
+
         .nicegui-content {
-            padding-left: 0.75rem;
-            padding-right: 0.75rem;
-            padding-top: 0.75rem;
+            padding-left: var(--content-pad-x);
+            padding-right: var(--content-pad-x);
+            padding-top: var(--content-pad-top);
         }
 
         /* The rail is 56px of a 390px screen given over to icons nobody
@@ -2548,14 +2560,6 @@ theme_styles = """
            truncates, above); the buttons keep their size. */
         .q-header {
             flex-wrap: nowrap !important;
-        }
-        /* The cookie notice is the first row of the header and takes its
-           whole width; left in the nowrap row above it shared a line with
-           the logo and buttons and was squeezed to half the page.  Only
-           while it is there -- dismissed, it is display: none and the
-           header is one row again. */
-        .q-header:has(.cookie-notice-row:not(.hidden)) {
-            flex-wrap: wrap !important;
         }
         .header-brand {
             flex: 1 1 auto;

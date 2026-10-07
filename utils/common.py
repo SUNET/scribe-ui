@@ -195,7 +195,7 @@ def logout() -> None:
     ui.navigate.to(settings.OIDC_APP_LOGOUT_ROUTE)
 
 
-def render_cookie_notice_row() -> None:
+def render_cookie_notice_row(in_page: bool = False) -> None:
     """
     Show "We use necessary cookies..." as the first row inside the
     current header, until this browser acknowledges it. See issue #140.
@@ -212,15 +212,21 @@ def render_cookie_notice_row() -> None:
     page_init at all -- the sign-in page -- so it is a self-contained
     function rather than something woven into _show_announcement_banners.
 
-    Must be called from inside a `with ui.header():` block, as the first
-    child, so it sits above the header's own logo/menu row rather than
-    beside it.
+    Two places it can go:
+
+    - in_page=False (the sign-in page): inside a `with ui.header():`
+      block, as the first child. That header has nothing else in it.
+    - in_page=True (page_init): in the page's own content, right above the
+      announcement banners and so below the header's logo/menu row, drawn
+      the way they are (full width, flush under the header). It scrolls
+      with the page like they do.
     """
 
     if is_cookie_notice_acknowledged():
         return
 
-    # Same visual language as an "info" announcement banner below
+    # Same visual language, and the same 20px side padding, as an "info" announcement banner below
+    # so the icons and close buttons line up between the two
     # (severity_styles["info"], utils/styles.py) -- same background,
     # border and icon colour, same icon + text layout -- so this reads
     # as the same kind of thing, not an unrelated strip of UI. Not
@@ -239,18 +245,39 @@ def render_cookie_notice_row() -> None:
     # page_init below); a header with no such declaration -- like
     # main.py's -- falls back to 0px, i.e. no shift, because it is
     # already edge-to-edge and needs none. This only pulls the row
-    # past its header's own left/right padding, and --cookie-notice-inset-y does the same for the top, so no strip of
-    # header shows above the row. No border: the fill is the edge.
+    # past its header's own left/right padding. No border: the fill is
+    # the edge.
+    if in_page:
+        # The same box an announcement banner has (see
+        # _show_announcement_banners): the content area's own padding is
+        # cancelled so the fill reaches the edges. A line under it
+        # separates it from the announcements below.
+        placement = (
+            "width: calc(100% + 2 * var(--content-pad-x, 2rem));"
+            " margin: calc(-1 * var(--content-pad-top, 1rem))"
+            " calc(-1 * var(--content-pad-x, 2rem)) 0"
+            " calc(-1 * var(--content-pad-x, 2rem));"
+            " border-bottom: 1px solid var(--color-severity-info-border);"
+        )
+    else:
+        placement = (
+            "width: calc(100% + 2 * var(--cookie-notice-inset-x, 0px));"
+            " margin: 0 calc(-1 * var(--cookie-notice-inset-x, 0px));"
+        )
+
     with ui.row().classes("cookie-notice-row").style(
-        "width: calc(100% + 2 * var(--cookie-notice-inset-x, 0px));"
+        f"{placement}"
         " align-items: center; justify-content: space-between;"
-        " flex-wrap: wrap; gap: 8px 16px; padding: 8px 12px;"
-        " margin: calc(-1 * var(--cookie-notice-inset-y, 0px))"
-        " calc(-1 * var(--cookie-notice-inset-x, 0px)) 0"
-        " calc(-1 * var(--cookie-notice-inset-x, 0px));"
+        " flex-wrap: nowrap; gap: 16px; padding: 8px 20px;"
         " background-color: var(--color-severity-info-bg);"
     ) as notice_row:
-        with ui.row().style("align-items: center; gap: 10px;"):
+        # One line of controls at any width: the sentence is what gives way
+        # (it may wrap inside its own cell), never the link or the close
+        # button dropping onto a row of their own.
+        with ui.row().style(
+            "align-items: center; gap: 10px; flex-wrap: nowrap;"
+            " flex: 1 1 0; min-width: 0;"
+        ):
             ui.icon("cookie", size="sm").style(
                 "color: var(--color-severity-info-icon);"
             )
@@ -258,7 +285,9 @@ def render_cookie_notice_row() -> None:
                 "color: var(--color-text-primary); font-size: 0.95rem;"
             )
 
-        with ui.row().style("align-items: center; gap: 4px;"):
+        with ui.row().style(
+            "align-items: center; gap: 4px; flex-wrap: nowrap; flex: 0 0 auto;"
+        ):
             # A real link, not a button: it navigates, it does not act in
             # place. Same reasoning as the main menu entries elsewhere in
             # this file.
@@ -266,6 +295,7 @@ def render_cookie_notice_row() -> None:
                 "cookie-notice-link"
             ).style(
                 "font-size: 0.9rem; color: var(--color-severity-info-link);"
+                " white-space: nowrap;"
             )
 
             def close_notice() -> None:
@@ -350,8 +380,10 @@ def _show_announcement_banners(user_data: dict | None) -> None:
             .style(
                 "padding: 8px 20px; display: flex; align-items: center;"
                 " justify-content: space-between;"
-                " margin-left: -2rem; margin-right: -2rem; margin-top: -1rem;"
-                " width: calc(100% + 4rem);"
+                " margin-left: calc(-1 * var(--content-pad-x, 2rem));"
+                " margin-right: calc(-1 * var(--content-pad-x, 2rem));"
+                " margin-top: calc(-1 * var(--content-pad-top, 1rem));"
+                " width: calc(100% + 2 * var(--content-pad-x, 2rem));"
             )
         )
 
@@ -836,12 +868,10 @@ async def page_init(
             ui.header()
             .style(
                 "justify-content: space-between; background-color: var(--color-header-bg); min-height: 50px; padding: 4px 16px;"
-                " --cookie-notice-inset-x: 16px; --cookie-notice-inset-y: 4px;"
+                ""
             )
             .classes("drop-shadow-md")
         ):
-            render_cookie_notice_row()
-
             with ui.element("div").style(
                 "display: flex; gap: 0px; align-items: center; margin-left: -12px;"
             ).classes("header-brand"):
@@ -926,12 +956,10 @@ async def page_init(
             ui.header()
             .style(
                 "justify-content: space-between; background-color: var(--color-header-bg); min-height: 50px; padding: 4px 16px;"
-                " --cookie-notice-inset-x: 16px; --cookie-notice-inset-y: 4px;"
+                ""
             )
             .classes("drop-shadow-md")
         ):
-            render_cookie_notice_row()
-
             with ui.element("div").style("display: flex; gap: 0px;"):
                 ui.image(f"static/{settings.LOGO_TOPBAR_LIGHT}").props(
                     'alt="" aria-hidden="true"'
@@ -1057,6 +1085,10 @@ async def page_init(
             </script>
             """
         )
+
+    # Above the announcements, below the header.
+    if not anonymous:
+        render_cookie_notice_row(in_page=True)
 
     _show_announcement_banners(user_data)
 
