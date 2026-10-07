@@ -84,7 +84,19 @@ async def index(request: Request) -> None:
     # page's default root font size (16px); hardcoded here, not
     # computed, since this value is cancelling a specific class's
     # specific default, not expressing a design choice of its own.
-    with ui.header().style("--cookie-notice-inset-x: 16px;"):
+    #
+    # Otherwise the header is dressed like page_init's, so the notice looks
+    # the same signed in and out. No vertical padding, so the row sits flush
+    # with the top and the header collapses once the notice is gone.
+    with (
+        ui.header()
+        .style(
+            "justify-content: space-between;"
+            " background-color: var(--color-header-bg);"
+            " padding: 0 16px;"
+            " --cookie-notice-inset-x: 16px;"
+        )
+    ):
         render_cookie_notice_row()
 
     # The backend's OIDC callback redirects here with a one-time code, not
@@ -398,6 +410,10 @@ app.add_static_files(url_path="/static", local_directory="static/")
 ui.run(
     title=f"{settings.TAB_TITLE}",
     storage_secret=settings.STORAGE_SECRET,
+    # Starlette's SessionMiddleware: https_only adds the Secure attribute.
+    # HttpOnly and SameSite=Lax stay at its defaults. Keep utils/cookies.py's
+    # description of the cookie in step with this.
+    session_middleware_kwargs={"https_only": settings.HTTPS_ONLY_COOKIES},
     host="0.0.0.0",
     port=8888,
     favicon=f"static/{settings.FAVICON}",

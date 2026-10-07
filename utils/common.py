@@ -239,16 +239,16 @@ def render_cookie_notice_row() -> None:
     # page_init below); a header with no such declaration -- like
     # main.py's -- falls back to 0px, i.e. no shift, because it is
     # already edge-to-edge and needs none. This only pulls the row
-    # past its header's own left/right padding, not its top/bottom,
-    # since only the horizontal bleed was asked for.
+    # past its header's own left/right padding, and --cookie-notice-inset-y does the same for the top, so no strip of
+    # header shows above the row. No border: the fill is the edge.
     with ui.row().classes("cookie-notice-row").style(
         "width: calc(100% + 2 * var(--cookie-notice-inset-x, 0px));"
         " align-items: center; justify-content: space-between;"
         " flex-wrap: wrap; gap: 8px 16px; padding: 8px 12px;"
-        " margin: 0 calc(-1 * var(--cookie-notice-inset-x, 0px))"
-        " 0 calc(-1 * var(--cookie-notice-inset-x, 0px));"
+        " margin: calc(-1 * var(--cookie-notice-inset-y, 0px))"
+        " calc(-1 * var(--cookie-notice-inset-x, 0px)) 0"
+        " calc(-1 * var(--cookie-notice-inset-x, 0px));"
         " background-color: var(--color-severity-info-bg);"
-        " border-bottom: 1px solid var(--color-severity-info-border);"
     ) as notice_row:
         with ui.row().style("align-items: center; gap: 10px;"):
             ui.icon("cookie", size="sm").style(
@@ -763,7 +763,7 @@ async def page_init(
             ui.header()
             .style(
                 "justify-content: space-between; background-color: var(--color-header-bg); min-height: 50px; padding: 4px 16px;"
-                " --cookie-notice-inset-x: 16px;"
+                " --cookie-notice-inset-x: 16px; --cookie-notice-inset-y: 4px;"
             )
             .classes("drop-shadow-md")
         ):
@@ -853,7 +853,7 @@ async def page_init(
             ui.header()
             .style(
                 "justify-content: space-between; background-color: var(--color-header-bg); min-height: 50px; padding: 4px 16px;"
-                " --cookie-notice-inset-x: 16px;"
+                " --cookie-notice-inset-x: 16px; --cookie-notice-inset-y: 4px;"
             )
             .classes("drop-shadow-md")
         ):

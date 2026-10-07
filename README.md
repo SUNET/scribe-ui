@@ -61,6 +61,7 @@ OIDC_APP_LOGOUT_ROUTE="http://localhost:8000/api/logout"
 
 # Storage configuration
 STORAGE_SECRET="your-secret-key"
+HTTPS_ONLY_COOKIES=false  # Default is true (Secure cookie). Set false only for local http development
 NICEGUI_REDIS_URL="redis://localhost:6379"  # Optional: Redis storage URL
 ```
 

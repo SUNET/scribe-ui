@@ -41,6 +41,12 @@ class Settings(BaseSettings):
     # server to server, so they never travel through the browser.
     OIDC_APP_EXCHANGE_ROUTE: str = ""
     STORAGE_SECRET: str = "change_this_secret_to_another_very_secret_secret"
+    # Adds the Secure attribute to the session cookie, so a browser only
+    # sends it over https. On by default. Turn it off (HTTPS_ONLY_COOKIES=false
+    # in .env) only for local development over plain http: Chrome and Firefox
+    # exempt localhost, but Safari and any other hostname (a LAN IP) do not,
+    # and there the cookie is dropped and nobody can sign in.
+    HTTPS_ONLY_COOKIES: bool = True
 
     LOGO_LANDING: str = "sunet_logo.png"
     LOGO_LANDING_WIDTH: str = "250"

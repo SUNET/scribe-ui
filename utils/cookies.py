@@ -25,8 +25,9 @@ this file cannot drift apart from each other -- see issue #140.
 
 Measured, not assumed: this service sets exactly one HTTP cookie, "session",
 from Starlette's SessionMiddleware (utils/storage via ui.run(storage_secret=
-...) in main.py), with no session_middleware_kwargs overrides -- so it is
-Starlette's own defaults: HttpOnly, SameSite=Lax, Max-Age 14 days, renewed
+...) in main.py), whose only override is https_only (the HTTPS_ONLY_COOKIES setting, on by
+default, which adds Secure) -- so apart from that it is Starlette's own
+defaults: HttpOnly, SameSite=Lax, Max-Age 14 days, renewed
 on every response that still carries session data. Nothing else in this
 codebase calls response.set_cookie or otherwise sets a cookie of its own
 (checked by test_cookie_registry.py, which scans the source for cookie-
@@ -67,6 +68,8 @@ from dataclasses import dataclass
 
 from nicegui import app
 
+from utils.settings import get_settings
+
 
 @dataclass(frozen=True)
 class CookieInfo:
@@ -95,7 +98,12 @@ COOKIES = [
         ),
         duration="14 days, renewed on every visit",
         cookie_type="Strictly necessary",
-        security="HttpOnly, SameSite=Lax",
+        # Mirrors main.py's session_middleware_kwargs.
+        security=(
+            "HttpOnly, Secure, SameSite=Lax"
+            if get_settings().HTTPS_ONLY_COOKIES
+            else "HttpOnly, SameSite=Lax"
+        ),
         source="Sunet Scribe (first-party)",
     ),
 ]
