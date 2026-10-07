@@ -523,32 +523,34 @@ export default {
               <div class="recorder-help-section">
                 <h3 class="recorder-help-heading">Start recording</h3>
                 <p>Select Start recording to begin.</p>
-                <p>Keep this page open while recording. On a computer, prevent it from going to sleep. On a phone or tablet, keep the screen on. Scribe asks the device to stay awake for you, but some devices may still turn the screen off.</p>
-                <p>You can see how long you have been recording on the timer.</p>
+                <p>Keep this page open while recording. On a computer, prevent it from going to sleep. On a phone or tablet, keep the screen on. Scribe asks the device to stay awake, but some devices may still turn the screen off.</p>
+                <p>The timer shows how long you have been recording.</p>
               </div>
               <div class="recorder-help-section">
                 <h3 class="recorder-help-heading">Stop recording</h3>
                 <p>Select Stop recording when you are finished.</p>
-                <p>Sunet Scribe completes the upload and the recording appears in My files. You can then transcribe it in the same way as any other audio file.</p>
+                <p>Sunet Scribe completes the upload and saves the recording to My files. You can then transcribe it in the same way as any other audio file.</p>
                 <p>Do not close the page until Sunet Scribe confirms that the recording has been saved.</p>
               </div>
               <div class="recorder-help-section">
                 <h3 class="recorder-help-heading">If something goes wrong</h3>
-                <p>Sunet Scribe saves the recording continuously while you record. When you are online, recorded audio is sent to Sunet Scribe every few seconds.</p>
-                <p>If the connection is lost, recording continues in this browser and uploading resumes when the connection returns.</p>
-                <p>If the browser or device crashes, open this page again. Sunet Scribe will recover anything that had already reached the service or was saved in this browser. While connected, only the last few seconds may be lost.</p>
-                <p>A recording that was never finished is kept on Sunet Scribe for 7 days, and can be finished or deleted from this page during that time. After that it is removed.</p>
+                <p>If your connection is lost, you can continue recording. Return to this page as soon as you are back online so that any locally stored audio can be uploaded.</p>
+                <p>If the browser or device crashes, open the recording page again. If possible, use the same browser and device. This gives Sunet Scribe the best chance of recovering the complete recording.</p>
+                <p>While you are online, recorded audio is sent to Sunet Scribe every few seconds. Anything that had already reached Sunet Scribe can be recovered for up to 7 days, even from a different browser or device. Audio that had not yet been uploaded can also be recovered if it is still available in the same browser.</p>
+                <p>An unfinished recording remains available on this page for 7 days. During that time, recover and finish it or delete it. After 7 days, it expires.</p>
               </div>
               <div class="recorder-help-section">
                 <h3 class="recorder-help-heading">Your original recording</h3>
-                <p>Once a recording is in My files it is no longer listed here. Sunet Scribe keeps the original recording in My files for 7 days, just like other uploaded files, marked as a recording. Download it or delete it from My files.</p>
+                <p>Once a recording has been completed, it appears in My files and is no longer listed on the recording page.</p>
+                <p>Sunet Scribe keeps the original recording in My files for 7 days, just like other uploaded files. It is marked as a recording and can be downloaded or deleted from My files.</p>
               </div>
               <div class="recorder-help-section">
                 <h3 class="recorder-help-heading">Privacy and security</h3>
                 <p>Make sure everyone knows they are being recorded. Follow your organisation's requirements for permission, information and handling of recordings.</p>
-                <p>While you are online, recorded audio is sent to Sunet Scribe over an encrypted connection and stored encrypted under your account.</p>
-                <p>If audio cannot be sent immediately, it is temporarily stored in this browser. It is encrypted using a key provided by Sunet Scribe while you are signed in and is removed from the browser after it has been successfully sent.</p>
-                <p>Locally stored audio can only be recovered in this browser, and only for a limited time. If you clear this browser's cookies or site data, the audio can no longer be recovered and is lost. Audio that has not been sent within 7 days of recording is removed from the browser, the same as everything else Sunet Scribe keeps. Open this page again as soon as you are back online so the recording can be sent.</p>
+                <p>Recorded audio is sent to Sunet Scribe over an encrypted connection and stored encrypted under your account.</p>
+                <p>If audio cannot be sent immediately, it is temporarily stored in this browser, encrypted using a key provided by Sunet Scribe. Once the audio has been successfully sent, the local copy is removed.</p>
+                <p>Locally stored audio can only be recovered using the same browser and device. If you clear the browser's cookies or site data before the audio has been sent, it can no longer be recovered.</p>
+                <p>Local audio that has not been sent within 7 days expires and is removed when this browser next connects to Sunet Scribe. If the browser does not reconnect, the encrypted local data may remain until the browser's site data is cleared.</p>
                 <p>Anyone who can use this browser may be able to access locally stored recordings while you are signed in. Avoid leaving unfinished recordings on a shared device.</p>
                 <p>A downloaded recording is an ordinary file on your device. Store and handle it according to your organisation's requirements.</p>
               </div>
