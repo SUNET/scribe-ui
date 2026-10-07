@@ -20,6 +20,7 @@ import secrets
 from fastapi import Request
 from nicegui import app, ui
 from pages.admin import create as create_admin
+from pages.cookies import create as create_cookies
 from pages.home import create as create_files_table
 from pages.record import create as create_record
 from pages.srt import create as create_srt
@@ -27,6 +28,7 @@ from pages.status import create as create_status
 from pages.user import create as create_user_page
 from pages.view import create as create_view
 from utils.styles import default_styles
+from utils.common import render_cookie_notice_row
 from utils.settings import get_settings
 from utils.token import (
     exchange_login_code,
@@ -50,6 +52,7 @@ create_user_page()
 create_status()
 create_view()
 create_record()
+create_cookies()
 
 
 @ui.page("/")
@@ -63,6 +66,26 @@ async def index(request: Request) -> None:
     ui.page_title(f"{settings.TAB_TITLE} - Sign in")
 
     ui.add_head_html(default_styles)
+
+    # No min-height/padding here on purpose: once the notice is
+    # acknowledged, render_cookie_notice_row renders nothing and this
+    # header should collapse to zero height rather than leave an empty
+    # bar above the sign-in card. See issue #140.
+    #
+    # This still carries its own left/right padding, though: NiceGUI's
+    # own .nicegui-header class (nicegui.css) gives every ui.header(),
+    # including this one, "padding: 1rem" by default -- there is
+    # nothing here to override it, unlike page_init's headers, which
+    # set their own padding inline. --cookie-notice-inset-x tells
+    # render_cookie_notice_row() what that real padding is, so its
+    # background still bleeds flush with this header's actual edges
+    # rather than the 0px it would otherwise assume for a header with
+    # no inline padding of its own. 1rem is NiceGUI's default at the
+    # page's default root font size (16px); hardcoded here, not
+    # computed, since this value is cancelling a specific class's
+    # specific default, not expressing a design choice of its own.
+    with ui.header().style("--cookie-notice-inset-x: 16px;"):
+        render_cookie_notice_row()
 
     # The backend's OIDC callback redirects here with a one-time code, not
     # with the tokens themselves. Anything in a query string ends up in the
