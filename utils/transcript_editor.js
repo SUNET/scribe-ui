@@ -630,7 +630,11 @@ export default {
         range.collapse(false);
       }
 
-      this.$refs.body?.focus();
+      // preventScroll: focusing the editor scrolls it into view by itself,
+      // which jumped the text to wherever the browser last had focus before
+      // the caller's own scroll (centring on the caption) ran -- two
+      // scrolls, the first in the wrong place. The caller scrolls, once.
+      this.$refs.body?.focus({ preventScroll: true });
       const selection = window.getSelection();
       selection.removeAllRanges();
       selection.addRange(range);
