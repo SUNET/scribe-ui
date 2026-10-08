@@ -91,7 +91,7 @@ COOKIES = [
             "few preferences such as dark/light mode and whether the menu "
             "is expanded, and carries a random key unique to this browser "
             "that is combined with a server-side secret to derive the "
-            "encryption key for your uploaded recordings -- so Sunet's own "
+            "encryption key for your uploaded files -- so Sunet's own "
             "infrastructure cannot read your files without your browser "
             "having taken part in deriving that key. It also remembers "
             "whether you have closed the cookie banner."

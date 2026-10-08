@@ -410,6 +410,21 @@ def create() -> None:
                     ui.link(
                         "Skip to video and settings", "#srt-player-panel"
                     ).classes("skip-link")
+                    if data_format == "srt":
+                        # Right after the link above, so it is the last stop
+                        # before the text: Shift+Tab from a caption lands
+                        # here, which is where a reader fixing issues one
+                        # after the other wants to go back to. Only there
+                        # while the validation panel is open on an issue.
+                        validation_skip = ui.link(
+                            "Skip to validation issue", "#"
+                        ).classes("skip-link")
+                        validation_skip.on(
+                            "click.prevent",
+                            lambda: editor.validation_panel
+                            and editor.validation_panel.focus_issue(),
+                        )
+                        validation_skip.set_visibility(False)
                     ui.element("div").props(
                         'id=srt-transcript-panel tabindex=-1'
                         ' aria-label="Transcript"'
@@ -432,9 +447,14 @@ def create() -> None:
 
                 with splitter.after:
                     with ui.card().classes("editor-panel w-full h-full"):
+                        # The link moves focus to the panel; the caret then
+                        # goes back to where it was and the text scrolls to
+                        # it, rather than the reader landing at the top.
                         ui.link(
                             "Skip to transcript", "#srt-transcript-panel"
-                        ).classes("skip-link")
+                        ).classes("skip-link").on(
+                            "click", lambda: transcript.focus_caret()
+                        )
                         ui.element("div").props(
                             'id=srt-player-panel tabindex=-1'
                             ' aria-label="Video and settings"'
@@ -870,3 +890,4 @@ def create() -> None:
                                 return_focus=lambda: validate_button,
                                 revalidate=editor.revalidate_items,
                             )
+                            editor.validation_panel.skip_link = validation_skip

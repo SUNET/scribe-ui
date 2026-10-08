@@ -176,6 +176,9 @@ class TranscriptBody(
     def scroll_to_block(self, block_id: int) -> None:
         self.run_method("scrollToBlock", block_id)
 
+    def focus_caret(self) -> None:
+        self.run_method("focusCaret")
+
     def set_subtitle_mode(self, subtitle_mode: bool) -> None:
         self._props["subtitleMode"] = subtitle_mode
         self.update()
@@ -694,6 +697,16 @@ class TranscriptEditor:
 
         if self.body is not None:
             self.body.focus_block(block_id, offset)
+
+    def focus_caret(self) -> None:
+        """
+        Put the caret back where the reader last had it and scroll the text
+        to it -- what "Skip to transcript" does, so jumping to the text
+        lands on the work in progress and not on the first caption.
+        """
+
+        if self.body is not None:
+            self.body.focus_caret()
 
     def merge(self, args) -> None:
         """

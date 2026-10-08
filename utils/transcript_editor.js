@@ -443,6 +443,9 @@ export default {
       // is the caption the recording is playing -- the reader is very
       // often editing one caption while listening to another.
       caretId: null,
+      // Where the caret last was ({id, offset}), kept after it leaves the
+      // editor so a skip link can send the reader back to it.
+      lastCaret: null,
       // Roving tabindex over the gutter and cell controls (speaker, the two
       // timings, and -- subtitles only -- the five action icons): exactly
       // one control across the *entire* transcript carries a real tabindex
@@ -1095,6 +1098,7 @@ export default {
     updateCaretBlock() {
       const at = this.caret();
       this.caretId = at ? at.id : null;
+      if (at) this.lastCaret = { id: at.id, offset: at.offset };
     },
 
     // Leaving the editor sends whatever was pending and takes the editing
@@ -1950,7 +1954,35 @@ export default {
 
         this.placeCaretAt(block, offset);
         this.caretId = id;
+
+        // A caret placed by script does not bring itself into view.
+        block.scrollIntoView({ block: "nearest" });
       });
+    },
+
+    // Back to where the caret was last -- or, if it has not been in the text
+    // yet, the caption being played, or the first one -- and scroll there.
+    focusCaret() {
+      const body = this.$refs.body;
+      if (!body) return;
+
+      const exists = (id) =>
+        id !== null &&
+        id !== undefined &&
+        body.querySelector(`.transcript-text[data-id="${id}"]`);
+
+      if (this.lastCaret && exists(this.lastCaret.id)) {
+        this.focusBlock(this.lastCaret.id, this.lastCaret.offset);
+        return;
+      }
+
+      if (exists(this.activeId)) {
+        this.focusBlock(this.activeId, 0);
+        return;
+      }
+
+      const first = body.querySelector(".transcript-text");
+      if (first) this.focusBlock(Number(first.dataset.id), 0);
     },
 
     // Bring a block into view without moving the caret -- what search and

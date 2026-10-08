@@ -134,6 +134,10 @@ class ValidationPanel:
         self.checkboxes: dict = {}
         self.position = 0
         self.checked = 0
+        # "Skip to validation issue", set by the page: a skip link at the top
+        # of the transcript that lands on this panel's open card. Shown only
+        # while there is a card to land on (update_skip_link).
+        self.skip_link: Optional[ui.element] = None
 
         # Design B of the six drawn for it: a stripe down the left and a
         # tinted header, both in the colour of the issue shown (amber for a
@@ -264,11 +268,42 @@ class ValidationPanel:
         """
 
         self.container.set_visibility(False)
+        self.update_skip_link()
         self.transcript.review(None)
 
         target = self.return_focus()
         if target is not None:
             self.focus(target)
+
+    # -- Skip link ----------------------------------------------------------
+
+    def update_skip_link(self) -> None:
+        """
+        Show "Skip to validation issue" only while the panel is open on an
+        issue: a skip link to a card that is not there leads nowhere, so it
+        goes with the card (hidden, which also takes it out of the tab order).
+        """
+
+        if self.skip_link is None:
+            return
+
+        self.skip_link.set_visibility(
+            self.container.visible and self.current() is not None
+        )
+
+    def focus_issue(self) -> None:
+        """
+        What the skip link lands on: "Check again" on the open card -- where a
+        reader who has just fixed something goes next -- or, without it, the
+        button that goes to the caption, or the heading.
+        """
+
+        if self.issue.visible and self.recheck.visible:
+            self.focus(self.recheck)
+        elif self.issue.visible:
+            self.focus(self.caption_button)
+        else:
+            self.focus(self.heading)
 
     # -- Filtering ----------------------------------------------------------
 
@@ -441,6 +476,7 @@ class ValidationPanel:
                 )
             self.spoken_position.set_text("")
             self.transcript.review(None)
+            self.update_skip_link()
             return
 
         caption = item["caption"]
@@ -471,6 +507,8 @@ class ValidationPanel:
             self.caption_button.set_enabled(False)
             self.gone.set_visibility(True)
             self.transcript.review(None)
+
+        self.update_skip_link()
 
     @staticmethod
     def focus(element: ui.element) -> None:
