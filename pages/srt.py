@@ -116,12 +116,22 @@ def create() -> None:
             // against the real focus, which only the browser knows.
             //
             // A button keeps its own space: a focused button is activated by
-            // it, and taking that would break every dialog on the page.
+            // it, and taking that would break every dialog on the page. The
+            // same goes for anything else Space means something to: Quasar's
+            // switches and checkboxes are a div with a role, not an INPUT or
+            // a BUTTON, so the tag names alone let Space toggle "Follow
+            // audio" and start the video as well.
             if (e.key === ' ' && !e.metaKey && !e.ctrlKey && !e.altKey) {
                 const active = document.activeElement;
                 const typing = active && (
                     active.isContentEditable
-                    || ['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'].includes(active.tagName)
+                    || ['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON', 'SUMMARY'].includes(active.tagName)
+                    || active.closest(
+                        '[role="switch"], [role="checkbox"], [role="radio"],'
+                        + ' [role="button"], [role="tab"], [role="menuitem"],'
+                        + ' [role="option"], [role="slider"], [role="combobox"],'
+                        + ' [role="textbox"], [role="listbox"]'
+                    )
                 );
 
                 if (!typing) {
