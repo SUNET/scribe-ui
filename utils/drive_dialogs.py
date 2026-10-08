@@ -175,7 +175,7 @@ async def ensure_connected(status: dict) -> bool:
         with ui.row().classes("w-full justify-end"):
             ui.button("Cancel", on_click=lambda: finish(False)).props(
                 "flat color=black"
-            )
+            ).classes("cancel-style")
 
     elapsed = 0.0
 

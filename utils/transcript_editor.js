@@ -1945,7 +1945,7 @@ export default {
     // removed block leaves the browser's own selection -- see merge() on
     // the Python side. placeCaretAt is what actually walks to the offset;
     // this only waits for the block to exist to hand it to.
-    focusBlock(id, offset = 0) {
+    focusBlock(id, offset = 0, center = false) {
       this.$nextTick(() => {
         const block = this.$refs.body?.querySelector(
           `.transcript-text[data-id="${id}"]`
@@ -1955,8 +1955,15 @@ export default {
         this.placeCaretAt(block, offset);
         this.caretId = id;
 
-        // A caret placed by script does not bring itself into view.
-        block.scrollIntoView({ block: "nearest" });
+        // A caret placed by script does not bring itself into view. Centred
+        // when asked, the way stepping between validation issues shows a
+        // caption; otherwise only as far as it takes to be seen.
+        const cell = center ? block.closest(".transcript-cell") || block : block;
+        cell.scrollIntoView(
+          center
+            ? { block: "center", behavior: "smooth" }
+            : { block: "nearest" }
+        );
       });
     },
 

@@ -433,7 +433,8 @@ class ValidationPanel:
 
         caption = item["caption"]
         offset = min(item.get("offset", 0), len(caption.text))
-        self.transcript.focus(caption.index, offset)
+        # Centred, as stepping between issues shows a caption.
+        self.transcript.focus(caption.index, offset, center=True)
 
     # -- Drawing ------------------------------------------------------------
 

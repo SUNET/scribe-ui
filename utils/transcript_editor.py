@@ -170,8 +170,10 @@ class TranscriptBody(
         self._props["showEdits"] = show
         self.update()
 
-    def focus_block(self, block_id: int, offset: int = 0) -> None:
-        self.run_method("focusBlock", block_id, offset)
+    def focus_block(
+        self, block_id: int, offset: int = 0, center: bool = False
+    ) -> None:
+        self.run_method("focusBlock", block_id, offset, center)
 
     def scroll_to_block(self, block_id: int) -> None:
         self.run_method("scrollToBlock", block_id)
@@ -688,14 +690,21 @@ class TranscriptEditor:
 
         return added
 
-    def focus(self, block_id: int, offset: int = 0) -> None:
+    def focus(self, block_id: int, offset: int = 0, center: bool = False) -> None:
         """
         Put the caret in a block, so it can be typed into straight away --
         at the start by default, for a freshly started block, or at a
         specific character offset, for merge() to land it at the seam.
         """
 
-        if self.body is not None:
+        if self.body is None:
+            return
+
+        # Only said when it is wanted: the other callers ask for the caret
+        # alone.
+        if center:
+            self.body.focus_block(block_id, offset, center=True)
+        else:
             self.body.focus_block(block_id, offset)
 
     def focus_caret(self) -> None:
