@@ -627,7 +627,9 @@ class RenderMixin:
         def focus_close_button_on_open(event) -> None:
             # The dialog is opened two ways below (open_window, and the
             # toolbar button), so focus is moved here, on the dialog's
-            # own value change, rather than duplicated at each open()
+            # own value change (on_value_change, which also fires for a
+            # server-side open(); "update:model-value" is only the browser's
+            # own report and never comes for one), rather than duplicated at each open()
             # call site. Without this, focus stays on whatever
             # triggered the open -- the toolbar button, or nowhere in
             # particular when opened programmatically -- and a Space
@@ -637,7 +639,7 @@ class RenderMixin:
             if event.sender.value:
                 focus_element(close_button)
 
-        dialog.on("update:model-value", focus_close_button_on_open)
+        dialog.on_value_change(focus_close_button_on_open)
 
         if open_window:
             dialog.open()

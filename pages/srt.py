@@ -332,7 +332,7 @@ def create() -> None:
                     if event.sender.value:
                         focus_element(info_close_button)
 
-                info_dialog.on("update:model-value", focus_info_close_button_on_open)
+                info_dialog.on_value_change(focus_info_close_button_on_open)
 
                 ui.button(icon="info").props(
                     'flat aria-label="Information"'

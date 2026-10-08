@@ -1417,10 +1417,24 @@ def focus_element(element) -> None:
     dialog right after it opens, closes that gap. Same idea as
     toggle_upload_status above, generalised for reuse.
     """
+    # Retried for a moment: an element in a dialog that has only just been
+    # opened is not in the page yet (Quasar mounts and shows it a frame or
+    # two later), and a single attempt right away finds nothing to focus.
     ui.run_javascript(
-        f"const b = getElement({element.id});"
-        "const el = b && (b.$el || b);"
-        "if (el && el.focus) el.focus();"
+        "(function () {"
+        " let tries = 0;"
+        " const timer = setInterval(function () {"
+        f"  const b = getElement({element.id});"
+        "  const el = b && (b.$el || b);"
+        "  if (el && el.focus && el.offsetParent !== null) {"
+        "   el.focus();"
+        "   if (el === document.activeElement || el.contains(document.activeElement)) {"
+        "    clearInterval(timer); return;"
+        "   }"
+        "  }"
+        "  if (++tries > 20) clearInterval(timer);"
+        " }, 50);"
+        "})();"
     )
 
 
