@@ -102,14 +102,14 @@ def create() -> None:
 
                     with ui.column().classes("gap-2"):
                         with ui.row().classes("items-center gap-3"):
-                            ui.icon("schedule").style("font-size: 20px;")
+                            ui.icon("schedule").style("font-size: 20px;").props("aria-hidden=true")
                             ui.label("Duration").classes(
                                 "font-medium text-theme-secondary"
                             ).style("min-width: 160px;")
                             ui.label(cookie.duration).classes("text-theme-primary")
 
                         with ui.row().classes("items-center gap-3"):
-                            ui.icon("category").style("font-size: 20px;")
+                            ui.icon("category").style("font-size: 20px;").props("aria-hidden=true")
                             ui.label("Type").classes(
                                 "font-medium text-theme-secondary"
                             ).style("min-width: 160px;")
@@ -118,14 +118,14 @@ def create() -> None:
                             )
 
                         with ui.row().classes("items-center gap-3"):
-                            ui.icon("lock").style("font-size: 20px;")
+                            ui.icon("lock").style("font-size: 20px;").props("aria-hidden=true")
                             ui.label("Security attributes").classes(
                                 "font-medium text-theme-secondary"
                             ).style("min-width: 160px;")
                             ui.label(cookie.security).classes("text-theme-primary")
 
                         with ui.row().classes("items-center gap-3"):
-                            ui.icon("language").style("font-size: 20px;")
+                            ui.icon("language").style("font-size: 20px;").props("aria-hidden=true")
                             ui.label("Source").classes(
                                 "font-medium text-theme-secondary"
                             ).style("min-width: 160px;")
