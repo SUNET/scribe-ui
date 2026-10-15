@@ -1831,10 +1831,10 @@ def table_transcribe(selected_row, on_complete=None) -> None:
                     ui.label(f"{selected_row['filename']}")
 
                 with ui.column().classes("col-12 col-sm-24"):
-                    ui.label("Language").classes("text-subtitle2 q-mb-sm")
                     language = ui.select(
                         settings.WHISPER_LANGUAGES,
                         value=settings.WHISPER_LANGUAGES[0],
+                        label="Language",
                     ).classes("w-full")
 
                 with ui.column().classes("col-12 col-sm-24") as verbatim_container:
@@ -1862,20 +1862,23 @@ def table_transcribe(selected_row, on_complete=None) -> None:
                     )
 
                 with ui.column().classes("col-12 col-sm-24"):
-                    ui.label("Number of speakers, automatic if not chosen").classes(
-                        "text-subtitle2 q-mb-sm"
-                    )
-                    speakers = ui.number(value="0", min=0).classes("w-full")
+                    speakers = ui.number(
+                        value="0",
+                        min=0,
+                        label="Number of speakers, automatic if not chosen",
+                    ).classes("w-full")
 
             with ui.row().classes("justify-between w-full"):
-                ui.label("Output format").classes("text-subtitle2 q-mb-sm")
+                ui.label("Output format").classes(
+                    "text-subtitle2 q-mb-sm"
+                ).props("id=retranscribe-output-format-label")
                 output_format = (
                     ui.radio(
                         ["Transcript", "Subtitles"],
                         value="Transcript",
                     )
                     .classes("w-full")
-                    .props("inline")
+                    .props('inline role=radiogroup aria-labelledby=retranscribe-output-format-label')
                 )
 
             with ui.row().classes("justify-between w-full"):
@@ -1958,10 +1961,10 @@ def table_bulk_transcribe(table: ui.table, on_complete=None) -> None:
                             ).classes("text-body2")
 
                 with ui.column().classes("col-12 col-sm-24"):
-                    ui.label("Language").classes("text-subtitle2 q-mb-sm")
                     language = ui.select(
                         settings.WHISPER_LANGUAGES,
                         value=settings.WHISPER_LANGUAGES[0],
+                        label="Language",
                     ).classes("w-full")
 
                 with ui.column().classes("col-12 col-sm-24") as verbatim_container:
@@ -1983,20 +1986,23 @@ def table_bulk_transcribe(table: ui.table, on_complete=None) -> None:
                     )
 
                 with ui.column().classes("col-12 col-sm-24"):
-                    ui.label("Number of speakers, automatic if not chosen").classes(
-                        "text-subtitle2 q-mb-sm"
-                    )
-                    speakers = ui.number(value="0", min=0).classes("w-full")
+                    speakers = ui.number(
+                        value="0",
+                        min=0,
+                        label="Number of speakers, automatic if not chosen",
+                    ).classes("w-full")
 
             with ui.row().classes("justify-between w-full"):
-                ui.label("Output format").classes("text-subtitle2 q-mb-sm")
+                ui.label("Output format").classes(
+                    "text-subtitle2 q-mb-sm"
+                ).props("id=bulk-transcribe-output-format-label")
                 output_format = (
                     ui.radio(
                         ["Transcript", "Subtitles"],
                         value="Transcript",
                     )
                     .classes("w-full")
-                    .props("inline")
+                    .props('inline role=radiogroup aria-labelledby=bulk-transcribe-output-format-label')
                 )
 
             with ui.row().classes("justify-between w-full"):

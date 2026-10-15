@@ -400,6 +400,7 @@ export default {
         </div>
 
         <div class="recorder-status" role="status" aria-live="polite">{{ status }}</div>
+        <div class="sr-only" role="status" aria-live="polite" aria-atomic="true">{{ discardAnnouncement }}</div>
 
         <div v-if="!live && freeHours !== null && freeHours < 4" class="recorder-banner recorder-banner-warn" role="status">
           This browser has room for about {{ freeHours < 1 ? Math.max(1, Math.round(freeHours * 60)) + " minutes" : freeHours.toFixed(1) + " hours" }} of recording.
@@ -743,6 +744,7 @@ export default {
       nameInputId: "recorder-name-" + Math.random().toString(36).slice(2),
       stopArmed: false,
       discardArmed: null,
+      discardAnnouncement: "",
       onScribe: [],
       onScribeBusy: null,
       onScribeError: {},
@@ -1225,8 +1227,12 @@ export default {
       if (!running) return;
       if (!this.stopArmed) {
         this.stopArmed = true;
+        this.status = "Press again to stop the recording.";
         clearTimeout(this.stopTimer);
-        this.stopTimer = setTimeout(() => (this.stopArmed = false), 4000);
+        this.stopTimer = setTimeout(() => {
+          this.stopArmed = false;
+          this.status = "Recording. Audio is continuously sent to Scribe while you record.";
+        }, 4000);
         return;
       }
       clearTimeout(this.stopTimer);
@@ -1256,12 +1262,17 @@ export default {
     discard(item) {
       if (this.discardArmed !== item.id) {
         this.discardArmed = item.id;
+        this.discardAnnouncement = "Press again to delete “" + item.name + "”.";
         clearTimeout(this.discardTimer);
-        this.discardTimer = setTimeout(() => (this.discardArmed = null), 4000);
+        this.discardTimer = setTimeout(() => {
+          this.discardArmed = null;
+          this.discardAnnouncement = "";
+        }, 4000);
         return;
       }
       clearTimeout(this.discardTimer);
       this.discardArmed = null;
+      this.discardAnnouncement = "";
       this.engine.discard(item.id);
     },
 
@@ -1285,12 +1296,17 @@ export default {
     async discardOnScribe(entry) {
       if (this.discardArmed !== entry.id) {
         this.discardArmed = entry.id;
+        this.discardAnnouncement = "Press again to delete this recovered recording.";
         clearTimeout(this.discardTimer);
-        this.discardTimer = setTimeout(() => (this.discardArmed = null), 4000);
+        this.discardTimer = setTimeout(() => {
+          this.discardArmed = null;
+          this.discardAnnouncement = "";
+        }, 4000);
         return;
       }
       clearTimeout(this.discardTimer);
       this.discardArmed = null;
+      this.discardAnnouncement = "";
       this.onScribeBusy = entry.id;
       try {
         await this.engine.discardOnScribe(entry.id);
