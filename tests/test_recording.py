@@ -99,6 +99,8 @@ def backend(monkeypatch):
         recording_api.httpx, "AsyncClient", lambda **kw: real(transport=transport, **kw)
     )
     monkeypatch.setattr(recording_api, "_caller", lambda request: OWNER)
+    # CI has no .env, so API_URL is "" there and httpx refuses a relative URL.
+    monkeypatch.setattr(recording_api.settings, "API_URL", "http://backend.test")
 
     class Storage:
         user = {"token": "token"}
@@ -446,7 +448,7 @@ def test_the_audio_test_keeps_and_sends_nothing():
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
 def test_recorder_engine():
     result = subprocess.run(
-        ["node", "--test", str(ROOT / "tests" / "js")],
+        ["node", "--test", str(ROOT / "tests" / "js" / "recorder_engine.test.js")],
         capture_output=True,
         text=True,
         timeout=120,
