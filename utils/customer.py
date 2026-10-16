@@ -19,7 +19,7 @@ import httpx
 
 from nicegui import ui
 from utils.settings import get_settings
-from utils.token import get_auth_header, get_bofh_status
+from utils.token import get_auth_header
 
 settings = get_settings()
 
@@ -43,6 +43,7 @@ class Customer:
         drive_enabled: bool = False,
         drive_url: str | None = None,
         drive_display_name: str | None = None,
+        is_bofh: bool = False,
     ) -> None:
         self.customer_abbr = customer_abbr
         self.customer_id = customer_id
@@ -60,6 +61,7 @@ class Customer:
         self.drive_enabled = drive_enabled
         self.drive_url = drive_url
         self.drive_display_name = drive_display_name
+        self.is_bofh = is_bofh
 
         if isinstance(self.base_fee, tuple):
             self.base_fee = self.base_fee[0]
@@ -171,7 +173,7 @@ class Customer:
                                 ).classes("text-sm")
 
                 with ui.column().style("flex: 0 0 auto;"):
-                    if get_bofh_status():
+                    if self.is_bofh:
                         edit = (
                             ui.button("Edit")
                             .classes("button-edit")

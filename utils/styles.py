@@ -3046,9 +3046,11 @@ theme_styles = """
         justify-content: center;
         gap: 4px 16px;
     }
+    /* Quasar caps a minimized dialog's card at 560px; the help text needs
+       more room than that, so the cap is lifted here. */
     .recorder-help-card {
         width: 100%;
-        max-width: 520px;
+        max-width: min(760px, 95vw) !important;
     }
     /* Test audio.  A dialog is drawn at the body, outside the hero that
        defines the meter's colours, so it defines its own. */

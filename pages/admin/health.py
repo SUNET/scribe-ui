@@ -48,7 +48,7 @@ async def health() -> None:
     # changes. Only pages with charts do -- see reload_on_theme_change.
     reload_on_theme_change()
 
-    if not (user_data or {}).get("admin"):
+    if not (user_data or {}).get("bofh"):
         ui.navigate.to("/home")
         return
 

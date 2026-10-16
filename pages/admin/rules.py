@@ -37,10 +37,6 @@ from utils.helpers import (
     attribute_delete,
 )
 from utils.settings import get_settings
-from utils.token import (
-    get_bofh_status,
-    get_user_data,
-)
 from pages.admin.shared import _get_valid_realms
 
 settings = get_settings()
@@ -57,7 +53,7 @@ CONDITION_OPTIONS = {
 }
 
 
-def create_rule_dialog(page: callable) -> None:
+def create_rule_dialog(page: callable, user_data: dict | None = None) -> None:
     """
     Show a dialog to create a new attribute rule.
     """
@@ -75,10 +71,10 @@ def create_rule_dialog(page: callable) -> None:
             g["id"]: g["name"] for g in all_groups if g["name"] != "All users"
         }
 
-    is_bofh = get_bofh_status()
+    user_data = user_data or {}
+    is_bofh = bool(user_data.get("bofh"))
 
     if not is_bofh:
-        user_data = get_user_data() or {}
         admin_domains = user_data.get("admin_domains") or ""
         allowed_realms = [
             d.strip()
@@ -246,7 +242,9 @@ def _do_create_rule(**kwargs) -> bool:
     return False
 
 
-def edit_rule_dialog(rule: dict, page: callable) -> None:
+def edit_rule_dialog(
+    rule: dict, page: callable, user_data: dict | None = None
+) -> None:
     """
     Show a dialog to edit an existing attribute rule.
     """
@@ -264,10 +262,10 @@ def edit_rule_dialog(rule: dict, page: callable) -> None:
             g["id"]: g["name"] for g in all_groups if g["name"] != "All users"
         }
 
-    is_bofh = get_bofh_status()
+    user_data = user_data or {}
+    is_bofh = bool(user_data.get("bofh"))
 
     if not is_bofh:
-        user_data = get_user_data() or {}
         admin_domains = user_data.get("admin_domains", "")
         allowed_realms = [
             d.strip()
@@ -963,7 +961,8 @@ async def rules_page() -> None:
             ui.button("Add rule").classes("default-style").props(
                 "color=black flat"
             ).style("min-width: 160px;").on(
-                "click", lambda: create_rule_dialog(page=rules_page)
+                "click",
+                lambda: create_rule_dialog(page=rules_page, user_data=user_data),
             )
 
     ui.label(
@@ -1131,7 +1130,7 @@ async def rules_page() -> None:
 
         def handle_edit(msg) -> None:
             rule = msg.args
-            edit_rule_dialog(rule, page=rules_page)
+            edit_rule_dialog(rule, page=rules_page, user_data=user_data)
 
         rules_table.on("edit_rule", handle_edit)
         rules_table.add_slot(

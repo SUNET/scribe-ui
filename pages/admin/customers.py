@@ -564,5 +564,6 @@ async def customers() -> None:
                 drive_enabled=bool(customer.get("drive_enabled")),
                 drive_url=customer.get("drive_url"),
                 drive_display_name=customer.get("drive_display_name"),
+                is_bofh=bool((user_data or {}).get("bofh")),
             )
             c.create_card()
