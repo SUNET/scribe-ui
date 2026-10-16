@@ -950,7 +950,7 @@ async def rules_page() -> None:
         "justify-content: space-between; align-items: center; width: 100%;"
     ):
         with ui.row().classes("items-center gap-2"):
-            ui.label("User provisioning").classes("text-3xl font-bold")
+            ui.label("User provisioning").classes("text-3xl font-bold").props("role=heading aria-level=1")
             ui.button(icon="help_outline").props("flat round dense color=grey-7 aria-label='Show provisioning rules help'").on(
                 "click", lambda: _show_rules_help()
             )

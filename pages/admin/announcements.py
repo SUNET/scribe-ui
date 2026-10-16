@@ -354,7 +354,7 @@ async def announcements_page() -> None:
     with ui.row().style(
         "justify-content: space-between; align-items: center; width: 100%;"
     ):
-        ui.label("Announcements").classes("text-3xl font-bold")
+        ui.label("Announcements").classes("text-3xl font-bold").props("role=heading aria-level=1")
         ui.button("New announcement", icon="add").classes("default-style").props(
             "color=black flat"
         ).on("click", lambda: _announcement_create_dialog())

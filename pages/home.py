@@ -364,7 +364,7 @@ def create() -> None:
         table.on("table_handle_row_view", table_handle_row_view)
 
         with table.add_slot("top-left"):
-            ui.label("My files").classes("text-3xl font-bold page-title")
+            ui.label("My files").classes("text-3xl font-bold page-title").props("role=heading aria-level=1")
 
         with table.add_slot("top-right"):
             with ui.row().classes("items-center jobs-actions"):

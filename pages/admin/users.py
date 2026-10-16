@@ -159,7 +159,7 @@ async def users() -> None:
     )
 
     with users_table.add_slot("top-left"):
-        ui.label("Users").classes("text-3xl font-bold")
+        ui.label("Users").classes("text-3xl font-bold").props("role=heading aria-level=1")
 
     with users_table.add_slot("top-right"):
         with ui.row().classes("items-center"):
