@@ -656,6 +656,24 @@ theme_styles = """
         }
     }
 
+    /* Quasar sizes a toast to its message (inline-flex, up to 65vw), so
+       the four types stacked at different widths, and the same type did
+       too from one message to the next. They are all one width now:
+       26rem. Measured on the app's 74 messages (a name or a count
+       stood in for by six characters): 26rem keeps 57 on one line, 17
+       on two and 1 on three. 32rem kept 71 on one line but left the
+       short ones ("Nothing to undo") adrift in 258px of empty toast;
+       24rem wrapped a third of them. Never wider than the window less
+       the toast's own 10px margins, so a narrow window gets a
+       full-width toast rather than one pushed off the edge. Two classes,
+       to win over Quasar's own .q-notification whichever sheet comes
+       last; no !important needed. */
+    .q-notification.q-notification--standard,
+    .q-notification.q-notification--multi-line {
+        width: min(26rem, calc(100vw - 20px));
+        max-width: none;
+    }
+
     /* ── Editor toolbar ── */
     /* Stays put while the caption list scrolls under it: every one of its
        actions applies to the document as a whole, so scrolling away from

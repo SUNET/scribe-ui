@@ -184,3 +184,47 @@ class TestToastCloseButton:
         before = css[:start]
 
         assert before.rstrip().endswith("@layer theme {")
+
+
+class TestToastWidth:
+    """
+    Every toast is one width. Quasar sizes one to its message, which measured
+    189-866px across a handful of the app's own messages.
+    """
+
+    STANDARD = ".q-notification.q-notification--standard"
+    MULTI_LINE = ".q-notification.q-notification--multi-line"
+
+    def width_rule(self) -> dict:
+        for selectors, declarations in rules():
+            if self.STANDARD in selectors and self.MULTI_LINE in selectors:
+                return dict(
+                    part.partition(":")[::2]
+                    for part in (d.strip() for d in declarations.split(";"))
+                    if ":" in part
+                )
+        raise AssertionError("no shared width rule for standard and multi-line toasts")
+
+    def test_both_layouts_get_the_same_width(self):
+        """A toast with two actions is multi-line; it must not stand out."""
+
+        rule = {k.strip(): v.strip() for k, v in self.width_rule().items()}
+        assert rule["width"] == "min(26rem, calc(100vw - 20px))"
+
+    def test_it_is_never_wider_than_the_window_less_the_margins(self):
+        """Quasar gives a toast 10px each side; at 320px the toast has to fit."""
+
+        rule = {k.strip(): v.strip() for k, v in self.width_rule().items()}
+        assert "calc(100vw - 20px)" in rule["width"]
+
+    def test_quasars_own_cap_is_lifted(self):
+        """Its 65vw would leave a narrow window's toast too small to read."""
+
+        rule = {k.strip(): v.strip() for k, v in self.width_rule().items()}
+        assert rule["max-width"] == "none"
+
+    def test_it_beats_quasars_selector_on_its_own(self):
+        """Two classes against Quasar's one, so the order of the sheets does not matter."""
+
+        assert self.STANDARD.count(".q-") == 2
+        assert self.MULTI_LINE.count(".q-") == 2
