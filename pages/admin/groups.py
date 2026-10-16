@@ -223,7 +223,7 @@ async def edit_group(group_id: str) -> None:
     with ui.row().style(
         "justify-content: space-between; align-items: center; width: 100%;"
     ):
-        ui.label(f"Edit group: {group['name']}").classes("text-3xl font-bold")
+        ui.label(f"Edit group: {group['name']}").classes("text-3xl font-bold").props("role=heading aria-level=1")
         with ui.element("div").style("display: flex; gap: 8px;"):
             def do_save() -> None:
                 # save_group's own int(quota_seconds) has the same unshown
@@ -399,7 +399,7 @@ async def statistics(group_id: str) -> None:
     for job in job_queue:
         job["created_at"] = add_timezone_to_timestamp(job["created_at"])
 
-    ui.label("Group statistics").classes("text-3xl font-bold mb-4")
+    ui.label("Group statistics").classes("text-3xl font-bold mb-4").props("role=heading aria-level=1")
 
     with ui.element("div").classes("stats-container w-full"):
         with ui.element("div").classes("stats-card w-full"):
@@ -587,7 +587,7 @@ def create() -> None:
             "justify-content: space-between; align-items: center; width: 100%;"
         ):
             with ui.element("div").style("display: flex; gap: 0px;"):
-                ui.label("Groups").classes("text-3xl font-bold")
+                ui.label("Groups").classes("text-3xl font-bold").props("role=heading aria-level=1")
 
             with ui.element("div").style("display: flex; gap: 10px;"):
                 create = (

@@ -70,7 +70,7 @@ async def analytics() -> None:
 
     cc = chart_colors["dark" if is_dark else "light"]
 
-    ui.label("Activity overview").classes("text-3xl font-bold mb-4")
+    ui.label("Activity overview").classes("text-3xl font-bold mb-4").props("role=heading aria-level=1")
 
     plotly_template = "plotly_dark" if is_dark else "plotly_white"
 

@@ -621,7 +621,11 @@ def test_rules_dialog(selected_rules: list[dict]) -> None:
             .on("keydown.enter", lambda: run_test())
         )
 
+        # The result of a test is written in here after the button is
+        # pressed, with focus staying on the button: a live region is what
+        # makes it heard (WCAG 4.1.3).
         result_container = ui.column().classes("w-full mt-2")
+        result_container.props("role=status aria-live=polite")
 
         def run_test() -> None:
             result_container.clear()
@@ -716,7 +720,11 @@ def test_all_rules_dialog() -> None:
             "flat dense color=primary"
         )
 
+        # The result of a test is written in here after the button is
+        # pressed, with focus staying on the button: a live region is what
+        # makes it heard (WCAG 4.1.3).
         result_container = ui.column().classes("w-full mt-2")
+        result_container.props("role=status aria-live=polite")
 
         def run_test() -> None:
             result_container.clear()
@@ -950,7 +958,7 @@ async def rules_page() -> None:
         "justify-content: space-between; align-items: center; width: 100%;"
     ):
         with ui.row().classes("items-center gap-2"):
-            ui.label("User provisioning").classes("text-3xl font-bold")
+            ui.label("User provisioning").classes("text-3xl font-bold").props("role=heading aria-level=1")
             ui.button(icon="help_outline").props("flat round dense color=grey-7 aria-label='Show provisioning rules help'").on(
                 "click", lambda: _show_rules_help()
             )

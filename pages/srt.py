@@ -793,7 +793,8 @@ def create() -> None:
                                 ui.separator().classes("my-1")
 
                                 with ui.row().classes("items-center gap-2"):
-                                    ui.label("Uncertain words:").classes(
+                                    uncertain_label = ui.label("Uncertain words:")
+                                    uncertain_label.classes(
                                         "text-sm text-theme-secondary"
                                     )
 
@@ -867,7 +868,10 @@ def create() -> None:
                                             if editor.show_uncertain_words
                                             else "off"
                                         ),
-                                    ).props("dense unelevated no-caps")
+                                    ).props(
+                                        "dense unelevated no-caps role=group "
+                                        f"aria-labelledby={uncertain_label.html_id}"
+                                    )
                                     paint_sensitivity(
                                         editor.review_sensitivity
                                         if editor.show_uncertain_words
@@ -885,6 +889,9 @@ def create() -> None:
                                     flagged = ui.label().classes(
                                         "text-sm text-theme-muted review-count"
                                     )
+                                    # The count changes when the level does;
+                                    # say so without moving focus (WCAG 4.1.3).
+                                    flagged.props("role=status aria-live=polite")
                                     editor.set_flagged_count_element(flagged)
 
                         # Validation results (issue #138), below the settings

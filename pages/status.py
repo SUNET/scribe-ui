@@ -38,7 +38,7 @@ def create() -> None:
         ui.add_head_html(default_styles)
 
         with ui.column().classes("w-full items-center").style("padding: 40px;"):
-            ui.label("System status").classes("text-h4").style("margin-bottom: 32px;")
+            ui.label("System status").classes("text-h4").props("role=heading aria-level=1").style("margin-bottom: 32px;")
 
             with ui.column().style("width: 100%; max-width: 600px;"):
                 with ui.row().classes("status-card status-ok items-center w-full"):

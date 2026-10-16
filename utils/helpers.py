@@ -772,7 +772,10 @@ def open_make_admin_dialog(selected_rows: list, all_users: list) -> None:
                 .props("outlined use-chips")
             )
 
+            # role=alert so the failure is announced when it is set, not
+            # only drawn in red (WCAG 4.1.3, 1.4.1).
             error_label = ui.label("").classes("text-red-600")
+            error_label.props("role=alert")
 
             def on_save() -> None:
                 domains = domains_select.value or []
