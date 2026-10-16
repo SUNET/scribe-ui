@@ -621,7 +621,11 @@ def test_rules_dialog(selected_rules: list[dict]) -> None:
             .on("keydown.enter", lambda: run_test())
         )
 
+        # The result of a test is written in here after the button is
+        # pressed, with focus staying on the button: a live region is what
+        # makes it heard (WCAG 4.1.3).
         result_container = ui.column().classes("w-full mt-2")
+        result_container.props("role=status aria-live=polite")
 
         def run_test() -> None:
             result_container.clear()
@@ -716,7 +720,11 @@ def test_all_rules_dialog() -> None:
             "flat dense color=primary"
         )
 
+        # The result of a test is written in here after the button is
+        # pressed, with focus staying on the button: a live region is what
+        # makes it heard (WCAG 4.1.3).
         result_container = ui.column().classes("w-full mt-2")
+        result_container.props("role=status aria-live=polite")
 
         def run_test() -> None:
             result_container.clear()
