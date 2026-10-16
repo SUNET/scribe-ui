@@ -888,9 +888,16 @@ theme_styles = """
     }
 
     /* ── Tooltip ── */
+    /* A tooltip is as wide as its text up to a limit, then wraps. The old
+       white-space: nowrap kept every tip on one line, so a long one ran off
+       the edge of a narrow screen or a text-zoomed page (WCAG 1.4.10).
+       width: max-content keeps a short tip exactly as it was. */
     .q-tooltip {
         font-size: 14px;
-        white-space: nowrap;
+        width: max-content;
+        max-width: min(320px, calc(100vw - 32px));
+        white-space: normal;
+        overflow-wrap: break-word;
     }
 
     /* ── Status page cards ── */
@@ -1058,6 +1065,15 @@ theme_styles = """
     .menu-item:hover {
         background-color: var(--color-bg-surface-hover);
         box-shadow: inset 3px 0 0 0 var(--color-border);
+    }
+    /* The link itself stays white-space: nowrap (menu_item_style), which a
+       label inherits and which cut a long label off at 200% text size
+       without any ellipsis. Letting the label wrap changes nothing while it
+       fits; mini mode clips the label separately, below (WCAG 1.4.4). */
+    .menu-label {
+        white-space: normal;
+        overflow-wrap: anywhere;
+        min-width: 0;
     }
     .q-drawer--mini .menu-header {
         display: none;
