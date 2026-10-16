@@ -695,6 +695,76 @@ class TestFollowingTheCaret:
         assert "editor.validation_panel.follow_caret" in page
 
 
+class TestOutsideMedia:
+    """
+    A caption that starts after the media ends, or that starts within it and
+    ends after it, cannot be played as written. Checked against how long the
+    player says the media file is -- when it knows.
+    """
+
+    def subject(self, media_seconds):
+        subject = editor(
+            caption(1, "00:00:00,000", "00:00:10,000"),
+            caption(2, "00:00:10,000", "00:00:20,000"),
+            caption(3, "00:00:20,000", "00:00:30,000"),
+        )
+        subject.media_seconds = media_seconds
+
+        return subject
+
+    def issues(self, subject):
+        return [
+            item
+            for item in subject.validation_items(subject.collect_validation_issues())
+            if item["rule"] == "outside"
+        ]
+
+    def test_nothing_is_reported_while_the_length_is_unknown(self):
+        assert self.issues(self.subject(None)) == []
+
+    def test_captions_within_the_media_pass(self):
+        assert self.issues(self.subject(30.0)) == []
+
+    def test_a_caption_ending_after_the_media_is_an_error(self):
+        found = self.issues(self.subject(25.0))
+
+        assert [(i["caption"].index, i["title"]) for i in found] == [
+            (3, "Ends after the media ends")
+        ]
+        assert found[0]["error"] is True
+        assert found[0]["detail"] == (
+            "Ends at 00:00:30,000, the media ends at 00:00:25,000."
+        )
+
+    def test_a_caption_starting_after_the_media_is_one_issue_not_two(self):
+        found = self.issues(self.subject(15.0))
+
+        assert [(i["caption"].index, i["title"]) for i in found] == [
+            (2, "Ends after the media ends"),
+            (3, "Starts after the media ends"),
+        ]
+
+    def test_a_caption_ending_exactly_where_the_media_ends_passes(self):
+        # 30.0004 s is 30.000 s in a timestamp: whole milliseconds are all
+        # either side holds.
+        assert self.issues(self.subject(30.0004)) == []
+        assert self.issues(self.subject(30.0)) == []
+
+    def test_a_transcription_has_no_captions_to_play(self):
+        subject = self.subject(5.0)
+        subject.data_format = "txt"
+
+        assert self.issues(subject) == []
+
+    def test_the_kind_is_named_for_the_filter_and_comes_among_the_errors(self):
+        from utils.validation_panel import RULE_LABELS
+
+        rules = list(RULE_LABELS)
+
+        assert RULE_LABELS["outside"] == "Outside media"
+        assert rules.index("outside") < rules.index("length")
+
+
 class TestMediaLength:
     """
     How long the media file is, asked of the player and shown in
