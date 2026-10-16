@@ -420,12 +420,13 @@ def test_the_nicegui_reloads_the_recorder_guards_are_still_there():
 
     # The server's own reload, when it cannot replay what a reconnect missed.
     outbox = (pathlib.Path(nicegui.__file__).parent / "outbox.py").read_text()
-    assert "self.client.run_javascript('window.location.reload()')" in outbox
+    assert 'reloading because outbox rewind failed"); window.location.reload()' in outbox
 
     guard = (ROOT / "utils" / "recorder.js").read_text()
     for event in ("connect", "connect_error", "try_reconnect", "run_javascript"):
         assert f'"{event}"' in guard
     assert 'const SERVER_RELOAD = "window.location.reload()";' in guard
+    assert "message.code.trim().endsWith(SERVER_RELOAD)" in guard
     assert 'socket.io.on("reconnect_attempt"' in guard
     assert "query.next_message_id = window.nextMessageId" in guard
 
