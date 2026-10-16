@@ -395,8 +395,15 @@ class ExportMixin:
                             )
                             ui.separator()
 
-                        # Format
-                        ui.label("Format").classes("text-subtitle1 font-semibold")
+                        # File format. The heading names the area; the select
+                        # carries its own label, as the selects below it do,
+                        # because a standalone heading is not tied to a select
+                        # and Quasar puts aria-labelledby on the select's
+                        # wrapper, not on its combobox input (WCAG 1.3.1,
+                        # 4.1.2). The label says what the format applies to:
+                        # the text only, never a recording's original, which
+                        # is exported as it was recorded.
+                        ui.label("File format").classes("text-subtitle1 font-semibold")
                         if self.data_format == "srt":
                             format_opts = {
                                 "srt": "SubRip (.srt)",
@@ -413,7 +420,13 @@ class ExportMixin:
 
                         fmt = (
                             ui.select(
-                                options=format_opts, value=list(format_opts.keys())[0]
+                                options=format_opts,
+                                value=list(format_opts.keys())[0],
+                                label=(
+                                    "Caption format"
+                                    if self.data_format == "srt"
+                                    else "Transcript format"
+                                ),
                             )
                             .classes("w-full")
                             .props("outlined dense")
