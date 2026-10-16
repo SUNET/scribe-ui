@@ -158,7 +158,11 @@ theme_styles = """
         --color-btn-edit-border: #082954;
         --color-btn-delete-bg: transparent;
         --color-btn-delete-text: #721c24;
-        --color-btn-delete-border: #d0d5dd;
+        /* Was #d0d5dd (1.47:1 against the page). --color-border-subtle clears
+           3:1 against the page, the surface and the alt surface (3.72, 3.72,
+           3.38:1), so the button keeps its quiet outline without a new token.
+           (WCAG 1.4.11) */
+        --color-btn-delete-border: var(--color-border-subtle);
 
         --color-chart-bar-current: #4F46E5;
         /* #10b981/#4caf50/#f59e0b measured 2.54:1, 2.78:1 and 2.15:1 against
@@ -884,9 +888,16 @@ theme_styles = """
     }
 
     /* ── Tooltip ── */
+    /* A tooltip is as wide as its text up to a limit, then wraps. The old
+       white-space: nowrap kept every tip on one line, so a long one ran off
+       the edge of a narrow screen or a text-zoomed page (WCAG 1.4.10).
+       width: max-content keeps a short tip exactly as it was. */
     .q-tooltip {
         font-size: 14px;
-        white-space: nowrap;
+        width: max-content;
+        max-width: min(320px, calc(100vw - 32px));
+        white-space: normal;
+        overflow-wrap: break-word;
     }
 
     /* ── Status page cards ── */
@@ -1054,6 +1065,15 @@ theme_styles = """
     .menu-item:hover {
         background-color: var(--color-bg-surface-hover);
         box-shadow: inset 3px 0 0 0 var(--color-border);
+    }
+    /* The link itself stays white-space: nowrap (menu_item_style), which a
+       label inherits and which cut a long label off at 200% text size
+       without any ellipsis. Letting the label wrap changes nothing while it
+       fits; mini mode clips the label separately, below (WCAG 1.4.4). */
+    .menu-label {
+        white-space: normal;
+        overflow-wrap: anywhere;
+        min-width: 0;
     }
     .q-drawer--mini .menu-header {
         display: none;
