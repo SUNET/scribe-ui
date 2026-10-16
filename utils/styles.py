@@ -158,7 +158,11 @@ theme_styles = """
         --color-btn-edit-border: #082954;
         --color-btn-delete-bg: transparent;
         --color-btn-delete-text: #721c24;
-        --color-btn-delete-border: #d0d5dd;
+        /* Was #d0d5dd (1.47:1 against the page). --color-border-subtle clears
+           3:1 against the page, the surface and the alt surface (3.72, 3.72,
+           3.38:1), so the button keeps its quiet outline without a new token.
+           (WCAG 1.4.11) */
+        --color-btn-delete-border: var(--color-border-subtle);
 
         --color-chart-bar-current: #4F46E5;
         /* #10b981/#4caf50/#f59e0b measured 2.54:1, 2.78:1 and 2.15:1 against
