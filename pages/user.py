@@ -223,7 +223,7 @@ def create() -> None:
                     save.on("click", lambda: email_save(email.value))
 
                 # -- Theme section --
-                ui.label("Theme").classes("text-lg font-semibold mb-2")
+                theme_label = ui.label("Theme").classes("text-lg font-semibold mb-2")
                 ui.separator()
 
                 with ui.column().classes("gap-2 mt-2 mb-6"):
@@ -271,11 +271,17 @@ def create() -> None:
                         """
                         )
 
+                    # A button group has no name of its own: role=group and
+                    # the visible "Theme" heading as its label (WCAG 1.3.1,
+                    # 4.1.2).
                     ui.toggle(
                         dark_options,
                         value=current_dark,
                         on_change=lambda e: set_dark_mode(e.value),
-                    ).props("toggle-color=primary no-caps").tooltip(
+                    ).props(
+                        "toggle-color=primary no-caps role=group "
+                        f"aria-labelledby={theme_label.html_id}"
+                    ).tooltip(
                         "Light: always light, Dark: always dark, Auto: follow system settings."
                     )
 

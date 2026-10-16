@@ -244,7 +244,9 @@ class SearchMixin:
 
                 # FIND SECTION
                 with ui.column().classes("w-full gap-2"):
-                    ui.label("Find").classes("text-caption text-theme-secondary")
+                    find_label = ui.label("Find").classes(
+                        "text-caption text-theme-secondary"
+                    )
 
                     with ui.row().classes("w-full items-center gap-2"):
                         search_input = (
@@ -253,7 +255,10 @@ class SearchMixin:
                                 value=self.search_term,
                             )
                             .classes("flex-1")
-                            .props("outlined dense clearable")
+                            .props(
+                                "outlined dense clearable "
+                                f"aria-labelledby={find_label.html_id}"
+                            )
                         )
 
                         ui.button(icon="search").props("flat dense round aria-label='Find in captions'").classes(
@@ -301,14 +306,19 @@ class SearchMixin:
 
                 # REPLACE SECTION
                 with ui.column().classes("w-full gap-2"):
-                    ui.label("Replace").classes("text-caption text-theme-secondary")
+                    replace_label = ui.label("Replace").classes(
+                        "text-caption text-theme-secondary"
+                    )
 
                     replace_input = (
                         ui.input(
                             placeholder="Replace with…",
                         )
                         .classes("w-full")
-                        .props("outlined dense clearable")
+                        .props(
+                            "outlined dense clearable "
+                            f"aria-labelledby={replace_label.html_id}"
+                        )
                     )
 
                     with ui.row().classes("w-full justify-end gap-2"):
