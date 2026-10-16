@@ -74,6 +74,11 @@ TIME_LABEL_PATTERN = re.compile(
 # short-circuits before the overlay is ever told to hide.
 UNDRAWN = object()
 
+# The least room a caption made at the playhead may have, in seconds -- the
+# same floor as the drag's (MIN_NEW_SECONDS in speech_timeline.js): below it
+# there is nothing to see or take hold of.
+MIN_NEW_SECONDS = 0.05
+
 
 def parse_time_label(text: str) -> Optional[float]:
     """
@@ -226,6 +231,9 @@ class TranscriptEditor:
         )
         timeline.on("retimespan", lambda event: self.retime_span(event.args))
         timeline.on("createcaption", lambda event: self.create_caption(event.args))
+        timeline.on(
+            "createatplayhead", lambda event: self.create_at_playhead(event.args)
+        )
         timeline.on("selectcaption", lambda event: self.select_from_timeline(event.args))
         self.refresh_timeline()
 
@@ -354,6 +362,86 @@ class TranscriptEditor:
             # it was, since the strip is already drawing it where it was
             # dropped.
             self.refresh()
+
+    def create_at_playhead(self, args) -> None:
+        """
+        The button under the strip: a caption where the playhead is.
+
+        Dragging one out names a stretch; this names a moment, so the stretch
+        is worked out here -- NEW_CAPTION_SECONDS from the playhead, or up to
+        the next caption when that comes sooner, and no further than the end
+        of the recording (`limit`, the player's duration, when it has one).
+        Then it is made exactly as a drag makes one (create_caption): empty,
+        the caret in it, the recording moved to it, one undo step.
+
+        A playhead already inside a caption has nothing to add: a second
+        caption over the same instant is one of the errors "Validate"
+        reports. That caption is what the reader wants, so the caret goes
+        into it, and they are told why nothing was made.
+        """
+
+        if not isinstance(args, dict):
+            return
+
+        try:
+            at = float(args.get("at"))
+        except (TypeError, ValueError):
+            return
+
+        if at < 0:
+            return
+
+        covering = next(
+            (
+                caption
+                for caption in self.editor.captions
+                if caption.get_start_seconds() <= at < caption.get_end_seconds()
+            ),
+            None,
+        )
+
+        if covering is not None:
+            self.focus(covering.index)
+            self.mark_current(covering.index)
+            ui.notify(
+                f"Caption {covering.index} already covers this point",
+                type="info",
+                timeout=None,
+                close_button="Close",
+            )
+
+            return
+
+        end = at + settings.NEW_CAPTION_SECONDS
+
+        following = [
+            caption.get_start_seconds()
+            for caption in self.editor.captions
+            if caption.get_start_seconds() > at
+        ]
+
+        if following:
+            end = min(end, min(following))
+
+        try:
+            limit = float(args.get("limit"))
+        except (TypeError, ValueError):
+            limit = 0.0
+
+        if limit > 0:
+            end = min(end, limit)
+
+        if end - at < MIN_NEW_SECONDS:
+            ui.notify(
+                "There is no room for a caption here",
+                type="warning",
+                timeout=None,
+                close_button="Close",
+            )
+
+            return
+
+        self.create_caption({"start": at, "end": end})
 
     def create_caption(self, args) -> None:
         """
