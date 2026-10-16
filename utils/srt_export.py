@@ -666,6 +666,9 @@ class ExportMixin:
                                     )
                                 )
                             cnt_lbl = ui.label("").classes("text-caption mt-2")
+                            # The preview's count changes as options change
+                            # (WCAG 4.1.3).
+                            cnt_lbl.props("role=status aria-live=polite")
 
                 update_options_visibility()
 

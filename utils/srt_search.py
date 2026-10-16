@@ -296,6 +296,12 @@ class SearchMixin:
                             self.search_info_label = ui.label("").classes(
                                 "text-caption text-theme-secondary"
                             )
+                            # "3 of 12 matches" / "No matches" appear without
+                            # focus moving, so they have to be announced
+                            # (WCAG 4.1.3).
+                            self.search_info_label.props(
+                                "role=status aria-live=polite aria-atomic=true"
+                            )
 
                 ui.separator().classes("my-3")
 
