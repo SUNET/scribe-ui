@@ -79,6 +79,14 @@ class Settings(BaseSettings):
     # perfectly valid file, just gone before a viewer can read it.
     MIN_CAPTION_SECONDS: float = 0.8
 
+    # Longest stretch of speech that may go without a caption over it, in
+    # seconds. "Validate" warns about a longer one (SUNET/scribe-ui#142).
+    # Speech is where the word timings say someone is talking, and those
+    # timings are typically off by 0.1-0.2s, so a limit much tighter than
+    # this would mostly report noise; half a second is about one or two
+    # words, and the unit subtitle timing guidelines (Netflix) work in.
+    MAX_UNCAPTIONED_SPEECH_SECONDS: float = 0.5
+
     # Review sensitivity: how far up the confidence range to flag words for
     # review. A word is flagged when its score falls below the threshold for
     # the selected sensitivity, so raising sensitivity flags strictly more.

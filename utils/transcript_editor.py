@@ -355,7 +355,7 @@ class TranscriptEditor:
             # dropped.
             self.refresh()
 
-    def create_caption(self, args) -> None:
+    def create_caption(self, args) -> Optional[SRTCaption]:
         """
         An empty stretch of the strip dragged out: a new caption covering
         exactly it.
@@ -369,19 +369,23 @@ class TranscriptEditor:
         The client keeps the drag inside the gap it was started in, so the
         overlap check below is a guard rather than the rule: captions can
         have moved since the strip was last drawn.
+
+        Answers the caption made, or None when nothing was: the validation
+        panel's "Add caption" (utils/validation_panel.py) makes one the same
+        way and says which.
         """
 
         if not isinstance(args, dict):
-            return
+            return None
 
         try:
             start = float(args.get("start"))
             end = float(args.get("end"))
         except (TypeError, ValueError):
-            return
+            return None
 
         if end <= start:
-            return
+            return None
 
         overlaps = any(
             start < caption.get_end_seconds() and end > caption.get_start_seconds()
@@ -394,7 +398,7 @@ class TranscriptEditor:
             self.refresh()
             ui.notify("A caption already covers part of that", type="warning", timeout=None, close_button="Close")
 
-            return
+            return None
 
         self.editor.save_state_for_undo()
 
@@ -437,6 +441,8 @@ class TranscriptEditor:
         self.moved_to(middle)
         self.focus(added.index)
         self.mark_current(added.index)
+
+        return added
 
     def set_overlay(self, container: ui.element) -> None:
         """
