@@ -433,12 +433,37 @@ def create() -> None:
 
             table.selection = "multiple" if rows else "none"
             table.update_rows(rows, clear_selection=False)
+            announce_status_changes(rows)
 
             has_active = any(
                 r["status"].lower() in ("transcribing", "queued", "uploading")
                 for r in rows
             )
             poll_timer.interval = 5.0 if has_active else 30.0
+
+        # The Status column changes by itself while a job is polled
+        # (Queued -> Transcribing -> Completed), and a cell that changes
+        # under a screen reader's cursor is not announced. This region is
+        # empty on load and only speaks when a file's status differs from
+        # the last poll, so the first load and an unchanged poll are silent
+        # (WCAG 4.1.3).
+        status_announcer = ui.label("").classes("sr-only")
+        status_announcer.props("role=status aria-live=polite aria-atomic=true")
+        last_statuses: dict[str, str] = {}
+
+        def announce_status_changes(rows: list[dict]) -> None:
+            # Keyed by uuid: two files can share a name.
+            current = {str(r["uuid"]): str(r["status"]) for r in rows}
+            names = {str(r["uuid"]): str(r["filename"]) for r in rows}
+            changed = [
+                f"{names[key]}: {status}"
+                for key, status in current.items()
+                if key in last_statuses and last_statuses[key] != status
+            ]
+            last_statuses.clear()
+            last_statuses.update(current)
+            if changed:
+                status_announcer.set_text(". ".join(changed))
 
         poll_timer = ui.timer(30.0, update_rows, active=False)
 

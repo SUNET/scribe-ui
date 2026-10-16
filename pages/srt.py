@@ -885,6 +885,9 @@ def create() -> None:
                                     flagged = ui.label().classes(
                                         "text-sm text-theme-muted review-count"
                                     )
+                                    # The count changes when the level does;
+                                    # say so without moving focus (WCAG 4.1.3).
+                                    flagged.props("role=status aria-live=polite")
                                     editor.set_flagged_count_element(flagged)
 
                         # Validation results (issue #138), below the settings

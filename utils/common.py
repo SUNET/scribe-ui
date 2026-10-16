@@ -2164,7 +2164,12 @@ def table_bulk_export(table: ui.table) -> None:
             progress_label = ui.label(f"Fetching file 0 of {len(completed)}").classes(
                 "text-body2 mb-2"
             )
+            # Progress is announced through the label; the bar is the same
+            # information drawn, so it gets a name rather than a second
+            # announcement (WCAG 4.1.3, 4.1.2).
+            progress_label.props("role=status aria-live=polite aria-atomic=true")
             progress = ui.linear_progress(value=0, show_value=False).classes("w-full")
+            progress.props('aria-label="Export progress"')
 
     progress_dialog.open()
 
