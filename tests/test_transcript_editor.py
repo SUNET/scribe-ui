@@ -2970,3 +2970,55 @@ class TestRetimingReorders:
 
         assert editor.captions[0] is first
         assert editor.captions[1] is second
+
+
+class TestReviewFollowsTheCaret:
+    """
+    The validation panel follows the caret (WCAG 1.4.1). What the editor
+    owes it: say when the caret has come to rest in a caption, and mark that
+    caption without scrolling the text out from under whoever is typing.
+    """
+
+    def test_a_settled_caret_is_passed_on_with_its_caption(self, view, editor):
+        seen = []
+        view.on_caret = seen.append
+
+        view.caret_moved({"id": editor.captions[1].index})
+
+        assert seen == [editor.captions[1].index]
+
+    def test_an_unknown_or_malformed_caption_is_ignored(self, view):
+        seen = []
+        view.on_caret = seen.append
+
+        view.caret_moved({"id": 9999})
+        view.caret_moved({"id": "2"})
+        view.caret_moved(None)
+
+        assert seen == []
+
+    def test_without_a_listener_it_does_nothing(self, view, editor):
+        view.on_caret = None
+
+        view.caret_moved({"id": editor.captions[0].index})
+
+    def test_review_scrolls_by_default_and_not_when_following_the_caret(self, view):
+        calls = []
+
+        class Body:
+            def set_review(self, block_id):
+                calls.append(("review", block_id))
+
+            def scroll_to_block(self, block_id):
+                calls.append(("scroll", block_id))
+
+        view.body = Body()
+
+        view.review(2)
+        view.review(3, scroll=False)
+
+        assert calls == [
+            ("review", 2),
+            ("scroll", 2),
+            ("review", 3),
+        ]

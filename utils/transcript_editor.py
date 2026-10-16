@@ -195,6 +195,9 @@ class TranscriptEditor:
         self.editor = editor
         self.body: Optional[TranscriptBody] = None
         self.on_change: Optional[Callable] = None
+        # Called with the index of the caption the caret has come to rest
+        # in -- the validation panel follows it (see caret_moved).
+        self.on_caret: Optional[Callable[[int], None]] = None
         self.overlay: Optional[ui.element] = None
         # The speech strip under the video, when there are word timings to
         # draw one from -- see set_timeline.
@@ -271,13 +274,18 @@ class TranscriptEditor:
         self.focus(caption.index)
         self.mark_current(caption.index)
 
-    def review(self, caption_index: Optional[int]) -> None:
+    def review(self, caption_index: Optional[int], scroll: bool = True) -> None:
         """
         Bring the caption the validation panel is on into view and mark it
         as the one being reviewed, or clear that marking (None). The panel
         steps through issues, not captions, so this is not select_caption():
         that toggles, and a second issue in the same caption would have
         unselected it.
+
+        `scroll=False` marks it without moving the text: the panel is
+        following the caret, which is already in that caption, and scrolling
+        the page under someone who is typing would be the one thing worse
+        than not showing the issue.
         """
 
         if self.body is None:
@@ -288,8 +296,24 @@ class TranscriptEditor:
             return
 
         self.body.set_review(caption_index)
-        self.body.scroll_to_block(caption_index)
+        if scroll:
+            self.body.scroll_to_block(caption_index)
         self.mark_current(caption_index)
+
+    def caret_moved(self, args) -> None:
+        """
+        The caret has settled in a caption (the client waits a moment, and
+        says nothing while it stays in the same one). Pass it on to whoever
+        shows something about that caption -- the validation panel.
+        """
+
+        block_id = self.block_id(args)
+
+        if block_id is None or self.caption(block_id) is None:
+            return
+
+        if self.on_caret is not None:
+            self.on_caret(block_id)
 
     def mark_current(self, caption_index: int) -> None:
         """
@@ -467,6 +491,7 @@ class TranscriptEditor:
         self.body.on("addblock", lambda event: self.add_after(event.args))
         self.body.on("deleteblock", lambda event: self.delete(event.args))
         self.body.on("blockclick", lambda event: self.seek(event.args))
+        self.body.on("caretblock", lambda event: self.caret_moved(event.args))
         self.body.on("assignspeaker", lambda event: self.assign_speaker(event.args))
         self.body.on("addspeaker", lambda event: self.prompt_new_speaker())
         self.body.on("renamespeaker", lambda event: self.prompt_rename(event.args))

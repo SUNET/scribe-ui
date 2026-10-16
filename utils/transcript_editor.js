@@ -309,6 +309,20 @@ export default {
       if (!this.follow) return;
       this.scrollToBlock(id);
     },
+    // Tell the server which caption the caret has moved into, so the
+    // validation panel can show that caption's issue (WCAG 1.4.1: the red
+    // marking alone says nothing to someone who cannot see it). Only when
+    // the caret changes caption, never on every keystroke, and only once it
+    // has stayed put for a moment -- stepping through the captions with the
+    // arrow keys would otherwise ask the panel to redraw, and a screen
+    // reader to speak, for every caption passed on the way.
+    caretId(id) {
+      clearTimeout(this.caretSync);
+      if (id === null) return;
+      this.caretSync = setTimeout(() => {
+        if (this.caretId === id) this.$emit("caretblock", { id });
+      }, 300);
+    },
     revision() {
       // Bumped by the server only when the blocks actually change. Watching
       // the blocks themselves fires on every update, because an update
@@ -489,6 +503,7 @@ export default {
     this.$nextTick(() => this.indexWords());
   },
   beforeUnmount() {
+    clearTimeout(this.caretSync);
     this.video?.removeEventListener("timeupdate", this.onTime);
     this.video?.removeEventListener("seeking", this.onTime);
     document.removeEventListener("pointerdown", this.onOutside, true);
