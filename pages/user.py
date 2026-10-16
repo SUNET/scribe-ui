@@ -122,7 +122,7 @@ def create() -> None:
             ui.navigate.to("/")
             return
 
-        ui.label("User settings").classes("text-3xl font-bold mb-4")
+        ui.label("User settings").classes("text-3xl font-bold mb-4").props("role=heading aria-level=1")
 
         total_seconds = userdata["transcribed_seconds"]
         hours = int(total_seconds) // 3600

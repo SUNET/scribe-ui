@@ -305,7 +305,7 @@ async def edit_customer(customer_id: str) -> None:
         ui.label(f"Error fetching customer: {e}").classes("text-lg").style("color: var(--color-text-danger);")
         return
 
-    ui.label(f"Edit customer: {customer['name']}").classes("text-3xl font-bold mb-4")
+    ui.label(f"Edit customer: {customer['name']}").classes("text-3xl font-bold mb-4").props("role=heading aria-level=1")
 
     with ui.card().style("width: 100%; box-shadow: none; align-self: center;"):
         with ui.column().classes("gap-4 w-full"):
@@ -486,9 +486,9 @@ async def customers() -> None:
     ):
         with ui.element("div").style("display: flex; gap: 0px;"):
             if (user_data or {}).get("bofh"):
-                ui.label("Customers").classes("text-3xl font-bold")
+                ui.label("Customers").classes("text-3xl font-bold").props("role=heading aria-level=1")
             elif (user_data or {}).get("admin"):
-                ui.label("Account information").classes("text-3xl font-bold")
+                ui.label("Account information").classes("text-3xl font-bold").props("role=heading aria-level=1")
             else:
                 pass
 

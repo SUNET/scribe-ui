@@ -70,7 +70,7 @@ async def health() -> None:
     is_dark = app.storage.user.get("_resolved_dark", False)
     cc = chart_colors["dark" if is_dark else "light"]
 
-    ui.label("System status").classes("text-3xl font-bold mb-4")
+    ui.label("System status").classes("text-3xl font-bold mb-4").props("role=heading aria-level=1")
 
     @ui.refreshable
     async def render_health():
