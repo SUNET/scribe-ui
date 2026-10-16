@@ -524,3 +524,172 @@ class TestStepping:
         panel = page.index("editor.validation_panel = ValidationPanel(")
 
         assert video < uncertain < panel
+
+
+class TestFollowingTheCaret:
+    """
+    WCAG 1.4.1: a caption's issue is shown as the caret comes to rest in it.
+    An open panel switches to it; a closed one, after Validate, opens on it;
+    a caption without an issue, or no Validate yet, changes nothing.
+    """
+
+    def subject(self):
+        long_line = "x" * (settings.CHARACTER_LIMIT + 6)
+
+        return editor(
+            caption(1, "00:00:00,000", "00:00:03,000", "Fine"),
+            caption(2, "00:00:03,000", "00:00:06,000", f"Short\n{long_line}"),
+            caption(3, "00:00:05,000", "00:00:08,000", "Starts too early"),
+            caption(4, "00:00:09,000", "00:00:11,000", "Also fine"),
+        )
+
+    def panel(self, monkeypatch, visible=True, validated=True):
+        import utils.validation_panel as module
+
+        subject = self.subject()
+        items = subject.validation_items(subject.collect_validation_issues())
+
+        panel = module.ValidationPanel.__new__(module.ValidationPanel)
+        panel.captions = lambda: subject.captions
+        panel.hidden = set()
+        panel.all_items = items if validated else []
+        panel.items = list(panel.all_items)
+        panel.position = 0
+
+        class Container:
+            def __init__(self):
+                self.visible = visible
+
+            def set_visibility(self, shown):
+                self.visible = shown
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+        panel.container = Container()
+        panel.draws = []
+        panel.draw = lambda **kwargs: panel.draws.append(kwargs)
+        panel.timers = []
+        monkeypatch.setattr(
+            module.ui, "timer", lambda *args, **kwargs: panel.timers.append(args)
+        )
+
+        return panel
+
+    def test_an_open_panel_switches_to_the_caption_the_caret_is_in(self, monkeypatch):
+        panel = self.panel(monkeypatch)
+
+        panel.follow_caret(3)
+
+        assert panel.current()["caption"].index == 3
+        # The caret is already there: the text must not scroll under it.
+        assert panel.draws == [{"scroll": False}]
+        assert panel.timers == []
+
+    def test_a_caption_with_several_issues_shows_its_first(self, monkeypatch):
+        panel = self.panel(monkeypatch)
+        panel.position = 2
+
+        panel.follow_caret(2)
+
+        assert panel.current()["caption"].index == 2
+        assert panel.position == 0
+
+    def test_the_issue_already_shown_for_that_caption_is_left_alone(self, monkeypatch):
+        """
+        "Caption 2" puts the caret in caption 2 itself; the caret following
+        that must not redraw (and so re-announce) the issue it was pressed on
+        -- not even when it is the caption's second one.
+        """
+
+        panel = self.panel(monkeypatch)
+        panel.position = 1
+
+        panel.follow_caret(2)
+
+        assert panel.position == 1
+        assert panel.draws == []
+
+    def test_a_caption_without_an_issue_changes_nothing(self, monkeypatch):
+        panel = self.panel(monkeypatch)
+        panel.position = 1
+
+        panel.follow_caret(4)
+
+        assert panel.position == 1
+        assert panel.draws == []
+
+    def test_a_closed_panel_opens_on_the_caption_after_a_validate(self, monkeypatch):
+        panel = self.panel(monkeypatch, visible=False)
+
+        panel.follow_caret(3)
+
+        assert panel.container.visible is True
+        assert panel.current()["caption"].index == 3
+        # Said a moment after it is on screen, not as it appears.
+        assert panel.draws == [{"scroll": False, "speak": False}]
+        assert len(panel.timers) == 1
+
+    def test_a_closed_panel_stays_closed_on_a_caption_without_an_issue(
+        self, monkeypatch
+    ):
+        panel = self.panel(monkeypatch, visible=False)
+
+        panel.follow_caret(4)
+
+        assert panel.container.visible is False
+        assert panel.draws == []
+
+    def test_nothing_happens_before_validate_has_run(self, monkeypatch):
+        panel = self.panel(monkeypatch, visible=False, validated=False)
+
+        panel.follow_caret(2)
+
+        assert panel.container.visible is False
+        assert panel.draws == []
+
+    def test_a_hidden_kind_is_not_followed(self, monkeypatch):
+        from utils.validation_panel import shown_items
+
+        panel = self.panel(monkeypatch, visible=False)
+        panel.hidden = {"overlap", "length"}
+        panel.items = shown_items(panel.all_items, panel.hidden)
+
+        panel.follow_caret(3)
+
+        assert panel.container.visible is False
+        assert panel.draws == []
+
+    def test_an_issue_whose_caption_is_gone_is_not_followed(self, monkeypatch):
+        panel = self.panel(monkeypatch)
+        stale = panel.items[2]["caption"]
+        panel.captions = lambda: []
+
+        panel.follow_caret(stale.index)
+
+        assert panel.draws == []
+
+    def test_the_caret_is_reported_once_it_has_settled(self):
+        import pathlib
+
+        script = pathlib.Path("utils/transcript_editor.js").read_text()
+        watcher = script[script.index("    caretId(id) {") :]
+        watcher = watcher[: watcher.index("    },") + len("    },")]
+
+        # Only a caret that is in a caption, only when it has stayed there,
+        # and told as the event the Python side listens for.
+        assert "if (id === null) return;" in watcher
+        assert "setTimeout" in watcher
+        assert "this.caretId === id" in watcher
+        assert '$emit("caretblock", { id })' in watcher
+
+    def test_the_page_hands_the_caret_to_the_panel(self):
+        import pathlib
+
+        page = pathlib.Path("pages/srt.py").read_text()
+
+        assert "transcript.on_caret = (" in page
+        assert "editor.validation_panel.follow_caret" in page

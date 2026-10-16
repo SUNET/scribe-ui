@@ -908,3 +908,8 @@ def create() -> None:
                                 revalidate=editor.revalidate_items,
                             )
                             editor.validation_panel.skip_link = validation_skip
+                            # The panel shows the issue of whichever caption
+                            # the caret is in (WCAG 1.4.1).
+                            transcript.on_caret = (
+                                editor.validation_panel.follow_caret
+                            )

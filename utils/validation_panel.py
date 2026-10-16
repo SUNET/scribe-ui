@@ -21,6 +21,11 @@ issue at a time, in words, and steps through them with Previous and Next.
   to the text: it puts the caret in that caption -- for a line that is too
   long, where the line passes the limit, which is where a break usually
   belongs.
+- **It follows the caret.** Putting the caret in a caption that has an issue
+  shows that issue (follow_caret): the panel switches to it when it is open,
+  and opens on it when Validate has been run but the panel was closed. Focus
+  never moves -- the reader stays in the text, and the panel speaks through
+  its live region. Without a Validate there is nothing to show.
 - **Closing keeps the markings.** The captions stay marked invalid until the
   next Validate; closing only puts the panel away, clears which caption is
   under review, and hands focus back to the Validate button.
@@ -436,6 +441,71 @@ class ValidationPanel:
         # Centred, as stepping between issues shows a caption.
         self.transcript.focus(caption.index, offset, center=True)
 
+    def follow_caret(self, caption_index: int) -> None:
+        """
+        The caret has come to rest in a caption: show that caption's issue.
+
+        Open panel: switch to the caption's first issue (of the kinds shown),
+        unless the issue on screen already belongs to it -- which is also
+        what keeps "Caption 17", which puts the caret there itself, from
+        redrawing what it was just pressed on. Closed panel, after a
+        Validate: open it on that issue. A caption with no issue, or a
+        Validate not yet run, changes nothing.
+        """
+
+        current = self.current()
+
+        if (
+            current is not None
+            and current["caption"].index == caption_index
+            and self.exists(current)
+        ):
+            target = current
+        else:
+            target = next(
+                (
+                    item
+                    for item in self.items
+                    if item["caption"].index == caption_index and self.exists(item)
+                ),
+                None,
+            )
+
+        if target is None:
+            return
+
+        was_open = self.container.visible
+
+        if was_open and target is current:
+            return
+
+        self.position = self.items.index(target)
+
+        if was_open:
+            self.draw(scroll=False)
+            return
+
+        # A live region that appears with its text already in it is often not
+        # read; one that changes after it is on screen is. So open the panel
+        # first and say the issue a moment later.
+        self.container.set_visibility(True)
+        self.draw(scroll=False, speak=False)
+        with self.container:
+            ui.timer(0.2, self.speak, once=True)
+
+    def speak(self) -> None:
+        """
+        Fill the live region with where the reader is in the issues. Said
+        separately from draw() when the panel has only just been opened.
+        """
+
+        item = self.current()
+
+        if item is not None:
+            self.spoken_position.set_text(
+                f"Issue {position_text(self.position, len(self.items))}."
+            )
+
     # -- Drawing ------------------------------------------------------------
 
     def current(self) -> Optional[dict]:
@@ -451,7 +521,13 @@ class ValidationPanel:
 
         return any(caption is item["caption"] for caption in self.captions())
 
-    def draw(self) -> None:
+    def draw(self, scroll: bool = True, speak: bool = True) -> None:
+        """
+        Redraw the panel on the current issue. `scroll=False` leaves the text
+        where it is (the caret is already there, see follow_caret);
+        `speak=False` leaves the spoken position to a later speak().
+        """
+
         total = len(self.items)
         item = self.current()
 
@@ -487,7 +563,7 @@ class ValidationPanel:
         self.panel.classes(replace=f"validation-panel w-full {severity}")
         self.position_label.set_text(position_text(self.position, total))
         self.spoken_position.set_text(
-            f"Issue {position_text(self.position, total)}."
+            f"Issue {position_text(self.position, total)}." if speak else ""
         )
         self.kind.set_text("Error" if item["error"] else "Warning")
         self.title.set_text(item["title"])
@@ -503,7 +579,7 @@ class ValidationPanel:
 
         if self.exists(item):
             self.caption_button.set_enabled(True)
-            self.transcript.review(caption.index)
+            self.transcript.review(caption.index, scroll=scroll)
         else:
             self.caption_button.set_enabled(False)
             self.gone.set_visibility(True)
