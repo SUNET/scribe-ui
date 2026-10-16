@@ -693,3 +693,80 @@ class TestFollowingTheCaret:
 
         assert "transcript.on_caret = (" in page
         assert "editor.validation_panel.follow_caret" in page
+
+
+class TestMediaLength:
+    """
+    How long the media file is, asked of the player and shown in
+    Information. Only the player knows; a recording made in the browser has
+    no length until played, and the player says Infinity.
+    """
+
+    def test_the_figure_is_shown_as_a_running_time(self):
+        subject = editor()
+        subject.set_media_seconds(125.4)
+
+        assert subject.status_values()["media"] == "2:05"
+
+    def test_it_is_a_dash_until_known(self):
+        subject = editor()
+
+        assert subject.status_values()["media"] == "\u2013"
+
+    def test_the_figure_is_redrawn_when_it_arrives(self):
+        subject = editor()
+        shown = []
+
+        class Figure:
+            def set_text(self, text):
+                shown.append(text)
+
+        subject.status_elements = {"media": Figure()}
+        subject.set_media_seconds(61.0)
+
+        assert shown == ["1:01"]
+
+    def look_up(self, monkeypatch, answer):
+        import asyncio
+
+        import utils.srt as module
+
+        async def run_javascript(code, timeout=1.0):
+            if isinstance(answer, Exception):
+                raise answer
+            return answer
+
+        monkeypatch.setattr(module.ui, "run_javascript", run_javascript)
+
+        subject = editor()
+        subject.update_status = lambda: None
+
+        class Video:
+            id = 7
+
+        asyncio.run(subject.look_up_media_seconds(Video()))
+
+        return subject.media_seconds
+
+    def test_the_length_the_player_reports_is_kept(self, monkeypatch):
+        assert self.look_up(monkeypatch, 40.5) == 40.5
+
+    def test_a_player_that_cannot_tell_leaves_it_unknown(self, monkeypatch):
+        assert self.look_up(monkeypatch, None) is None
+
+    def test_a_zero_or_nonsense_answer_leaves_it_unknown(self, monkeypatch):
+        assert self.look_up(monkeypatch, 0) is None
+        assert self.look_up(monkeypatch, "40") is None
+
+    def test_waiting_too_long_leaves_it_unknown(self, monkeypatch):
+        assert self.look_up(monkeypatch, TimeoutError()) is None
+
+    def test_the_player_is_asked_once_the_page_is_up(self):
+        import pathlib
+
+        page = pathlib.Path("pages/srt.py").read_text()
+
+        assert "editor.look_up_media_seconds(video)" in page
+        assert page.index("editor.set_video_player(video)") < page.index(
+            "editor.look_up_media_seconds(video)"
+        )
