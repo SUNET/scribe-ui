@@ -2478,6 +2478,13 @@ theme_styles = """
         font-size: 0.75rem;
         color: var(--color-text-secondary);
     }
+    /* The same small outlined button the validation card carries ("Check
+       again"), a size down to sit in the legend's own type. */
+    .speech-timeline-legend .speech-timeline-add {
+        min-height: 1.5rem;
+        font-size: 0.75rem;
+        padding: 0 0.5rem !important;
+    }
     .speech-timeline-key {
         display: inline-flex;
         align-items: center;

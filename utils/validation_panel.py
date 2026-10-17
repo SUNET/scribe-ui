@@ -74,6 +74,7 @@ RULE_LABELS = {
     "order": "Ends before start",
     "duplicate": "Same timing",
     "overlap": "Overlaps",
+    "outside": "Outside media",
     "length": "Line length",
     "lines": "Too many lines",
     "speed": "Reading speed",

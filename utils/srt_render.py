@@ -257,6 +257,39 @@ class RenderMixin:
                         rule="short",
                     )
 
+                # Against how long the media file is, when that is known. In
+                # whole milliseconds, which is all a timestamp holds -- 2.4 is
+                # held as 2.39999..., and a caption ending exactly where the
+                # media does is not outside it.
+                if self.media_seconds is not None:
+                    media_ms = round(self.media_seconds * 1000)
+                    media_end = self.seconds_to_timestamp(self.media_seconds)
+
+                    if round(caption.get_start_seconds() * 1000) > media_ms:
+                        report(
+                            caption,
+                            f"Starts after the media ends ({media_end}).",
+                            error=True,
+                            title="Starts after the media ends",
+                            rule="outside",
+                            detail=(
+                                f"Starts at {caption.start_time}, "
+                                f"the media ends at {media_end}."
+                            ),
+                        )
+                    elif round(caption.get_end_seconds() * 1000) > media_ms:
+                        report(
+                            caption,
+                            f"Ends after the media ends ({media_end}).",
+                            error=True,
+                            title="Ends after the media ends",
+                            rule="outside",
+                            detail=(
+                                f"Ends at {caption.end_time}, "
+                                f"the media ends at {media_end}."
+                            ),
+                        )
+
                 if seconds > settings.MAX_CAPTION_SECONDS:
                     report(
                         caption,

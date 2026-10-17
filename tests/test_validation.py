@@ -1025,6 +1025,76 @@ class TestCheckingSpeechAgain:
         assert panel.current()["caption"].index == 3
 
 
+class TestOutsideMedia:
+    """
+    A caption that starts after the media ends, or that starts within it and
+    ends after it, cannot be played as written. Checked against how long the
+    player says the media file is -- when it knows.
+    """
+
+    def subject(self, media_seconds):
+        subject = editor(
+            caption(1, "00:00:00,000", "00:00:10,000"),
+            caption(2, "00:00:10,000", "00:00:20,000"),
+            caption(3, "00:00:20,000", "00:00:30,000"),
+        )
+        subject.media_seconds = media_seconds
+
+        return subject
+
+    def issues(self, subject):
+        return [
+            item
+            for item in subject.validation_items(subject.collect_validation_issues())
+            if item["rule"] == "outside"
+        ]
+
+    def test_nothing_is_reported_while_the_length_is_unknown(self):
+        assert self.issues(self.subject(None)) == []
+
+    def test_captions_within_the_media_pass(self):
+        assert self.issues(self.subject(30.0)) == []
+
+    def test_a_caption_ending_after_the_media_is_an_error(self):
+        found = self.issues(self.subject(25.0))
+
+        assert [(i["caption"].index, i["title"]) for i in found] == [
+            (3, "Ends after the media ends")
+        ]
+        assert found[0]["error"] is True
+        assert found[0]["detail"] == (
+            "Ends at 00:00:30,000, the media ends at 00:00:25,000."
+        )
+
+    def test_a_caption_starting_after_the_media_is_one_issue_not_two(self):
+        found = self.issues(self.subject(15.0))
+
+        assert [(i["caption"].index, i["title"]) for i in found] == [
+            (2, "Ends after the media ends"),
+            (3, "Starts after the media ends"),
+        ]
+
+    def test_a_caption_ending_exactly_where_the_media_ends_passes(self):
+        # 30.0004 s is 30.000 s in a timestamp: whole milliseconds are all
+        # either side holds.
+        assert self.issues(self.subject(30.0004)) == []
+        assert self.issues(self.subject(30.0)) == []
+
+    def test_a_transcription_has_no_captions_to_play(self):
+        subject = self.subject(5.0)
+        subject.data_format = "txt"
+
+        assert self.issues(subject) == []
+
+    def test_the_kind_is_named_for_the_filter_and_comes_among_the_errors(self):
+        from utils.validation_panel import RULE_LABELS
+
+        rules = list(RULE_LABELS)
+
+        assert RULE_LABELS["outside"] == "Outside media"
+        assert rules.index("outside") < rules.index("length")
+
+
 class TestTooLong:
     """
     A caption left up for much longer than the guidelines' "about 7 seconds"
@@ -1136,3 +1206,80 @@ class TestReadingSpeed:
         assert RULE_LABELS["long"] == "Too long"
         assert rules.index("overlap") < rules.index("speed")
         assert rules.index("length") < rules.index("speed") < rules.index("long")
+
+
+class TestMediaLength:
+    """
+    How long the media file is, asked of the player and shown in
+    Information. Only the player knows; a recording made in the browser has
+    no length until played, and the player says Infinity.
+    """
+
+    def test_the_figure_is_shown_as_a_running_time(self):
+        subject = editor()
+        subject.set_media_seconds(125.4)
+
+        assert subject.status_values()["media"] == "2:05"
+
+    def test_it_is_a_dash_until_known(self):
+        subject = editor()
+
+        assert subject.status_values()["media"] == "\u2013"
+
+    def test_the_figure_is_redrawn_when_it_arrives(self):
+        subject = editor()
+        shown = []
+
+        class Figure:
+            def set_text(self, text):
+                shown.append(text)
+
+        subject.status_elements = {"media": Figure()}
+        subject.set_media_seconds(61.0)
+
+        assert shown == ["1:01"]
+
+    def look_up(self, monkeypatch, answer):
+        import asyncio
+
+        import utils.srt as module
+
+        async def run_javascript(code, timeout=1.0):
+            if isinstance(answer, Exception):
+                raise answer
+            return answer
+
+        monkeypatch.setattr(module.ui, "run_javascript", run_javascript)
+
+        subject = editor()
+        subject.update_status = lambda: None
+
+        class Video:
+            id = 7
+
+        asyncio.run(subject.look_up_media_seconds(Video()))
+
+        return subject.media_seconds
+
+    def test_the_length_the_player_reports_is_kept(self, monkeypatch):
+        assert self.look_up(monkeypatch, 40.5) == 40.5
+
+    def test_a_player_that_cannot_tell_leaves_it_unknown(self, monkeypatch):
+        assert self.look_up(monkeypatch, None) is None
+
+    def test_a_zero_or_nonsense_answer_leaves_it_unknown(self, monkeypatch):
+        assert self.look_up(monkeypatch, 0) is None
+        assert self.look_up(monkeypatch, "40") is None
+
+    def test_waiting_too_long_leaves_it_unknown(self, monkeypatch):
+        assert self.look_up(monkeypatch, TimeoutError()) is None
+
+    def test_the_player_is_asked_once_the_page_is_up(self):
+        import pathlib
+
+        page = pathlib.Path("pages/srt.py").read_text()
+
+        assert "editor.look_up_media_seconds(video)" in page
+        assert page.index("editor.set_video_player(video)") < page.index(
+            "editor.look_up_media_seconds(video)"
+        )
