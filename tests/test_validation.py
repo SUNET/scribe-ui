@@ -693,3 +693,116 @@ class TestFollowingTheCaret:
 
         assert "transcript.on_caret = (" in page
         assert "editor.validation_panel.follow_caret" in page
+
+
+class TestTooLong:
+    """
+    A caption left up for much longer than the guidelines' "about 7 seconds"
+    is a warning: usually cut in the wrong place, or left up through a pause.
+    """
+
+    def items(self, *captions):
+        subject = editor(*captions)
+
+        return [
+            item
+            for item in subject.validation_items(subject.collect_validation_issues())
+            if item["rule"] == "long"
+        ]
+
+    def test_a_caption_over_the_limit_is_a_warning(self):
+        found = self.items(caption(1, "00:00:00,000", "00:00:08,500", "Hej"))
+
+        assert [i["title"] for i in found] == ["Longer than 8s on screen"]
+        assert found[0]["error"] is False
+        assert found[0]["detail"] == "On screen for 8.5s."
+
+    def test_exactly_the_limit_passes(self):
+        assert self.items(caption(1, "00:00:00,000", "00:00:08,000", "Hej")) == []
+
+    def test_a_shorter_caption_passes(self):
+        assert self.items(caption(1, "00:00:00,000", "00:00:06,000", "Hej")) == []
+
+    def test_a_transcription_has_no_guidelines_to_miss(self):
+        subject = editor(caption(1, "00:00:00,000", "00:00:30,000", "Hej"))
+        subject.data_format = "txt"
+
+        issues = subject.collect_validation_issues()
+
+        assert [i for e in issues for i in e["items"] if i["rule"] == "long"] == []
+
+
+class TestReadingSpeed:
+    """
+    Characters per second: spaces and punctuation counted, the line break not,
+    over the time the caption is up. A warning above the limit (18).
+    """
+
+    def items(self, *captions):
+        subject = editor(*captions)
+
+        return [
+            item
+            for item in subject.validation_items(subject.collect_validation_issues())
+            if item["rule"] == "speed"
+        ]
+
+    def test_a_caption_read_faster_than_the_limit_is_a_warning(self):
+        # 40 characters in 2 seconds: 20 characters/s.
+        found = self.items(caption(1, "00:00:00,000", "00:00:02,000", "x" * 40))
+
+        assert [i["title"] for i in found] == [
+            "Reading speed above 18 characters/s"
+        ]
+        assert found[0]["error"] is False
+        assert found[0]["detail"] == "20.0 characters/s (40 characters in 2.0s)."
+
+    def test_exactly_the_limit_passes(self):
+        # 36 characters in 2 seconds: 18.0.
+        assert self.items(caption(1, "00:00:00,000", "00:00:02,000", "x" * 36)) == []
+
+    def test_the_line_break_is_not_counted(self):
+        # 20 + 20 characters over two lines, in 2.2 s: 40 / 2.2 = 18.2 would
+        # be flagged; 39 characters (the break not counted) in 2.2 s is 17.7.
+        text = "a" * 20 + "\n" + "b" * 19
+        assert self.items(caption(1, "00:00:00,000", "00:00:02,200", text)) == []
+
+    def test_spaces_and_punctuation_are_counted(self):
+        text = "Hello, there. How are you?!"  # 27 characters
+        found = self.items(caption(1, "00:00:00,000", "00:00:01,000", text))
+
+        assert found[0]["detail"] == "27.0 characters/s (27 characters in 1.0s)."
+
+    def test_the_figure_shown_is_the_figure_compared(self):
+        # 902 characters over 50 s is 18.04: shown as 18.0, the limit, so not
+        # flagged -- a caption never says "18.0 characters/s, limit 18" and
+        # warns about it.
+        text = "x" * 902
+        assert self.items(caption(1, "00:00:00,000", "00:00:50,000", text)) == []
+
+    def test_an_empty_caption_is_not_a_reading_speed_problem(self):
+        assert self.items(caption(1, "00:00:00,000", "00:00:02,000", "   ")) == []
+
+    def test_a_caption_ending_before_it_starts_is_not_divided_by(self):
+        assert self.items(caption(1, "00:00:05,000", "00:00:02,000", "Hej")) == []
+
+    def test_a_caption_with_no_duration_is_not_divided_by(self):
+        assert self.items(caption(1, "00:00:05,000", "00:00:05,000", "Hej")) == []
+
+    def test_a_transcription_has_no_guidelines_to_miss(self):
+        subject = editor(caption(1, "00:00:00,000", "00:00:01,000", "x" * 100))
+        subject.data_format = "txt"
+
+        issues = subject.collect_validation_issues()
+
+        assert [i for e in issues for i in e["items"] if i["rule"] == "speed"] == []
+
+    def test_both_kinds_are_named_for_the_filter_among_the_warnings(self):
+        from utils.validation_panel import RULE_LABELS
+
+        rules = list(RULE_LABELS)
+
+        assert RULE_LABELS["speed"] == "Reading speed"
+        assert RULE_LABELS["long"] == "Too long"
+        assert rules.index("overlap") < rules.index("speed")
+        assert rules.index("length") < rules.index("speed") < rules.index("long")
