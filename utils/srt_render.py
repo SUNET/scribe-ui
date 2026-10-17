@@ -257,6 +257,46 @@ class RenderMixin:
                         rule="short",
                     )
 
+                if seconds > settings.MAX_CAPTION_SECONDS:
+                    report(
+                        caption,
+                        f"On screen for {seconds:.1f}s "
+                        f"(max {settings.MAX_CAPTION_SECONDS:g}s).",
+                        error=False,
+                        title=(
+                            f"Longer than {settings.MAX_CAPTION_SECONDS:g}s "
+                            "on screen"
+                        ),
+                        detail=f"On screen for {seconds:.1f}s.",
+                        rule="long",
+                    )
+
+                # How fast it has to be read: what the viewer reads (spaces
+                # and punctuation, not the line break) over the time it is
+                # up. Compared as it is shown, to one decimal, so a caption
+                # never says "18.0 characters/s, limit 18" and is flagged.
+                if seconds > 0:
+                    characters = len(caption.text.strip().replace("\n", ""))
+                    speed = round(characters / seconds, 1)
+
+                    if speed > settings.MAX_CHARS_PER_SECOND:
+                        report(
+                            caption,
+                            f"Reads at {speed:.1f} characters/s "
+                            f"(max {settings.MAX_CHARS_PER_SECOND:g}).",
+                            error=False,
+                            title=(
+                                "Reading speed above "
+                                f"{settings.MAX_CHARS_PER_SECOND:g} "
+                                "characters/s"
+                            ),
+                            detail=(
+                                f"{speed:.1f} characters/s "
+                                f"({characters} characters in {seconds:.1f}s)."
+                            ),
+                            rule="speed",
+                        )
+
         # Timing against the neighbours. Two captions sharing a start time
         # are reported once, as the duplicate they are -- the old third
         # check ("multiple captions start at the same time") said the same

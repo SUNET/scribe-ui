@@ -608,6 +608,72 @@ theme_styles = """
         color: #ffffff !important;
     }
 
+    /* ── Toasts (ui.notify) ── */
+    /* Quasar paints a toast from its own palette and leaves the rest to
+       defaults, which the app's rules then change: white text on
+       positive (#21ba45) and info (#31ccec) measured 2.57:1 and 1.91:1,
+       and the Close button -- Quasar's blue (#5898d4) in light mode,
+       the dark-mode flat-button rule's #e6e8eb in dark -- measured
+       1.19-2.09:1 and 1.38-5.22:1 across the four types. 1.4.3 asks
+       4.5:1. The icon takes the text colour, so it follows.
+       The text of every toast is one of two colours, each chosen for the
+       background it sits on: Quasar's dark (#1d1d1d) on warning,
+       positive and info (9.93 / 6.56 / 8.81:1), and white on negative
+       (6.41:1), which is what it already was. The button and its focus
+       ring then take that colour too, so they clear the same ratio on
+       whatever the toast is painted with.
+       Inheriting alone is not enough for the button: it reads its colour
+       from the actions container, which Quasar gives its own primary
+       blue, so the container is reset as well.
+       The global focus ring is the brand colour, which measured 2.25:1
+       on the red toast in light mode and 1.15-2.16:1 on all four in
+       dark, under the 3:1 of 1.4.11.
+       @layer theme for the same reason as the primary button below:
+       these override !important rules, both Quasar's and the dark-mode
+       flat-button rule above, and a layered !important beats an
+       unlayered one regardless of specificity. */
+    @layer theme {
+        .q-notification.bg-warning,
+        .q-notification.bg-positive,
+        .q-notification.bg-info {
+            color: #1d1d1d !important;
+        }
+        .q-notification.bg-negative {
+            color: #ffffff !important;
+        }
+        .q-notification .q-notification__actions,
+        .q-notification .q-notification__actions .q-btn.q-btn--flat,
+        .q-notification .q-notification__actions .q-btn.q-btn--flat .q-btn__content,
+        .q-notification .q-notification__actions .q-btn.q-btn--flat .block,
+        .q-notification .q-notification__actions .q-btn.q-btn--flat .q-icon {
+            color: inherit !important;
+        }
+        .body--dark .q-notification .q-notification__actions .q-btn.q-btn--flat {
+            border-color: currentColor !important;
+        }
+        .q-notification .q-notification__actions .q-btn.q-btn--flat:focus-visible {
+            outline-color: currentColor !important;
+        }
+    }
+
+    /* Quasar sizes a toast to its message (inline-flex, up to 65vw), so
+       the four types stacked at different widths, and the same type did
+       too from one message to the next. They are all one width now:
+       26rem. Measured on the app's 74 messages (a name or a count
+       stood in for by six characters): 26rem keeps 57 on one line, 17
+       on two and 1 on three. 32rem kept 71 on one line but left the
+       short ones ("Nothing to undo") adrift in 258px of empty toast;
+       24rem wrapped a third of them. Never wider than the window less
+       the toast's own 10px margins, so a narrow window gets a
+       full-width toast rather than one pushed off the edge. Two classes,
+       to win over Quasar's own .q-notification whichever sheet comes
+       last; no !important needed. */
+    .q-notification.q-notification--standard,
+    .q-notification.q-notification--multi-line {
+        width: min(26rem, calc(100vw - 20px));
+        max-width: none;
+    }
+
     /* ── Editor toolbar ── */
     /* Stays put while the caption list scrolls under it: every one of its
        actions applies to the document as a whole, so scrolling away from

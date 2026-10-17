@@ -76,7 +76,9 @@ RULE_LABELS = {
     "overlap": "Overlaps",
     "length": "Line length",
     "lines": "Too many lines",
+    "speed": "Reading speed",
     "short": "Too short",
+    "long": "Too long",
     "speech": "Speech outside captions",
 }
 
