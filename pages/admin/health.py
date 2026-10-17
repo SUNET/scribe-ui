@@ -91,7 +91,13 @@ async def health() -> None:
             backend_reachable = False
 
         if not backend_reachable:
-            ui.label("Backend is not reachable").classes("text-lg").style("color: var(--color-text-danger);")
+            # role=alert: this block is torn down and rebuilt by the ui.timer
+            # poll every ten seconds, so if the backend goes down between
+            # polls this text appears with nothing else announcing it
+            # (WCAG 4.1.3). The text was already generic.
+            ui.label("Backend is not reachable").classes("text-lg").style(
+                "color: var(--color-text-danger);"
+            ).props("role=alert")
             return
 
         with ui.element("div").classes("health-grid"):
