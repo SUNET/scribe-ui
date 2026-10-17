@@ -97,6 +97,14 @@ def test_error_label_is_an_alert(path, text):
         assert any("role=alert" in p for p in props), f"{text!r} in {path} is not role=alert"
 
 
+def test_health_alert_is_persistent_and_only_changes_with_reachability():
+    source = (ROOT / "pages/admin/health.py").read_text()
+    assert source.index("reachability_alert = ui.label") < source.index("@ui.refreshable")
+    assert "if backend_reachable != last_backend_reachable:" in source
+    assert '"" if backend_reachable else "Backend is not reachable"' in source
+    assert "reachability_alert.set_visibility(not backend_reachable)" in source
+
+
 @pytest.mark.parametrize("path", FILES)
 def test_labels_never_show_the_raw_exception(path):
     """No f-string label inside an except handler may interpolate the exception."""
