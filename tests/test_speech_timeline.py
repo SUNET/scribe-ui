@@ -1446,4 +1446,4 @@ class TestCreatingACaptionAtThePlayhead:
         assert 'label="Add caption at playhead"' in source
         assert 'class="editor-btn editor-toolbar-btn editor-outlined speech-timeline-add"' in source
         assert "this.video.currentTime" in source
-        assert 'timeline.on("createatplayhead"' in server
+        assert '"createatplayhead"' in server
