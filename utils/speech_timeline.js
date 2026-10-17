@@ -139,6 +139,15 @@ export default {
           <span class="speech-timeline-swatch speech-timeline-swatch-playhead"></span>
           Playhead
         </span>
+        <q-btn
+          flat
+          dense
+          no-caps
+          icon="add"
+          label="Add caption at playhead"
+          class="editor-btn editor-toolbar-btn editor-outlined speech-timeline-add"
+          @click="addAtPlayhead"
+        />
         <span class="speech-timeline-hint">
           Click a caption to go to it · drag it, or one of its brackets, to
           retime · drag across empty space to add a caption
@@ -178,7 +187,7 @@ export default {
     // where they are, so coming back is a redraw rather than a rebuild.
     shown: { type: Boolean, default: true },
   },
-  emits: ["retimespan", "createcaption", "selectcaption", "dock"],
+  emits: ["retimespan", "createcaption", "createatplayhead", "selectcaption", "dock"],
   data() {
     return {
       position: 0,
@@ -809,6 +818,17 @@ export default {
       }
 
       this.$emit("createcaption", { start: made.start, end: made.end });
+    },
+
+    // The button names a moment rather than a stretch, so the server works
+    // out how long the caption can be. Read the player itself: position is a
+    // frame behind it.
+    addAtPlayhead() {
+      const at = this.video ? this.video.currentTime : this.position;
+      const limit =
+        this.video && isFinite(this.video.duration) ? this.video.duration : 0;
+
+      this.$emit("createatplayhead", { at, limit });
     },
 
     // Kept inside the stretch the captions leave free -- see gapAt.

@@ -1302,3 +1302,148 @@ class TestTheTimelineSwitch:
 
         assert "app.storage.user[TIMELINE_SHOW_KEY] = value" in page
         assert "editor.show_timeline = value" in page
+
+
+class TestCreatingACaptionAtThePlayhead:
+    """
+    The legend button creates a caption at the playhead without requiring a
+    drag across the strip.
+    """
+
+    @pytest.fixture
+    def view(self, monkeypatch):
+        from utils.transcript_editor import TranscriptEditor
+
+        held = editor(
+            captions=[
+                SRTCaption(1, "00:00:00,000", "00:00:02,000", "Ett."),
+                SRTCaption(2, "00:00:06,000", "00:00:08,000", "Tva."),
+            ]
+        )
+        held.save_state_for_undo = lambda *a, **k: None
+        held.mark_as_changed = lambda *a, **k: None
+
+        told = []
+        monkeypatch.setattr(
+            "utils.transcript_editor.ui.notify",
+            lambda message, **k: told.append(message),
+        )
+
+        subject = TranscriptEditor(held)
+        subject.told = told
+        subject.focused = []
+        subject.focus = lambda block_id, offset=0, **k: subject.focused.append(block_id)
+
+        return subject
+
+    def times(self, view):
+        return [
+            (caption.index, caption.get_start_seconds(), caption.get_end_seconds())
+            for caption in view.editor.captions
+        ]
+
+    def test_it_makes_a_caption_of_the_usual_length_from_the_playhead(self, view):
+        from utils.settings import get_settings
+
+        view.create_at_playhead({"at": 3.0})
+
+        assert self.times(view)[1] == (
+            2,
+            3.0,
+            3.0 + get_settings().NEW_CAPTION_SECONDS,
+        )
+
+    def test_it_stops_at_the_next_caption(self, view):
+        view.create_at_playhead({"at": 5.5})
+
+        assert self.times(view)[1] == (2, 5.5, 6.0)
+
+    def test_after_the_last_caption_there_is_room(self, view):
+        from utils.settings import get_settings
+
+        view.create_at_playhead({"at": 9.0})
+
+        assert self.times(view)[-1] == (
+            3,
+            9.0,
+            9.0 + get_settings().NEW_CAPTION_SECONDS,
+        )
+
+    def test_it_stops_at_the_end_of_the_recording(self, view):
+        view.create_at_playhead({"at": 9.0, "limit": 9.4})
+
+        assert self.times(view)[-1] == (3, 9.0, 9.4)
+
+    def test_an_unknown_recording_length_is_no_limit(self, view):
+        view.create_at_playhead({"at": 9.0, "limit": 0})
+
+        assert len(view.editor.captions) == 3
+
+    def test_it_starts_empty_and_takes_the_caret(self, view):
+        view.create_at_playhead({"at": 3.0})
+
+        assert view.editor.captions[1].text == ""
+        assert view.focused == [2]
+
+    def test_it_is_one_undo_step(self, view):
+        saved = []
+        view.editor.save_state_for_undo = lambda *a, **k: saved.append(True)
+
+        view.create_at_playhead({"at": 3.0})
+
+        assert len(saved) == 1
+
+    def test_inside_a_caption_nothing_is_made_and_the_reader_is_told(self, view):
+        view.create_at_playhead({"at": 7.0})
+
+        assert len(view.editor.captions) == 2
+        assert view.told == ["Caption 2 already covers this point"]
+        assert view.focused == [2]
+
+    def test_a_caption_start_is_inside_and_its_end_is_not(self, view):
+        view.create_at_playhead({"at": 6.0})
+        assert len(view.editor.captions) == 2
+
+        view.create_at_playhead({"at": 2.0})
+        assert len(view.editor.captions) == 3
+
+    def test_no_room_is_said_rather_than_made(self, view):
+        view.editor.captions[0].end_time = "00:00:05,980"
+        view.create_at_playhead({"at": 5.98})
+
+        assert len(view.editor.captions) == 2
+        assert view.told == ["There is no room for a caption here"]
+
+    def test_at_the_end_of_the_recording_there_is_no_room(self, view):
+        view.create_at_playhead({"at": 9.0, "limit": 9.0})
+
+        assert len(view.editor.captions) == 2
+        assert view.told == ["There is no room for a caption here"]
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            None,
+            "nonsense",
+            {},
+            {"at": None},
+            {"at": "x"},
+            {"at": -1.0},
+            {"at": float("nan")},
+            {"at": float("inf")},
+        ],
+    )
+    def test_nothing_usable_makes_nothing(self, view, args):
+        view.create_at_playhead(args)
+
+        assert len(view.editor.captions) == 2
+        assert view.told == []
+
+    def test_the_button_reads_the_player_and_is_wired_to_the_editor(self):
+        source = pathlib.Path("utils/speech_timeline.js").read_text()
+        server = pathlib.Path("utils/transcript_editor.py").read_text()
+
+        assert 'label="Add caption at playhead"' in source
+        assert 'class="editor-btn editor-toolbar-btn editor-outlined speech-timeline-add"' in source
+        assert "this.video.currentTime" in source
+        assert 'timeline.on("createatplayhead"' in server

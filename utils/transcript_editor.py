@@ -32,6 +32,7 @@ whichever format is open.
 """
 
 import re
+from math import isfinite
 
 from typing import Callable, List, Optional
 
@@ -73,6 +74,10 @@ TIME_LABEL_PATTERN = re.compile(
 # first tick that lands between two captions matches the starting value and
 # short-circuits before the overlay is ever told to hide.
 UNDRAWN = object()
+
+# The least room a caption made at the playhead may have, matching the floor
+# used by the timeline's drag gesture.
+MIN_NEW_SECONDS = 0.05
 
 
 def parse_time_label(text: str) -> Optional[float]:
@@ -226,6 +231,9 @@ class TranscriptEditor:
         )
         timeline.on("retimespan", lambda event: self.retime_span(event.args))
         timeline.on("createcaption", lambda event: self.create_caption(event.args))
+        timeline.on(
+            "createatplayhead", lambda event: self.create_at_playhead(event.args)
+        )
         timeline.on("selectcaption", lambda event: self.select_from_timeline(event.args))
         self.refresh_timeline()
 
@@ -354,6 +362,74 @@ class TranscriptEditor:
             # it was, since the strip is already drawing it where it was
             # dropped.
             self.refresh()
+
+    def create_at_playhead(self, args) -> None:
+        """
+        Make a caption at the player's current position.
+
+        The client names a moment; the server determines its duration from
+        NEW_CAPTION_SECONDS, the next caption, and the recording's length.
+        """
+
+        if not isinstance(args, dict):
+            return
+
+        try:
+            at = float(args.get("at"))
+        except (TypeError, ValueError):
+            return
+
+        if not isfinite(at) or at < 0:
+            return
+
+        covering = next(
+            (
+                caption
+                for caption in self.editor.captions
+                if caption.get_start_seconds() <= at < caption.get_end_seconds()
+            ),
+            None,
+        )
+
+        if covering is not None:
+            self.focus(covering.index)
+            self.mark_current(covering.index)
+            ui.notify(
+                f"Caption {covering.index} already covers this point",
+                type="info",
+                timeout=None,
+                close_button="Close",
+            )
+            return
+
+        end = at + settings.NEW_CAPTION_SECONDS
+        following = [
+            caption.get_start_seconds()
+            for caption in self.editor.captions
+            if caption.get_start_seconds() > at
+        ]
+
+        if following:
+            end = min(end, min(following))
+
+        try:
+            limit = float(args.get("limit"))
+        except (TypeError, ValueError):
+            limit = 0.0
+
+        if isfinite(limit) and limit > 0:
+            end = min(end, limit)
+
+        if not isfinite(end) or end - at < MIN_NEW_SECONDS:
+            ui.notify(
+                "There is no room for a caption here",
+                type="warning",
+                timeout=None,
+                close_button="Close",
+            )
+            return
+
+        self.create_caption({"start": at, "end": end})
 
     def create_caption(self, args) -> None:
         """
