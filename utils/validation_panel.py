@@ -478,9 +478,13 @@ class ValidationPanel:
             self.position = self.items.index(remaining[0])
             note = "This speech still has no caption."
         else:
+            added = item.get("added")
             self.position = next(
-                (n for n, i in enumerate(self.items) if i["caption"].index > index),
-                max(len(self.items) - 1, 0),
+                (n for n, i in enumerate(self.items) if i["caption"] is added),
+                next(
+                    (n for n, i in enumerate(self.items) if i["caption"].index > index),
+                    max(len(self.items) - 1, 0),
+                ),
             )
             note = "This speech has a caption now."
 
