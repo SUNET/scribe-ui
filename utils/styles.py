@@ -2189,7 +2189,28 @@ theme_styles = """
     }
     .transcript-cell:hover .transcript-cell-actions,
     .transcript-gutter:hover + .transcript-cell .transcript-cell-actions,
-    .transcript-cell-actions:focus-within {
+    .transcript-cell-actions:focus-within,
+    /* Also where a keyboard reader is, not only where the pointer is: the
+       caret in the caption's text (the whole transcript is one
+       contenteditable, so the caret never makes the cell itself
+       :focus-within -- the editor marks the caption with
+       .transcript-cell-editing instead, and clears it when the caret
+       leaves) and focus on one of the caption's timestamps. Without this the
+       tray was a control only someone who already knew to press Tab from the
+       text would ever find.
+
+       Only while the keyboard is what is being used (the body class the
+       focus-ring rules above use, set by a Tab and cleared by a click or a
+       tap). With a pointer the tray follows the pointer, which is quicker --
+       it is under the cursor before the caption has been clicked -- and
+       showing it for the caption the caret is in as well would put two on
+       screen whenever the pointer is over another caption.
+
+       Opacity only, as before: the tray stays in the tab order and the
+       accessibility tree, and its space is reserved, so nothing moves when
+       it appears. */
+    body.scribe-user-is-tabbing .transcript-cell-editing .transcript-cell-actions,
+    body.scribe-user-is-tabbing .transcript-cell:focus-within .transcript-cell-actions {
         opacity: 1;
     }
     .transcript-action {
@@ -2401,6 +2422,10 @@ theme_styles = """
        lets dark mode change them without the component knowing. */
     .speech-timeline {
         min-width: 0;
+        /* Sideways scrolling over the strip moves the playhead (see onWheel
+           in speech_timeline.js), and a trackpad swipe that reached the end
+           of it must not go on to be the browser's "Back". */
+        overscroll-behavior-x: contain;
         /* Speech along the top in the brand blue; the captions below it as
            grey brackets, with the one being played or edited in the same
            blue. The two are never in the same row and a bracket is not a
@@ -2478,12 +2503,85 @@ theme_styles = """
         font-size: 0.75rem;
         color: var(--color-text-secondary);
     }
-    /* The same small outlined button the validation card carries ("Check
-       again"), a size down to sit in the legend's own type. */
-    .speech-timeline-legend .speech-timeline-add {
-        min-height: 1.5rem;
-        font-size: 0.75rem;
-        padding: 0 0.5rem !important;
+    /* The controls at the end of the key: dock, zoom, and adding a caption at
+       the playhead. The same tray as the caption actions -- surface,
+       hairline, fully rounded, round 1.5rem buttons -- so the two read as one
+       family; they sit in the strip's own legend row, where they cost it no
+       height, which is what matters most docked along the foot of the page.
+
+       Out of the way until the strip is pointed at, or the keyboard is on it
+       or on one of the buttons (a button with focus is never hidden). The
+       keyboard rule uses the same body class as the caption actions and the
+       focus rings: a click on the strip focuses it too, and then the tray
+       should follow the pointer as before. Opacity only, as with the caption
+       actions:
+       the tray stays in the tab order and the accessibility tree, and its
+       place is reserved, so nothing moves when it appears. Where nothing can
+       point (hover: none) it is simply there, since there is no way to
+       reveal it. */
+    .speech-timeline-actions {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        margin-left: auto;
+        padding: 2px;
+        border: 1px solid var(--color-border-subtle);
+        border-radius: 999px;
+        background-color: var(--color-bg-surface);
+        opacity: 0;
+        transition: opacity 0.12s ease-in-out;
+    }
+    .speech-timeline-wrap:hover .speech-timeline-actions,
+    body.scribe-user-is-tabbing .speech-timeline-wrap:focus-within .speech-timeline-actions,
+    .speech-timeline-actions:focus-within {
+        opacity: 1;
+    }
+    @media (hover: none) {
+        .speech-timeline-actions {
+            opacity: 1;
+        }
+    }
+    .speech-timeline-actions-gap {
+        align-self: stretch;
+        width: 1px;
+        margin: 3px 2px;
+        background-color: var(--color-border-subtle);
+    }
+    .speech-timeline-action {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.5rem;
+        height: 1.5rem;
+        padding: 0;
+        border: 0;
+        border-radius: 50%;
+        background-color: transparent;
+        color: var(--color-text-muted);
+        cursor: pointer;
+        transition: color 0.12s ease-in-out, background-color 0.12s ease-in-out;
+    }
+    .speech-timeline-action:hover {
+        color: var(--color-brand-primary);
+        background-color: var(--color-bg-surface-alt);
+    }
+    /* A button that is on -- the dock while the strip is docked -- says so
+       with a ring as well as a colour, so it does not rest on colour alone. */
+    .speech-timeline-action-on {
+        color: var(--color-brand-primary);
+        background-color: var(--color-bg-surface-alt);
+        box-shadow: inset 0 0 0 1px var(--color-brand-primary);
+    }
+    /* At the end of its range, and stays focusable: see actions() in
+       speech_timeline.js. Dimmed, since an inactive control is not asked to
+       meet the contrast of an active one. */
+    .speech-timeline-action-off {
+        cursor: default;
+        opacity: 0.45;
+    }
+    .speech-timeline-action-off:hover {
+        color: var(--color-text-muted);
+        background-color: transparent;
     }
     .speech-timeline-key {
         display: inline-flex;
@@ -2498,9 +2596,9 @@ theme_styles = """
 
     /* Which minute of the recording is on the strip. A different question
        from the key's, so it sits at the far end of the row rather than in
-       the queue behind it. */
+       the queue behind it -- after the controls, which take the free space
+       before it. */
     .speech-timeline-range {
-        margin-left: auto;
         color: var(--color-text-secondary);
         font-variant-numeric: tabular-nums;
     }

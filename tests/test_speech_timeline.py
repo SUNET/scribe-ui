@@ -260,10 +260,12 @@ class TestItExplainsItself:
 
 class TestZoom:
     """
-    Twenty seconds across the strip, always. An hour across a pane this wide is
-    roughly a minute per pixel, where no caption edge can be seen let alone
-    aimed at -- and a scale that changes underfoot makes the strip harder to
-    read, not easier, so it is not offered as a choice.
+    Twenty seconds across the strip to start with, a minute docked. An hour
+    across a pane this wide is roughly a minute per pixel, where no caption
+    edge can be seen let alone aimed at, so that is where it starts and where
+    "Reset zoom" brings it back. Zooming (SUNET/scribe-ui#134) is a step the
+    reader takes -- a factor of that window, in doublings -- never something
+    that changes underfoot.
     """
 
     def source(self) -> str:
@@ -285,11 +287,75 @@ class TestZoom:
 
         assert "const DOCKED_WINDOW = 60;" in self.source()
 
-    def test_it_is_not_a_control(self):
+    def test_it_zooms_in_doublings_between_a_quarter_and_four_times(self):
         source = self.source()
 
-        assert "speech-timeline-zoom" not in source
-        assert "setWindow" not in source
+        assert "const ZOOM_MIN = 0.25;" in source
+        assert "const ZOOM_MAX = 4;" in source
+        assert "const ZOOM_STEP = 2;" in source
+
+    def test_the_zoom_is_a_factor_of_the_window_of_the_mode(self):
+        """
+        So that "Reset zoom" is the window the strip started with, docked or
+        not, and docking again does not need to know about the zoom at all.
+        """
+
+        source = self.source()
+        body = source[source.index("visible() {"):]
+        body = body[: body.index("\n    },")]
+
+        assert "(this.docked ? DOCKED_WINDOW : WINDOW) / this.zoom" in body
+
+    def test_zooming_changes_only_the_drawing(self):
+        """
+        Not a caption, not the playhead, not what the player is doing.
+        """
+
+        source = self.source()
+        body = source[source.index("zoomTo(zoom) {"):]
+        body = body[: body.index("\n    },")]
+
+        assert "this.draw();" in body
+        assert "currentTime" not in body
+        assert "$emit" not in body
+        assert "this.position" not in body
+        assert "this.captions" not in body
+
+    def test_zooming_out_is_refused_once_everything_is_on_the_strip(self):
+        source = self.source()
+        body = source[source.index("canZoomOut() {"):]
+        body = body[: body.index("\n    },")]
+
+        assert "this.zoom > ZOOM_MIN" in body
+        assert "this.visible() < this.span()" in body
+
+    def test_reset_goes_back_to_the_default(self):
+        source = self.source()
+        body = source[source.index("zoomReset() {"):]
+        body = body[: body.index("\n    },")]
+
+        assert "this.zoomTo(1);" in body
+
+    def test_it_is_not_remembered_between_visits(self):
+        """
+        It is a way of looking at one recording, not a preference like the
+        dock: nothing is sent to the server about it.
+        """
+
+        source = self.source()
+
+        assert '"zoom"' not in source.split("emits:")[1].split("\n")[0]
+
+    def test_it_says_what_it_did(self):
+        """
+        The buttons are icons: what a press did is told to the status region.
+        """
+
+        source = self.source()
+        body = source[source.index("zoomTo(zoom) {"):]
+        body = body[: body.index("\n    },")]
+
+        assert "this.note =" in body
 
     def test_a_short_recording_shows_all_of_itself(self):
         source = self.source()
@@ -1056,20 +1122,6 @@ class TestCreatingACaptionAtThePlayhead:
         assert '"createatplayhead"' in server
         assert '"createatplayhead"' in source.split("emits:")[1].split("\n")[0]
 
-    def test_the_button_is_the_validation_cards_small_outlined_one(self):
-        """
-        The strip is a slim panel; the button in it is the same kind of
-        small outlined button the validation card carries.
-        """
-
-        source = pathlib.Path("utils/speech_timeline.js").read_text()
-        button = source[source.index("<q-btn"):]
-        button = button[: button.index("/>")]
-
-        assert "editor-btn editor-toolbar-btn editor-outlined" in button
-        assert 'label="Add caption at playhead"' in button
-        assert "no-caps" in button
-
 
 class TestTheOverlayFollowsTheControlBar:
     """
@@ -1155,11 +1207,16 @@ class TestDockingTheStrip:
         """
 
         source = self.source()
-        body = source[source.index("onDockDrop() {"):]
+        body = source[source.index("setDocked(willDock) {"):]
         body = body[: body.index("\n    },")]
 
         assert "if (willDock === this.docked) return;" in body
         assert body.index("if (willDock === this.docked)") < body.index('$emit("dock"')
+
+        drop = source[source.index("onDockDrop() {"):]
+        drop = drop[: drop.index("\n    },")]
+
+        assert "this.setDocked(willDock);" in drop, "the grip goes through it"
 
     def test_it_redraws_once_the_page_has_settled(self):
         """
@@ -1481,3 +1538,362 @@ class TestTheTimelineSwitch:
 
         assert "app.storage.user[TIMELINE_SHOW_KEY] = value" in page
         assert "editor.show_timeline = value" in page
+
+
+def method(source: str, header: str) -> str:
+    """
+    The body of one method of the component, from its header to the end of it.
+    """
+
+    body = source[source.index(header):]
+
+    return body[: body.index("\n    },")]
+
+
+class TestMovingThePlayhead:
+    """
+    From the keyboard and from sideways scrolling (SUNET/scribe-ui#128): both
+    ask the same method for the same thing, so a rule about where the playhead
+    may go is stated once.
+    """
+
+    def source(self) -> str:
+        return pathlib.Path("utils/speech_timeline.js").read_text()
+
+    def test_it_never_goes_past_either_end_of_the_recording(self):
+        body = method(self.source(), "seekTo(seconds) {")
+
+        assert "if (!span) return;" in body
+        assert "Math.max(0, Math.min(span, seconds))" in body
+
+    def test_the_strip_moves_at_once_and_the_player_once_a_frame(self):
+        """
+        A wheel turned fast makes dozens of events a frame, and every one a
+        seek the player would start and abandon.
+        """
+
+        body = method(self.source(), "seekTo(seconds) {")
+
+        assert body.index("this.position = to;") < body.index("requestAnimationFrame(")
+        assert "this.seekPending = to;" in body
+        assert "this.seekFrame === null" in body
+        assert "this.video.currentTime = target" in body
+
+    def test_the_player_does_not_pull_it_back_while_a_move_is_waiting(self):
+        body = method(self.source(), "follow() {")
+
+        assert "if (this.seekPending !== null) return;" in body
+
+    def test_the_keys(self):
+        body = method(self.source(), "onKey(event) {")
+
+        for key in ("ArrowRight", "ArrowLeft", "PageUp", "PageDown", "Home", "End"):
+            assert key in body
+
+        assert "this.seekTo(0)" in body
+        assert "this.seekTo(this.span())" in body
+
+    def test_the_steps_follow_the_zoom(self):
+        """
+        A share of what is on the strip, so a fine step zoomed in and a wide
+        one zoomed out.
+        """
+
+        source = self.source()
+        body = method(source, "onKey(event) {")
+
+        assert "const STEP_SMALL = 1 / 40;" in source
+        assert "const STEP_PAGE = 1;" in source
+        assert "visible * STEP_SMALL" in body
+        assert "visible * STEP_PAGE" in body
+
+    def test_plus_minus_and_zero_zoom(self):
+        body = method(self.source(), "onKey(event) {")
+
+        assert '"+": () => this.zoomIn()' in body
+        assert '"-": () => this.zoomOut()' in body
+        assert "0: () => this.zoomReset()" in body
+
+    def test_the_browsers_own_zoom_is_left_alone(self):
+        """
+        Ctrl and Cmd with plus, minus and 0 are the browser's zoom, and
+        Ctrl with the wheel is too; whoever uses it to enlarge the page
+        keeps it over the strip.
+        """
+
+        source = self.source()
+        keys = method(source, "onKey(event) {")
+        wheel = method(source, "onWheel(event) {")
+
+        assert "event.ctrlKey || event.metaKey || event.altKey" in keys
+        assert "event.ctrlKey || event.metaKey" in wheel
+
+    def test_only_the_strip_itself_answers_to_the_keys(self):
+        """
+        The controls beside it have keys of their own.
+        """
+
+        body = method(self.source(), "onKey(event) {")
+
+        assert "event.target !== this.$refs.root" in body
+
+    def test_only_sideways_scrolling_is_taken(self):
+        """
+        Up and down is the page's. A strip that took it would trap the
+        reader in the middle of a long page.
+        """
+
+        body = method(self.source(), "onWheel(event) {")
+
+        assert "Math.abs(event.deltaX) > Math.abs(event.deltaY)" in body
+        assert "event.shiftKey" in body
+        assert body.index("if (!sideways) return;") < body.index("event.preventDefault();")
+
+    def test_scrolling_right_goes_forward(self):
+        body = method(self.source(), "onWheel(event) {")
+
+        assert "from + pixels / pixelsPerSecond" in body
+
+    def test_the_wheel_and_the_keys_move_it_the_same_way(self):
+        source = self.source()
+
+        assert "this.seekTo(" in method(source, "onKey(event) {")
+        assert "this.seekTo(" in method(source, "onWheel(event) {")
+
+    def test_a_swipe_that_runs_out_is_not_the_browsers_back(self):
+        from utils.styles import theme_styles
+
+        rule = theme_styles[theme_styles.index("    .speech-timeline {"):]
+        rule = rule[: rule.index("}")]
+
+        assert "overscroll-behavior-x: contain" in rule
+
+
+class TestTheStripIsASlider:
+    """
+    What the strip is to assistive technology: a slider whose value is where
+    the playhead is, in words, which can be focused and moved.
+    """
+
+    def source(self) -> str:
+        return pathlib.Path("utils/speech_timeline.js").read_text()
+
+    def root(self) -> str:
+        source = self.source()
+        root = source[source.index('class="speech-timeline"'):]
+
+        return root[: root.index("\n      >")]
+
+    def test_it_has_a_role_a_name_and_a_value(self):
+        root = self.root()
+
+        assert 'role="slider"' in root
+        assert 'tabindex="0"' in root
+        assert 'aria-label="Playhead position"' in root
+        assert 'aria-valuemin="0"' in root
+        assert ':aria-valuemax="ariaMax()"' in root
+        assert ':aria-valuenow="ariaNow()"' in root
+        assert ':aria-valuetext="ariaText"' in root
+
+    def test_the_value_is_said_in_words(self):
+        """
+        Where in the recording, and which caption that is -- a number of
+        seconds says neither.
+        """
+
+        source = self.source()
+        body = source[source.index("    ariaText() {"):]
+        body = body[: body.index("\n    },")]
+
+        assert "this.moment(at)" in body
+        assert "of ${this.clock(span)}" in body
+        assert "in caption ${caption.id}" in body
+        assert "no caption here" in body
+
+    def test_it_does_not_say_a_new_value_every_frame(self):
+        """
+        While the recording plays the playhead moves sixty times a second,
+        and a screen reader told about each would say nothing else.
+        """
+
+        source = self.source()
+
+        assert "syncAria" not in method(source, "follow() {")
+        assert "syncAria" not in method(source, "animate() {")
+        assert "if (!force && playing && focused) return;" in method(
+            source, "syncAria(force) {"
+        )
+
+    def test_it_is_brought_up_to_date_when_it_matters(self):
+        source = self.source()
+
+        assert '@focus="syncAria(true)"' in self.root()
+        assert 'this.video.addEventListener("pause", this.rest);' in source
+        assert 'this.video.addEventListener("seeked", this.rest);' in source
+        assert "this.syncAria(true);" in method(source, "onKey(event) {")
+
+    def test_the_keys_are_described_to_whoever_cannot_see_the_hint(self):
+        source = self.source()
+
+        assert 'aria-describedby="speech-timeline-keys"' in self.root()
+        assert 'id="speech-timeline-keys"' in source
+        assert "Plus and minus zoom" in source
+
+    def test_the_status_region_is_polite(self):
+        source = self.source()
+
+        assert 'role="status" aria-live="polite" aria-atomic="true">{{ note }}' in source
+
+
+class TestTheTimelineControls:
+    """
+    Dock, zoom and add a caption at the playhead, as a tray in the strip's own
+    legend row: the same family as the caption actions, and out of the way
+    until the strip is pointed at or has focus.
+    """
+
+    def source(self) -> str:
+        return pathlib.Path("utils/speech_timeline.js").read_text()
+
+    def buttons(self) -> str:
+        source = self.source()
+        start = source.index("<button")
+
+        return source[start: source.index("</button>", start)]
+
+    def test_the_labelled_button_is_gone(self):
+        assert "<q-btn" not in self.source()
+
+    def test_the_order(self):
+        import re
+
+        body = method(self.source(), "    actions() {")
+
+        assert re.findall(r'key: "(\w+)"', body) == [
+            "dock",
+            "zoomOut",
+            "zoomIn",
+            "zoomReset",
+            "add",
+        ]
+
+    def test_it_is_a_named_toolbar(self):
+        source = self.source()
+        tray = source[source.index('class="speech-timeline-actions"'):]
+        tray = tray[: tray.index(">")]
+
+        assert 'role="toolbar"' in tray
+        assert 'aria-label="Timeline controls"' in tray
+
+    def test_every_button_is_named(self):
+        """
+        They are icons.
+        """
+
+        source = self.source()
+        body = method(source, "    actions() {")
+
+        assert ':aria-label="action.label"' in self.buttons()
+        assert body.count("label:") == 5
+
+        for label in (
+            "Dock timeline",
+            "Zoom out",
+            "Zoom in",
+            "Reset zoom",
+            "Add caption at playhead",
+        ):
+            assert f'label: "{label}"' in body
+
+    def test_one_tab_stop_with_arrow_keys_between_them(self):
+        """
+        As in the caption actions: the strip's own controls are one stop in
+        the tab order rather than five.
+        """
+
+        buttons = self.buttons()
+
+        assert ':tabindex="index === pillStop ? 0 : -1"' in buttons
+        assert '@keydown="onActionKey($event, index)"' in buttons
+        assert '@focus="pillStop = index"' in buttons
+
+    def test_the_dock_says_whether_it_is_on_without_changing_its_name(self):
+        source = self.source()
+        body = method(source, "    actions() {")
+
+        assert 'label: "Dock timeline"' in body
+        assert "pressed: this.docked" in body
+        assert ":aria-pressed=" in self.buttons()
+
+    def test_a_button_at_the_end_of_its_range_stays_focusable(self):
+        """
+        Pressing zoom in at the last step must not drop focus on the page,
+        which is what a disabled button does.
+        """
+
+        buttons = self.buttons()
+
+        assert ":aria-disabled=" in buttons
+        assert ":disabled=" not in buttons
+        assert " disabled" not in buttons
+
+    def test_focus_comes_back_to_the_dock_after_it_moves(self):
+        """
+        Docking teleports the strip, and a node that is moved loses focus.
+        """
+
+        body = method(self.source(), "toggleDock() {")
+
+        assert "this.$nextTick(" in body
+        assert 'this.focusAction("dock")' in body
+
+    def test_adding_a_caption_is_the_same_event_as_before(self):
+        source = self.source()
+
+        assert "run: this.addAtPlayhead" in method(source, "    actions() {")
+        assert 'this.$emit("createatplayhead"' in method(source, "addAtPlayhead() {")
+
+    def test_hidden_until_the_strip_is_pointed_at_or_focused(self):
+        from utils.styles import theme_styles
+
+        rule = theme_styles[theme_styles.index("    .speech-timeline-actions {"):]
+        rule = rule[: rule.index("}")]
+
+        assert "opacity: 0;" in rule
+        assert "display: none" not in rule
+        assert "visibility" not in rule
+
+        assert ".speech-timeline-wrap:hover .speech-timeline-actions," in theme_styles
+        assert (
+            "body.scribe-user-is-tabbing .speech-timeline-wrap:focus-within "
+            ".speech-timeline-actions,"
+        ) in theme_styles
+        assert ".speech-timeline-actions:focus-within {" in theme_styles
+
+    def test_always_there_where_nothing_can_point(self):
+        from utils.styles import theme_styles
+
+        media = theme_styles[theme_styles.index("@media (hover: none) {"):]
+        media = media[: media.index("    }\n    }") + 6]
+
+        assert ".speech-timeline-actions {" in media
+        assert "opacity: 1;" in media
+
+    def test_it_costs_the_legend_no_height(self):
+        """
+        In the row that was already there, after the hint and before the
+        range, taking the free space between.
+        """
+
+        source = self.source()
+
+        assert source.index('class="speech-timeline-hint"') < source.index(
+            'class="speech-timeline-actions"'
+        ) < source.index('class="speech-timeline-range"')
+
+        from utils.styles import theme_styles
+
+        rule = theme_styles[theme_styles.index("    .speech-timeline-actions {"):]
+        rule = rule[: rule.index("}")]
+
+        assert "margin-left: auto;" in rule
