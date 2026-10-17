@@ -491,6 +491,10 @@ def create() -> None:
                             ui.timer(
                                 0, lambda: editor.look_up_media_seconds(video), once=True
                             )
+                            video.on(
+                                "loadedmetadata",
+                                lambda: editor.look_up_media_seconds(video),
+                            )
                             # playsinline: iOS plays a video fullscreen
                             # without it, which takes the captions off
                             # the screen every time the reader presses
