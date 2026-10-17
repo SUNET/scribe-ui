@@ -755,6 +755,21 @@ class TestCreatingACaption:
 
         assert self.times(view) == [(1, 0.0, 2.0), (2, 3.0, 4.5), (3, 6.0, 8.0)]
 
+    def test_it_answers_the_caption_it_made(self, view):
+        """
+        The validation panel's "Add caption" makes one the same way, and
+        says which it was.
+        """
+
+        added = view.create_caption({"start": 3.0, "end": 4.5})
+
+        assert added is view.editor.captions[1]
+        assert added.index == 2
+
+    def test_it_answers_none_when_it_makes_nothing(self, view):
+        assert view.create_caption({"start": 1.0, "end": 3.0}) is None
+        assert view.create_caption({"start": 4.0, "end": 3.0}) is None
+
     def test_it_starts_empty_and_takes_the_caret(self, view):
         focused = []
         view.focus = lambda block_id, offset=0: focused.append(block_id)

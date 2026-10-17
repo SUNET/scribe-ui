@@ -387,6 +387,47 @@ class TestShowingSomeKinds:
         assert panel.items == [] and panel.position == 0
 
 
+class TestGoingToSpeech:
+    def test_caption_action_seeks_to_uncovered_speech_and_keeps_caption_focus(self):
+        from utils.validation_panel import ValidationPanel
+
+        panel = ValidationPanel.__new__(ValidationPanel)
+        caption_item = caption(1, "00:00:00,000", "00:00:02,000")
+        panel.items = [
+            {
+                "caption": caption_item,
+                "offset": 2,
+                "speech": {"start": 2.5, "end": 4.0, "until": 6.0},
+            }
+        ]
+        panel.position = 0
+        panel.exists = lambda item: True
+
+        class Transcript:
+            def __init__(self):
+                self.focused = None
+                self.seeked = None
+                self.moved_to_seconds = None
+                self.editor = self
+
+            def focus(self, *args, **kwargs):
+                self.focused = (args, kwargs)
+
+            def seek_video(self, seconds):
+                self.seeked = seconds
+
+            def moved_to(self, seconds):
+                self.moved_to_seconds = seconds
+
+        panel.transcript = Transcript()
+
+        panel.go_to_caption()
+
+        assert panel.transcript.focused == ((1, 2), {"center": True})
+        assert panel.transcript.seeked == 2.5
+        assert panel.transcript.moved_to_seconds == 2.5
+
+
 class TestCheckingAgain:
     """
     "Check again" after a fix: validate again, and land on the caption's
@@ -693,6 +734,336 @@ class TestFollowingTheCaret:
 
         assert "transcript.on_caret = (" in page
         assert "editor.validation_panel.follow_caret" in page
+
+
+def speaking(subject: SRTEditor, *spans) -> SRTEditor:
+    """
+    Give an editor word timings: one word per (start, end) span.
+    """
+
+    subject.load_words(
+        {
+            "version": 1,
+            "words": [
+                {"t": f"ord{n}", "s": start, "e": end}
+                for n, (start, end) in enumerate(spans)
+            ],
+        }
+    )
+
+    return subject
+
+
+def speech_items(subject: SRTEditor) -> list:
+    return [
+        item
+        for item in subject.validation_items(subject.collect_validation_issues())
+        if item["rule"] == "speech"
+    ]
+
+
+class TestSpeechOutsideCaptions:
+    """
+    SUNET/scribe-ui#142: speech that no caption covers, for longer than
+    MAX_UNCAPTIONED_SPEECH_SECONDS. A warning, filed under the caption the
+    speech follows, which is not itself marked: the caption is not wrong,
+    the time beside it is.
+    """
+
+    def test_speech_inside_the_captions_passes(self):
+        subject = speaking(
+            editor(
+                caption(1, "00:00:00,000", "00:00:03,000"),
+                caption(2, "00:00:03,000", "00:00:06,000"),
+            ),
+            (0.2, 2.8),
+            (3.1, 5.9),
+        )
+
+        assert speech_items(subject) == []
+
+    def test_a_caption_deleted_from_the_middle_of_a_sentence(self):
+        """
+        One run of speech across three captions, the middle one gone: the
+        run itself has captions over it, so only cutting it at each caption
+        finds the hole.
+        """
+
+        subject = speaking(
+            editor(
+                caption(1, "00:00:00,000", "00:00:02,000"),
+                caption(2, "00:00:04,000", "00:00:06,000"),
+            ),
+            *[(n * 0.25, n * 0.25 + 0.2) for n in range(24)],
+        )
+
+        [item] = speech_items(subject)
+
+        assert item["caption"].index == 1
+        assert item["error"] is False
+        assert item["title"] == "Speech without a caption"
+        assert item["detail"] == "Speech from 00:00:02.000 to 00:00:04.000 (2.0s)."
+        assert item["speech"] == {"start": 2.0, "end": 4.0, "until": 4.0}
+
+    def test_the_caption_it_follows_is_not_marked(self):
+        subject = speaking(
+            editor(caption(1, "00:00:00,000", "00:00:02,000")),
+            (0.5, 1.5),
+            (3.0, 4.0),
+        )
+
+        issues = subject.collect_validation_issues()
+
+        assert [item["rule"] for item in issues[0]["items"]] == ["speech"]
+        assert subject.captions[0].is_valid
+        assert not subject.captions[0].has_error
+
+    def test_caption_n_goes_to_the_end_of_the_caption_it_follows(self):
+        subject = speaking(
+            editor(caption(1, "00:00:00,000", "00:00:02,000", "Hej då")),
+            (3.0, 4.0),
+        )
+
+        [item] = speech_items(subject)
+
+        assert item["offset"] == len("Hej då")
+        assert item["speech"]["until"] is None
+
+    def test_speech_before_the_first_caption(self):
+        subject = speaking(
+            editor(caption(1, "00:00:05,000", "00:00:07,000", "Hej")),
+            (1.0, 2.0),
+        )
+
+        [item] = speech_items(subject)
+
+        assert item["caption"].index == 1
+        assert item["offset"] == 0
+        assert item["speech"] == {"start": 1.0, "end": 2.0, "until": 5.0}
+
+    def test_a_caption_starting_late(self):
+        """
+        Speech under way 0.7s before its caption appears: the same thing to
+        a viewer as a missing caption -- 0.7s of speech without text.
+        """
+
+        subject = speaking(
+            editor(caption(1, "00:00:02,700", "00:00:05,000")),
+            (2.0, 4.8),
+        )
+
+        [item] = speech_items(subject)
+
+        assert (item["speech"]["start"], item["speech"]["end"]) == (2.0, 2.7)
+
+    def test_the_limit_itself_passes(self):
+        limit = settings.MAX_UNCAPTIONED_SPEECH_SECONDS
+        subject = speaking(
+            editor(caption(1, "00:00:00,000", "00:00:01,000")),
+            (2.0, 2.0 + limit),
+        )
+
+        assert speech_items(subject) == []
+
+    def test_just_over_the_limit_is_reported(self):
+        limit = settings.MAX_UNCAPTIONED_SPEECH_SECONDS
+        subject = speaking(
+            editor(caption(1, "00:00:00,000", "00:00:01,000")),
+            (2.0, 2.0 + limit + 0.1),
+        )
+
+        assert len(speech_items(subject)) == 1
+
+    def test_it_is_compared_as_it_is_shown(self):
+        """
+        0.54s is shown as 0.5s; reporting it against a limit of 0.5s would
+        read as a mistake.
+        """
+
+        limit = settings.MAX_UNCAPTIONED_SPEECH_SECONDS
+        subject = speaking(
+            editor(caption(1, "00:00:00,000", "00:00:01,000")),
+            (2.0, 2.0 + limit + 0.04),
+        )
+
+        assert speech_items(subject) == []
+
+    def test_no_word_timings_no_report(self):
+        subject = editor(caption(1, "00:00:10,000", "00:00:12,000"))
+
+        assert speech_items(subject) == []
+
+    def test_a_transcription_is_not_checked(self):
+        subject = speaking(
+            editor(caption(1, "00:00:00,000", "00:00:02,000")),
+            (3.0, 5.0),
+        )
+        subject.data_format = "txt"
+
+        assert speech_items(subject) == []
+
+    def test_a_caption_ending_before_it_starts_covers_nothing(self):
+        subject = speaking(
+            editor(caption(1, "00:00:04,000", "00:00:02,000")),
+            (2.0, 4.0),
+        )
+
+        assert len(speech_items(subject)) == 1
+
+    def test_it_has_its_own_filter_after_the_other_warnings(self):
+        from utils.validation_panel import RULE_LABELS
+
+        assert RULE_LABELS["speech"] == "Speech outside captions"
+        assert list(RULE_LABELS)[-1] == "speech"
+
+
+class TestAddingACaptionForSpeech:
+    """
+    "Add caption" on the card: a caption covering the speech, made the way
+    the timeline makes one.
+    """
+
+    def test_it_covers_the_speech(self):
+        from utils.validation_panel import new_caption_span
+
+        assert new_caption_span({"start": 2.0, "end": 4.0, "until": 6.0}) == (
+            2.0,
+            4.0,
+        )
+
+    def test_short_speech_gets_a_caption_long_enough_when_there_is_room(self):
+        from utils.validation_panel import new_caption_span
+
+        start, end = new_caption_span({"start": 2.0, "end": 2.6, "until": 9.0})
+
+        assert (start, end) == (2.0, 2.0 + settings.NEW_CAPTION_SECONDS)
+
+    def test_it_stops_at_the_next_caption(self):
+        from utils.validation_panel import new_caption_span
+
+        assert new_caption_span({"start": 2.0, "end": 2.6, "until": 2.8}) == (
+            2.0,
+            2.8,
+        )
+
+    def test_after_the_last_caption_there_is_room(self):
+        from utils.validation_panel import new_caption_span
+
+        start, end = new_caption_span({"start": 2.0, "end": 2.6, "until": None})
+
+        assert (start, end) == (2.0, 2.0 + settings.NEW_CAPTION_SECONDS)
+
+    def panel(self, item, made):
+        from utils.validation_panel import ValidationPanel
+
+        panel = ValidationPanel.__new__(ValidationPanel)
+        panel.items = [item]
+        panel.position = 0
+
+        class Transcript:
+            asked = []
+
+            def create_caption(self, args):
+                Transcript.asked.append(args)
+                return made
+
+        class Shown:
+            def __init__(self):
+                self.visible = True
+                self.text = ""
+
+            def set_visibility(self, shown):
+                self.visible = shown
+
+            def set_text(self, text):
+                self.text = text
+
+        panel.transcript = Transcript()
+        panel.add_caption = Shown()
+        panel.note = Shown()
+        return panel
+
+    def item(self):
+        return {
+            "caption": caption(1, "00:00:00,000", "00:00:02,000"),
+            "rule": "speech",
+            "speech": {"start": 2.0, "end": 4.0, "until": 6.0},
+        }
+
+    def test_it_makes_the_caption_and_says_so(self):
+        item = self.item()
+        made = caption(2, "00:00:02,000", "00:00:04,000", "")
+        panel = self.panel(item, made)
+
+        panel.add_for_speech()
+
+        assert panel.transcript.asked == [{"start": 2.0, "end": 4.0}]
+        assert item["added"] is made
+        assert not panel.add_caption.visible
+        assert panel.note.text == "Caption 2 added for this speech."
+
+    def test_only_once(self):
+        item = self.item()
+        made = caption(2, "00:00:02,000", "00:00:04,000", "")
+        panel = self.panel(item, made)
+
+        panel.add_for_speech()
+        panel.add_for_speech()
+
+        assert len(panel.transcript.asked) == 1
+
+    def test_a_refused_caption_changes_nothing(self):
+        item = self.item()
+        panel = self.panel(item, None)
+
+        panel.add_for_speech()
+
+        assert "added" not in item
+        assert panel.add_caption.visible
+        assert panel.note.text == ""
+
+
+class TestCheckingSpeechAgain:
+    """
+    "Check again" on speech without a caption asks whether the speech has
+    one now -- not whether the caption it was filed under passes.
+    """
+
+    def panel(self, subject):
+        return TestCheckingAgain.panel(None, subject)
+
+    def subject(self):
+        subject = speaking(
+            editor(
+                caption(1, "00:00:00,000", "00:00:02,000"),
+                caption(2, "00:00:06,000", "00:00:08,000", "   "),
+            ),
+            (0.5, 1.5),
+            (3.0, 4.0),
+        )
+        subject.render_override = None
+        subject.update_flagged_count = lambda: None
+        return subject
+
+    def test_still_without_a_caption(self):
+        subject = self.subject()
+        panel = self.panel(subject)
+
+        panel.check_again()
+
+        assert panel.current()["rule"] == "speech"
+        assert panel.note.text == "This speech still has no caption."
+
+    def test_covered_now_moves_on(self):
+        subject = self.subject()
+        panel = self.panel(subject)
+
+        subject.captions.insert(1, caption(2, "00:00:03,000", "00:00:04,000"))
+        subject.renumber_captions()
+        panel.check_again()
+
+        assert panel.note.text == "This speech has a caption now."
+        assert panel.current()["caption"].index == 3
 
 
 class TestOutsideMedia:

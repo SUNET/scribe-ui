@@ -142,6 +142,8 @@ class RenderMixin:
             detail: str,
             rule: str,
             offset: int = 0,
+            extra: Optional[dict] = None,
+            mark: bool = True,
         ) -> None:
             entry = issues.get(caption.index)
 
@@ -163,10 +165,16 @@ class RenderMixin:
                     "detail": detail,
                     "rule": rule,
                     "offset": offset,
+                    **(extra or {}),
                 }
             )
-            caption.is_valid = False
-            caption.has_error = caption.has_error or error
+
+            # An issue about the time around a caption rather than the
+            # caption itself (speech nothing covers) is filed under it, so
+            # the panel has somewhere to go, but leaves it unmarked.
+            if mark:
+                caption.is_valid = False
+                caption.has_error = caption.has_error or error
 
         for caption in self.captions:
             if not caption.text.strip():
@@ -366,7 +374,98 @@ class RenderMixin:
                     detail=f"Overlaps caption {current.index}.",
                 )
 
+        # Speech that no caption covers (SUNET/scribe-ui#142). Filed under
+        # the caption it follows -- the first one, for speech before any --
+        # so "Caption N" goes to where the missing caption belongs.
+        if self.data_format == "srt" and self.captions:
+            playing = sorted(self.captions, key=lambda c: c.get_start_seconds())
+
+            for start, end in self.uncaptioned_speech():
+                before = [c for c in playing if c.get_start_seconds() <= start]
+                after = [c for c in playing if c.get_start_seconds() >= end]
+                neighbour = before[-1] if before else playing[0]
+                shown_start = self.format_time_display(
+                    self.seconds_to_timestamp(start)
+                )
+                shown_end = self.format_time_display(self.seconds_to_timestamp(end))
+
+                report(
+                    neighbour,
+                    f"Speech from {shown_start} to {shown_end} has no caption.",
+                    error=False,
+                    title="Speech without a caption",
+                    detail=(
+                        f"Speech from {shown_start} to {shown_end} "
+                        f"({end - start:.1f}s)."
+                    ),
+                    rule="speech",
+                    # After the caption's text, where the missing one goes;
+                    # at its start when the speech comes before it.
+                    offset=len(neighbour.text) if before else 0,
+                    extra={
+                        "speech": {
+                            "start": start,
+                            "end": end,
+                            # Where the next caption starts: as far as a
+                            # caption added for this speech may run.
+                            "until": (
+                                after[0].get_start_seconds() if after else None
+                            ),
+                        }
+                    },
+                    mark=False,
+                )
+
         return [issues[index] for index in sorted(issues)]
+
+    def uncaptioned_speech(self) -> list:
+        """
+        The stretches of speech no caption covers, as (start, end) pairs in
+        seconds, longer than MAX_UNCAPTIONED_SPEECH_SECONDS.
+
+        Speech is speech_runs(), from the word timings, so a transcription
+        without them has none to report. A run is cut wherever a caption
+        covers it, and what is left over is checked piece by piece: a run
+        can be one long sentence across five captions, and a caption deleted
+        from the middle of it has to show up as the hole it leaves.
+
+        Compared at one decimal, as the panel shows it: 0.54s of speech is
+        shown as 0.5s and is not reported against a limit of 0.5s.
+        """
+
+        speech_runs = getattr(self, "speech_runs", None)
+        runs = speech_runs() if speech_runs is not None else []
+
+        covered = sorted(
+            (caption.get_start_seconds(), caption.get_end_seconds())
+            for caption in self.captions
+            if caption.get_end_seconds() > caption.get_start_seconds()
+        )
+
+        pieces = []
+
+        for start, end in runs:
+            position = start
+
+            for caption_start, caption_end in covered:
+                if caption_end <= position:
+                    continue
+                if caption_start >= end:
+                    break
+                if caption_start > position:
+                    pieces.append((position, caption_start))
+                position = max(position, caption_end)
+                if position >= end:
+                    break
+
+            if position < end:
+                pieces.append((position, end))
+
+        return [
+            (start, end)
+            for start, end in pieces
+            if round(end - start, 1) > settings.MAX_UNCAPTIONED_SPEECH_SECONDS
+        ]
 
     @staticmethod
     def validation_items(issues: list) -> list:
