@@ -71,9 +71,15 @@ async def health() -> None:
     cc = chart_colors["dark" if is_dark else "light"]
 
     ui.label("System status").classes("text-3xl font-bold mb-4").props("role=heading aria-level=1")
+    reachability_alert = ui.label("Backend is not reachable").classes("text-lg").style(
+        "color: var(--color-text-danger);"
+    ).props("role=alert")
+    reachability_alert.set_visibility(False)
+    last_backend_reachable = None
 
     @ui.refreshable
     async def render_health():
+        nonlocal last_backend_reachable
         # Awaited, so the ten second poll below leaves the event loop free
         # while the backend answers. A blocking call here would stall every
         # other page this server is serving, not just this one.
@@ -90,8 +96,14 @@ async def health() -> None:
             data = {}
             backend_reachable = False
 
+        if backend_reachable != last_backend_reachable:
+            reachability_alert.set_text(
+                "" if backend_reachable else "Backend is not reachable"
+            )
+            reachability_alert.set_visibility(not backend_reachable)
+            last_backend_reachable = backend_reachable
+
         if not backend_reachable:
-            ui.label("Backend is not reachable").classes("text-lg").style("color: var(--color-text-danger);")
             return
 
         with ui.element("div").classes("health-grid"):
