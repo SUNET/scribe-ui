@@ -557,6 +557,10 @@ class ValidationPanel:
         offset = min(item.get("offset", 0), len(caption.text))
         # Centred, as stepping between issues shows a caption.
         self.transcript.focus(caption.index, offset, center=True)
+        if "speech" in item:
+            start = item["speech"]["start"]
+            self.transcript.editor.seek_video(start)
+            self.transcript.moved_to(start)
 
     def follow_caret(self, caption_index: int) -> None:
         """

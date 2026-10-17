@@ -387,6 +387,47 @@ class TestShowingSomeKinds:
         assert panel.items == [] and panel.position == 0
 
 
+class TestGoingToSpeech:
+    def test_caption_action_seeks_to_uncovered_speech_and_keeps_caption_focus(self):
+        from utils.validation_panel import ValidationPanel
+
+        panel = ValidationPanel.__new__(ValidationPanel)
+        caption_item = caption(1, "00:00:00,000", "00:00:02,000")
+        panel.items = [
+            {
+                "caption": caption_item,
+                "offset": 2,
+                "speech": {"start": 2.5, "end": 4.0, "until": 6.0},
+            }
+        ]
+        panel.position = 0
+        panel.exists = lambda item: True
+
+        class Transcript:
+            def __init__(self):
+                self.focused = None
+                self.seeked = None
+                self.moved_to_seconds = None
+                self.editor = self
+
+            def focus(self, *args, **kwargs):
+                self.focused = (args, kwargs)
+
+            def seek_video(self, seconds):
+                self.seeked = seconds
+
+            def moved_to(self, seconds):
+                self.moved_to_seconds = seconds
+
+        panel.transcript = Transcript()
+
+        panel.go_to_caption()
+
+        assert panel.transcript.focused == ((1, 2), {"center": True})
+        assert panel.transcript.seeked == 2.5
+        assert panel.transcript.moved_to_seconds == 2.5
+
+
 class TestCheckingAgain:
     """
     "Check again" after a fix: validate again, and land on the caption's
