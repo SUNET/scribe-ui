@@ -479,13 +479,21 @@ class ValidationPanel:
             note = "This speech still has no caption."
         else:
             added = item.get("added")
-            self.position = next(
+            added_issue = next(
                 (n for n, i in enumerate(self.items) if i["caption"] is added),
-                next(
-                    (n for n, i in enumerate(self.items) if i["caption"].index > index),
-                    max(len(self.items) - 1, 0),
-                ),
+                None,
             )
+            if added_issue is not None:
+                self.position = added_issue
+            else:
+                self.position = next(
+                    (
+                        n
+                        for n, i in enumerate(self.items)
+                        if i["caption"].index > index
+                    ),
+                    max(len(self.items) - 1, 0),
+                )
             note = "This speech has a caption now."
 
         self.draw()
@@ -561,10 +569,6 @@ class ValidationPanel:
             self.transcript.moved_to(start)
         # Centred, as stepping between issues shows a caption.
         self.transcript.focus(caption.index, offset, center=True)
-        if "speech" in item:
-            start = item["speech"]["start"]
-            self.transcript.editor.seek_video(start)
-            self.transcript.moved_to(start)
 
     def follow_caret(self, caption_index: int) -> None:
         """

@@ -406,26 +406,26 @@ class TestGoingToSpeech:
         class Transcript:
             def __init__(self):
                 self.focused = None
-                self.seeked = None
-                self.moved_to_seconds = None
+                self.seeked = []
+                self.moved_to_seconds = []
                 self.editor = self
 
             def focus(self, *args, **kwargs):
                 self.focused = (args, kwargs)
 
             def seek_video(self, seconds):
-                self.seeked = seconds
+                self.seeked.append(seconds)
 
             def moved_to(self, seconds):
-                self.moved_to_seconds = seconds
+                self.moved_to_seconds.append(seconds)
 
         panel.transcript = Transcript()
 
         panel.go_to_caption()
 
         assert panel.transcript.focused == ((1, 2), {"center": True})
-        assert panel.transcript.seeked == 2.5
-        assert panel.transcript.moved_to_seconds == 2.5
+        assert panel.transcript.seeked == [2.5]
+        assert panel.transcript.moved_to_seconds == [2.5]
 
 
 class TestCheckingAgain:
@@ -963,6 +963,11 @@ class TestAddingACaptionForSpeech:
         class Transcript:
             asked = []
 
+            class Editor:
+                media_seconds = None
+
+            editor = Editor()
+
             def create_caption(self, args):
                 Transcript.asked.append(args)
                 return made
@@ -1022,6 +1027,17 @@ class TestAddingACaptionForSpeech:
         assert panel.add_caption.visible
         assert panel.note.text == ""
 
+    def test_caption_ends_at_known_media_duration(self):
+        item = self.item()
+        item["speech"] = {"start": 9.2, "end": 9.9, "until": None}
+        made = caption(2, "00:00:09,200", "00:00:10,000", "")
+        panel = self.panel(item, made)
+        panel.transcript.editor.media_seconds = 10.0
+
+        panel.add_for_speech()
+
+        assert panel.transcript.asked == [{"start": 9.2, "end": 10.0}]
+
 
 class TestCheckingSpeechAgain:
     """
@@ -1064,6 +1080,40 @@ class TestCheckingSpeechAgain:
 
         assert panel.note.text == "This speech has a caption now."
         assert panel.current()["caption"].index == 3
+
+    def test_caption_added_before_anchor_is_checked_before_later_issues(self):
+        from utils.validation_panel import ValidationPanel
+
+        anchor = caption(2, "00:00:05,000", "00:00:07,000", "Hej")
+        added = caption(1, "00:00:01,000", "00:00:04,000", "")
+        speech_item = {
+            "caption": anchor,
+            "rule": "speech",
+            "speech": {"start": 1.0, "end": 2.0, "until": 5.0},
+            "added": added,
+        }
+        added_issue = {"caption": added, "rule": "length"}
+        later_issue = {"caption": caption(3, "00:00:08,000", "00:00:10,000", "   ")}
+        panel = ValidationPanel.__new__(ValidationPanel)
+        panel.items = [speech_item]
+        panel.position = 0
+        panel.revalidate = lambda: [added_issue, later_issue]
+        panel.hidden = set()
+        panel.draw = lambda: None
+        panel.draw_filters = lambda: None
+
+        class Note:
+            def set_text(self, text):
+                pass
+
+            def set_visibility(self, shown):
+                pass
+
+        panel.note = Note()
+
+        panel.check_again()
+
+        assert panel.current() is added_issue
 
 
 class TestOutsideMedia:
