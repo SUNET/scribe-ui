@@ -95,6 +95,37 @@ const ZOOM_STEP = 2;
 const STEP_SMALL = 1 / 40;
 const STEP_PAGE = 1;
 
+// The ruler along the top edge: a band this tall (px), above everything else
+// on the strip. Fixed rather than a share of the height, since the numbers in
+// it are drawn at a fixed size; the strip is this much taller than the rest of
+// it needs (see .speech-timeline in styles.py).
+const RULER = 16;
+
+// What the ruler can count in, as [a labelled tick every, a small tick every]
+// seconds. The coarsest of these that still leaves LABEL_GAP pixels between
+// two labels is used, so zooming in and out changes the unit by itself, and
+// a small tick is left out when it would be closer than MINOR_GAP pixels.
+const RULER_STEPS = [
+  [0.1, 0.05],
+  [0.2, 0.05],
+  [0.5, 0.1],
+  [1, 0.5],
+  [2, 0.5],
+  [5, 1],
+  [10, 2],
+  [15, 5],
+  [30, 5],
+  [60, 10],
+  [120, 30],
+  [300, 60],
+  [600, 120],
+  [1800, 300],
+  [3600, 600],
+  [7200, 1800],
+];
+const LABEL_GAP = 64;
+const MINOR_GAP = 7;
+
 // How long after a sideways wheel event the next ones still count as
 // sideways, in milliseconds. See onWheel.
 const SWIPE_LATCH = 200;
@@ -1132,6 +1163,67 @@ export default {
       return `${minutes}:${String(rest).padStart(2, "0")}`;
     },
 
+    // ── the ruler ──────────────────────────────────────────────────────────
+
+    // The ticks to draw between two moments, for a strip `pixels` wide showing
+    // `visible` seconds: { step, major: [seconds], minor: [seconds] }, all
+    // inside the recording. Counted in whole multiples of the step rather
+    // than by adding it up, so a tenth of a second does not drift.
+    rulerTicks(from, to, visible, pixels) {
+      if (!(visible > 0) || !(pixels > 0)) return { step: 0, major: [], minor: [] };
+
+      const perSecond = pixels / visible;
+      const row =
+        RULER_STEPS.find(([major]) => major * perSecond >= LABEL_GAP) ||
+        RULER_STEPS[RULER_STEPS.length - 1];
+      const [step, small] = row;
+
+      const first = Math.max(0, from);
+      const last = Math.min(this.span(), to);
+      const major = [];
+      const minor = [];
+
+      // Whole thousandths: 0.1 * 3 is 0.30000000000000004.
+      const at = (index, size) => Math.round(index * size * 1000) / 1000;
+
+      for (let n = Math.ceil(first / step - 1e-9); at(n, step) <= last; n++) {
+        major.push(at(n, step));
+      }
+
+      if (small * perSecond >= MINOR_GAP) {
+        for (let n = Math.ceil(first / small - 1e-9); at(n, small) <= last; n++) {
+          const seconds = at(n, small);
+
+          // The labelled ticks have a longer one of their own.
+          if (Math.abs(seconds / step - Math.round(seconds / step)) > 1e-6) {
+            minor.push(seconds);
+          }
+        }
+      }
+
+      return { step, major, minor };
+    },
+
+    // What a labelled tick says: minutes and seconds, with a tenth only when
+    // the step is finer than a second, and hours only when there are some.
+    tickLabel(seconds, step) {
+      const whole = Math.floor(seconds + 1e-6);
+      const hours = Math.floor(whole / 3600);
+      const minutes = Math.floor((whole % 3600) / 60);
+      const rest = whole % 60;
+      const pad = (value) => String(value).padStart(2, "0");
+
+      let text = hours
+        ? `${hours}:${pad(minutes)}:${pad(rest)}`
+        : `${minutes}:${pad(rest)}`;
+
+      if (step < 1) {
+        text += `.${Math.round((seconds - whole) * 10) % 10}`;
+      }
+
+      return text;
+    },
+
     // ── zoom ───────────────────────────────────────────────────────────────
 
     canZoomIn() {
@@ -1506,6 +1598,7 @@ export default {
         "--timeline-void",
         "--timeline-playhead",
         "--timeline-label",
+        "--timeline-ruler",
       ]) {
         palette[name] = style.getPropertyValue(name).trim();
       }
@@ -1561,10 +1654,13 @@ export default {
       // Speech is the reference, the captions are the subject: speech is
       // drawn quietly along the top, the captions below it at full weight.
       // The issue this follows is explicit about the order of those two.
-      const speechTop = height * 0.1;
-      const speechHeight = height * 0.2;
-      const bandTop = height * 0.42;
-      const bandHeight = height * 0.42;
+      // Everything below the ruler keeps the proportions it always had, in
+      // the height that is left.
+      const body = height - RULER;
+      const speechTop = RULER + body * 0.1;
+      const speechHeight = body * 0.2;
+      const bandTop = RULER + body * 0.42;
+      const bandHeight = body * 0.42;
 
       // Before the recording starts and after it ends there is nothing --
       // said outright rather than left as blank strip, since the playhead
@@ -1661,6 +1757,33 @@ export default {
         if (!making && context.measureText(label).width < room) {
           context.fillStyle = this.colour("--timeline-label", "#111827");
           context.fillText(label, left + arm + 2, bandTop + bandHeight / 2);
+        }
+      }
+
+      // The ruler: ticks hanging from the top edge, a time at each long one.
+      // Only inside the recording -- the void before and after it has no time.
+      if (span) {
+        const ticks = this.rulerTicks(from, from + visible, visible, width);
+        const ink = this.colour("--timeline-ruler", "#4b5563");
+
+        context.fillStyle = ink;
+        context.font = "500 10px system-ui, sans-serif";
+        context.textBaseline = "middle";
+
+        for (const seconds of ticks.minor) {
+          context.fillRect(Math.round(at(seconds)), 0, 1, 3);
+        }
+
+        for (const seconds of ticks.major) {
+          const x = Math.round(at(seconds));
+          const label = this.tickLabel(seconds, ticks.step);
+
+          context.fillRect(x, 0, 1, 7);
+
+          // Not past the edge, where it would be cut in half.
+          if (x + 3 + context.measureText(label).width <= width) {
+            context.fillText(label, x + 3, RULER / 2 + 0.5);
+          }
         }
       }
 

@@ -2394,7 +2394,7 @@ theme_styles = """
        by the page because the strip is fixed and takes no space of its own;
        the component sets the class (see markDocked). */
     body.timeline-docked .nicegui-content {
-        padding-bottom: 9rem;
+        padding-bottom: calc(9rem + 16px);
     }
 
     /* The grip that moves it, and what it says while it is being moved. */
@@ -2438,9 +2438,14 @@ theme_styles = """
         --timeline-label: var(--color-text-primary);
         --timeline-void: var(--color-bg-surface-hover);
         --timeline-playhead: var(--color-text-danger);
+        /* The time marks along the top edge. Secondary text, since they are
+           text (and ticks that are read with it). */
+        --timeline-ruler: var(--color-text-secondary);
         position: relative;
         width: 100%;
-        height: 4.5rem;
+        /* What the strip always was, plus the ruler's band (RULER in
+           speech_timeline.js). */
+        height: calc(4.5rem + 16px);
         margin-top: 0.5rem;
         border-radius: 6px;
         background-color: var(--color-bg-surface-alt);

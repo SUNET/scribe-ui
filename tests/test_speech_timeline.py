@@ -1943,3 +1943,92 @@ class TestTheTimelineControls:
 
         assert "flex-basis: 100%;" in hint
         assert "speech-timeline-range" not in theme_styles
+
+
+class TestTheRuler:
+    """
+    Time marks along the top edge of the strip, in the unit the zoom calls
+    for: the strip says where in the recording it is without any text to say
+    so.
+    """
+
+    def source(self) -> str:
+        return pathlib.Path("utils/speech_timeline.js").read_text()
+
+    def test_the_unit_follows_the_zoom(self):
+        source = self.source()
+        body = method(source, "rulerTicks(from, to, visible, pixels) {")
+
+        assert "const perSecond = pixels / visible;" in body
+        assert "major * perSecond >= LABEL_GAP" in body
+        assert "RULER_STEPS" in body
+
+        steps = source[source.index("const RULER_STEPS = ["):]
+        steps = steps[: steps.index("];")]
+
+        # From a twentieth of a second to hours, coarser each time.
+        majors = [float(line.split("[")[1].split(",")[0]) for line in steps.splitlines()[1:]]
+
+        assert majors == sorted(majors)
+        assert majors[0] <= 0.1 and majors[-1] >= 3600
+
+    def test_nothing_is_marked_outside_the_recording(self):
+        body = method(self.source(), "rulerTicks(from, to, visible, pixels) {")
+
+        assert "const first = Math.max(0, from);" in body
+        assert "const last = Math.min(this.span(), to);" in body
+
+    def test_ticks_are_counted_not_added_up(self):
+        """
+        A tenth added to itself thirty times is not three seconds.
+        """
+
+        body = method(self.source(), "rulerTicks(from, to, visible, pixels) {")
+
+        assert "Math.round(index * size * 1000) / 1000" in body
+
+    def test_small_ticks_are_left_out_when_crowded(self):
+        body = method(self.source(), "rulerTicks(from, to, visible, pixels) {")
+
+        assert "small * perSecond >= MINOR_GAP" in body
+
+    def test_a_labelled_tick_has_no_small_one_on_top_of_it(self):
+        body = method(self.source(), "rulerTicks(from, to, visible, pixels) {")
+
+        assert "Math.abs(seconds / step - Math.round(seconds / step)) > 1e-6" in body
+
+    def test_tenths_only_below_a_second(self):
+        body = method(self.source(), "tickLabel(seconds, step) {")
+
+        assert "if (step < 1)" in body
+        assert "hours" in body
+
+    def test_it_is_drawn_above_everything_else(self):
+        source = self.source()
+        draw = method(source, "draw() {")
+
+        assert "const body = height - RULER;" in draw
+        assert "const speechTop = RULER + body * 0.1;" in draw
+        assert "const bandTop = RULER + body * 0.42;" in draw
+        assert "this.rulerTicks(from, from + visible, visible, width)" in draw
+
+        # Under the playhead, which is the last thing drawn.
+        assert draw.index("this.rulerTicks(") < draw.index('"--timeline-playhead"')
+
+    def test_the_strip_is_as_tall_as_it_was_plus_the_ruler(self):
+        from utils.styles import theme_styles
+
+        assert "const RULER = 16;" in self.source()
+
+        rule = theme_styles[theme_styles.index("    .speech-timeline {"):]
+        rule = rule[: rule.index("}")]
+
+        assert "height: calc(4.5rem + 16px);" in rule
+        assert "--timeline-ruler: var(--color-text-secondary);" in rule
+        assert "padding-bottom: calc(9rem + 16px);" in theme_styles
+
+    def test_the_colour_is_read_from_the_stylesheet(self):
+        source = self.source()
+
+        assert '"--timeline-ruler",' in source
+        assert 'this.colour("--timeline-ruler"' in source
