@@ -2422,10 +2422,6 @@ theme_styles = """
        lets dark mode change them without the component knowing. */
     .speech-timeline {
         min-width: 0;
-        /* Sideways scrolling over the strip moves the playhead (see onWheel
-           in speech_timeline.js), and a trackpad swipe that reached the end
-           of it must not go on to be the browser's "Back". */
-        overscroll-behavior-x: contain;
         /* Speech along the top in the brand blue; the captions below it as
            grey brackets, with the one being played or edited in the same
            blue. The two are never in the same row and a bracket is not a
@@ -2588,19 +2584,11 @@ theme_styles = """
         align-items: center;
         gap: 0.3rem;
     }
-    /* Reads as part of the key -- what the strip is and what can be done to
-       it -- so it stays with it on the left. */
+    /* On a row of its own below the key and the controls, so what the
+       controls cost in width never moves it. */
     .speech-timeline-hint {
+        flex-basis: 100%;
         color: var(--color-text-muted);
-    }
-
-    /* Which minute of the recording is on the strip. A different question
-       from the key's, so it sits at the far end of the row rather than in
-       the queue behind it -- after the controls, which take the free space
-       before it. */
-    .speech-timeline-range {
-        color: var(--color-text-secondary);
-        font-variant-numeric: tabular-nums;
     }
 
     /* While a caption is being dragged the pointer owns it wherever it

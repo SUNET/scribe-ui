@@ -95,6 +95,10 @@ const ZOOM_STEP = 2;
 const STEP_SMALL = 1 / 40;
 const STEP_PAGE = 1;
 
+// How long after a sideways wheel event the next ones still count as
+// sideways, in milliseconds. See onWheel.
+const SWIPE_LATCH = 200;
+
 // The id a caption being dragged out of empty strip is drawn under. It has
 // no number of its own until the server has made it one -- a caption's
 // number is its position among the others -- and no real caption is ever 0,
@@ -131,6 +135,7 @@ export default {
         :aria-valuenow="ariaNow()"
         :aria-valuetext="ariaText"
         :class="{ 'speech-timeline-dragging': drag !== null }"
+        @mouseenter="holdSwipe"
         @mousemove="onMove"
         @mouseleave="onLeave"
         @mousedown="onDown"
@@ -169,10 +174,6 @@ export default {
           <span class="speech-timeline-swatch speech-timeline-swatch-playhead"></span>
           Playhead
         </span>
-        <span class="speech-timeline-hint">
-          Click a caption to go to it · drag it, or one of its brackets, to
-          retime · drag across empty space to add a caption
-        </span>
         <div
           class="speech-timeline-actions"
           ref="actions"
@@ -203,17 +204,21 @@ export default {
             ><q-icon :name="action.icon" size="16px" /><q-tooltip>{{ action.tip }}</q-tooltip></button>
           </template>
         </div>
-        <span class="speech-timeline-range" :title="rangeTitle">{{ range }}</span>
         <span v-if="dockDrag" class="speech-timeline-dock-hint">
           {{ dockDrag.willDock
             ? "Release to dock along the bottom"
             : "Release to put it back under the video" }}
         </span>
+        <span class="speech-timeline-hint">
+          Click a caption to go to it · drag it, or one of its brackets, to
+          retime · drag across empty space to add a caption
+        </span>
       </div>
       <span id="speech-timeline-keys" class="sr-only">
         Left and right arrow keys move the playhead a little, Page Up and Page
         Down a whole strip, Home and End to the start and the end of the
-        recording. Plus and minus zoom, and 0 resets the zoom.
+        recording. Shift with the up and down arrow keys, or plus and minus,
+        zoom, and 0 resets the zoom.
       </span>
       <span class="sr-only" role="status" aria-live="polite" aria-atomic="true">{{ note }}</span>
     </div>
@@ -291,6 +296,8 @@ export default {
       // wheel turned fast makes one seek per frame and not one per event.
       seekPending: null,
       seekFrame: null,
+      // Until when wheel events count as sideways whatever they say.
+      swipeUntil: 0,
       // Which of the controls beside the strip is in the tab order. One of
       // them at a time, with the arrow keys moving between them, as in the
       // caption actions.
@@ -317,6 +324,9 @@ export default {
       this.draw();
     },
     shown(on) {
+      // A strip that is hidden gets no mouseleave.
+      if (!on) this.releaseSwipe();
+
       // A hidden strip must not keep the page padded out of its way, and a
       // strip coming back has been display: none -- so it has no size to
       // have measured itself against, and settle() is what waits for the
@@ -400,6 +410,8 @@ export default {
 
     if (this.seekFrame) cancelAnimationFrame(this.seekFrame);
 
+    this.releaseSwipe();
+
     window.removeEventListener("mousemove", this.onDragMove);
     window.removeEventListener("mouseup", this.onUp);
     window.removeEventListener("mousemove", this.onDockDragMove);
@@ -417,22 +429,6 @@ export default {
     window.removeEventListener("resize", this.followTheRail);
   },
   computed: {
-    // Which part of the recording is on the strip: one stretch of speech
-    // looks much like another, and the strip says nothing about where in
-    // the recording it is otherwise.
-    range() {
-      const span = this.span();
-
-      if (!span) return "";
-      if (this.visible() >= span) {
-        return `whole recording · ${this.clock(span)}`;
-      }
-
-      const from = Math.max(0, this.viewStart());
-      const to = Math.min(span, this.viewStart() + this.visible());
-
-      return `${this.clock(from)}–${this.clock(to)} of ${this.clock(span)}`;
-    },
     // The caption being played. Worked out here rather than sent: it follows
     // from the position, which this component already has, and pushing it
     // from the server would be a round trip several times a second.
@@ -443,9 +439,6 @@ export default {
       );
 
       return found ? found.id : -1;
-    },
-    rangeTitle() {
-      return "The part of the recording on the strip. It follows the playhead.";
     },
     // What the slider says its value is, in words rather than a number of
     // seconds: where in the recording, and which caption that is in.
@@ -775,6 +768,8 @@ export default {
     },
 
     onLeave() {
+      this.releaseSwipe();
+
       if (this.drag || this.creating) return;
 
       this.readout = "";
@@ -1240,6 +1235,18 @@ export default {
       if (event.ctrlKey || event.metaKey || event.altKey) return;
       if (this.drag || this.creating || this.dockDrag) return;
 
+      // Shift with up and down: zoom, where plus and minus need a modifier of
+      // their own on some keyboards. Up and down on their own are the page's.
+      if (event.shiftKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+        event.preventDefault();
+
+        if (event.key === "ArrowUp") this.zoomIn();
+        else this.zoomOut();
+
+        this.syncAria(true);
+        return;
+      }
+
       const visible = this.visible();
       const keys = {
         ArrowRight: () => this.seekTo(this.position + visible * STEP_SMALL),
@@ -1269,15 +1276,29 @@ export default {
     // the middle of a long page. Shift with the wheel is sideways on a mouse
     // that has no other way to say so. Ctrl with the wheel is the browser's
     // zoom, and is left alone for the same reason as in onKey.
+    //
+    // Once a gesture has been sideways, the next few hundred milliseconds of
+    // it are too. A swipe often starts more vertical than sideways, and the
+    // first event that is let through is the one the browser decides the
+    // whole gesture on -- which is how a swipe over the strip ended up going
+    // back to the previous page. See holdSwipe for the other half of that.
     onWheel(event) {
       if (event.ctrlKey || event.metaKey) return;
       if (this.drag || this.creating || this.dockDrag) return;
 
+      const now = performance.now();
       const sideways =
-        Math.abs(event.deltaX) > Math.abs(event.deltaY) || event.shiftKey;
+        Math.abs(event.deltaX) > Math.abs(event.deltaY) ||
+        event.shiftKey ||
+        now < this.swipeUntil;
       if (!sideways) return;
 
-      const delta = Math.abs(event.deltaX) > 0 ? event.deltaX : event.deltaY;
+      this.swipeUntil = now + SWIPE_LATCH;
+      event.preventDefault();
+
+      // Shift with a plain wheel arrives as vertical movement on some
+      // systems; a latched event is sideways whatever its vertical part.
+      const delta = event.deltaX || (event.shiftKey ? event.deltaY : 0);
       if (!delta) return;
 
       const pixelsPerSecond = this.pixelsPerSecond();
@@ -1292,13 +1313,27 @@ export default {
           ? delta * box.width
           : delta;
 
-      event.preventDefault();
-
       // From where the playhead is going, not where the player has got to.
       const from = this.seekPending !== null ? this.seekPending : this.position;
 
       this.seekTo(from + pixels / pixelsPerSecond);
       this.syncAria(false);
+    },
+
+    // The browser goes back to the previous page on a sideways swipe that
+    // nothing has taken, and cancelling the wheel events is not enough to stop
+    // that: overscroll-behavior on the page's own root is what says the swipe
+    // is not for navigating. (It has no effect on the strip itself, which is
+    // not a scroll container.) Held only while the pointer is over the strip,
+    // so Back works as before everywhere else on the page.
+    holdSwipe() {
+      document.documentElement.style.overscrollBehaviorX = "none";
+      document.body.style.overscrollBehaviorX = "none";
+    },
+
+    releaseSwipe() {
+      document.documentElement.style.overscrollBehaviorX = "";
+      document.body.style.overscrollBehaviorX = "";
     },
 
     // ── what assistive technology is told ──────────────────────────────────

@@ -382,20 +382,6 @@ class TestZoom:
         assert "Math.max(0" not in body, "not clamped"
         assert "--timeline-void" in source
 
-    def test_it_says_which_part_it_is_showing(self):
-        """
-        A minute of speech looks much like an hour of it when nothing says
-        which one is on screen.
-        """
-
-        source = self.source()
-        body = source[source.index("range() {"):]
-        body = body[: body.index("\n    },")]
-
-        assert "whole recording" in body
-        assert "this.clock(from)" in body
-        assert "of ${this.clock(span)}" in body
-
 
 class TestDraggingACaption:
     """
@@ -1614,6 +1600,22 @@ class TestMovingThePlayhead:
         assert '"-": () => this.zoomOut()' in body
         assert "0: () => this.zoomReset()" in body
 
+    def test_shift_with_up_and_down_zooms(self):
+        """
+        Up and down alone stay the page's; with Shift, up is in and down is
+        out, as the plus and minus keys are, for keyboards where those need
+        a modifier of their own.
+        """
+
+        body = method(self.source(), "onKey(event) {")
+
+        assert 'event.shiftKey && (event.key === "ArrowUp" || event.key === "ArrowDown")' in body
+        assert 'if (event.key === "ArrowUp") this.zoomIn();' in body
+        assert "else this.zoomOut();" in body
+        assert body.index("event.ctrlKey || event.metaKey || event.altKey") < body.index(
+            "event.shiftKey &&"
+        )
+
     def test_the_browsers_own_zoom_is_left_alone(self):
         """
         Ctrl and Cmd with plus, minus and 0 are the browser's zoom, and
@@ -1661,12 +1663,48 @@ class TestMovingThePlayhead:
         assert "this.seekTo(" in method(source, "onWheel(event) {")
 
     def test_a_swipe_that_runs_out_is_not_the_browsers_back(self):
+        """
+        `overscroll-behavior` only means anything on a scroll container, and
+        the strip is not one, so the page itself is told not to navigate
+        while the pointer is over the strip -- and put back when it leaves.
+        """
+
+        source = self.source()
+
+        assert 'class="speech-timeline"' in source
+        assert '@mouseenter="holdSwipe"' in source
+
+        hold = method(source, "holdSwipe() {")
+        release = method(source, "releaseSwipe() {")
+
+        for target in ("document.documentElement", "document.body"):
+            assert f'{target}.style.overscrollBehaviorX = "none"' in hold
+            assert f'{target}.style.overscrollBehaviorX = ""' in release
+
+        assert "this.releaseSwipe();" in method(source, "onLeave() {")
+        assert "this.releaseSwipe();" in method(source, "beforeUnmount() {")
+        assert "if (!on) this.releaseSwipe();" in source
+
         from utils.styles import theme_styles
 
         rule = theme_styles[theme_styles.index("    .speech-timeline {"):]
         rule = rule[: rule.index("}")]
 
-        assert "overscroll-behavior-x: contain" in rule
+        assert "overscroll-behavior" not in rule
+
+    def test_a_swipe_that_has_begun_stays_the_strips(self):
+        """
+        A trackpad swipe ends in a tail of events that have drifted vertical;
+        taken by the page, one of them would scroll it mid-gesture.
+        """
+
+        body = method(self.source(), "onWheel(event) {")
+
+        assert "now < this.swipeUntil" in body
+        assert "this.swipeUntil = now + SWIPE_LATCH;" in body
+        assert body.index("this.swipeUntil = now + SWIPE_LATCH;") < body.index(
+            "event.preventDefault();"
+        )
 
 
 class TestTheStripIsASlider:
@@ -1737,7 +1775,7 @@ class TestTheStripIsASlider:
 
         assert 'aria-describedby="speech-timeline-keys"' in self.root()
         assert 'id="speech-timeline-keys"' in source
-        assert "Plus and minus zoom" in source
+        assert "Shift with the up and down arrow keys, or plus and minus," in " ".join(source.split())
 
     def test_the_status_region_is_polite(self):
         source = self.source()
@@ -1881,15 +1919,17 @@ class TestTheTimelineControls:
 
     def test_it_costs_the_legend_no_height(self):
         """
-        In the row that was already there, after the hint and before the
-        range, taking the free space between.
+        In the first legend row, at its end, taking the free space between;
+        the hint has a row of its own below, so what the tray costs in width
+        never moves it.
         """
 
         source = self.source()
 
-        assert source.index('class="speech-timeline-hint"') < source.index(
-            'class="speech-timeline-actions"'
-        ) < source.index('class="speech-timeline-range"')
+        assert source.index('class="speech-timeline-actions"') < source.index(
+            'class="speech-timeline-hint"'
+        )
+        assert "speech-timeline-range" not in source
 
         from utils.styles import theme_styles
 
@@ -1897,3 +1937,9 @@ class TestTheTimelineControls:
         rule = rule[: rule.index("}")]
 
         assert "margin-left: auto;" in rule
+
+        hint = theme_styles[theme_styles.index("    .speech-timeline-hint {"):]
+        hint = hint[: hint.index("}")]
+
+        assert "flex-basis: 100%;" in hint
+        assert "speech-timeline-range" not in theme_styles
