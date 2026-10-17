@@ -61,7 +61,7 @@ def chain(node):
 def labels(path):
     """Yield (first argument node, list of props strings) per ui.label chain."""
     for stmt in ast.walk(tree(path)):
-        if not isinstance(stmt, ast.Expr):
+        if not isinstance(stmt, (ast.Expr, ast.Assign, ast.AnnAssign)):
             continue
         calls = chain(stmt.value)
         base = [
