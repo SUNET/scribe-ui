@@ -511,6 +511,8 @@ class ValidationPanel:
             return
 
         start, end = new_caption_span(item["speech"])
+        if self.transcript.editor.media_seconds is not None:
+            end = min(end, self.transcript.editor.media_seconds)
         added = self.transcript.create_caption({"start": start, "end": end})
 
         # Refused: a caption has been put there since Validate ran, and
