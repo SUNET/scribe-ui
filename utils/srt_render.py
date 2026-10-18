@@ -736,6 +736,12 @@ class RenderMixin:
                 "Transport",
                 [
                     ("Play/Pause", "Ctrl + Space"),
+                    (
+                        "Play caption with context"
+                        if subtitles
+                        else "Play paragraph with context",
+                        "Ctrl + Shift + Space",
+                    ),
                 ],
             ),
         ]

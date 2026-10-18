@@ -1797,6 +1797,10 @@ export default {
         return this.report(event, "addblock", { id: at.id });
       }
 
+      if (this.playWithContextKey(event)) {
+        return this.report(event, "playcontext", { id: at.id });
+      }
+
       // Hand a word across the boundary to the caption either side. The
       // server picks the timings back up from the word data, so this is a
       // report rather than anything worked out here.
@@ -1829,6 +1833,10 @@ export default {
     transcriptionShortcut(event, at) {
       const key = event.key.toLowerCase();
 
+      if (this.playWithContextKey(event)) {
+        return this.report(event, "playcontext", { id: at.id });
+      }
+
       if (event.key === "ArrowUp") {
         return this.report(event, "moveword", { id: at.id, direction: "previous" });
       }
@@ -1847,6 +1855,20 @@ export default {
       }
 
       return false;
+    },
+
+    // Ctrl+Shift+Space: play this block with a few words of speech either
+    // side. Ctrl only, never Cmd -- it sits beside Ctrl+Space, play/pause,
+    // which is Ctrl only too. Plain Ctrl+Space is the page's own handler's,
+    // and is left to it: the Shift is what tells them apart.
+    playWithContextKey(event) {
+      return (
+        event.ctrlKey &&
+        event.shiftKey &&
+        !event.altKey &&
+        !event.metaKey &&
+        (event.code === "Space" || event.key === " ")
+      );
     },
 
     // Stop the browser from acting on the key, get whatever is pending to

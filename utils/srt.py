@@ -596,6 +596,69 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         if self._video_player:
             self._video_player.seek(seconds)
 
+    # Play a stretch of the recording and stop at its end. The stop has to
+    # be decided next to the player, a frame at a time: timeupdate comes a
+    # few times a second, which would let the recording run on into the next
+    # words, and a round trip to the server would be later still.
+    #
+    # Gives way to the reader at once: pausing, or moving the recording
+    # somewhere else, ends the watch rather than being undone by it. Playing
+    # does not take the keyboard focus -- nothing here touches it.
+    PLAY_RANGE_SCRIPT = """
+        const video = %(element)s;
+        if (!video) return;
+        if (video._scribeStopWatch) video._scribeStopWatch();
+        const start = %(start)s;
+        const end = %(end)s;
+        let frame = null;
+        const finish = () => {
+          if (frame !== null) cancelAnimationFrame(frame);
+          frame = null;
+          video._scribeStopWatch = null;
+        };
+        video._scribeStopWatch = finish;
+        const watch = () => {
+          if (video.paused || video.ended) return finish();
+          if (video.currentTime >= end) {
+            video.pause();
+            return finish();
+          }
+          if (video.currentTime < start - 0.5) return finish();
+          frame = requestAnimationFrame(watch);
+        };
+        const begin = () => {
+          video.play();
+          frame = requestAnimationFrame(watch);
+        };
+        if (Math.abs(video.currentTime - start) < 0.01) {
+          begin();
+        } else {
+          video.addEventListener("seeked", begin, { once: true });
+          video.currentTime = start;
+        }
+    """
+
+    def play_range(self, start: float, end: float) -> None:
+        """
+        Play from `start` to `end` once and stop, if a player is attached.
+        """
+
+        if not self._video_player or end <= start:
+            return
+
+        identifier = getattr(self._video_player, "id", None)
+        element = (
+            f"getHtmlElement({int(identifier)})"
+            if isinstance(identifier, int)
+            else 'document.querySelector("video")'
+        )
+
+        ui.run_javascript(
+            self.PLAY_RANGE_SCRIPT
+            % {"element": element, "start": float(start), "end": float(end)}
+        )
+        self._set_play_pause_state(True)
+
     def set_video_player(self, player) -> None:
         """
         Set the video player for the editor, and keep self._play_pause
