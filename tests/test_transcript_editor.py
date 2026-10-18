@@ -639,6 +639,22 @@ class TestBlockShortcuts:
                 in keys
             )
 
+    def test_the_text_moves_report_direction_and_caret_in_both(self):
+        for keys in (self.subtitles(), self.transcription()):
+            assert 'if (event.shiftKey && event.key === "ArrowUp") {' in keys
+            assert 'if (event.shiftKey && event.key === "ArrowDown") {' in keys
+            assert keys.count('this.report(event, "movetext", {') == 2
+            assert 'direction: "previous",\n          offset: at.offset,' in keys
+            assert 'direction: "next",\n          offset: at.offset,' in keys
+
+    def test_the_text_moves_are_checked_before_the_word_moves(self):
+        """
+        The word moves only ask for the arrow, and would swallow the Shift.
+        """
+
+        for keys in (self.subtitles(), self.transcription()):
+            assert keys.index('"movetext"') < keys.index('"moveword"')
+
     def test_merge_and_delete_refuse_the_command_key_in_both(self):
         """
         Cmd+D and Cmd+M are the browser's own bookmark and minimise on a
@@ -861,6 +877,147 @@ class TestMoveWordIsWired:
         view.move_word({"id": editor.captions[0].index, "direction": "next"})
 
         assert focused == [editor.captions[0].index]
+
+
+class TestMoveTextIsWired:
+    """
+    Ctrl/Cmd+Shift+Up/Down: the text before / after the caret goes to the
+    neighbouring caption, or the two are merged when that would leave
+    nothing behind.
+    """
+
+    def test_the_event_reaches_the_view(self):
+        import pathlib
+
+        source = pathlib.Path("utils/transcript_editor.py").read_text()
+
+        assert 'self.body.on("movetext", lambda event: self.move_text(event.args))' in source
+
+    def test_previous_passes_the_caret_offset_on(self, view, editor, monkeypatch):
+        calls = []
+        monkeypatch.setattr(
+            editor,
+            "move_text_before_cursor_to_previous",
+            lambda c, offset: calls.append((c.index, offset)) or "moved",
+        )
+        view.focus = lambda *a, **k: None
+
+        view.move_text(
+            {"id": editor.captions[1].index, "direction": "previous", "offset": 5}
+        )
+
+        assert calls == [(editor.captions[1].index, 5)]
+
+    def test_next_passes_the_caret_offset_on(self, view, editor, monkeypatch):
+        calls = []
+        monkeypatch.setattr(
+            editor,
+            "move_text_after_cursor_to_next",
+            lambda c, offset: calls.append((c.index, offset)) or "moved",
+        )
+        view.focus = lambda *a, **k: None
+
+        view.move_text(
+            {"id": editor.captions[0].index, "direction": "next", "offset": 4}
+        )
+
+        assert calls == [(editor.captions[0].index, 4)]
+
+    def test_a_move_keeps_the_caret_at_the_edge_the_text_left(
+        self, view, editor, monkeypatch
+    ):
+        focused = []
+        view.focus = lambda *a, **k: focused.append(a)
+        monkeypatch.setattr(
+            editor, "move_text_before_cursor_to_previous", lambda c, o: "moved"
+        )
+        monkeypatch.setattr(
+            editor, "move_text_after_cursor_to_next", lambda c, o: "moved"
+        )
+
+        second = editor.captions[1]
+        view.move_text({"id": second.index, "direction": "previous", "offset": 3})
+        assert focused[-1] == (second.index, 0)
+
+        first = editor.captions[0]
+        view.move_text({"id": first.index, "direction": "next", "offset": 3})
+        assert focused[-1] == (first.index, len(first.text))
+
+    def test_a_merge_with_previous_lands_at_the_seam(self, view, editor, monkeypatch):
+        focused = []
+        view.focus = lambda *a, **k: focused.append(a)
+        first, second = editor.captions[0], editor.captions[1]
+        seam = len(first.text) + 1
+        monkeypatch.setattr(
+            editor, "move_text_before_cursor_to_previous", lambda c, o: "merged"
+        )
+
+        view.move_text({"id": second.index, "direction": "previous", "offset": 99})
+
+        assert focused == [(first.index, seam)]
+
+    def test_a_merge_with_next_lands_at_the_seam(self, view, editor, monkeypatch):
+        focused = []
+        view.focus = lambda *a, **k: focused.append(a)
+        first = editor.captions[0]
+        seam = len(first.text)
+        monkeypatch.setattr(
+            editor, "move_text_after_cursor_to_next", lambda c, o: "merged"
+        )
+
+        view.move_text({"id": first.index, "direction": "next", "offset": 0})
+
+        assert focused == [(first.index, seam)]
+
+    def test_a_refusal_changes_nothing_on_screen(self, view, editor, monkeypatch):
+        calls = []
+        view.focus = lambda *a, **k: calls.append("focus")
+        view.refresh = lambda *a, **k: calls.append("refresh")
+        view.changed = lambda *a, **k: calls.append("changed")
+        monkeypatch.setattr(
+            editor, "move_text_before_cursor_to_previous", lambda c, o: ""
+        )
+
+        view.move_text({"id": editor.captions[0].index, "direction": "previous", "offset": 2})
+
+        assert calls == []
+
+    def test_a_move_refreshes_and_reports_the_change(self, view, editor, monkeypatch):
+        calls = []
+        view.focus = lambda *a, **k: calls.append("focus")
+        view.refresh = lambda *a, **k: calls.append("refresh")
+        view.changed = lambda *a, **k: calls.append("changed")
+        monkeypatch.setattr(
+            editor, "move_text_after_cursor_to_next", lambda c, o: "moved"
+        )
+
+        view.move_text({"id": editor.captions[0].index, "direction": "next", "offset": 2})
+
+        assert calls == ["refresh", "changed", "focus"]
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            None,
+            {},
+            {"id": 9999, "direction": "next", "offset": 1},
+            {"id": 0, "direction": "sideways", "offset": 1},
+            {"id": 0, "direction": "next"},
+            {"id": 0, "direction": "next", "offset": "3"},
+        ],
+    )
+    def test_bad_input_is_harmless(self, view, editor, monkeypatch, args):
+        calls = []
+        monkeypatch.setattr(
+            editor, "move_text_before_cursor_to_previous", lambda c, o: calls.append(c)
+        )
+        monkeypatch.setattr(
+            editor, "move_text_after_cursor_to_next", lambda c, o: calls.append(c)
+        )
+
+        view.move_text(args)
+
+        assert calls == []
 
 
 class TestSubtitleEnter:
@@ -2815,6 +2972,8 @@ class TestTheShortcutsDialog:
                     ("New line", "Shift + Enter"),
                     ("Move first word to previous paragraph", "Ctrl/⌘ + ↑"),
                     ("Move last word to next paragraph", "Ctrl/⌘ + ↓"),
+                    ("Move text before cursor to previous paragraph", "Ctrl/⌘ + Shift + ↑"),
+                    ("Move text after cursor to next paragraph", "Ctrl/⌘ + Shift + ↓"),
                     ("Merge with next", "Ctrl + M"),
                     ("Delete paragraph", "Ctrl + D"),
                 ],
@@ -2862,6 +3021,8 @@ class TestTheShortcutsDialog:
                     ("New line", "Shift + Enter"),
                     ("Move first word to previous caption", "Ctrl/⌘ + ↑"),
                     ("Move last word to next caption", "Ctrl/⌘ + ↓"),
+                    ("Move text before cursor to previous caption", "Ctrl/⌘ + Shift + ↑"),
+                    ("Move text after cursor to next caption", "Ctrl/⌘ + Shift + ↓"),
                     ("Merge with next", "Ctrl + M"),
                     ("Add caption after", "Ctrl/⌘ + Shift + Enter"),
                     ("Delete caption", "Ctrl + D"),

@@ -192,3 +192,263 @@ class TestTimestampFormatting:
             assert int(secs) < 60, stamp
             assert int(millis) < 1000, stamp
 
+
+
+class TestMoveTextBeforeCursorToPrevious:
+    """
+    Everything before the cursor goes to the end of the previous block; the
+    word the cursor is in goes with it, whole.
+    """
+
+    def test_moves_the_words_before_the_cursor(self, editor):
+        # "fyra |fem sex"
+        outcome = editor.move_text_before_cursor_to_previous(editor.captions[1], 5)
+
+        assert outcome == "moved"
+        assert editor.captions[0].text == "ett två tre fyra"
+        assert editor.captions[1].text == "fem sex"
+
+    def test_the_word_under_the_cursor_goes_too(self, editor):
+        # "fyra fe|m sex"
+        editor.move_text_before_cursor_to_previous(editor.captions[1], 7)
+
+        assert editor.captions[0].text == "ett två tre fyra fem"
+        assert editor.captions[1].text == "sex"
+
+    def test_a_cursor_inside_the_first_word_moves_that_word(self, editor):
+        editor.move_text_before_cursor_to_previous(editor.captions[1], 2)
+
+        assert editor.captions[0].text == "ett två tre fyra"
+        assert editor.captions[1].text == "fem sex"
+
+    def test_retimes_both_blocks_from_the_word_data(self, editor):
+        editor.move_text_before_cursor_to_previous(editor.captions[1], 8)
+
+        first, second = editor.captions
+
+        # Ends where "fem" ends; the rest starts where "sex" starts.
+        assert first.get_end_seconds() == pytest.approx(2.9)
+        assert second.get_start_seconds() == pytest.approx(3.0)
+
+    def test_whitespace_between_the_parts_is_not_carried(self, editor):
+        editor.captions[1].text = "fyra   fem sex"
+
+        editor.move_text_before_cursor_to_previous(editor.captions[1], 7)
+
+        assert editor.captions[0].text == "ett två tre fyra"
+        assert editor.captions[1].text == "fem sex"
+
+    def test_a_line_break_inside_the_moved_text_survives(self, editor):
+        editor.captions[1].text = "fyra\nfem sex"
+
+        editor.move_text_before_cursor_to_previous(editor.captions[1], 6)
+
+        assert editor.captions[0].text == "ett två tre fyra\nfem"
+        assert editor.captions[1].text == "sex"
+
+    def test_the_wording_is_unchanged(self, editor):
+        before = " ".join(c.text for c in editor.captions)
+
+        editor.move_text_before_cursor_to_previous(editor.captions[1], 8)
+
+        assert " ".join(c.text for c in editor.captions) == before
+
+    def test_everything_before_the_cursor_is_a_merge(self, editor):
+        for offset in (len("fyra fem sex"), len("fyra fem sex") - 1):
+            ed = SRTEditor("job-uuid", "srt", "file.srt")
+            for name in ("refresh_display", "update_words_per_minute",
+                         "save_state_for_undo", "mark_as_changed"):
+                setattr(ed, name, lambda *args, **kwargs: None)
+            ed.load_words(WORDS)
+            ed.captions = [
+                SRTCaption(1, "00:00:00,000", "00:00:01,500", "ett två tre"),
+                SRTCaption(2, "00:00:02,000", "00:00:03,500", "fyra fem sex"),
+            ]
+
+            outcome = ed.move_text_before_cursor_to_previous(ed.captions[1], offset)
+
+            assert outcome == "merged"
+            assert len(ed.captions) == 1
+            assert ed.captions[0].text == "ett två tre\nfyra fem sex"
+            assert ed.captions[0].get_end_seconds() == pytest.approx(3.5)
+
+    def test_refuses_on_the_first_block(self, editor):
+        outcome = editor.move_text_before_cursor_to_previous(editor.captions[0], 4)
+
+        assert outcome == ""
+        assert editor.captions[0].text == "ett två tre"
+
+    def test_refuses_when_there_is_no_text_before_the_cursor(self, editor):
+        outcome = editor.move_text_before_cursor_to_previous(editor.captions[1], 0)
+
+        assert outcome == ""
+        assert editor.captions[0].text == "ett två tre"
+        assert editor.captions[1].text == "fyra fem sex"
+
+    def test_a_cursor_after_leading_whitespace_has_nothing_before_it(self, editor):
+        editor.captions[1].text = "  fyra fem sex"
+
+        outcome = editor.move_text_before_cursor_to_previous(editor.captions[1], 2)
+
+        assert outcome == ""
+
+    def test_one_undo_step(self, editor):
+        saved = []
+        editor.save_state_for_undo = lambda *a, **k: saved.append(1)
+
+        editor.move_text_before_cursor_to_previous(editor.captions[1], 8)
+
+        assert len(saved) == 1
+
+    def test_a_merge_is_one_undo_step_too(self, editor):
+        saved = []
+        editor.save_state_for_undo = lambda *a, **k: saved.append(1)
+
+        editor.move_text_before_cursor_to_previous(editor.captions[1], 12)
+
+        assert len(saved) == 1
+
+    def test_marks_follow_their_words(self, editor):
+        editor.captions[0].edited_words = {0}
+        editor.captions[1].edited_words = {0, 2}
+
+        editor.move_text_before_cursor_to_previous(editor.captions[1], 8)
+
+        # "fyra" and "fem" went to the previous block as words 3 and 4; "sex"
+        # is now the first word of this one.
+        assert editor.captions[0].edited_words == {0, 3}
+        assert editor.captions[1].edited_words == {0}
+
+    def test_without_word_data_the_text_moves_and_the_timings_stay(self, editor):
+        editor.load_words({"version": 1, "words": []})
+        before = [(c.start_time, c.end_time) for c in editor.captions]
+
+        outcome = editor.move_text_before_cursor_to_previous(editor.captions[1], 5)
+
+        assert outcome == "moved"
+        assert editor.captions[0].text == "ett två tre fyra"
+        assert [(c.start_time, c.end_time) for c in editor.captions] == before
+
+    def test_an_empty_previous_block_takes_the_text_without_a_leading_space(self, editor):
+        editor.captions[0].text = ""
+
+        editor.move_text_before_cursor_to_previous(editor.captions[1], 5)
+
+        assert editor.captions[0].text == "fyra"
+
+
+class TestMoveTextAfterCursorToNext:
+    def test_moves_the_words_after_the_cursor(self, editor):
+        # "ett |två tre"
+        outcome = editor.move_text_after_cursor_to_next(editor.captions[0], 4)
+
+        assert outcome == "moved"
+        assert editor.captions[0].text == "ett"
+        assert editor.captions[1].text == "två tre fyra fem sex"
+
+    def test_the_word_under_the_cursor_goes_too(self, editor):
+        # "ett t|vå tre"
+        editor.move_text_after_cursor_to_next(editor.captions[0], 5)
+
+        assert editor.captions[0].text == "ett"
+        assert editor.captions[1].text == "två tre fyra fem sex"
+
+    def test_a_cursor_at_the_end_of_a_word_leaves_that_word(self, editor):
+        # "ett| två tre"
+        editor.move_text_after_cursor_to_next(editor.captions[0], 3)
+
+        assert editor.captions[0].text == "ett"
+        assert editor.captions[1].text == "två tre fyra fem sex"
+
+    def test_retimes_both_blocks_from_the_word_data(self, editor):
+        editor.move_text_after_cursor_to_next(editor.captions[0], 4)
+
+        first, second = editor.captions
+
+        assert second.get_start_seconds() == pytest.approx(0.6)
+        assert first.get_end_seconds() == pytest.approx(0.5)
+
+    def test_whitespace_between_the_parts_is_not_carried(self, editor):
+        editor.captions[0].text = "ett   två tre"
+
+        editor.move_text_after_cursor_to_next(editor.captions[0], 5)
+
+        assert editor.captions[0].text == "ett"
+        assert editor.captions[1].text == "två tre fyra fem sex"
+
+    def test_the_wording_is_unchanged(self, editor):
+        before = " ".join(c.text for c in editor.captions)
+
+        editor.move_text_after_cursor_to_next(editor.captions[0], 4)
+
+        assert " ".join(c.text for c in editor.captions) == before
+
+    def test_everything_after_the_cursor_is_a_merge(self, editor):
+        outcome = editor.move_text_after_cursor_to_next(editor.captions[0], 0)
+
+        assert outcome == "merged"
+        assert len(editor.captions) == 1
+        assert editor.captions[0].text == "ett två tre\nfyra fem sex"
+
+    def test_a_cursor_inside_the_first_word_is_a_merge(self, editor):
+        outcome = editor.move_text_after_cursor_to_next(editor.captions[0], 2)
+
+        assert outcome == "merged"
+        assert len(editor.captions) == 1
+
+    def test_refuses_on_the_last_block(self, editor):
+        outcome = editor.move_text_after_cursor_to_next(editor.captions[-1], 4)
+
+        assert outcome == ""
+        assert editor.captions[-1].text == "fyra fem sex"
+
+    def test_refuses_when_there_is_no_text_after_the_cursor(self, editor):
+        outcome = editor.move_text_after_cursor_to_next(editor.captions[0], 11)
+
+        assert outcome == ""
+        assert editor.captions[0].text == "ett två tre"
+        assert editor.captions[1].text == "fyra fem sex"
+
+    def test_one_undo_step(self, editor):
+        saved = []
+        editor.save_state_for_undo = lambda *a, **k: saved.append(1)
+
+        editor.move_text_after_cursor_to_next(editor.captions[0], 4)
+
+        assert len(saved) == 1
+
+    def test_a_merge_is_one_undo_step_too(self, editor):
+        saved = []
+        editor.save_state_for_undo = lambda *a, **k: saved.append(1)
+
+        editor.move_text_after_cursor_to_next(editor.captions[0], 0)
+
+        assert len(saved) == 1
+
+    def test_marks_follow_their_words(self, editor):
+        editor.captions[0].edited_words = {0, 2}
+        editor.captions[1].edited_words = {1}
+
+        editor.move_text_after_cursor_to_next(editor.captions[0], 4)
+
+        # "två tre" are now words 0 and 1 of the next block, ahead of its
+        # own words, which move along by two.
+        assert editor.captions[0].edited_words == {0}
+        assert editor.captions[1].edited_words == {1, 3}
+
+    def test_without_word_data_the_text_moves_and_the_timings_stay(self, editor):
+        editor.load_words({"version": 1, "words": []})
+        before = [(c.start_time, c.end_time) for c in editor.captions]
+
+        outcome = editor.move_text_after_cursor_to_next(editor.captions[0], 4)
+
+        assert outcome == "moved"
+        assert editor.captions[1].text == "två tre fyra fem sex"
+        assert [(c.start_time, c.end_time) for c in editor.captions] == before
+
+    def test_an_empty_next_block_takes_the_text_without_a_trailing_space(self, editor):
+        editor.captions[1].text = ""
+
+        editor.move_text_after_cursor_to_next(editor.captions[0], 4)
+
+        assert editor.captions[1].text == "två tre"
