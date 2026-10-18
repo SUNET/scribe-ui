@@ -260,14 +260,14 @@ export default {
       class="speech-timeline-ghost speech-timeline-ghost-rest"
       aria-hidden="true"
       :style="{ height: restHeight + 'px' }"
-    >Release to put it back here</div>
+    >Release to dock Timeline here</div>
     <Teleport to="body">
       <div
         v-if="ghost === 'foot'"
         class="speech-timeline-ghost speech-timeline-ghost-foot"
         aria-hidden="true"
         :style="{ left: dockLeft + 'px' }"
-      >Release to dock it here</div>
+      >Release to dock Timeline here</div>
     </Teleport>
   `,
   props: {

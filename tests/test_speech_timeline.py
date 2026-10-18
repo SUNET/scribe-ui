@@ -2120,12 +2120,12 @@ class TestShowingWhereItWillLand:
 
     def test_each_one_says_what_letting_go_will_do(self):
         """
-        An instruction, in the same words as the hint on the strip, not a
-        label: the placeholder is what the drop will do, and says so.
+        An instruction, not a label: the placeholder is what the drop will
+        do, and says so -- with the name of what is being moved.
         """
 
         source = self.source()
 
-        assert ">Release to put it back here</div>" in source
-        assert ">Release to dock it here</div>" in source
+        # The same words in both places: it is docked there either way.
+        assert source.count(">Release to dock Timeline here</div>") == 2
         assert "Timeline goes here" not in source
