@@ -582,6 +582,7 @@ class TranscriptEditor:
         self.body.on("mergeblock", lambda event: self.merge(event.args))
         self.body.on("deleterange", lambda event: self.delete_range(event.args))
         self.body.on("moveword", lambda event: self.move_word(event.args))
+        self.body.on("nudge", lambda event: self.nudge(event.args))
         self.body.on("addblock", lambda event: self.add_after(event.args))
         self.body.on("deleteblock", lambda event: self.delete(event.args))
         self.body.on("blockclick", lambda event: self.seek(event.args))
@@ -955,6 +956,39 @@ class TranscriptEditor:
         self.refresh()
         self.changed()
         self.focus(caption.index)
+
+    def nudge(self, args) -> None:
+        """
+        Move a caption's start or end one step, from the keyboard.
+
+        The same re-render as any retime -- the times beside the text and
+        the brackets on the strip follow -- and the caret goes back where it
+        was in the text: the reader is listening for the right spot and
+        about to carry on typing, so the key must not take them anywhere.
+        The caption is found again by its own number afterwards, since an
+        earlier start can move it up the list.
+        """
+
+        if not isinstance(args, dict):
+            return
+
+        caption = self.caption(self.block_id(args))
+        offset = args.get("offset")
+
+        if caption is None:
+            return
+
+        if not self.editor.nudge_caption_time(
+            caption, args.get("edge"), args.get("direction")
+        ):
+            return
+
+        self.refresh()
+        self.changed()
+        self.focus(
+            caption.index,
+            int(offset) if isinstance(offset, (int, float)) else 0,
+        )
 
     def delete(self, args) -> None:
         """

@@ -2862,6 +2862,8 @@ class TestTheShortcutsDialog:
                     ("New line", "Shift + Enter"),
                     ("Move first word to previous caption", "Ctrl/⌘ + ↑"),
                     ("Move last word to next caption", "Ctrl/⌘ + ↓"),
+                    ("Nudge start earlier / later", "Ctrl + , / Ctrl + ."),
+                    ("Nudge end earlier / later", "Ctrl + Shift + , / Ctrl + Shift + ."),
                     ("Merge with next", "Ctrl + M"),
                     ("Add caption after", "Ctrl/⌘ + Shift + Enter"),
                     ("Delete caption", "Ctrl + D"),

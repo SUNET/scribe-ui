@@ -18,6 +18,7 @@
 import httpx
 import json
 import re
+import time
 
 from nicegui import events, ui
 from typing import Callable, List, Optional
@@ -809,6 +810,104 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         """
 
         return str(timestamp).replace(",", ".")
+
+    # One keypress moves a caption's start or end by this much.
+    NUDGE_MILLISECONDS = 100
+
+    # Nudges of the same edge of the same caption this close together are
+    # one undo step: holding the key, or tapping it a few times to find the
+    # spot, is one adjustment to the reader and should be one to undo.
+    NUDGE_UNDO_WINDOW = 1.5
+
+    def nudge_caption_time(
+        self, caption: SRTCaption, edge: str, direction: str
+    ) -> bool:
+        """
+        Move a caption's start or end one step earlier or later.
+
+        Only that edge moves -- the caption's other edge and the neighbours
+        stay where they are, and overlap with a neighbour is left for the
+        validation to report, as it is for a drag on the strip. An edge
+        cannot cross the other one (it stops one step short of it), the start
+        cannot go before the beginning of the recording nor the end past its
+        last moment when that is known. A step that would go further than
+        the limit goes as far as it can; when it cannot move at all the
+        reader is told why.
+
+        Returns whether anything moved.
+        """
+
+        if edge not in ("start", "end") or direction not in ("earlier", "later"):
+            return False
+
+        step = self.NUDGE_MILLISECONDS
+        delta = -step if direction == "earlier" else step
+        start = round(caption.get_start_seconds() * 1000)
+        end = round(caption.get_end_seconds() * 1000)
+
+        if edge == "start":
+            floor, ceiling = 0, end - step
+            current = start
+        else:
+            floor, ceiling = start + step, None
+            if self.media_seconds is not None:
+                ceiling = round(self.media_seconds * 1000)
+            current = end
+
+        target = current + delta
+        target = max(floor, target) if delta < 0 else target
+
+        if ceiling is not None and delta > 0:
+            target = min(ceiling, target)
+
+        # Already past the limit (a caption shorter than one step, say):
+        # never pull it back towards it by moving the other way's limit.
+        if (delta < 0 and target >= current) or (delta > 0 and target <= current):
+            reason = {
+                ("start", "earlier"): "The start is already at the beginning of the recording",
+                ("start", "later"): "The start cannot move past the end of the caption",
+                ("end", "earlier"): "The end cannot move before the start of the caption",
+                ("end", "later"): "The end is already at the end of the recording",
+            }[(edge, direction)]
+            ui.notify(reason, type="warning", timeout=None, close_button="Close")
+            return False
+
+        # One undo step for a run of nudges of the same edge: the state
+        # saved at the first is the one a single undo returns to. Anything
+        # else saved in between (an edit, another caption) ends the run.
+        #
+        # "Anything else saved" is told by the state on top of the stack
+        # being the one this run left there -- not by its depth, which
+        # stops changing once the history is full.
+        run = (id(caption), edge)
+        stack = self.undo_redo_manager.undo_stack
+        now = time.monotonic()
+        last = getattr(self, "_nudge_run", None)
+
+        if not (
+            last is not None
+            and last[0] == run
+            and stack
+            and last[1] is stack[-1]
+            and now - last[2] <= self.NUDGE_UNDO_WINDOW
+        ):
+            self.save_state_for_undo()
+
+        self._nudge_run = (run, stack[-1] if stack else None, now)
+
+        stamp = self.seconds_to_timestamp(target / 1000)
+
+        if edge == "start":
+            caption.start_time = stamp
+        else:
+            caption.end_time = stamp
+
+        # An earlier start can pass the previous caption's start; the list
+        # follows the clock, as after any retime.
+        self.sort_captions()
+        self.mark_as_changed()
+
+        return True
 
     def seconds_to_timestamp(self, seconds: float) -> str:
         """
