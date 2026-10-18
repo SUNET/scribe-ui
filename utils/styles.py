@@ -3364,6 +3364,72 @@ if (!window._scribeFocusModality) {
         }
     }, true);
 }
+
+// A toast that has focus takes it with it when it goes -- by Close, or by
+// its own timeout -- and focus falls to the document body, so the next Tab
+// starts from the top of the page (WCAG 2.4.3). Remember where it was before
+// it went to the toast and put it back there afterwards.
+if (!window._scribeToastFocus) {
+    window._scribeToastFocus = true;
+    (function () {
+
+        var toastSelector = '.q-notification';
+        var lastOutsideToast = null;
+        var focusIsInToast = false;
+        var watchedToasts = null;
+
+        document.addEventListener('focusin', function (e) {
+            var target = e.target;
+            if (!target || !target.closest) return;
+
+            focusIsInToast = !!target.closest(toastSelector);
+
+            if (!focusIsInToast && target !== document.body) {
+                lastOutsideToast = target;
+            }
+        }, true);
+
+        var returnFocusFromToast = function () {
+            if (!focusIsInToast) return;
+
+            // Still on something real -- another toast, say: nothing was lost.
+            var active = document.activeElement;
+            if (active && active !== document.body && active.isConnected) return;
+
+            focusIsInToast = false;
+
+            // Only where it can be used: the place may be gone, or hidden behind
+            // a dialog that has since closed.
+            var target = lastOutsideToast;
+            if (target && target.isConnected && target.getClientRects().length) {
+                target.focus({ preventScroll: true });
+            }
+        };
+
+        // Quasar adds its container to the body when the first toast is raised,
+        // and nothing else is worth watching: only what happens inside it.
+        var watchToasts = function () {
+            var host = document.querySelector('.q-notifications');
+            if (!host || host === watchedToasts) return;
+
+            watchedToasts = host;
+            new MutationObserver(returnFocusFromToast).observe(host, {
+                childList: true,
+                subtree: true,
+            });
+        };
+
+        var startWatchingToasts = function () {
+            new MutationObserver(watchToasts).observe(document.body, {
+                childList: true,
+            });
+            watchToasts();
+        };
+
+        if (document.body) startWatchingToasts();
+        else document.addEventListener('DOMContentLoaded', startWatchingToasts);
+    })();
+}
 </script>
 """
 

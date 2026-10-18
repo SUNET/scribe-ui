@@ -50,6 +50,7 @@ The caption the caret is in marks itself too (`caretId` in the component, `.tran
 - NiceGUI `ui.table` uses Quasar slot templates with `$parent.$emit('event_name', props.row)` for per-row actions.
 - Dialog close on validation failure uses short-circuit pattern: `result and (dialog.close(), navigate)`.
 - Use `match/case` statements (Python 3.13+).
+- **A toast that has focus gives it back when it goes.** A toast with a Close button takes focus when it is pressed (or tabbed to) and drops it to `<body>` when it leaves, so the next Tab would start at the top of the page. The script at the bottom of `default_styles` (`_scribeToastFocus`, `utils/styles.py`) remembers the last focused element that is not a toast and focuses it again when a toast that held focus is removed — only if that element is still connected and has a box, and never when focus is on something real by then. It watches only Quasar's `.q-notifications` container, not the page. New toasts need nothing; do not add focus calls of your own after `ui.notify`.
 
 ## Security
 
