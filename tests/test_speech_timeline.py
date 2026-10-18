@@ -2073,10 +2073,10 @@ class TestShowingWhereItWillLand:
             source, "noteRestHeight() {"
         )
         assert "this.noteRestHeight();" in method(source, "startDockDrag(event) {")
-        # Before docking, or the strip is already somewhere else.
-        body = method(source, "setDocked(willDock) {")
-
-        assert body.index("this.noteRestHeight();") < body.index("this.docked = willDock;")
+        # Before the button moves it -- but not in setDocked, which the drop
+        # calls with the "release" line still in the legend.
+        assert "this.noteRestHeight();" in method(source, "toggleDock() {")
+        assert "noteRestHeight" not in method(source, "setDocked(willDock) {")
 
     def test_the_rail_is_looked_at_again_when_the_drag_starts(self):
         """
@@ -2095,15 +2095,14 @@ class TestShowingWhereItWillLand:
         assert "pointer-events: none;" in rule
         assert "border: 2px dashed var(--color-brand-primary);" in rule
 
-    def test_the_foot_is_as_tall_as_the_page_leaves_room_for(self):
+    def test_the_foot_is_as_tall_as_the_docked_strip(self):
         from utils.styles import theme_styles
 
         foot = theme_styles[theme_styles.index("    .speech-timeline-ghost-foot {"):]
         foot = foot[: foot.index("}")]
 
         assert "position: fixed;" in foot
-        assert "height: calc(9rem + 16px);" in foot
-        assert "padding-bottom: calc(9rem + 16px);" in theme_styles
+        assert "height: calc(10rem + 22px);" in foot
 
     def test_the_component_still_has_no_element_around_it(self):
         """

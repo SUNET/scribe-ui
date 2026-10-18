@@ -684,7 +684,6 @@ export default {
     setDocked(willDock) {
       if (willDock === this.docked) return;
 
-      this.noteRestHeight();
       this.docked = willDock;
       this.palette = null;
       this.markDocked();
@@ -696,7 +695,10 @@ export default {
 
     // How much room the strip and its legend take where they sit under the
     // video. Only while they are there: docked, they are somewhere else and
-    // a different width.
+    // a different width. And not when the drop is what is asking, since the
+    // strip then still has the line of text that says "release" in its
+    // legend: it is measured when it is taken hold of, or before the button
+    // moves it, and nowhere else.
     noteRestHeight() {
       const wrap = this.$refs.wrap;
 
@@ -711,6 +713,7 @@ export default {
     // has happened, or a keyboard user would find themselves at the top of
     // the page every time they pressed it.
     toggleDock() {
+      this.noteRestHeight();
       this.setDocked(!this.docked);
       this.note = this.docked
         ? "Timeline docked along the bottom of the page"

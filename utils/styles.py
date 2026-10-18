@@ -2419,8 +2419,7 @@ theme_styles = """
     /* Where it will land if it is let go now, while it is being moved
        (SUNET/scribe-ui#127): the same dashed brand line as the strip's own,
        over the room it will take. Never the pointer's: it has to let the
-       drop through. Along the foot it is as tall as the page leaves room for
-       (see body.timeline-docked); back under the video it is as tall as the
+       drop through. Along the foot it is as tall as the docked strip is; back under the video it is as tall as the
        strip and its legend were there, and in the page's flow, so what
        moves out of its way is what will move for the strip. */
     .speech-timeline-ghost {
@@ -2445,7 +2444,9 @@ theme_styles = """
         right: 0;
         bottom: 0;
         z-index: 899;
-        height: calc(9rem + 16px);
+        /* The strip along the foot as it measures there: its padding, the
+           strip with its ruler, the legend and a line of hint. */
+        height: calc(10rem + 22px);
         margin: 0 0.5rem 0.5rem;
     }
 
