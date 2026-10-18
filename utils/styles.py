@@ -127,6 +127,15 @@ theme_styles = """
         --color-edit-accent: #12796a;
         --color-edit-text: #10453d;
 
+        /* Words the reader has highlighted for themselves. The one marking
+           that is yellow, as a highlighter is. Yellow on white is barely
+           brighter than the page (1.14:1) so the colour cannot carry it
+           alone: the frame lines carry it, 4.9:1 against the page (1.4.1,
+           1.4.11), and the text on the yellow measures 13.6:1. */
+        --color-highlight-bg: #fff1a3;
+        --color-highlight-frame: #8a6d00;
+        --color-highlight-text: #2b2400;
+
         /* The word currently being spoken. A pale tint of the brand
            navy, so it reads as "you are here" rather than as a status. */
         --color-playing-bg: #dbe4f0;
@@ -251,6 +260,12 @@ theme_styles = """
         --color-edit-bg: #1d3b37;
         --color-edit-accent: #6fd3c1;
         --color-edit-text: #dff5f0;
+
+        /* Dark mode keeps the yellow as a dark gold. Text on it 8.0:1, the
+           frame 12.6:1 against the surface. */
+        --color-highlight-bg: #5a4a00;
+        --color-highlight-frame: #ffd54f;
+        --color-highlight-text: #fff6cc;
 
         --color-playing-bg: #1c3252;
 
@@ -1370,6 +1385,56 @@ theme_styles = """
         color: var(--color-edit-text);
         background-color: var(--color-edit-bg);
         box-shadow: inset 0 -2px 0 var(--color-edit-accent);
+    }
+
+    /* Words the reader has highlighted. Yellow, like a highlighter, with a
+       line above and below so it does not depend on the colour: it is a
+       different shape from the other two markings, which are a wash with a
+       bar underneath. No horizontal padding, unlike them, so highlighting
+       a passage does not move the text -- and a run of highlighted words
+       with the spaces between them reads as one stretch.
+
+       On a flagged or changed word the highlight takes the wash and the text
+       colour, and the word keeps its own bar underneath, so both can be seen.
+       While the word is being played the playing tint wins the wash but the
+       lines stay, so the passage can still be seen under the playback. */
+    .highlight-word {
+        padding: 1px 0;
+        color: var(--color-highlight-text);
+        background-color: var(--color-highlight-bg);
+        box-shadow:
+            inset 0 2px 0 var(--color-highlight-frame),
+            inset 0 -2px 0 var(--color-highlight-frame);
+        box-decoration-break: clone;
+        -webkit-box-decoration-break: clone;
+    }
+    .highlight-word.review-word {
+        box-shadow:
+            inset 0 2px 0 var(--color-highlight-frame),
+            inset 0 -2px 0 var(--color-review-accent);
+    }
+    .highlight-word.edit-word {
+        box-shadow:
+            inset 0 2px 0 var(--color-highlight-frame),
+            inset 0 -2px 0 var(--color-edit-accent);
+    }
+    .transcript-text .highlight-word[data-current] {
+        background-color: var(--color-playing-bg);
+        color: inherit;
+        border-radius: 0;
+        box-shadow:
+            inset 0 2px 0 var(--color-highlight-frame),
+            inset 0 -2px 0 var(--color-highlight-frame);
+    }
+    .transcript-text .highlight-word.review-word[data-current] {
+        box-shadow:
+            inset 0 2px 0 var(--color-highlight-frame),
+            inset 0 -2px 0 var(--color-review-accent);
+    }
+    .transcript-text .highlight-word.edit-word[data-current] {
+        box-shadow:
+            inset 0 2px 0 var(--color-highlight-frame),
+            inset 0 -2px 0 var(--color-edit-accent);
     }
 
     /* Shared hover message. A CSS box rather than title=, which the browser

@@ -712,8 +712,19 @@ class RenderMixin:
             ]
         )
 
+        # The selection's own highlight. A transcription's alone, for now: a
+        # set of subtitles is plain SRT, which has nowhere to keep it.
+        highlighting = (
+            []
+            if subtitles
+            else [
+                ("Highlight selection, or remove the highlight", "Ctrl + Shift + H"),
+            ]
+        )
+
         shortcut_groups = [
             ("Editing", editing),
+            *([("Highlighting", highlighting)] if highlighting else []),
             (
                 "File operations",
                 [

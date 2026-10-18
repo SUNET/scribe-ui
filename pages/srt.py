@@ -256,6 +256,30 @@ def create() -> None:
                             "click",
                             lambda: editor.validate_captions(),
                         )
+                else:
+                    # Where Validate is in the subtitle editor: the one thing
+                    # about the text that is not history or finding. The same
+                    # as Ctrl+Shift+H. Transcriptions only, for now.
+                    #
+                    # A mouse press must not take focus, or the selection it
+                    # is meant to act on is the first thing it would lose --
+                    # the same reason the caption row's music-note icon
+                    # prevents the default on mousedown.
+                    with ui.button("Highlight", icon="highlight").props(
+                        "flat aria-keyshortcuts=Control+Shift+H"
+                    ).classes(
+                        "editor-btn editor-toolbar-btn editor-quiet"
+                    ) as highlight_button:
+                        highlight_button.tooltip(
+                            "Highlight the selection, or remove the highlight "
+                            "(Ctrl + Shift + H)"
+                        )
+                        highlight_button.on(
+                            "mousedown", js_handler="(event) => event.preventDefault()"
+                        )
+                        highlight_button.on(
+                            "click", lambda: transcript.highlight_selection()
+                        )
 
             with ui.row().classes("editor-toolbar-group"):
                 editor.show_keyboard_shortcuts()

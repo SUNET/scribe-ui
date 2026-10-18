@@ -683,6 +683,16 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
                     position for position in marks if isinstance(position, int)
                 }
 
+            # The same for the reader's highlights.
+            highlights = segment.get("highlighted")
+
+            if isinstance(highlights, list):
+                restored.highlighted_words = {
+                    position
+                    for position in highlights
+                    if isinstance(position, int) and not isinstance(position, bool)
+                }
+
             self.captions.append(restored)
             self.speakers.add(segment.get("speaker", ""))
 
@@ -956,9 +966,7 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         if text is not None and text != caption.text:
             # The text area holds edits that have not been committed yet;
             # splitting must not discard them, nor the marks they earned.
-            caption.edited_words = self.retag_edits(
-                caption.text, text, caption.edited_words
-            )
+            self.carry_marks(caption, text)
             caption.text = text
             self.mark_as_changed()
 
@@ -983,10 +991,14 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
 
         # Marks follow their words across the break.
         kept, moved = self.split_edits(caption.edited_words, len(first_part.split()))
+        kept_highlights, moved_highlights = self.split_edits(
+            caption.highlighted_words, len(first_part.split())
+        )
 
         # Update first caption
         caption.text = first_part
         caption.edited_words = kept
+        caption.highlighted_words = kept_highlights
         caption.end_time = self.seconds_to_timestamp(mid_seconds)
 
         # Create second caption
@@ -998,6 +1010,7 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
             speaker=caption.speaker,
         )
         new_caption.edited_words = moved
+        new_caption.highlighted_words = moved_highlights
 
         # Insert new caption
         caption_index = self.captions.index(caption)
@@ -1079,8 +1092,20 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         self.save_state_for_undo()
 
         previous = self.captions[position - 1]
+
+        # A highlight on the word follows it across. Read before either text
+        # changes, since both positions are counted against the old words.
+        first_was_highlighted = 0 in caption.highlighted_words
+        previous_count = len(previous.text.split())
+
         previous.text = f"{previous.text.rstrip()} {moved_word}"
         caption.text = remaining
+
+        caption.highlighted_words = {
+            index - 1 for index in caption.highlighted_words if index > 0
+        }
+        if first_was_highlighted:
+            previous.highlighted_words.add(previous_count)
 
         if self.word_is_timed(moved_timing) and self.word_is_timed(next_timing):
             previous.end_time = self.seconds_to_timestamp(moved_timing["e"])
@@ -1136,8 +1161,20 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         self.save_state_for_undo()
 
         following = self.captions[position + 1]
+
+        # See move_first_word_to_previous: the highlight goes with the word.
+        last_index = len(caption.text.split()) - 1
+        last_was_highlighted = last_index in caption.highlighted_words
+
         following.text = f"{moved_word} {following.text.lstrip()}"
         caption.text = remaining
+
+        caption.highlighted_words.discard(last_index)
+        following.highlighted_words = {
+            index + 1 for index in following.highlighted_words
+        }
+        if last_was_highlighted:
+            following.highlighted_words.add(0)
 
         if self.word_is_timed(moved_timing) and self.word_is_timed(previous_timing):
             following.start_time = self.seconds_to_timestamp(moved_timing["s"])
@@ -1160,6 +1197,66 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         self.mark_as_changed()
         self.update_words_per_minute()
         self.refresh_display(force_full_refresh=True)
+
+    def toggle_highlight(self, selections: list) -> str:
+        """
+        Highlight the words a selection touches, or take the highlight off.
+
+        `selections` is a list of (caption, start, end) with the offsets in the
+        caption's text, one entry per caption the selection reaches into. A
+        selection that reaches across blocks is one gesture and one undo step.
+
+        One key does both, so which it is depends on what is there: when every
+        word taken is already highlighted the highlight comes off, otherwise
+        everything taken gets one. A mixed selection therefore becomes fully
+        highlighted first -- the reader can press again to clear it.
+
+        Returns "added", "removed", or "" when nothing was selected (a notice
+        says so).
+
+        Transcriptions only, for now. A set of subtitles is saved as plain
+        SRT, which has nowhere to keep a highlight, so it gets none: nothing
+        in the editor asks for one there, and this refuses if something does.
+        """
+
+        if self.data_format == "srt":
+            return ""
+
+        touched = []
+
+        for caption, start, end in selections:
+            positions = self.words_in_selection(caption.text, start, end)
+
+            if positions:
+                touched.append((caption, positions))
+
+        if not touched:
+            ui.notify(
+                "Select the words to highlight first",
+                type="warning",
+                timeout=None,
+                close_button="Close",
+            )
+            return ""
+
+        remove = all(
+            position in caption.highlighted_words
+            for caption, positions in touched
+            for position in positions
+        )
+
+        self.save_state_for_undo()
+
+        for caption, positions in touched:
+            if remove:
+                caption.highlighted_words.difference_update(positions)
+            else:
+                caption.highlighted_words.update(positions)
+
+        # Kept with the transcription's own data, so it is a change to save.
+        self.mark_as_changed()
+
+        return "removed" if remove else "added"
 
     def add_caption_after(self, caption: SRTCaption) -> None:
         """
@@ -1270,9 +1367,7 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
             self.save_state_for_undo()
             # Worked out before the text is replaced, while there is still
             # something to compare it against.
-            caption.edited_words = self.retag_edits(
-                caption.text, new_text, caption.edited_words
-            )
+            self.carry_marks(caption, new_text)
             caption.text = new_text
             # Editing a word can take it off the count, or put one on it.
             self.update_flagged_count()
@@ -1327,14 +1422,21 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         # retag_edits does with words a change brought in.
         old_text = first.text
         old_marks = set(first.edited_words)
+        old_highlights = set(first.highlighted_words)
 
         for caption in self.captions[start + 1 : end + 1]:
             old_marks = self.joined_edits(
                 old_marks, caption.edited_words, len(old_text.split())
             )
+            old_highlights = self.joined_edits(
+                old_highlights, caption.highlighted_words, len(old_text.split())
+            )
             old_text = "\n".join(part for part in (old_text, caption.text) if part)
 
         first.edited_words = self.retag_edits(old_text, merged, old_marks)
+        first.highlighted_words = self.carry_highlights(
+            old_text, merged, old_highlights
+        )
         first.text = merged
         first.end_time = last.end_time
 
@@ -1376,6 +1478,11 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         caption.edited_words = self.joined_edits(
             caption.edited_words,
             next_caption.edited_words,
+            len(caption.text.split()),
+        )
+        caption.highlighted_words = self.joined_edits(
+            caption.highlighted_words,
+            next_caption.highlighted_words,
             len(caption.text.split()),
         )
         # Only actually joined with a newline when both sides have text --
@@ -1424,6 +1531,11 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         previous_caption.edited_words = self.joined_edits(
             previous_caption.edited_words,
             caption.edited_words,
+            len(previous_caption.text.split()),
+        )
+        previous_caption.highlighted_words = self.joined_edits(
+            previous_caption.highlighted_words,
+            caption.highlighted_words,
             len(previous_caption.text.split()),
         )
         # See the equivalent join in merge_with_next for why this is not

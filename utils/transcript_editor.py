@@ -183,6 +183,14 @@ class TranscriptBody(
     def scroll_to_block(self, block_id: int) -> None:
         self.run_method("scrollToBlock", block_id)
 
+    def highlight_selection(self) -> None:
+        self.run_method("highlightSelection")
+
+    def select_range(
+        self, start_id: int, start_offset: int, end_id: int, end_offset: int
+    ) -> None:
+        self.run_method("selectRange", start_id, start_offset, end_id, end_offset)
+
     def focus_caret(self) -> None:
         self.run_method("focusCaret")
 
@@ -582,6 +590,9 @@ class TranscriptEditor:
         self.body.on("mergeblock", lambda event: self.merge(event.args))
         self.body.on("deleterange", lambda event: self.delete_range(event.args))
         self.body.on("moveword", lambda event: self.move_word(event.args))
+        self.body.on(
+            "togglehighlight", lambda event: self.toggle_highlight(event.args)
+        )
         self.body.on("addblock", lambda event: self.add_after(event.args))
         self.body.on("deleteblock", lambda event: self.delete(event.args))
         self.body.on("blockclick", lambda event: self.seek(event.args))
@@ -922,6 +933,73 @@ class TranscriptEditor:
         self.refresh()
         self.changed()
         self.focus(first.index, seam)
+
+    def highlight_selection(self) -> None:
+        """
+        What the toolbar's Highlight button does: ask the component for the
+        selection, which it reports as it does for the key.
+        """
+
+        if self.body is not None:
+            self.body.highlight_selection()
+
+    def toggle_highlight(self, args) -> None:
+        """
+        Highlight the words the reader has selected, or take it off.
+
+        The editor does the work and says whether it did anything; this only
+        turns the ranges the component measured into captions and puts the
+        selection back, since drawing the highlight rebuilds the blocks it
+        sits in and a selection does not survive that. Selecting it again is
+        what lets the same key undo what it just did.
+        """
+
+        raw = args.get("spans") if isinstance(args, dict) else None
+
+        if not isinstance(raw, list):
+            return
+
+        # Nothing selected, from the button: the editor says so.
+        if not raw:
+            self.editor.toggle_highlight([])
+            return
+
+        selections = []
+        spans = []
+
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+
+            caption = self.caption(self.block_id(item))
+            start, end = item.get("start"), item.get("end")
+
+            if (
+                caption is None
+                or isinstance(start, bool)
+                or isinstance(end, bool)
+                or not isinstance(start, int)
+                or not isinstance(end, int)
+            ):
+                continue
+
+            selections.append((caption, start, end))
+            spans.append((caption.index, start, end))
+
+        if not selections:
+            return
+
+        if not self.editor.toggle_highlight(selections):
+            return
+
+        self.refresh()
+        self.changed()
+
+        # Offsets are in the text, which a highlight does not change, so the
+        # selection can be put back exactly as it was.
+        if self.body is not None:
+            first, last = spans[0], spans[-1]
+            self.body.select_range(first[0], first[1], last[0], last[2])
 
     def move_word(self, args) -> None:
         """

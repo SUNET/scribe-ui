@@ -52,6 +52,13 @@ class SRTCaption:
         # and marked untouched words as edited.
         self.edited_words: Set[int] = set()
 
+        # Word positions the reader has highlighted for themselves, counted the
+        # same way. A note to self made while reviewing against the recording:
+        # it never changes the text, and it is kept apart from edited_words
+        # because the two mean different things and move differently when the
+        # text changes (see carry_highlights).
+        self.highlighted_words: Set[int] = set()
+
     def copy(self) -> "SRTCaption":
         """
         Create a deep copy of the caption.
@@ -71,6 +78,7 @@ class SRTCaption:
         # Copied rather than shared: the undo stack holds these snapshots, so
         # undoing a change has to take its marks back with it.
         new_caption.edited_words = set(self.edited_words)
+        new_caption.highlighted_words = set(self.highlighted_words)
         return new_caption
 
     def to_dict(self) -> Dict[str, Any]:
@@ -83,6 +91,11 @@ class SRTCaption:
             # Only when there are any, so a transcription nobody has touched
             # exports exactly as it did before this was recorded.
             **({"edited": sorted(self.edited_words)} if self.edited_words else {}),
+            **(
+                {"highlighted": sorted(self.highlighted_words)}
+                if self.highlighted_words
+                else {}
+            ),
         }
 
     def to_srt_format(self) -> str:

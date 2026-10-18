@@ -205,11 +205,11 @@ export default {
                 ><q-icon name="delete_outline" size="16px" /><q-tooltip>Delete caption</q-tooltip></div></div></div><div
               class="transcript-text"
               :data-id="block.id"
-            ><span v-for="(run, i) in block.runs" :key="i" :class="run.flag ? 'review-word' : (run.edit ? 'edit-word' : null)" :data-review="run.flag ? reviewLabel : null" :data-edit="editLabel" :aria-label="run.flag ? reviewLabel : (run.edit ? editLabel : null)" :data-s="run.s" :data-e="run.e">{{ run.t }}</span><br v-if="!block.runs || block.runs.length === 0"></div></div><div
+            ><span v-for="(run, i) in block.runs" :key="i" :class="runClass(run)" :role="run.hl ? 'mark' : null" :data-review="run.flag ? reviewLabel : null" :data-edit="editLabel" :aria-label="run.flag ? reviewLabel : (run.edit ? editLabel : null)" :data-s="run.s" :data-e="run.e">{{ run.t }}</span><br v-if="!block.runs || block.runs.length === 0"></div></div><div
             v-else
             class="transcript-text"
             :data-id="block.id"
-          ><span v-for="(run, i) in block.runs" :key="i" :class="run.flag ? 'review-word' : (run.edit ? 'edit-word' : null)" :data-review="run.flag ? reviewLabel : null" :data-edit="editLabel" :aria-label="run.flag ? reviewLabel : (run.edit ? editLabel : null)" :data-s="run.s" :data-e="run.e">{{ run.t }}</span><br v-if="!block.runs || block.runs.length === 0"></div></div></template></div>
+          ><span v-for="(run, i) in block.runs" :key="i" :class="runClass(run)" :role="run.hl ? 'mark' : null" :data-review="run.flag ? reviewLabel : null" :data-edit="editLabel" :aria-label="run.flag ? reviewLabel : (run.edit ? editLabel : null)" :data-s="run.s" :data-e="run.e">{{ run.t }}</span><br v-if="!block.runs || block.runs.length === 0"></div></div></template></div>
 
       <!-- Outside the contenteditable, or it would become editable content.
            Positioned against this component's own root rather than the
@@ -606,6 +606,110 @@ export default {
           return text.slice(from, to);
         })
         .join("\n");
+    },
+
+    // The classes a run is drawn with: which of the two word markings it
+    // carries (a word is never both), and whether the reader has highlighted
+    // it on top of that. The highlight is a class of its own so it can sit on
+    // a flagged or changed word without taking either marking away.
+    runClass(run) {
+      return [
+        run.flag ? "review-word" : run.edit ? "edit-word" : null,
+        run.hl ? "highlight-word" : null,
+      ];
+    },
+
+    // The selection as one range per block it reaches into, each as offsets
+    // in that block's own text -- what the server needs to say which words
+    // are taken. A selection inside one block is one entry; one that reaches
+    // across blocks is the tail of the first, all of those between, and the
+    // head of the last. Empty without a selection in the text. A caret with
+    // nothing selected is a range of nothing, which the server reads as the
+    // word the caret touches.
+    highlightSpans() {
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0) return [];
+
+      const range = selection.getRangeAt(0);
+      const first = this.blockOf(range.startContainer);
+      const last = this.blockOf(range.endContainer);
+
+      if (!first || !last) return [];
+
+      const start = this.offsetIn(first, range.startContainer, range.startOffset);
+      const end = this.offsetIn(last, range.endContainer, range.endOffset);
+
+      if (first === last) {
+        return [{ id: Number(first.dataset.id), start, end }];
+      }
+
+      const blocks = Array.from(
+        this.$refs.body?.querySelectorAll(".transcript-text") ?? []
+      );
+      const from = blocks.indexOf(first);
+      const to = blocks.indexOf(last);
+
+      if (from < 0 || to < 0) return [];
+
+      return blocks.slice(from, to + 1).map((block, at) => ({
+        id: Number(block.dataset.id),
+        start: at === 0 ? start : 0,
+        end: from + at === to ? end : this.plainText(block.textContent).length,
+      }));
+    },
+
+    // The toolbar's Highlight button: the same as the key, reading the
+    // selection as it is. The button does not take the selection with it --
+    // it does not take focus on a mouse press either (see the page) -- so
+    // this finds it where the reader left it. Nothing selected sends an empty
+    // list, which the server answers with the notice.
+    highlightSelection() {
+      this.flush();
+      this.$emit("togglehighlight", { spans: this.highlightSpans() });
+    },
+
+    // The text node and offset a block's character offset falls at. An
+    // offset past the end gives null, for the caller to treat as "the end".
+    pointAt(block, offset) {
+      const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+      let remaining = offset;
+      let node = walker.nextNode();
+
+      while (node) {
+        const length = node.textContent.length;
+        if (remaining <= length) return { node, offset: remaining };
+        remaining -= length;
+        node = walker.nextNode();
+      }
+
+      return null;
+    },
+
+    // Select a stretch of text again after a block has been rebuilt -- the
+    // selection a highlight was applied to does not survive the redraw, and
+    // the same key undoes it only while it is still there.
+    selectRange(startId, startOffset, endId, endOffset) {
+      this.$nextTick(() => {
+        const body = this.$refs.body;
+        const first = body?.querySelector(`.transcript-text[data-id="${startId}"]`);
+        const last = body?.querySelector(`.transcript-text[data-id="${endId}"]`);
+        if (!first || !last) return;
+
+        const from = this.pointAt(first, startOffset);
+        const to = this.pointAt(last, endOffset);
+        if (!from || !to) return;
+
+        const range = document.createRange();
+        range.setStart(from.node, from.offset);
+        range.setEnd(to.node, to.offset);
+
+        // preventScroll for the reason placeCaretAt gives.
+        body.focus({ preventScroll: true });
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        this.caretId = endId;
+      });
     },
 
     // The inverse of caret()'s own offset -- used to put the caret back
@@ -1717,6 +1821,26 @@ export default {
           this.flush();
           this.$emit("deleterange", { ...span, text: typed ? event.key : "" });
           return;
+        }
+      }
+
+      // Highlight the selection, or take the highlight off. Ctrl only and by
+      // physical key: Cmd+Shift+H is the browser's own Home on a Mac. Ahead
+      // of the block-scoped lists because a selection may reach across
+      // blocks, which those lists, working from the caret's block alone,
+      // cannot see. For transcriptions only, for now: subtitles are saved as
+      // plain SRT, which has nowhere to keep a highlight.
+      if (
+        !this.subtitleMode &&
+        event.ctrlKey &&
+        event.shiftKey &&
+        !event.altKey &&
+        !event.metaKey &&
+        event.code === "KeyH"
+      ) {
+        const spans = this.highlightSpans();
+        if (spans.length > 0) {
+          return this.report(event, "togglehighlight", { spans });
         }
       }
 

@@ -160,6 +160,29 @@ class ExportMixin:
     Export formats and the export dialog.
     """
 
+    def rtf_marks_available(self, others: list | None = None) -> tuple:
+        """
+        Whether there is anything for the RTF export to carry: (highlights,
+        changed words). Looked at across this editor and any others exported
+        along with it, so a bulk export offers a choice if any file has one.
+
+        Transcriptions only, for now: a set of subtitles does not carry its
+        marks into an export.
+        """
+
+        editors = [self] + list(others or [])
+        captions = [
+            caption
+            for editor in editors
+            if editor.data_format != "srt"
+            for caption in editor.captions
+        ]
+
+        return (
+            any(caption.highlighted_words for caption in captions),
+            any(caption.edited_words for caption in captions),
+        )
+
     def export_rtf(
         self,
         speakers: bool,
@@ -167,10 +190,23 @@ class ExportMixin:
         block_nr: bool,
         ts_which: str = "both",
         ts_fmt: str = "srt",
+        highlights: bool = False,
+        edits: bool = False,
     ) -> str:
         """
         Export captions to RTF format with proper Unicode handling.
+
+        `highlights` carries the reader's highlights as a yellow marker and
+        `edits` carries the words they changed, underlined and in the teal of
+        the editor's own marking -- underlined as well because a printout
+        may have no colour. Both are off by default, which is the clean
+        transcript: nothing about the text itself changes either way.
+
+        Transcriptions only, for now: subtitles never carry them.
         """
+
+        if self.data_format == "srt":
+            highlights = edits = False
 
         def fmt_ts(ts: str, f: str) -> str:
             """
@@ -210,8 +246,20 @@ class ExportMixin:
                     )
             return "".join(result)
 
+        # Colour 1 is the marker (pure yellow: it is what Word's own highlighter
+        # palette holds, so it is shown as drawn and not matched to the nearest
+        # colour), colour 2 the editor's teal for changed words. The table is
+        # only written when it is used, so a clean export is the document it
+        # always was.
+        colours = (
+            r"{\colortbl;\red255\green255\blue0;\red18\green121\blue106;}"
+            if highlights or edits
+            else ""
+        )
         rtf_content = (
-            r"{\rtf1\ansi\deff0{\fonttbl{\f0 Arial;}}" r"\viewkind4\uc1\pard\f0\fs20 "
+            r"{\rtf1\ansi\deff0{\fonttbl{\f0 Arial;}}"
+            + colours
+            + r"\viewkind4\uc1\pard\f0\fs20 "
         )
 
         parts = []
@@ -238,9 +286,24 @@ class ExportMixin:
             if header_parts:
                 rtf_data = r"\b " + " ".join(header_parts) + r"\b0\line "
 
-            rtf_data += (
-                to_rtf_unicode(caption.text).replace("\n", r"\line ") + r"\line\line "
-            )
+            for text, highlighted, edited in self.marked_spans(
+                caption, highlights, edits
+            ):
+                body = to_rtf_unicode(text).replace("\n", r"\line ")
+
+                if highlighted or edited:
+                    # A group, so the formatting ends with the piece. The one
+                    # space after a control word is its delimiter and is not
+                    # part of the text, so a piece that starts with a space
+                    # keeps it.
+                    style = (r"\highlight1" if highlighted else "") + (
+                        r"\cf2\ul" if edited else ""
+                    )
+                    body = "{" + style + " " + body + "}"
+
+                rtf_data += body
+
+            rtf_data += r"\line\line "
 
             parts.append(rtf_data)
 
@@ -542,6 +605,23 @@ class ExportMixin:
                                 rtf_idx_incl = ui.checkbox(
                                     "Include paragraph numbers", value=False
                                 )
+                                # Off by default: an export is clean unless
+                                # it is asked to carry the marks. And only
+                                # offered for a kind of mark that exists in
+                                # what is being exported -- a choice about
+                                # nothing is just clutter. Transcriptions
+                                # only, for now (see rtf_marks_available).
+                                has_highlights, has_edits = self.rtf_marks_available(
+                                    [editor for _, editor in bulk_editors or []]
+                                )
+                                rtf_hl_incl = ui.checkbox(
+                                    "Include highlights", value=False
+                                )
+                                rtf_hl_incl.set_visibility(has_highlights)
+                                rtf_edits_incl = ui.checkbox(
+                                    "Include my edits (underlined)", value=False
+                                )
+                                rtf_edits_incl.set_visibility(has_edits)
                                 ui.separator()
 
                             # CSV options (for csv only)
@@ -1007,6 +1087,14 @@ class ExportMixin:
                                             rtf_idx_incl.value,
                                             ts_which.value,
                                             ts_fmt.value,
+                                            highlights=bool(
+                                                rtf_hl_incl.visible
+                                                and rtf_hl_incl.value
+                                            ),
+                                            edits=bool(
+                                                rtf_edits_incl.visible
+                                                and rtf_edits_incl.value
+                                            ),
                                         )
                                     elif fmt.value == "txt":
                                         parts = []

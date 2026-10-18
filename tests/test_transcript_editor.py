@@ -2820,6 +2820,15 @@ class TestTheShortcutsDialog:
                 ],
             ),
             (
+                "Highlighting",
+                [
+                    (
+                        "Highlight selection, or remove the highlight",
+                        "Ctrl + Shift + H",
+                    ),
+                ],
+            ),
+            (
                 "File operations",
                 [
                     ("Save file", "Ctrl/⌘ + S"),
