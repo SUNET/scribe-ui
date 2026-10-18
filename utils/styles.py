@@ -2416,6 +2416,39 @@ theme_styles = """
         font-weight: 600;
     }
 
+    /* Where it will land if it is let go now, while it is being moved
+       (SUNET/scribe-ui#127): the same dashed brand line as the strip's own,
+       over the room it will take. Never the pointer's: it has to let the
+       drop through. Along the foot it is as tall as the page leaves room for
+       (see body.timeline-docked); back under the video it is as tall as the
+       strip and its legend were there, and in the page's flow, so what
+       moves out of its way is what will move for the strip. */
+    .speech-timeline-ghost {
+        box-sizing: border-box;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 2px dashed var(--color-brand-primary);
+        border-radius: 6px;
+        background-color: var(--color-bg-surface-hover);
+        color: var(--color-brand-primary);
+        font-size: 0.75rem;
+        font-weight: 600;
+        pointer-events: none;
+    }
+    .speech-timeline-ghost-rest {
+        width: 100%;
+    }
+    .speech-timeline-ghost-foot {
+        position: fixed;
+        /* left is set by the component, as for the strip itself. */
+        right: 0;
+        bottom: 0;
+        z-index: 899;
+        height: calc(9rem + 16px);
+        margin: 0 0.5rem 0.5rem;
+    }
+
     /* Where someone is talking, under the video. The colours are stated as
        custom properties because the canvas cannot read a stylesheet: the
        component asks for these by name at draw time, which is also what

@@ -2032,3 +2032,88 @@ class TestTheRuler:
 
         assert '"--timeline-ruler",' in source
         assert 'this.colour("--timeline-ruler"' in source
+
+
+class TestShowingWhereItWillLand:
+    """
+    While the strip is being moved with its grip, a placeholder shows where it
+    will land if it is let go now (SUNET/scribe-ui#127).
+    """
+
+    def source(self) -> str:
+        return pathlib.Path("utils/speech_timeline.js").read_text()
+
+    def test_there_is_one_only_where_it_is_not_already(self):
+        body = method(self.source(), "ghost() {")
+
+        assert "!this.dockDrag || this.dockDrag.willDock === this.docked" in body
+        assert 'return this.dockDrag.willDock ? "foot" : "rest";' in body
+
+    def test_the_one_along_the_foot_is_on_body_and_at_the_strips_own_left(self):
+        source = self.source()
+        foot = source[source.index("<Teleport to=\"body\">\n      <div\n        v-if=\"ghost === 'foot'\""):]
+        foot = foot[: foot.index("</Teleport>")]
+
+        assert 'aria-hidden="true"' in foot
+        assert ":style=\"{ left: dockLeft + 'px' }\"" in foot
+
+    def test_the_one_under_the_video_is_in_the_page_and_as_tall_as_the_strip_was(self):
+        source = self.source()
+        rest = source[source.index("v-if=\"ghost === 'rest'\""):]
+        rest = rest[: rest.index("</div>")]
+
+        assert 'aria-hidden="true"' in rest
+        assert ":style=\"{ height: restHeight + 'px' }\"" in rest
+        assert "wrap.offsetHeight" in method(source, "noteRestHeight() {")
+
+    def test_the_height_is_measured_only_where_the_strip_is_under_the_video(self):
+        source = self.source()
+
+        assert "if (this.docked || !wrap || !wrap.offsetHeight) return;" in method(
+            source, "noteRestHeight() {"
+        )
+        assert "this.noteRestHeight();" in method(source, "startDockDrag(event) {")
+        # Before docking, or the strip is already somewhere else.
+        body = method(source, "setDocked(willDock) {")
+
+        assert body.index("this.noteRestHeight();") < body.index("this.docked = willDock;")
+
+    def test_the_rail_is_looked_at_again_when_the_drag_starts(self):
+        """
+        It opens and closes, and the placeholder along the foot starts where
+        the strip would.
+        """
+
+        assert "this.followTheRail();" in method(self.source(), "startDockDrag(event) {")
+
+    def test_it_lets_the_drop_through(self):
+        from utils.styles import theme_styles
+
+        rule = theme_styles[theme_styles.index("    .speech-timeline-ghost {"):]
+        rule = rule[: rule.index("}")]
+
+        assert "pointer-events: none;" in rule
+        assert "border: 2px dashed var(--color-brand-primary);" in rule
+
+    def test_the_foot_is_as_tall_as_the_page_leaves_room_for(self):
+        from utils.styles import theme_styles
+
+        foot = theme_styles[theme_styles.index("    .speech-timeline-ghost-foot {"):]
+        foot = foot[: foot.index("}")]
+
+        assert "position: fixed;" in foot
+        assert "height: calc(9rem + 16px);" in foot
+        assert "padding-bottom: calc(9rem + 16px);" in theme_styles
+
+    def test_the_component_still_has_no_element_around_it(self):
+        """
+        Docked, nothing of it is left where it was: an empty element there
+        would take a gap in whatever column it sits in. The placeholder is a
+        sibling of the strip, and only while it is wanted.
+        """
+
+        source = self.source()
+        template = source[source.index("template: `"): source.index("  props: {")]
+
+        assert template.lstrip("template: `\n ").startswith('<Teleport to="body" :disabled="!docked">')
+        assert template.count("v-if=\"ghost ===") == 2

@@ -146,6 +146,7 @@ export default {
     <Teleport to="body" :disabled="!docked">
     <div
       class="speech-timeline-wrap"
+      ref="wrap"
       v-show="shown"
       :class="{
         'speech-timeline-docked': docked,
@@ -254,6 +255,20 @@ export default {
       <span class="sr-only" role="status" aria-live="polite" aria-atomic="true">{{ note }}</span>
     </div>
     </Teleport>
+    <div
+      v-if="ghost === 'rest'"
+      class="speech-timeline-ghost speech-timeline-ghost-rest"
+      aria-hidden="true"
+      :style="{ height: restHeight + 'px' }"
+    >Timeline goes here</div>
+    <Teleport to="body">
+      <div
+        v-if="ghost === 'foot'"
+        class="speech-timeline-ghost speech-timeline-ghost-foot"
+        aria-hidden="true"
+        :style="{ left: dockLeft + 'px' }"
+      >Timeline goes here</div>
+    </Teleport>
   `,
   props: {
     // [[start, end], ...] in seconds -- where someone is talking.
@@ -294,6 +309,11 @@ export default {
       // there would dock -- so the reader can see the answer before
       // committing to it.
       dockDrag: null,
+      // How tall the strip and its legend are where it sits under the video,
+      // for the placeholder that shows where it will land when it is on its
+      // way back there from the foot of the page -- see ghost. Measured
+      // whenever it is seen there; this is only what stands in until then.
+      restHeight: 160,
       // The caption under the pointer. Distinct from the caption being
       // played and from the one being edited: hovering one here must not
       // take the text editor's focus off another.
@@ -460,6 +480,16 @@ export default {
     window.removeEventListener("resize", this.followTheRail);
   },
   computed: {
+    // Where the strip would land if it were let go now, when that is not
+    // where it is: "foot" along the bottom of the window, "rest" back under
+    // the video, null when there is nothing to show (not being moved, or the
+    // pointer is over the place it is already in).
+    ghost() {
+      if (!this.dockDrag || this.dockDrag.willDock === this.docked) return null;
+
+      return this.dockDrag.willDock ? "foot" : "rest";
+    },
+
     // The caption being played. Worked out here rather than sent: it follows
     // from the position, which this component already has, and pushing it
     // from the server would be a round trip several times a second.
@@ -627,6 +657,8 @@ export default {
     // taking hold of a caption, and one gesture cannot mean two things.
     startDockDrag(event) {
       event.preventDefault();
+      this.noteRestHeight();
+      this.followTheRail();
       this.dockDrag = { willDock: this.docked };
       this.onDockDragMove(event);
     },
@@ -652,6 +684,7 @@ export default {
     setDocked(willDock) {
       if (willDock === this.docked) return;
 
+      this.noteRestHeight();
       this.docked = willDock;
       this.palette = null;
       this.markDocked();
@@ -659,6 +692,17 @@ export default {
 
       // A different width, and a different window across it.
       this.settle();
+    },
+
+    // How much room the strip and its legend take where they sit under the
+    // video. Only while they are there: docked, they are somewhere else and
+    // a different width.
+    noteRestHeight() {
+      const wrap = this.$refs.wrap;
+
+      if (this.docked || !wrap || !wrap.offsetHeight) return;
+
+      this.restHeight = wrap.offsetHeight;
     },
 
     // The same move as the grip, for whoever cannot drag. Docking teleports
