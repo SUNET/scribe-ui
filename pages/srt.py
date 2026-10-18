@@ -265,7 +265,10 @@ def create() -> None:
                     # is meant to act on is the first thing it would lose --
                     # the same reason the caption row's music-note icon
                     # prevents the default on mousedown.
-                    with ui.button("Highlight", icon="highlight").props(
+                    # sym_o_ is Quasar's prefix for Material Symbols Outlined, which
+                    # ships with NiceGUI and has the marker pen the plain
+                    # Material Icons "highlight" (a torch) does not.
+                    with ui.button("Highlight", icon="sym_o_format_ink_highlighter").props(
                         "flat aria-keyshortcuts=Control+Shift+H"
                     ).classes(
                         "editor-btn editor-toolbar-btn editor-quiet"

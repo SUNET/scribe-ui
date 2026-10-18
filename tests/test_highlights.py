@@ -897,16 +897,27 @@ class TestTheButton:
     def test_it_is_in_the_toolbar_for_transcriptions_only(self):
         page = self.page()
         validate = page.index('with ui.button("Validate", icon="check")')
-        highlight = page.index('with ui.button("Highlight", icon="highlight")')
+        highlight = page.index('with ui.button("Highlight", icon="sym_o_format_ink_highlighter")')
 
         # After Validate's own branch, in the else of the same test.
         between = page[validate:highlight]
 
         assert between.count("\n                else:\n") == 1
 
+    def test_it_has_a_marker_pen_and_not_the_torch(self):
+        """
+        The plain Material Icons "highlight" is a torch. The marker pen is in
+        Material Symbols Outlined, which ships with NiceGUI.
+        """
+
+        page = self.page()
+
+        assert 'icon="sym_o_format_ink_highlighter"' in page
+        assert 'icon="highlight"' not in page
+
     def test_it_is_a_labelled_quiet_toolbar_button_naming_its_key(self):
         page = self.page()
-        start = page.index('with ui.button("Highlight", icon="highlight")')
+        start = page.index('with ui.button("Highlight", icon="sym_o_format_ink_highlighter")')
         button = page[start : start + 1400]
 
         assert "aria-keyshortcuts=Control+Shift+H" in button
@@ -915,14 +926,14 @@ class TestTheButton:
 
     def test_a_mouse_press_does_not_take_the_selection_with_it(self):
         page = self.page()
-        start = page.index('with ui.button("Highlight", icon="highlight")')
+        start = page.index('with ui.button("Highlight", icon="sym_o_format_ink_highlighter")')
         button = page[start : start + 1400]
 
         assert '"mousedown", js_handler="(event) => event.preventDefault()"' in button
 
     def test_a_click_is_the_same_as_the_key(self):
         page = self.page()
-        start = page.index('with ui.button("Highlight", icon="highlight")')
+        start = page.index('with ui.button("Highlight", icon="sym_o_format_ink_highlighter")')
         button = page[start : start + 1400]
 
         assert '"click", lambda: transcript.highlight_selection()' in button
