@@ -282,51 +282,6 @@ export default {
           />
         </div>
       </div>
-      <!-- A comment, opened beside the words it is on. Outside the
-           contenteditable for the same reason as the menu above, and placed
-           the same way (against this component's own root). A dialog without
-           a backdrop: the reader can still see and click the text it is about,
-           and what they typed is kept when they do (see leaveComment). -->
-      <div
-        v-if="comment.open"
-        class="comment-box"
-        role="dialog"
-        aria-label="Comment"
-        :style="{ top: comment.y + 'px', left: comment.x + 'px' }"
-        @click.stop
-        @focusin="comment.peek = false"
-        @keydown="onCommentKeydown($event)"
-        @focusout="onCommentFocusOut($event)"
-      >
-        <div class="comment-box-quote">{{ comment.quote }}</div>
-        <textarea
-          ref="commentText"
-          class="comment-box-text"
-          rows="3"
-          maxlength="1000"
-          :aria-label="'Comment on ' + comment.quote"
-          v-model="comment.text"
-        ></textarea>
-        <div class="comment-box-actions">
-          <q-btn
-            v-if="comment.existing"
-            flat
-            dense
-            no-caps
-            label="Remove"
-            class="comment-box-remove"
-            @click="removeComment"
-          />
-          <q-btn flat dense no-caps label="Cancel" @click="cancelComment" />
-          <q-btn
-            dense
-            no-caps
-            label="Save"
-            :disable="!comment.text.trim()"
-            @click="saveComment"
-          />
-        </div>
-      </div>
     </div>
   `,
   props: {
@@ -497,23 +452,6 @@ export default {
       stamps: {},
       timed: [],
       menu: { open: false, x: 0, y: 0, id: null, speaker: null },
-      // The comment box. peek is a box opened by a click on commented text:
-      // it shows the comment without taking focus from the text, and goes
-      // away at the next key or click. Opened from the key or the button it
-      // takes focus, and keeps what is typed until it is saved or cancelled.
-      comment: {
-        open: false,
-        x: 0,
-        y: 0,
-        id: null,
-        start: 0,
-        end: 0,
-        text: "",
-        original: "",
-        quote: "",
-        existing: false,
-        peek: false,
-      },
       // The block the caret is in, so the caption being edited can look
       // like it. Purely presentational, and separate from activeId, which
       // is the caption the recording is playing -- the reader is very
@@ -555,7 +493,6 @@ export default {
     this.onTime = () => this.markCurrentWord();
     this.onOutside = (event) => {
       if (!event.target.closest(".speaker-menu")) this.closeMenu();
-      if (!event.target.closest(".comment-box")) this.leaveComment();
     };
     this.onEscape = (event) => {
       if (event.key === "Escape") this.closeMenu(true);
@@ -735,159 +672,44 @@ export default {
 
     // The toolbar's Comment button, and the key: ask the server to open the
     // comment on the selected words. The server decides what that means --
-    // a new comment, or the one the words already have -- and answers with
-    // showComment.
+    // a new comment, or the one the words already have -- and shows it in the
+    // comments panel under the video.
     commentSelection() {
       this.flush();
       this.$emit("opencomment", { spans: this.highlightSpans() });
     },
 
-    // Open the comment box beside a stretch of a block's text. `payload` is
-    // what the server worked out: the block, the character range the comment
-    // is on, its text so far, whether it already exists, and whether the box
-    // should take focus (not when it was only clicked on).
-    showComment(payload) {
-      this.$nextTick(() => {
-        const block = this.$refs.body?.querySelector(
-          `.transcript-text[data-id="${payload.id}"]`
-        );
-        if (!block) return;
-
-        const from = this.pointAt(block, payload.start);
-        const to = this.pointAt(block, payload.end);
-        if (!from || !to) return;
-
-        const range = document.createRange();
-        range.setStart(from.node, from.offset);
-        range.setEnd(to.node, to.offset);
-
-        // Under the last line of the words, so the box does not cover them.
-        const rects = range.getClientRects();
-        const box = rects.length ? rects[rects.length - 1] : range.getBoundingClientRect();
-        const root = this.$el.getBoundingClientRect();
-
-        // Estimates, only used to keep the box on screen: its width follows
-        // the stylesheet, and its height is a few lines of text and a row of
-        // buttons.
-        const width = 304;
-        const height = 190;
-        const gap = 6;
-        const edge = 8;
-
-        const x = Math.max(edge, Math.min(box.left, window.innerWidth - edge - width));
-        let y = box.bottom + gap;
-        if (y + height > window.innerHeight - edge) {
-          y = Math.max(edge, box.top - gap - height);
-        }
-
-        const quote = this.plainText(block.textContent).slice(payload.start, payload.end);
-
-        this.comment = {
-          open: true,
-          x: x - root.left,
-          y: y - root.top,
-          id: payload.id,
-          start: payload.start,
-          end: payload.end,
-          text: payload.text,
-          original: payload.text,
-          quote: quote.length > 60 ? quote.slice(0, 59) + "\u2026" : quote,
-          existing: !!payload.existing,
-          peek: !payload.focus,
-        };
-
-        if (payload.focus) {
-          this.$nextTick(() => {
-            const area = this.$refs.commentText;
-            if (!area) return;
-            area.focus();
-            area.setSelectionRange(area.value.length, area.value.length);
-          });
-        }
-      });
-    },
-
-    closeComment() {
-      this.comment = { ...this.comment, open: false, peek: false };
-    },
-
-    // Put the reader's selection back on the words, the way it was when the
-    // box opened, so they carry on from where they were.
-    returnToComment() {
-      const { id, start, end } = this.comment;
-      this.selectRange(id, start, id, end);
-    },
-
-    saveComment() {
-      const text = this.comment.text.trim();
-      if (!this.comment.open || !text) return;
-
-      const { id, start, end } = this.comment;
-      this.returnToComment();
-      this.closeComment();
-      this.$emit("savecomment", { id, start, end, text });
-    },
-
-    removeComment() {
-      if (!this.comment.open) return;
-
-      const { id, start, end } = this.comment;
-      this.returnToComment();
-      this.closeComment();
-      this.$emit("removecomment", { id, start, end });
-    },
-
-    cancelComment() {
-      if (!this.comment.open) return;
-
-      this.returnToComment();
-      this.closeComment();
-    },
-
-    // The reader moved on without choosing: a click elsewhere, or tabbing out
-    // of the box. What they typed is not thrown away -- it is saved, if there
-    // is something to save and it is not what was there. Escape, and Cancel,
-    // are how to abandon it. A peek has nothing typed in it to save.
-    leaveComment() {
-      if (!this.comment.open) return;
-
-      const text = this.comment.text.trim();
-
-      if (!this.comment.peek && text && text !== this.comment.original.trim()) {
-        const { id, start, end } = this.comment;
-        this.closeComment();
-        // stay: the reader has already put the caret somewhere else, and the
-        // redraw must not take it back to these words.
-        this.$emit("savecomment", { id, start, end, text, stay: true });
-        return;
+    // The comment the caret is in, as the block and the comment's number in
+    // it -- what the comments panel under the video follows. Nothing for a
+    // selection, or a caret in words that have no comment.
+    commentAtCaret() {
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0 || !selection.isCollapsed) {
+        return null;
       }
 
-      this.closeComment();
+      const node = selection.anchorNode;
+      const element = node && (node.nodeType === 1 ? node : node.parentElement);
+      const word = element?.closest?.("[data-comment]");
+      const block = element ? this.blockOf(element) : null;
+
+      if (!word || !block) return null;
+
+      return { id: Number(block.dataset.id), cm: Number(word.dataset.comment) };
     },
 
-    // Every key typed in the box stays in it: the page has shortcuts of its
-    // own (undo, save, play) that would otherwise act on the transcript while
-    // a sentence is being written. Escape abandons the comment and
-    // Ctrl/Cmd+Enter saves it.
-    onCommentKeydown(event) {
-      event.stopPropagation();
+    // Tell the server when the caret comes into a different comment, so the
+    // panel can show it. Said once per comment rather than per key, and again
+    // for a click, which also opens the panel if it is shut -- an arrow key
+    // that happens to cross a commented word does not.
+    reportCommentCaret(clicked = false) {
+      const at = this.commentAtCaret();
+      const key = at ? `${at.id}:${at.cm}` : null;
 
-      if (event.key === "Escape") {
-        event.preventDefault();
-        this.cancelComment();
-      } else if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
-        event.preventDefault();
-        this.saveComment();
-      }
-    },
+      if (key === this.lastCommentKey && !clicked) return;
+      this.lastCommentKey = key;
 
-    onCommentFocusOut(event) {
-      const next = event.relatedTarget;
-      if (next && event.currentTarget.contains(next)) return;
-      // Focus leaving the box for nowhere in particular (the window losing
-      // focus, say) is not the reader choosing anything.
-      if (!next) return;
-      this.leaveComment();
+      if (at) this.$emit("caretcomment", { ...at, click: clicked });
     },
 
     // The text node and offset a block's character offset falls at. An
@@ -1444,6 +1266,7 @@ export default {
       const at = this.caret();
       this.caretId = at ? at.id : null;
       if (at) this.lastCaret = { id: at.id, offset: at.offset };
+      this.reportCommentCaret();
     },
 
     // Leaving the editor sends whatever was pending and takes the editing
@@ -2083,10 +1906,6 @@ export default {
         }
       }
 
-      // A box opened by a click was only there to be read; the reader typing
-      // on has done with it.
-      if (this.comment.open && this.comment.peek) this.closeComment();
-
       const at = this.caret();
       if (!at) return;
 
@@ -2309,22 +2128,6 @@ export default {
       const block = this.blockOf(event.target);
       if (!block) return;
 
-      // A click on commented words shows the comment beside them. The server
-      // knows what it says and answers with showComment; nothing here changes
-      // where the caret is.
-      // Not at the end of a drag: someone selecting words to copy them is not
-      // asking to read the note.
-      if (
-        event.target.closest("[data-comment]") &&
-        !this.subtitleMode &&
-        window.getSelection()?.isCollapsed
-      ) {
-        const where = this.caret();
-        if (where && where.id === Number(block.dataset.id)) {
-          this.$emit("peekcomment", { id: where.id, offset: where.offset });
-        }
-      }
-
       // Where in the block the caret landed, so the recording can be moved to
       // that word rather than to the start of the block. The browser places
       // the caret on mousedown, so it is already correct by the time click
@@ -2333,6 +2136,7 @@ export default {
       const at = this.caret();
 
       this.caretId = id;
+      this.reportCommentCaret(true);
 
       this.$emit("blockclick", {
         id,

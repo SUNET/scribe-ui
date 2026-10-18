@@ -1444,7 +1444,10 @@ theme_styles = """
 
     /* A comment. The words it is on are underlined with a dotted line: a
        pattern rather than a colour alone (1.4.1), and a different one from
-       the solid bars of the flagged and changed words. It is drawn with
+       the solid bars of the flagged and changed words. It is 3px thick and
+       sits 4px below the text, clear of the highlight's own frame lines:
+       a thinner line closer in was lost against them on words that are
+       both highlighted and commented. It is drawn with
        text-decoration, so it needs no room of its own, shows on any wash a
        word can have, and leaves the box-shadows that draw the other markings
        alone. Nothing is added to the line: a marker after the last word
@@ -1452,59 +1455,10 @@ theme_styles = """
     .comment-word {
         text-decoration-line: underline;
         text-decoration-style: dotted;
-        text-decoration-thickness: 2px;
+        text-decoration-thickness: 3px;
         text-decoration-color: var(--color-comment-line);
-        text-underline-offset: 3px;
+        text-underline-offset: 4px;
         text-decoration-skip-ink: none;
-    }
-
-    /* The box a comment is written and read in. Absolute against the
-       component's own root, like the speaker menu. */
-    .comment-box {
-        position: absolute;
-        z-index: 9500;
-        box-sizing: border-box;
-        width: 19rem;
-        max-width: calc(100% - 1rem);
-        padding: 0.5rem 0.75rem 0.5rem;
-        border-radius: 4px;
-        background-color: var(--color-bg-surface);
-        color: var(--color-text-primary);
-        border: 1px solid var(--color-border-subtle);
-        border-left: 4px solid var(--color-comment-line);
-        box-shadow: 0 4px 14px var(--color-shadow-medium);
-        font-size: 0.95rem;
-    }
-    .comment-box-quote {
-        margin-bottom: 0.35rem;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        color: var(--color-text-muted);
-        font-size: 0.85rem;
-    }
-    .comment-box-text {
-        display: block;
-        box-sizing: border-box;
-        width: 100%;
-        min-height: 4.5rem;
-        padding: 0.35rem 0.5rem;
-        resize: vertical;
-        border: 1px solid var(--color-border-subtle);
-        border-radius: 4px;
-        background-color: var(--color-bg-surface);
-        color: var(--color-text-primary);
-        font: inherit;
-    }
-    .comment-box-actions {
-        display: flex;
-        flex-wrap: wrap;
-        justify-content: flex-end;
-        gap: 0.25rem;
-        margin-top: 0.4rem;
-    }
-    .comment-box-remove {
-        margin-right: auto;
     }
 
     /* Shared hover message. A CSS box rather than title=, which the browser
@@ -2002,6 +1956,33 @@ theme_styles = """
     }
     .validation-panel.is-muted {
         --vp-tone: var(--color-border-subtle);
+    }
+    /* The comments panel, a sibling of this one: the colour of the underline
+       on the words it is about, which is also the one colour in the editor
+       that means nothing else (blue is the playing word, and the
+       progress marks). */
+    .validation-panel.is-comment {
+        --vp-tone: var(--color-comment-line);
+    }
+    .comments-panel-words {
+        max-width: 100%;
+    }
+    .comments-panel-words .q-btn__content {
+        text-align: left;
+        white-space: normal;
+    }
+    .comments-panel-text {
+        margin-top: 8px;
+    }
+    .comments-panel-actions {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 4px;
+        margin-top: 4px;
+    }
+    .comments-panel-remove {
+        margin-right: auto;
     }
     /* Which kinds of issue are stepped through: a row of checkboxes under
        the panel, ticked while that kind is shown. */

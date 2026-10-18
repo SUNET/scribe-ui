@@ -37,6 +37,7 @@ from utils.srt import (
     TIMELINE_SHOW_KEY,
 )
 from utils.speech_timeline import SpeechTimeline
+from utils.comments_panel import CommentsPanel
 from utils.validation_panel import ValidationPanel
 from utils.transcript_editor import TranscriptEditor
 from utils.video import create_video_proxy
@@ -974,3 +975,12 @@ def create() -> None:
                             transcript.on_caret = (
                                 editor.validation_panel.follow_caret
                             )
+                        else:
+                            # Its counterpart in a transcription: the card
+                            # where comments are written and read, drawn like
+                            # the validation card and following the caret the
+                            # same way. Shut until needed -- except in a file
+                            # that already has comments, which opens on the
+                            # first.
+                            transcript.comments_panel = CommentsPanel(transcript)
+                            transcript.comments_panel.open_first()

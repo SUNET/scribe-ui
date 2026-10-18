@@ -820,17 +820,53 @@ class TestOfferingThem:
 class FakeBody:
     def __init__(self):
         self.selected = []
-        self.shown = []
+        self.scrolled = []
         self.asked = 0
+        self.caret_asked = 0
 
     def comment_selection(self):
         self.asked += 1
 
-    def show_comment(self, payload):
-        self.shown.append(payload)
-
     def select_range(self, *args):
         self.selected.append(args)
+
+    def scroll_to_block(self, block_id):
+        self.scrolled.append(block_id)
+
+    def focus_caret(self):
+        self.caret_asked += 1
+
+
+class Element:
+    """
+    Just enough of a NiceGUI element to see what the panel did to it.
+    """
+
+    def __init__(self, value=""):
+        self.value = value
+        self.text = ""
+        self.enabled = True
+        self.visible = True
+        self.properties = []
+
+    def set_value(self, value):
+        self.value = value
+
+    def set_text(self, text):
+        self.text = text
+
+    def set_enabled(self, enabled):
+        self.enabled = enabled
+
+    def set_visibility(self, visible):
+        self.visible = visible
+
+    def props(self, props):
+        self.properties.append(props)
+
+
+class FakePanel:
+    pass
 
 
 @pytest.fixture
@@ -844,81 +880,504 @@ def view(editor, monkeypatch):
     return view
 
 
-class TestTheShortcutsDialog:
-    def groups(self, data_format):
-        return dict(make_editor(data_format).keyboard_shortcut_groups())
+@pytest.fixture
+def panel(view, editor, monkeypatch):
+    from utils.comments_panel import CommentsPanel
 
-    def test_a_transcription_lists_it(self):
-        assert self.groups("txt")["Comments"] == [
-            ("Comment on the selection, or open its comment", "Ctrl + Shift + K"),
-            ("Save the comment you are writing", "Ctrl/⌘ + Enter"),
-            ("Close the comment without saving", "Esc"),
-        ]
+    built = CommentsPanel.__new__(CommentsPanel)
+    built.transcript = view
+    built.current = None
+    built.pending = None
 
-    def test_subtitles_do_not_for_now(self):
-        assert "Comments" not in self.groups("srt")
+    for name in (
+        "container",
+        "heading",
+        "position_label",
+        "spoken",
+        "previous",
+        "next",
+        "words_button",
+        "detail",
+        "remove_button",
+        "cancel_button",
+        "save_button",
+    ):
+        setattr(built, name, Element())
+
+    built.container.visible = False
+    built.text = Element("")
+    built.focused = 0
+    built.focus_text = lambda: setattr(built, "focused", built.focused + 1)
+    monkeypatch.setattr(
+        CommentsPanel, "focus", staticmethod(lambda element: None)
+    )
+    view.comments_panel = built
+
+    return built
 
 
-class TestOpeningTheBox:
-    def test_the_events_reach_the_view(self):
-        source = pathlib.Path("utils/transcript_editor.py").read_text()
+class TestThePanel:
+    """
+    The card under the video where a comment is written, read and changed.
+    """
 
-        for event, handler in (
-            ("opencomment", "open_comment"),
-            ("peekcomment", "peek_comment"),
-            ("savecomment", "save_comment"),
-            ("removecomment", "remove_comment"),
-        ):
-            assert (
-                f'self.body.on("{event}", lambda event: self.{handler}(event.args))'
-                in source
-            )
+    def type(self, panel, text):
+        panel.text.value = text
 
-    def test_a_new_comment_opens_empty_with_focus_on_the_words(self, view):
-        view.open_comment({"spans": [{"id": 1, "start": 5, "end": 9}]})
+    def test_a_new_comment_opens_empty_on_the_words_with_focus(self, panel, editor):
+        assert panel.open_for(editor.captions[0], 5, 9) is True
 
-        assert view.body.shown == [
-            {
-                "id": 1,
-                "start": 4,
-                "end": 11,
-                "text": "",
-                "existing": False,
-                "focus": True,
-            }
-        ]
+        assert panel.container.visible is True
+        assert panel.pending == (editor.captions[0], 4, 11)
+        assert panel.text.value == ""
+        assert panel.heading.text == "New comment"
+        assert panel.words_button.text == "\u201ctv\u00e5 tre\u201d"
+        assert panel.detail.text == "Paragraph 1"
+        assert panel.focused == 1
 
-    def test_it_changes_nothing_by_itself(self, view, editor):
-        view.open_comment({"spans": [{"id": 1, "start": 5, "end": 9}]})
+    def test_opening_changes_nothing_by_itself(self, panel, editor):
+        panel.open_for(editor.captions[0], 5, 9)
 
         assert editor.captions[0].comments == []
         assert editor.snapshots == 0
-        assert view.refreshed == 0
+        assert panel.transcript.refreshed == 0
 
-    def test_words_with_a_comment_open_it_with_its_text_and_range(self, view, editor):
+    def test_the_words_of_an_existing_comment_open_it_with_its_text(
+        self, panel, editor
+    ):
         editor.captions[0].comments = [comment({1, 2}, "there")]
 
-        view.open_comment({"spans": [{"id": 1, "start": 5, "end": 5}]})
+        panel.open_for(editor.captions[0], 5, 5)
 
-        assert view.body.shown[0]["text"] == "there"
-        assert view.body.shown[0]["existing"] is True
-        assert (view.body.shown[0]["start"], view.body.shown[0]["end"]) == (4, 11)
+        assert panel.pending is None
+        assert panel.current[1] is editor.captions[0].comments[0]
+        assert panel.text.value == "there"
+        assert panel.heading.text == "Comment 1 of 1"
+        assert panel.focused == 1
 
-    def test_nothing_selected_says_so(self, view, editor):
+    def test_no_word_means_nothing_opens(self, panel, editor):
+        editor.captions[0].text = "ett  tre"
+
+        assert panel.open_for(editor.captions[0], 4, 4) is False
+        assert panel.container.visible is False
+
+    def test_the_heading_says_where_it_is_among_all_the_comments(self, panel, editor):
+        editor.captions[0].comments = [comment({0}, "a"), comment({2}, "b")]
+        editor.captions[1].comments = [comment({1}, "c")]
+
+        panel.show(editor.captions[1], editor.captions[1].comments[0])
+
+        assert panel.heading.text == "Comment 3 of 3"
+        assert panel.position_label.text == "3 of 3"
+        assert panel.spoken.text == "Comment 3 of 3."
+        assert panel.previous.enabled is True
+        assert panel.next.enabled is False
+
+    def test_drawing_it_scrolls_the_text_to_the_words_unless_told_not_to(
+        self, panel, editor
+    ):
+        editor.captions[1].comments = [comment({1}, "c")]
+
+        panel.show(editor.captions[1], editor.captions[1].comments[0])
+        panel.show(editor.captions[1], editor.captions[1].comments[0], scroll=False)
+
+        assert panel.transcript.body.scrolled == [2]
+
+    def test_saving_a_new_comment_puts_it_on_the_words_and_goes_back_to_them(
+        self, panel, editor
+    ):
+        panel.open_for(editor.captions[0], 5, 9)
+        self.type(panel, "  check this  ")
+
+        panel.save()
+
+        assert shape(editor.captions[0]) == [([1, 2], "check this")]
+        assert panel.pending is None
+        assert panel.current[1] is editor.captions[0].comments[0]
+        assert panel.transcript.refreshed == 1
+        assert panel.transcript.body.selected == [(1, 4, 1, 11)]
+        assert panel.heading.text == "Comment 1 of 1"
+
+    def test_saving_nothing_does_nothing(self, panel, editor):
+        panel.open_for(editor.captions[0], 5, 9)
+        self.type(panel, "   ")
+
+        panel.save()
+
+        assert editor.captions[0].comments == []
+        assert panel.pending is not None
+        assert panel.transcript.refreshed == 0
+
+    def test_save_cannot_be_pressed_with_nothing_typed(self, panel, editor):
+        panel.open_for(editor.captions[0], 5, 9)
+
+        assert panel.save_button.enabled is False
+
+        self.type(panel, "x")
+        panel.value_changed()
+
+        assert panel.save_button.enabled is True
+
+    def test_saving_a_changed_text_changes_that_comment(self, panel, editor):
+        editor.captions[0].comments = [comment({1}, "old")]
+        panel.open_for(editor.captions[0], 5, 5)
+        self.type(panel, "new")
+
+        panel.save()
+
+        assert shape(editor.captions[0]) == [([1], "new")]
+        assert panel.transcript.body.selected == [(1, 4, 1, 7)]
+
+    def test_cancelling_a_new_comment_makes_none_and_goes_back_to_the_words(
+        self, panel, editor
+    ):
+        panel.open_for(editor.captions[0], 5, 9)
+        self.type(panel, "abandoned")
+
+        panel.cancel()
+
+        assert editor.captions[0].comments == []
+        assert panel.pending is None
+        assert panel.container.visible is False
+        assert panel.transcript.body.selected == [(1, 4, 1, 11)]
+
+    def test_cancelling_a_new_comment_goes_back_to_the_one_that_was_on_show(
+        self, panel, editor
+    ):
+        editor.captions[0].comments = [comment({0}, "there")]
+        panel.show(editor.captions[0], editor.captions[0].comments[0])
+        panel.open_for(editor.captions[1], 0, 4)
+
+        panel.cancel()
+
+        assert panel.container.visible is True
+        assert panel.text.value == "there"
+        assert panel.heading.text == "Comment 1 of 1"
+
+    def test_cancelling_a_change_puts_the_old_text_back(self, panel, editor):
+        editor.captions[0].comments = [comment({1}, "old")]
+        panel.open_for(editor.captions[0], 5, 5)
+        self.type(panel, "typed over")
+
+        panel.cancel()
+
+        assert panel.text.value == "old"
+        assert shape(editor.captions[0]) == [([1], "old")]
+        assert panel.transcript.body.selected == [(1, 4, 1, 7)]
+
+    def test_removing_takes_the_comment_off_and_shows_the_next(self, panel, editor):
+        editor.captions[0].comments = [comment({0}, "a"), comment({2}, "b")]
+        panel.open_for(editor.captions[0], 0, 3)
+
+        panel.remove()
+
+        assert shape(editor.captions[0]) == [([2], "b")]
+        assert panel.current[1].text == "b"
+        assert panel.heading.text == "Comment 1 of 1"
+        assert panel.transcript.body.selected == [(1, 0, 1, 3)]
+
+    def test_removing_the_last_one_puts_the_panel_away(self, panel, editor):
+        editor.captions[0].comments = [comment({0}, "a")]
+        panel.open_for(editor.captions[0], 0, 3)
+
+        panel.remove()
+
+        assert editor.captions[0].comments == []
+        assert panel.container.visible is False
+        assert panel.current is None
+
+    def test_a_comment_not_yet_made_cannot_be_removed(self, panel, editor):
+        panel.open_for(editor.captions[0], 5, 9)
+
+        panel.remove()
+
+        assert editor.snapshots == 0
+        assert panel.pending is not None
+
+    def test_closing_keeps_what_was_typed_and_goes_back_to_the_words(
+        self, panel, editor
+    ):
+        panel.open_for(editor.captions[0], 5, 9)
+        self.type(panel, "kept")
+
+        panel.close()
+
+        assert shape(editor.captions[0]) == [([1, 2], "kept")]
+        assert panel.container.visible is False
+        assert panel.transcript.body.selected[-1] == (1, 4, 1, 11)
+
+    def test_closing_with_nothing_typed_makes_nothing(self, panel, editor):
+        panel.open_for(editor.captions[0], 5, 9)
+
+        panel.close()
+
+        assert editor.captions[0].comments == []
+        assert panel.container.visible is False
+
+    def test_the_arrows_step_through_every_comment_in_the_order_of_the_text(
+        self, panel, editor
+    ):
+        editor.captions[0].comments = [comment({0}, "a"), comment({2}, "b")]
+        editor.captions[1].comments = [comment({1}, "c")]
+        panel.show(editor.captions[0], editor.captions[0].comments[0])
+
+        panel.go_next()
+        assert panel.text.value == "b"
+        panel.go_next()
+        assert panel.text.value == "c"
+        assert panel.heading.text == "Comment 3 of 3"
+        panel.go_next()
+        assert panel.text.value == "c"
+        panel.go_previous()
+        assert panel.text.value == "b"
+
+    def test_stepping_keeps_what_was_typed(self, panel, editor):
+        editor.captions[0].comments = [comment({0}, "a"), comment({2}, "b")]
+        panel.show(editor.captions[0], editor.captions[0].comments[0])
+        self.type(panel, "a, rewritten")
+
+        panel.go_next()
+
+        assert shape(editor.captions[0]) == [([0], "a, rewritten"), ([2], "b")]
+
+    def test_a_comment_being_written_cannot_be_stepped_away_from(self, panel, editor):
+        editor.captions[0].comments = [comment({0}, "a")]
+        panel.open_for(editor.captions[1], 0, 4)
+        self.type(panel, "half written")
+
+        panel.go_next()
+        panel.go_previous()
+
+        assert panel.pending is not None
+        assert panel.text.value == "half written"
+        assert panel.previous.enabled is False and panel.next.enabled is False
+
+    def test_the_words_button_selects_them_and_scrolls_to_them(self, panel, editor):
+        editor.captions[1].comments = [comment({1}, "c")]
+        panel.show(editor.captions[1], editor.captions[1].comments[0], scroll=False)
+
+        panel.go_to_words()
+
+        assert panel.transcript.body.scrolled == [2]
+        assert panel.transcript.body.selected == [(2, 5, 2, 8)]
+
+    def test_a_file_with_comments_opens_on_the_first_without_taking_focus(
+        self, panel, editor
+    ):
+        editor.captions[1].comments = [comment({1}, "c")]
+
+        panel.open_first()
+
+        assert panel.container.visible is True
+        assert panel.text.value == "c"
+        assert panel.focused == 0
+        assert panel.transcript.body.scrolled == []
+
+    def test_a_file_without_comments_leaves_it_shut(self, panel, editor):
+        panel.open_first()
+
+        assert panel.container.visible is False
+
+
+class TestFollowingTheCaret:
+    def one(self, editor):
+        editor.captions[0].comments = [comment({0}, "a")]
+        editor.captions[1].comments = [comment({1}, "b")]
+
+        return editor.captions[0].comments[0], editor.captions[1].comments[0]
+
+    def test_a_click_on_commented_words_opens_a_shut_panel_on_the_comment(
+        self, panel, editor
+    ):
+        first, _ = self.one(editor)
+
+        panel.follow(editor.captions[0], first, click=True)
+
+        assert panel.container.visible is True
+        assert panel.text.value == "a"
+        assert panel.focused == 0
+
+    def test_a_key_that_crosses_commented_words_does_not_open_a_shut_panel(
+        self, panel, editor
+    ):
+        first, _ = self.one(editor)
+
+        panel.follow(editor.captions[0], first, click=False)
+
+        assert panel.container.visible is False
+
+    def test_an_open_panel_follows_the_caret_from_comment_to_comment(
+        self, panel, editor
+    ):
+        first, second = self.one(editor)
+        panel.show(editor.captions[0], first)
+
+        panel.follow(editor.captions[1], second, click=False)
+
+        assert panel.text.value == "b"
+        assert panel.heading.text == "Comment 2 of 2"
+
+    def test_following_does_not_scroll_the_text_under_the_caret(self, panel, editor):
+        first, second = self.one(editor)
+        panel.show(editor.captions[0], first, scroll=False)
+
+        panel.follow(editor.captions[1], second, click=True)
+
+        assert panel.transcript.body.scrolled == []
+
+    def test_the_comment_already_on_show_is_left_alone(self, panel, editor):
+        first, _ = self.one(editor)
+        panel.show(editor.captions[0], first)
+        self.draws = 0
+        panel.draw = lambda **k: setattr(self, "draws", self.draws + 1)
+        panel.text.value = "typing in it"
+
+        panel.follow(editor.captions[0], first, click=True)
+
+        assert self.draws == 0
+        assert panel.text.value == "typing in it"
+
+    def test_what_was_typed_is_kept_when_the_caret_moves_on(self, panel, editor):
+        first, second = self.one(editor)
+        panel.show(editor.captions[0], first)
+        panel.text.value = "a, changed"
+
+        panel.follow(editor.captions[1], second, click=True)
+
+        assert first.text == "a, changed"
+        assert panel.text.value == "b"
+
+    def test_a_comment_being_written_is_kept_when_the_caret_moves_on(
+        self, panel, editor
+    ):
+        _, second = self.one(editor)
+        panel.open_for(editor.captions[0], 4, 7)
+        panel.text.value = "new one"
+
+        panel.follow(editor.captions[1], second, click=True)
+
+        assert [c.text for c in editor.captions[0].comments] == ["a", "new one"]
+        assert panel.pending is None
+
+    def test_an_empty_comment_being_written_is_dropped_when_the_caret_moves_on(
+        self, panel, editor
+    ):
+        _, second = self.one(editor)
+        panel.open_for(editor.captions[0], 4, 7)
+
+        panel.follow(editor.captions[1], second, click=True)
+
+        assert [c.text for c in editor.captions[0].comments] == ["a"]
+        assert panel.pending is None
+
+
+class TestKeepingUpWithTheText:
+    def test_a_card_that_is_still_right_is_not_touched(self, panel, editor):
+        editor.captions[0].comments = [comment({0}, "a")]
+        panel.show(editor.captions[0], editor.captions[0].comments[0])
+        panel.text.value = "being typed"
+        calls = []
+        panel.draw = lambda **k: calls.append(k)
+
+        panel.sync()
+
+        assert calls == []
+        assert panel.text.value == "being typed"
+
+    def test_a_comment_that_an_undo_replaced_is_found_again_by_its_words(
+        self, panel, editor
+    ):
+        editor.captions[0].comments = [comment({0, 1}, "a")]
+        panel.show(editor.captions[0], editor.captions[0].comments[0])
+
+        replacement = editor.captions[0].copy()
+        replacement.comments[0].text = "as it was"
+        editor.captions[0] = replacement
+
+        panel.sync()
+
+        assert panel.current[0] is replacement
+        assert panel.current[1] is replacement.comments[0]
+        assert panel.text.value == "as it was"
+        assert panel.container.visible is True
+
+    def test_a_comment_that_is_gone_puts_the_panel_away(self, panel, editor):
+        editor.captions[0].comments = [comment({0}, "a")]
+        panel.show(editor.captions[0], editor.captions[0].comments[0])
+
+        editor.captions[0].comments = []
+        panel.sync()
+
+        assert panel.container.visible is False
+        assert panel.current is None
+
+    def test_a_comment_whose_words_were_deleted_goes_with_the_panel(
+        self, panel, editor
+    ):
+        editor.captions[0].comments = [comment({1}, "a")]
+        panel.show(editor.captions[0], editor.captions[0].comments[0])
+
+        editor.update_caption_text(editor.captions[0], "ett tre")
+        panel.sync()
+
+        assert panel.container.visible is False
+
+    def test_a_new_comment_whose_paragraph_is_gone_is_dropped(self, panel, editor):
+        panel.open_for(editor.captions[1], 0, 4)
+
+        editor.captions = [editor.captions[0]]
+        panel.sync()
+
+        assert panel.pending is None
+        assert panel.container.visible is False
+
+    def test_a_shut_panel_is_left_alone(self, panel, editor):
+        panel.sync()
+
+        assert panel.container.visible is False
+
+    def test_the_view_tells_the_panel_whenever_it_redraws(self, view, panel):
+        calls = []
+        panel.sync = lambda: calls.append(1)
+        view.body.set_blocks = lambda blocks: None
+        view.body.set_speakers = lambda *a: None
+        view.refresh_overlay = lambda: None
+        view.refresh_timeline = lambda: None
+        del view.refresh
+        view.blocks = lambda: []
+
+        view.refresh()
+
+        assert calls == [1]
+
+
+class TestAskingForTheComment:
+    def test_the_events_reach_the_view(self):
+        source = pathlib.Path("utils/transcript_editor.py").read_text()
+
+        assert 'self.body.on("opencomment", lambda event: self.open_comment(event.args))' in source
+        assert 'self.body.on("caretcomment", lambda event: self.caret_comment(event.args))' in source
+
+    def test_the_selected_words_open_the_panel_on_them(self, view, panel, editor):
+        view.open_comment({"spans": [{"id": 1, "start": 5, "end": 9}]})
+
+        assert panel.pending == (editor.captions[0], 4, 11)
+        assert panel.container.visible is True
+
+    def test_nothing_selected_says_so(self, view, panel, editor):
         view.open_comment({"spans": []})
 
         assert editor.messages == ["Select the words to comment on first"]
-        assert view.body.shown == []
+        assert panel.container.visible is False
 
-    def test_a_caret_in_the_space_between_words_says_so(self, view, editor):
+    def test_a_caret_between_words_says_so(self, view, panel, editor):
         editor.captions[0].text = "ett  tre"
 
         view.open_comment({"spans": [{"id": 1, "start": 4, "end": 4}]})
 
         assert editor.messages == ["Select the words to comment on first"]
-        assert view.body.shown == []
 
-    def test_a_selection_across_paragraphs_is_refused(self, view, editor):
+    def test_a_selection_across_paragraphs_is_refused(self, view, panel, editor):
         view.open_comment(
             {
                 "spans": [
@@ -929,10 +1388,10 @@ class TestOpeningTheBox:
         )
 
         assert editor.messages == ["A comment has to stay within one paragraph"]
-        assert view.body.shown == []
+        assert panel.container.visible is False
 
     def test_a_selection_that_only_brushes_the_next_paragraph_is_within_one(
-        self, view, editor
+        self, view, panel, editor
     ):
         view.open_comment(
             {
@@ -944,18 +1403,23 @@ class TestOpeningTheBox:
         )
 
         assert editor.messages == []
-        assert view.body.shown[0]["id"] == 1
+        assert panel.pending[0] is editor.captions[0]
 
     def test_subtitles_open_nothing(self, monkeypatch):
         monkeypatch.setattr("utils.srt.ui.notify", lambda *a, **k: None)
         subtitles = make_editor("srt")
         view = TranscriptEditor(subtitles)
         view.body = FakeBody()
+        view.comments_panel = FakePanel()
 
         view.open_comment({"spans": [{"id": 1, "start": 0, "end": 3}]})
-        view.peek_comment({"id": 1, "offset": 1})
+        view.caret_comment({"id": 1, "cm": 0, "click": True})
 
-        assert view.body.shown == []
+    def test_without_a_panel_nothing_happens(self, view, editor):
+        view.comments_panel = None
+
+        view.open_comment({"spans": [{"id": 1, "start": 0, "end": 3}]})
+        view.caret_comment({"id": 1, "cm": 0})
 
     @pytest.mark.parametrize(
         "args",
@@ -972,123 +1436,47 @@ class TestOpeningTheBox:
             {"spans": [{"id": 1, "start": 0}]},
         ],
     )
-    def test_bad_input_is_harmless(self, view, editor, args):
+    def test_bad_input_is_harmless(self, view, panel, editor, args):
         view.open_comment(args)
 
-        assert view.body.shown == []
+        assert panel.container.visible is False
         assert all(not caption.comments for caption in editor.captions)
 
+    def test_the_caret_in_a_comment_shows_it(self, view, panel, editor):
+        editor.captions[1].comments = [comment({1}, "b")]
 
-class TestPeeking:
-    def test_a_click_on_a_commented_word_shows_its_comment_without_focus(
-        self, view, editor
-    ):
-        editor.captions[0].comments = [comment({1}, "there")]
+        view.caret_comment({"id": 2, "cm": 0, "click": True})
 
-        view.peek_comment({"id": 1, "offset": 5})
+        assert panel.text.value == "b"
 
-        assert view.body.shown == [
-            {
-                "id": 1,
-                "start": 4,
-                "end": 7,
-                "text": "there",
-                "existing": True,
-                "focus": False,
-            }
-        ]
+    def test_a_click_is_told_from_a_key(self, view, panel, editor):
+        editor.captions[1].comments = [comment({1}, "b")]
 
-    def test_a_click_anywhere_else_shows_nothing(self, view, editor):
-        editor.captions[0].comments = [comment({1}, "there")]
+        view.caret_comment({"id": 2, "cm": 0, "click": False})
+        view.caret_comment({"id": 2, "cm": 0})
+        view.caret_comment({"id": 2, "cm": 0, "click": "yes"})
 
-        view.peek_comment({"id": 1, "offset": 0})
-        view.peek_comment({"id": 2, "offset": 1})
-
-        assert view.body.shown == []
-
-    @pytest.mark.parametrize(
-        "args",
-        [None, {}, {"id": 1}, {"id": 1, "offset": "5"}, {"id": 1, "offset": True},
-         {"id": 9, "offset": 1}],
-    )
-    def test_bad_input_is_harmless(self, view, editor, args):
-        editor.captions[0].comments = [comment({1}, "there")]
-
-        view.peek_comment(args)
-
-        assert view.body.shown == []
-
-
-class TestSavingAndRemoving:
-    def test_saving_puts_the_comment_on_the_words_and_redraws(self, view, editor):
-        view.save_comment({"id": 1, "start": 4, "end": 11, "text": "check"})
-
-        assert shape(editor.captions[0]) == [([1, 2], "check")]
-        assert view.refreshed == 1
-
-    def test_the_selection_goes_back_to_the_words(self, view):
-        view.save_comment({"id": 1, "start": 4, "end": 11, "text": "check"})
-
-        assert view.body.selected == [(1, 4, 1, 11)]
-
-    def test_saving_from_a_click_elsewhere_leaves_the_caret_where_it_went(self, view):
-        view.save_comment(
-            {"id": 1, "start": 4, "end": 11, "text": "check", "stay": True}
-        )
-
-        assert view.refreshed == 1
-        assert view.body.selected == []
-
-    def test_saving_what_is_already_there_redraws_nothing(self, view, editor):
-        editor.captions[0].comments = [comment({1}, "same")]
-
-        view.save_comment({"id": 1, "start": 4, "end": 7, "text": "same"})
-
-        assert view.refreshed == 0
-        assert view.body.selected == []
-
-    def test_saving_a_changed_text_changes_that_comment(self, view, editor):
-        editor.captions[0].comments = [comment({1}, "old")]
-
-        view.save_comment({"id": 1, "start": 4, "end": 7, "text": "new"})
-
-        assert shape(editor.captions[0]) == [([1], "new")]
-
-    def test_removing_takes_the_comment_off(self, view, editor):
-        editor.captions[0].comments = [comment({1}, "old")]
-
-        view.remove_comment({"id": 1, "start": 4, "end": 7})
-
-        assert editor.captions[0].comments == []
-        assert view.refreshed == 1
-        assert view.body.selected == [(1, 4, 1, 7)]
-
-    def test_removing_where_there_is_none_redraws_nothing(self, view):
-        view.remove_comment({"id": 1, "start": 4, "end": 7})
-
-        assert view.refreshed == 0
+        assert panel.container.visible is False
 
     @pytest.mark.parametrize(
         "args",
         [
             None,
-            "x",
             {},
-            {"id": 1, "start": 0, "end": 3},
-            {"id": 1, "start": 0, "end": 3, "text": 5},
-            {"id": 1, "start": 0, "end": 3, "text": ""},
-            {"id": 99, "start": 0, "end": 3, "text": "x"},
-            {"id": 1, "start": "0", "end": 3, "text": "x"},
-            {"id": 1, "start": True, "end": 3, "text": "x"},
-            {"id": 1, "start": 0, "text": "x"},
+            {"id": 2},
+            {"id": 2, "cm": "0"},
+            {"id": 2, "cm": True},
+            {"id": 2, "cm": 5},
+            {"id": 2, "cm": -1},
+            {"id": 9, "cm": 0},
         ],
     )
-    def test_bad_input_is_harmless(self, view, editor, args):
-        view.save_comment(args)
-        view.remove_comment(args)
+    def test_a_bad_caret_report_is_harmless(self, view, panel, editor, args):
+        editor.captions[1].comments = [comment({1}, "b")]
 
-        assert all(not caption.comments for caption in editor.captions)
-        assert view.refreshed == 0
+        view.caret_comment(args)
+
+        assert panel.container.visible is False
 
 
 class TestTheButton:
@@ -1141,6 +1529,90 @@ class TestTheButton:
         assert 'icon="sym_o_add_comment"' in self.page()
 
 
+class TestThePanelSource:
+    def source(self):
+        return pathlib.Path("utils/comments_panel.py").read_text()
+
+    def test_it_is_drawn_like_the_validation_card_in_its_own_colour(self):
+        source = self.source()
+
+        assert '"validation-panel is-comment w-full"' in source
+        assert "validation-panel-head" in source and "validation-panel-step" in source
+
+    def test_it_has_previous_next_position_and_close_with_names(self):
+        source = self.source()
+
+        for label in (
+            'aria-label="Previous comment"',
+            'aria-label="Next comment"',
+            'aria-label="Close comments panel"',
+        ):
+            assert label in source
+
+    def test_the_heading_names_the_section_and_can_take_focus(self):
+        source = self.source()
+
+        assert 'aria-labelledby="comments-panel-heading"' in source
+        assert "id=comments-panel-heading tabindex=-1" in source
+
+    def test_the_position_is_spoken_in_a_live_region(self):
+        assert '"role=status aria-live=polite aria-atomic=true"' in self.source()
+
+    def test_the_text_is_limited_as_the_server_limits_it(self):
+        assert "maxlength={COMMENT_MAX_LENGTH}" in self.source()
+
+    def test_keys_typed_in_the_text_stay_in_it(self):
+        source = self.source()
+
+        assert '"keydown", js_handler="(event) => event.stopPropagation()"' in source
+
+    def test_escape_abandons_and_ctrl_or_cmd_enter_saves(self):
+        source = self.source()
+
+        assert 'self.text.on("keydown.escape", self.cancel)' in source
+        assert 'self.text.on("keydown.ctrl.enter", self.save)' in source
+        assert 'self.text.on("keydown.meta.enter", self.save)' in source
+
+    def test_it_starts_shut(self):
+        assert "self.container.set_visibility(False)" in self.source()
+
+    def test_the_page_builds_it_for_transcriptions_and_opens_a_file_that_has_comments(self):
+        page = pathlib.Path("pages/srt.py").read_text()
+        start = page.index("transcript.comments_panel = CommentsPanel(transcript)")
+        block = page[start - 900 : start]
+
+        assert "else:" in block
+        assert "transcript.comments_panel.open_first()" in page[start : start + 200]
+        assert "data_format" not in page[start : start + 200]
+
+    def test_the_validation_panel_is_still_subtitles_only(self):
+        page = pathlib.Path("pages/srt.py").read_text()
+        start = page.index("editor.validation_panel = ValidationPanel(")
+
+        assert 'if data_format == "srt":' in page[start - 200 : start]
+
+
+class TestPanelHelpers:
+    def test_the_quote_is_one_line(self):
+        from utils.comments_panel import quote_of
+
+        assert quote_of("two\n  lines   here") == "two lines here"
+
+    def test_a_long_quote_is_shortened(self):
+        from utils.comments_panel import QUOTE_LENGTH, quote_of
+
+        quoted = quote_of("word " * 50)
+
+        assert len(quoted) == QUOTE_LENGTH
+        assert quoted.endswith("\u2026")
+
+    def test_the_heading(self):
+        from utils.comments_panel import heading_text
+
+        assert heading_text(True, 0, 3) == "New comment"
+        assert heading_text(False, 1, 3) == "Comment 2 of 3"
+
+
 class TestTheComponent:
     def source(self):
         return pathlib.Path("utils/transcript_editor.js").read_text()
@@ -1174,12 +1646,24 @@ class TestTheComponent:
         assert "this.flush();" in body
         assert '"opencomment", { spans: this.highlightSpans() }' in body
 
-    def test_a_click_on_commented_words_asks_for_a_peek(self):
-        source = self.source()
+    def test_the_caret_in_a_comment_is_reported_once_per_comment(self):
+        body = self.method("reportCommentCaret")
 
-        assert 'event.target.closest("[data-comment]") &&' in source
-        assert "!this.subtitleMode &&\n        window.getSelection()?.isCollapsed" in source
-        assert '"peekcomment"' in source
+        assert "key === this.lastCommentKey && !clicked" in body
+        assert '"caretcomment", { ...at, click: clicked }' in body
+
+    def test_only_a_collapsed_caret_in_commented_words_counts(self):
+        body = self.method("commentAtCaret")
+
+        assert "!selection.isCollapsed" in body
+        assert 'closest?.("[data-comment]")' in body
+
+    def test_keys_report_it_and_a_click_reports_it_as_a_click(self):
+        update = self.method("updateCaretBlock")
+        click = self.method("onClick")
+
+        assert "this.reportCommentCaret();" in update
+        assert "this.reportCommentCaret(true);" in click
 
     def test_commented_words_are_marked_up_with_what_a_screen_reader_needs(self):
         source = self.source()
@@ -1199,62 +1683,11 @@ class TestTheComponent:
         assert 'run.cm !== undefined ? "comment-word" : null' in source
         assert 'run.cl ? "comment-end" : null' in source
 
-    def test_the_box_is_a_labelled_dialog_with_a_labelled_text_area(self):
+    def test_nothing_of_the_old_box_is_left(self):
         source = self.source()
 
-        assert 'class="comment-box"\n        role="dialog"\n        aria-label="Comment"' in source
-        assert ":aria-label=\"'Comment on ' + comment.quote\"" in source
-
-    def test_the_text_is_limited_as_the_server_limits_it(self):
-        assert 'maxlength="1000"' in self.source()
-
-    def test_save_cannot_save_nothing(self):
-        assert ':disable="!comment.text.trim()"' in self.source()
-
-    def test_keys_typed_in_the_box_stay_in_it(self):
-        body = self.method("onCommentKeydown")
-
-        assert "event.stopPropagation();" in body
-
-    def test_escape_abandons_and_ctrl_enter_saves(self):
-        body = self.method("onCommentKeydown")
-
-        assert 'event.key === "Escape"' in body
-        assert "this.cancelComment();" in body
-        assert 'event.key === "Enter" && (event.ctrlKey || event.metaKey)' in body
-        assert "this.saveComment();" in body
-
-    def test_leaving_the_box_keeps_what_was_typed_but_not_a_peek(self):
-        body = self.method("leaveComment")
-
-        assert "!this.comment.peek" in body
-        assert "text !== this.comment.original.trim()" in body
-        assert "stay: true" in body
-
-    def test_saving_and_cancelling_put_the_selection_back_on_the_words(self):
-        for name in ("saveComment", "removeComment", "cancelComment"):
-            assert "this.returnToComment();" in self.method(name)
-
-    def test_a_peek_goes_at_the_next_key(self):
-        source = self.source()
-
-        assert "if (this.comment.open && this.comment.peek) this.closeComment();" in source
-
-    def test_a_click_outside_leaves_the_box(self):
-        assert 'if (!event.target.closest(".comment-box")) this.leaveComment();' in self.source()
-
-    def test_the_box_takes_focus_unless_it_is_only_a_peek(self):
-        body = self.method("showComment")
-
-        assert "peek: !payload.focus" in body
-        assert "if (payload.focus) {" in body
-        assert "area.focus();" in body
-
-    def test_it_is_placed_against_the_components_own_root(self):
-        body = self.method("showComment")
-
-        assert "this.$el.getBoundingClientRect()" in body
-        assert "y: y - root.top" in body
+        for gone in ("comment-box", "showComment", "peekcomment", "leaveComment"):
+            assert gone not in source
 
 
 class TestTheStyles:
@@ -1275,7 +1708,8 @@ class TestTheStyles:
 
         assert "text-decoration-line: underline;" in rule
         assert "text-decoration-style: dotted;" in rule
-        assert "text-decoration-thickness: 2px;" in rule
+        assert "text-decoration-thickness: 3px;" in rule
+        assert "text-underline-offset: 4px;" in rule
         assert "var(--color-comment-line)" in rule
 
     def test_the_underline_takes_no_room_and_no_box_shadow(self):
@@ -1292,12 +1726,13 @@ class TestTheStyles:
         assert ".comment-end::after" not in css
         assert ".comment-word::after" not in css
 
-    def test_the_box_is_placed_from_its_own_root_like_the_menu(self):
-        rule = self.rule("    .comment-box {")
+    def test_the_panel_has_the_colour_of_the_underline(self):
+        rule = self.rule("    .validation-panel.is-comment {")
 
-        assert "position: absolute;" in rule
-        assert "z-index: 9500;" in rule
-        assert "var(--color-bg-surface)" in rule
+        assert "--vp-tone: var(--color-comment-line);" in rule
+
+    def test_nothing_of_the_old_box_is_left(self):
+        assert ".comment-box" not in self.css()
 
     @pytest.mark.parametrize(
         "line,backgrounds",
