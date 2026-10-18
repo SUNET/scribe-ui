@@ -2117,3 +2117,15 @@ class TestShowingWhereItWillLand:
 
         assert template.lstrip("template: `\n ").startswith('<Teleport to="body" :disabled="!docked">')
         assert template.count("v-if=\"ghost ===") == 2
+
+    def test_each_one_says_what_letting_go_will_do(self):
+        """
+        An instruction, in the same words as the hint on the strip, not a
+        label: the placeholder is what the drop will do, and says so.
+        """
+
+        source = self.source()
+
+        assert ">Release to put it back here</div>" in source
+        assert ">Release to dock it here</div>" in source
+        assert "Timeline goes here" not in source
