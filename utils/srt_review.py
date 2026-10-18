@@ -465,7 +465,7 @@ class ReviewMixin:
 
     def carry_marks(self, caption: SRTCaption, new_text: str) -> None:
         """
-        Carry both kinds of mark on a caption across a change to its text.
+        Carry every kind of mark on a caption across a change to its text.
 
         Called before the text itself is replaced, while there is still
         something to compare the new text against.
@@ -476,6 +476,9 @@ class ReviewMixin:
         )
         caption.highlighted_words = self.carry_highlights(
             caption.text, new_text, caption.highlighted_words
+        )
+        caption.comments = self.carry_comments(
+            caption.text, new_text, caption.comments
         )
 
     @staticmethod
@@ -841,20 +844,24 @@ class ReviewMixin:
             return []
 
         highlighted = caption.highlighted_words
+        commented = bool(caption.comments)
 
         if (
             not self.show_uncertain_words
             and not self.show_my_edits
             and not per_word
             and not highlighted
+            and not commented
         ):
             return [{"t": source, "flag": False}]
 
         # A word has to be a run of its own before it can be marked at all, so
         # marking the reader's words needs the same split that following the
         # audio does. So does a highlight, which is always drawn: it is not one
-        # of the switches under the video.
-        one_run_per_word = per_word or self.show_my_edits or bool(highlighted)
+        # of the switches under the video. Nor does a comment.
+        one_run_per_word = (
+            per_word or self.show_my_edits or bool(highlighted) or commented
+        )
 
         words = self.aligned_words(caption, source)
         runs: list = []
@@ -870,6 +877,11 @@ class ReviewMixin:
 
         def is_highlighted(position: int) -> bool:
             return self.token_is_highlight(caption, position)
+
+        def comment_of(position: Optional[int]) -> Optional[int]:
+            if position is None:
+                return None
+            return self.comment_index_at(caption, position)
 
         # Which word each token is, so that the space between two highlighted
         # words can be drawn highlighted too: a passage reads as one marked
@@ -891,15 +903,26 @@ class ReviewMixin:
 
                 # A line break is left unmarked: a highlight running out to the
                 # edge of the block would draw a stub at the end of the line.
-                if (
+                # The same goes for a comment, and for the space between two
+                # words that belong to different comments, which is in neither.
+                inside = (
                     "\n" not in token
                     and before is not None
                     and after is not None
-                    and is_highlighted(before)
-                    and is_highlighted(after)
-                ):
+                )
+                space: dict = {"t": token, "flag": False}
+
+                if inside and is_highlighted(before) and is_highlighted(after):
+                    space["hl"] = True
+
+                note = comment_of(before) if inside else None
+
+                if note is not None and note == comment_of(after):
+                    space["cm"] = note
+
+                if len(space) > 2:
                     flush()
-                    runs.append({"t": token, "flag": False, "hl": True})
+                    runs.append(space)
                 else:
                     plain.append(token)
                 continue
@@ -911,8 +934,15 @@ class ReviewMixin:
             flagged = self.show_uncertain_words and self.word_needs_review(word)
             edited = self.show_my_edits and self.token_is_edit(caption, index - 1)
             marked = is_highlighted(index - 1)
+            note = comment_of(index - 1)
 
-            if not one_run_per_word and not flagged and not edited and not marked:
+            if (
+                not one_run_per_word
+                and not flagged
+                and not edited
+                and not marked
+                and note is None
+            ):
                 plain.append(token)
                 continue
 
@@ -927,6 +957,21 @@ class ReviewMixin:
             # wherever nothing has been edited.
             if edited:
                 run["edit"] = True
+
+            # A word in a comment says which one, and the first and last word
+            # of it say so too -- the first carries the text, which is what a
+            # screen reader is given, and the last is where the comment is
+            # opened from. Only carried when there is one.
+            if note is not None:
+                comment = caption.comments[note]
+                run["cm"] = note
+
+                if index - 1 == min(comment.words):
+                    run["cf"] = True
+                    run["ct"] = comment.text
+
+                if index - 1 == max(comment.words):
+                    run["cl"] = True
 
             # Only a word still matching what the model transcribed has a
             # timing we can attribute to it; an edited word has none, and nor

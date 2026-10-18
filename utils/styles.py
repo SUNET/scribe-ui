@@ -135,6 +135,9 @@ theme_styles = """
         --color-highlight-bg: #fff1a3;
         --color-highlight-frame: #8a6d00;
         --color-highlight-text: #2b2400;
+        /* A comment's dotted underline: 7.5:1 on white and at least 6.3:1 on
+           every wash a word can have. */
+        --color-comment-line: #a1136a;
 
         /* The word currently being spoken. A pale tint of the brand
            navy, so it reads as "you are here" rather than as a status. */
@@ -266,6 +269,8 @@ theme_styles = """
         --color-highlight-bg: #5a4a00;
         --color-highlight-frame: #ffd54f;
         --color-highlight-text: #fff6cc;
+        /* 4.6:1 on the dark highlight, at least 6.4:1 on the other washes. */
+        --color-comment-line: #ff9fd2;
 
         --color-playing-bg: #1c3252;
 
@@ -1435,6 +1440,71 @@ theme_styles = """
         box-shadow:
             inset 0 2px 0 var(--color-highlight-frame),
             inset 0 -2px 0 var(--color-edit-accent);
+    }
+
+    /* A comment. The words it is on are underlined with a dotted line: a
+       pattern rather than a colour alone (1.4.1), and a different one from
+       the solid bars of the flagged and changed words. It is drawn with
+       text-decoration, so it needs no room of its own, shows on any wash a
+       word can have, and leaves the box-shadows that draw the other markings
+       alone. Nothing is added to the line: a marker after the last word
+       would sit where the caret goes. */
+    .comment-word {
+        text-decoration-line: underline;
+        text-decoration-style: dotted;
+        text-decoration-thickness: 2px;
+        text-decoration-color: var(--color-comment-line);
+        text-underline-offset: 3px;
+        text-decoration-skip-ink: none;
+    }
+
+    /* The box a comment is written and read in. Absolute against the
+       component's own root, like the speaker menu. */
+    .comment-box {
+        position: absolute;
+        z-index: 9500;
+        box-sizing: border-box;
+        width: 19rem;
+        max-width: calc(100% - 1rem);
+        padding: 0.5rem 0.75rem 0.5rem;
+        border-radius: 4px;
+        background-color: var(--color-bg-surface);
+        color: var(--color-text-primary);
+        border: 1px solid var(--color-border-subtle);
+        border-left: 4px solid var(--color-comment-line);
+        box-shadow: 0 4px 14px var(--color-shadow-medium);
+        font-size: 0.95rem;
+    }
+    .comment-box-quote {
+        margin-bottom: 0.35rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--color-text-muted);
+        font-size: 0.85rem;
+    }
+    .comment-box-text {
+        display: block;
+        box-sizing: border-box;
+        width: 100%;
+        min-height: 4.5rem;
+        padding: 0.35rem 0.5rem;
+        resize: vertical;
+        border: 1px solid var(--color-border-subtle);
+        border-radius: 4px;
+        background-color: var(--color-bg-surface);
+        color: var(--color-text-primary);
+        font: inherit;
+    }
+    .comment-box-actions {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 0.25rem;
+        margin-top: 0.4rem;
+    }
+    .comment-box-remove {
+        margin-right: auto;
     }
 
     /* Shared hover message. A CSS box rather than title=, which the browser

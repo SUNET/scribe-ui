@@ -191,6 +191,12 @@ class TranscriptBody(
     ) -> None:
         self.run_method("selectRange", start_id, start_offset, end_id, end_offset)
 
+    def comment_selection(self) -> None:
+        self.run_method("commentSelection")
+
+    def show_comment(self, payload: dict) -> None:
+        self.run_method("showComment", payload)
+
     def focus_caret(self) -> None:
         self.run_method("focusCaret")
 
@@ -593,6 +599,10 @@ class TranscriptEditor:
         self.body.on(
             "togglehighlight", lambda event: self.toggle_highlight(event.args)
         )
+        self.body.on("opencomment", lambda event: self.open_comment(event.args))
+        self.body.on("peekcomment", lambda event: self.peek_comment(event.args))
+        self.body.on("savecomment", lambda event: self.save_comment(event.args))
+        self.body.on("removecomment", lambda event: self.remove_comment(event.args))
         self.body.on("addblock", lambda event: self.add_after(event.args))
         self.body.on("deleteblock", lambda event: self.delete(event.args))
         self.body.on("blockclick", lambda event: self.seek(event.args))
@@ -1000,6 +1010,199 @@ class TranscriptEditor:
         if self.body is not None:
             first, last = spans[0], spans[-1]
             self.body.select_range(first[0], first[1], last[0], last[2])
+
+    def comment_selection(self) -> None:
+        """
+        What the toolbar's Comment button does: ask the component for the
+        selection, which it reports as it does for the key.
+        """
+
+        if self.body is not None:
+            self.body.comment_selection()
+
+    def tell_to_select_words(self) -> None:
+        ui.notify(
+            "Select the words to comment on first",
+            type="warning",
+            timeout=None,
+            close_button="Close",
+        )
+
+    def show_comment_on(
+        self, caption: SRTCaption, start: int, end: int, focus: bool
+    ) -> bool:
+        """
+        Open the comment box for the words around a selection. Says whether
+        there was anything to open it for.
+        """
+
+        target = self.editor.comment_target(caption, start, end)
+
+        if target is None or self.body is None:
+            return False
+
+        self.body.show_comment(
+            {
+                "id": caption.index,
+                "start": target["start"],
+                "end": target["end"],
+                "text": target["text"],
+                "existing": target["index"] is not None,
+                "focus": focus,
+            }
+        )
+
+        return True
+
+    def open_comment(self, args) -> None:
+        """
+        The key or the button: comment on the selected words, or open the
+        comment they already have.
+
+        A comment belongs to one block, so a selection reaching across blocks
+        is refused. A selection that merely ends at the very edge of the next
+        block, taking none of it, is still within one.
+        """
+
+        if self.editor.data_format == "srt":
+            return
+
+        raw = args.get("spans") if isinstance(args, dict) else None
+
+        if not isinstance(raw, list):
+            return
+
+        if not raw:
+            self.tell_to_select_words()
+            return
+
+        taken = []
+
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+
+            caption = self.caption(self.block_id(item))
+            start, end = item.get("start"), item.get("end")
+
+            if (
+                caption is None
+                or isinstance(start, bool)
+                or isinstance(end, bool)
+                or not isinstance(start, int)
+                or not isinstance(end, int)
+            ):
+                continue
+
+            taken.append((caption, start, end))
+
+        # Blocks the selection only brushes, with nothing taken from them, do
+        # not count -- unless that is all there is, which is a caret.
+        reaching = [entry for entry in taken if entry[1] != entry[2]]
+
+        if len(reaching) > 1:
+            ui.notify(
+                "A comment has to stay within one paragraph",
+                type="warning",
+                timeout=None,
+                close_button="Close",
+            )
+            return
+
+        if not taken:
+            return
+
+        caption, start, end = (reaching or taken)[0]
+
+        if not self.show_comment_on(caption, start, end, focus=True):
+            self.tell_to_select_words()
+
+    def peek_comment(self, args) -> None:
+        """
+        A click on commented words: show the comment beside them, without
+        taking focus from the text. Nothing for a click anywhere else.
+        """
+
+        if self.editor.data_format == "srt":
+            return
+
+        caption = self.caption(self.block_id(args))
+        offset = args.get("offset") if isinstance(args, dict) else None
+
+        if caption is None or isinstance(offset, bool) or not isinstance(offset, int):
+            return
+
+        target = self.editor.comment_target(caption, offset, offset)
+
+        if target is None or target["index"] is None:
+            return
+
+        self.show_comment_on(caption, offset, offset, focus=False)
+
+    def comment_args(self, args):
+        """
+        A comment event's block and range, checked, or None.
+        """
+
+        caption = self.caption(self.block_id(args))
+        start = args.get("start") if isinstance(args, dict) else None
+        end = args.get("end") if isinstance(args, dict) else None
+
+        if (
+            caption is None
+            or isinstance(start, bool)
+            or isinstance(end, bool)
+            or not isinstance(start, int)
+            or not isinstance(end, int)
+        ):
+            return None
+
+        return caption, start, end
+
+    def save_comment(self, args) -> None:
+        """
+        Keep the text the reader wrote as the comment on those words.
+        """
+
+        checked = self.comment_args(args)
+        text = args.get("text") if isinstance(args, dict) else None
+
+        if checked is None or not isinstance(text, str):
+            return
+
+        caption, start, end = checked
+
+        if not self.editor.set_comment(caption, start, end, text):
+            return
+
+        self.refresh()
+        self.changed()
+
+        # Offsets are in the text, which a comment does not change, so the
+        # selection can be put back as it was.
+        if self.body is not None and not args.get("stay"):
+            self.body.select_range(caption.index, start, caption.index, end)
+
+    def remove_comment(self, args) -> None:
+        """
+        Take the comment off the words.
+        """
+
+        checked = self.comment_args(args)
+
+        if checked is None:
+            return
+
+        caption, start, end = checked
+
+        if not self.editor.remove_comment(caption, start, end):
+            return
+
+        self.refresh()
+        self.changed()
+
+        if self.body is not None:
+            self.body.select_range(caption.index, start, caption.index, end)
 
     def move_word(self, args) -> None:
         """

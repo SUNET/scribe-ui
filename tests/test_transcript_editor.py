@@ -2829,6 +2829,17 @@ class TestTheShortcutsDialog:
                 ],
             ),
             (
+                "Comments",
+                [
+                    (
+                        "Comment on the selection, or open its comment",
+                        "Ctrl + Shift + K",
+                    ),
+                    ("Save the comment you are writing", "Ctrl/⌘ + Enter"),
+                    ("Close the comment without saving", "Esc"),
+                ],
+            ),
+            (
                 "File operations",
                 [
                     ("Save file", "Ctrl/⌘ + S"),

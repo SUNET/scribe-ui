@@ -25,6 +25,7 @@ The writers here are the ones with nothing to configure.
 """
 
 import json
+from datetime import datetime
 
 from nicegui import ui
 
@@ -37,6 +38,11 @@ from utils.helpers import sanitize_filename
 from utils.recording_api import ORIGINAL_PREFIX
 from utils.settings import get_settings
 from utils.styles import default_styles
+
+# Who a comment in an exported document is from. The editor does not know the
+# reader's name, and the document is only ever the reader's own.
+RTF_COMMENT_AUTHOR = "Scribe"
+RTF_COMMENT_INITIALS = "SC"
 
 settings = get_settings()
 
@@ -183,6 +189,55 @@ class ExportMixin:
             any(caption.edited_words for caption in captions),
         )
 
+    def rtf_comments_available(self, others: list | None = None) -> bool:
+        """
+        Whether any caption in this editor, or in the others exported along
+        with it, has a comment for the RTF export to carry. Transcriptions
+        only, for now.
+        """
+
+        return any(
+            caption.comments
+            for editor in [self] + list(others or [])
+            if editor.data_format != "srt"
+            for caption in editor.captions
+        )
+
+    @staticmethod
+    def rtf_date(moment: datetime) -> int:
+        """
+        A moment in the packed form RTF keeps an annotation's date in: minute,
+        hour, day, month, years since 1900 and day of the week, in the bits of
+        one number.
+        """
+
+        weekday = (moment.weekday() + 1) % 7
+
+        return (
+            moment.minute
+            | (moment.hour << 6)
+            | (moment.day << 11)
+            | (moment.month << 16)
+            | ((moment.year - 1900) << 20)
+            | (weekday << 29)
+        )
+
+    def comment_ranges(self, caption) -> list:
+        """
+        The caption's comments as (start, end, text), the offsets counted in
+        the caption's text, in the order they occur.
+        """
+
+        ranges = []
+
+        for comment in caption.comments:
+            span = self.word_range(caption.text, min(comment.words), max(comment.words))
+
+            if span is not None:
+                ranges.append((span[0], span[1], comment.text))
+
+        return sorted(ranges)
+
     def export_rtf(
         self,
         speakers: bool,
@@ -192,6 +247,7 @@ class ExportMixin:
         ts_fmt: str = "srt",
         highlights: bool = False,
         edits: bool = False,
+        comments: bool = False,
     ) -> str:
         """
         Export captions to RTF format with proper Unicode handling.
@@ -202,11 +258,18 @@ class ExportMixin:
         may have no colour. Both are off by default, which is the clean
         transcript: nothing about the text itself changes either way.
 
+        `comments` carries the reader's comments as Word comments on the words
+        they are on. Off by default for the same reason.
+
         Transcriptions only, for now: subtitles never carry them.
         """
 
         if self.data_format == "srt":
-            highlights = edits = False
+            highlights = edits = comments = False
+
+        # One date for the whole export: every comment was made before it.
+        stamp = self.rtf_date(datetime.now())
+        note_count = 0
 
         def fmt_ts(ts: str, f: str) -> str:
             """
@@ -286,22 +349,67 @@ class ExportMixin:
             if header_parts:
                 rtf_data = r"\b " + " ".join(header_parts) + r"\b0\line "
 
+            # A comment is anchored by a start and an end marker round the
+            # words it is on, and its text follows the end. The pieces are cut
+            # where a comment begins or ends, so a marker never lands inside
+            # one -- the text between the markers is the caption's own text
+            # throughout.
+            notes = self.comment_ranges(caption) if comments else []
+            numbers = {}
+
+            for note in notes:
+                numbers[note] = note_count
+                note_count += 1
+
+            cuts = sorted({edge for start, end, _ in notes for edge in (start, end)})
+            offset = 0
+
             for text, highlighted, edited in self.marked_spans(
                 caption, highlights, edits
             ):
-                body = to_rtf_unicode(text).replace("\n", r"\line ")
+                cut_at = [cut - offset for cut in cuts if 0 < cut - offset < len(text)]
+                segments = [
+                    text[first:last]
+                    for first, last in zip([0] + cut_at, cut_at + [len(text)])
+                ]
 
-                if highlighted or edited:
-                    # A group, so the formatting ends with the piece. The one
-                    # space after a control word is its delimiter and is not
-                    # part of the text, so a piece that starts with a space
-                    # keeps it.
-                    style = (r"\highlight1" if highlighted else "") + (
-                        r"\cf2\ul" if edited else ""
-                    )
-                    body = "{" + style + " " + body + "}"
+                for segment in segments:
+                    here, there = offset, offset + len(segment)
+                    offset = there
 
-                rtf_data += body
+                    for note in notes:
+                        if note[0] == here:
+                            rtf_data += r"{\*\atrfstart %d}" % numbers[note]
+
+                    body = to_rtf_unicode(segment).replace("\n", r"\line ")
+
+                    if highlighted or edited:
+                        # A group, so the formatting ends with the piece. The
+                        # one space after a control word is its delimiter and
+                        # is not part of the text, so a piece that starts with
+                        # a space keeps it.
+                        style = (r"\highlight1" if highlighted else "") + (
+                            r"\cf2\ul" if edited else ""
+                        )
+                        body = "{" + style + " " + body + "}"
+
+                    rtf_data += body
+
+                    for note in notes:
+                        if note[1] == there:
+                            note_text = to_rtf_unicode(note[2]).replace(
+                                "\n", r"\line "
+                            )
+                            rtf_data += (
+                                r"{\*\atrfend %d}" % numbers[note]
+                                + "{\\*\\atnid %s}{\\*\\atnauthor %s}\\chatn"
+                                % (RTF_COMMENT_INITIALS, RTF_COMMENT_AUTHOR)
+                                + r"{\*\annotation{\*\atnref %d}{\*\atndate %d}"
+                                % (numbers[note], stamp)
+                                + r"\pard\plain\f0\fs20 "
+                                + note_text
+                                + "}"
+                            )
 
             rtf_data += r"\line\line "
 
@@ -622,6 +730,14 @@ class ExportMixin:
                                     "Include my edits (underlined)", value=False
                                 )
                                 rtf_edits_incl.set_visibility(has_edits)
+                                rtf_comments_incl = ui.checkbox(
+                                    "Include comments", value=False
+                                )
+                                rtf_comments_incl.set_visibility(
+                                    self.rtf_comments_available(
+                                        [editor for _, editor in bulk_editors or []]
+                                    )
+                                )
                                 ui.separator()
 
                             # CSV options (for csv only)
@@ -1094,6 +1210,10 @@ class ExportMixin:
                                             edits=bool(
                                                 rtf_edits_incl.visible
                                                 and rtf_edits_incl.value
+                                            ),
+                                            comments=bool(
+                                                rtf_comments_incl.visible
+                                                and rtf_comments_incl.value
                                             ),
                                         )
                                     elif fmt.value == "txt":

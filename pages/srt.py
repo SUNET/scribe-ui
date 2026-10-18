@@ -284,6 +284,25 @@ def create() -> None:
                             "click", lambda: transcript.highlight_selection()
                         )
 
+                    # Beside it: a note on the selected words. The same as
+                    # Ctrl+Shift+K, and for the same reason it does not take
+                    # focus on a mouse press.
+                    with ui.button("Comment", icon="sym_o_add_comment").props(
+                        "flat aria-keyshortcuts=Control+Shift+K"
+                    ).classes(
+                        "editor-btn editor-toolbar-btn editor-quiet"
+                    ) as comment_button:
+                        comment_button.tooltip(
+                            "Comment on the selection, or open its comment "
+                            "(Ctrl + Shift + K)"
+                        )
+                        comment_button.on(
+                            "mousedown", js_handler="(event) => event.preventDefault()"
+                        )
+                        comment_button.on(
+                            "click", lambda: transcript.comment_selection()
+                        )
+
             with ui.row().classes("editor-toolbar-group"):
                 editor.show_keyboard_shortcuts()
 

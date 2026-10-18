@@ -24,6 +24,7 @@ from typing import Callable, List, Optional
 from utils.caption import SRTCaption
 from utils.common import get_auth_header
 from utils.settings import get_settings
+from utils.srt_comments import CommentsMixin
 from utils.srt_export import ExportMixin
 from utils.srt_render import RenderMixin, CHARACTER_LIMIT_EXCEEDED_COLOR
 from utils.srt_review import (
@@ -66,7 +67,7 @@ __all__ = [
 settings = get_settings()
 
 
-class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
+class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin, CommentsMixin):
     def __init__(self, uuid: str, srt_format: str, filename: str):
         """
         Initialize the SRT editor with empty captions and other properties.
@@ -693,6 +694,11 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
                     if isinstance(position, int) and not isinstance(position, bool)
                 }
 
+            # And the reader's comments.
+            restored.comments = self.restore_comments(
+                segment.get("comments"), segment["text"]
+            )
+
             self.captions.append(restored)
             self.speakers.add(segment.get("speaker", ""))
 
@@ -994,11 +1000,15 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         kept_highlights, moved_highlights = self.split_edits(
             caption.highlighted_words, len(first_part.split())
         )
+        kept_comments, moved_comments = self.split_comments(
+            caption.comments, len(first_part.split())
+        )
 
         # Update first caption
         caption.text = first_part
         caption.edited_words = kept
         caption.highlighted_words = kept_highlights
+        caption.comments = kept_comments
         caption.end_time = self.seconds_to_timestamp(mid_seconds)
 
         # Create second caption
@@ -1011,6 +1021,7 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         )
         new_caption.edited_words = moved
         new_caption.highlighted_words = moved_highlights
+        new_caption.comments = moved_comments
 
         # Insert new caption
         caption_index = self.captions.index(caption)
@@ -1107,6 +1118,10 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         if first_was_highlighted:
             previous.highlighted_words.add(previous_count)
 
+        # A comment does not go with the word: the word is no longer one of the
+        # words it was written about, and the rest keep their places.
+        caption.comments = self.drop_word_from_comments(caption.comments, 0, -1)
+
         if self.word_is_timed(moved_timing) and self.word_is_timed(next_timing):
             previous.end_time = self.seconds_to_timestamp(moved_timing["e"])
             caption.start_time = self.seconds_to_timestamp(next_timing["s"])
@@ -1175,6 +1190,10 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         }
         if last_was_highlighted:
             following.highlighted_words.add(0)
+
+        # See move_first_word_to_previous: the comment stays behind.
+        caption.comments = self.drop_word_from_comments(caption.comments, last_index)
+        following.comments = self.shift_comments(following.comments, 1)
 
         if self.word_is_timed(moved_timing) and self.word_is_timed(previous_timing):
             following.start_time = self.seconds_to_timestamp(moved_timing["s"])
@@ -1423,6 +1442,7 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         old_text = first.text
         old_marks = set(first.edited_words)
         old_highlights = set(first.highlighted_words)
+        old_comments = [comment.copy() for comment in first.comments]
 
         for caption in self.captions[start + 1 : end + 1]:
             old_marks = self.joined_edits(
@@ -1431,12 +1451,16 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
             old_highlights = self.joined_edits(
                 old_highlights, caption.highlighted_words, len(old_text.split())
             )
+            old_comments = self.join_comments(
+                old_comments, caption.comments, len(old_text.split())
+            )
             old_text = "\n".join(part for part in (old_text, caption.text) if part)
 
         first.edited_words = self.retag_edits(old_text, merged, old_marks)
         first.highlighted_words = self.carry_highlights(
             old_text, merged, old_highlights
         )
+        first.comments = self.carry_comments(old_text, merged, old_comments)
         first.text = merged
         first.end_time = last.end_time
 
@@ -1484,6 +1508,9 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
             caption.highlighted_words,
             next_caption.highlighted_words,
             len(caption.text.split()),
+        )
+        caption.comments = self.join_comments(
+            caption.comments, next_caption.comments, len(caption.text.split())
         )
         # Only actually joined with a newline when both sides have text --
         # an empty caption (freshly added, then merged straight back away
@@ -1536,6 +1563,11 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         previous_caption.highlighted_words = self.joined_edits(
             previous_caption.highlighted_words,
             caption.highlighted_words,
+            len(previous_caption.text.split()),
+        )
+        previous_caption.comments = self.join_comments(
+            previous_caption.comments,
+            caption.comments,
             len(previous_caption.text.split()),
         )
         # See the equivalent join in merge_with_next for why this is not
