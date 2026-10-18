@@ -2397,7 +2397,8 @@ theme_styles = """
         padding-bottom: calc(9rem + 16px);
     }
 
-    /* The grip that moves it, and what it says while it is being moved. */
+    /* The grip that moves it. What letting go will do is said by the
+       placeholder, not by the strip: see .speech-timeline-ghost. */
     .speech-timeline-grip {
         cursor: grab;
         user-select: none;
@@ -2410,10 +2411,6 @@ theme_styles = """
     .speech-timeline-lifting {
         outline: 2px dashed var(--color-brand-primary);
         outline-offset: 4px;
-    }
-    .speech-timeline-dock-hint {
-        color: var(--color-brand-primary);
-        font-weight: 600;
     }
 
     /* Where it will land if it is let go now, while it is being moved

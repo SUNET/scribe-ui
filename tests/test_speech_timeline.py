@@ -1180,11 +1180,18 @@ class TestDockingTheStrip:
 
         assert "event.clientY > window.innerHeight * DOCK_AT" in body
 
-    def test_it_says_what_letting_go_would_do(self):
+    def test_it_is_the_placeholder_that_says_what_letting_go_would_do(self):
+        """
+        Not a line in the legend as well: said once, where it will happen.
+        """
+
+        from utils.styles import theme_styles
+
         source = self.source()
 
-        assert "Release to dock along the bottom" in source
-        assert "Release to put it back under the video" in source
+        assert "speech-timeline-dock-hint" not in source
+        assert "speech-timeline-dock-hint" not in theme_styles
+        assert "Release to dock along the bottom" not in source
 
     def test_moving_it_nowhere_changes_nothing(self):
         """
@@ -2066,17 +2073,17 @@ class TestShowingWhereItWillLand:
         assert ":style=\"{ height: restHeight + 'px' }\"" in rest
         assert "wrap.offsetHeight" in method(source, "noteRestHeight() {")
 
-    def test_the_height_is_measured_only_where_the_strip_is_under_the_video(self):
+    def test_the_height_is_noted_as_the_strip_leaves_and_only_from_under_the_video(self):
         source = self.source()
 
         assert "if (this.docked || !wrap || !wrap.offsetHeight) return;" in method(
             source, "noteRestHeight() {"
         )
-        assert "this.noteRestHeight();" in method(source, "startDockDrag(event) {")
-        # Before the button moves it -- but not in setDocked, which the drop
-        # calls with the "release" line still in the legend.
-        assert "this.noteRestHeight();" in method(source, "toggleDock() {")
-        assert "noteRestHeight" not in method(source, "setDocked(willDock) {")
+
+        # By the drop and by the button alike: both go through setDocked.
+        body = method(source, "setDocked(willDock) {")
+
+        assert body.index("this.noteRestHeight();") < body.index("this.docked = willDock;")
 
     def test_the_rail_is_looked_at_again_when_the_drag_starts(self):
         """

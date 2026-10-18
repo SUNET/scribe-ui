@@ -236,11 +236,6 @@ export default {
             ><q-icon :name="action.icon" size="16px" /><q-tooltip>{{ action.tip }}</q-tooltip></button>
           </template>
         </div>
-        <span v-if="dockDrag" class="speech-timeline-dock-hint">
-          {{ dockDrag.willDock
-            ? "Release to dock along the bottom"
-            : "Release to put it back under the video" }}
-        </span>
         <span class="speech-timeline-hint">
           Click a caption to go to it · drag it, or one of its brackets, to
           retime · drag across empty space to add a caption
@@ -657,7 +652,6 @@ export default {
     // taking hold of a caption, and one gesture cannot mean two things.
     startDockDrag(event) {
       event.preventDefault();
-      this.noteRestHeight();
       this.followTheRail();
       this.dockDrag = { willDock: this.docked };
       this.onDockDragMove(event);
@@ -684,6 +678,7 @@ export default {
     setDocked(willDock) {
       if (willDock === this.docked) return;
 
+      this.noteRestHeight();
       this.docked = willDock;
       this.palette = null;
       this.markDocked();
@@ -694,11 +689,10 @@ export default {
     },
 
     // How much room the strip and its legend take where they sit under the
-    // video. Only while they are there: docked, they are somewhere else and
-    // a different width. And not when the drop is what is asking, since the
-    // strip then still has the line of text that says "release" in its
-    // legend: it is measured when it is taken hold of, or before the button
-    // moves it, and nowhere else.
+    // video, for the placeholder that shows it where it is on its way back
+    // to. Only while they are there -- docked, they are somewhere else and a
+    // different width -- so it is noted as it leaves, by the drop and by the
+    // button alike.
     noteRestHeight() {
       const wrap = this.$refs.wrap;
 
@@ -713,7 +707,6 @@ export default {
     // has happened, or a keyboard user would find themselves at the top of
     // the page every time they pressed it.
     toggleDock() {
-      this.noteRestHeight();
       this.setDocked(!this.docked);
       this.note = this.docked
         ? "Timeline docked along the bottom of the page"
