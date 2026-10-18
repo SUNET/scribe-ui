@@ -2135,3 +2135,11 @@ class TestShowingWhereItWillLand:
         # The same words in both places: it is docked there either way.
         assert source.count(">Release to dock Timeline here</div>") == 2
         assert "Timeline goes here" not in source
+
+    def test_a_page_that_opened_docked_has_a_stand_in_height(self):
+        """
+        Nothing was measured under the video: about what it is at the default
+        text size, not a guess at something much smaller.
+        """
+
+        assert "restHeight: 180," in self.source()

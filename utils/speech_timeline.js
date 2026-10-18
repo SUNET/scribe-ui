@@ -306,9 +306,10 @@ export default {
       dockDrag: null,
       // How tall the strip and its legend are where it sits under the video,
       // for the placeholder that shows where it will land when it is on its
-      // way back there from the foot of the page -- see ghost. Measured
-      // whenever it is seen there; this is only what stands in until then.
-      restHeight: 160,
+      // way back there from the foot of the page -- see ghost. Measured as
+      // it leaves; this is what stands in for a page that opened docked, and
+      // is what they measured at the default text size, 180 px.
+      restHeight: 180,
       // The caption under the pointer. Distinct from the caption being
       // played and from the one being edited: hovering one here must not
       // take the text editor's focus off another.
