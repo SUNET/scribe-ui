@@ -38,6 +38,14 @@ from typing import Callable, List, Optional
 from nicegui import ui
 
 from utils.caption import SRTCaption
+from utils.common import focus_element
+from utils.quick_jump import (
+    HINT,
+    KIND_BLOCK,
+    KIND_RELATIVE,
+    JumpError,
+    parse_jump,
+)
 from utils.settings import get_settings
 from utils.srt_review import EDIT_TOOLTIP, REVIEW_TOOLTIP
 
@@ -215,6 +223,13 @@ class TranscriptEditor:
         # Where the player last reported itself to be, so the overlay's own
         # caption can be worked out again after an edit -- see refresh_overlay.
         self.overlay_seconds: Optional[float] = None
+        # The caption the caret last settled in, for Quick Jump's relative
+        # times when there is no player to ask.
+        self.caret_block: Optional[int] = None
+        # Built the first time it is wanted -- see open_quick_jump.
+        self.quick_jump_dialog = None
+        self.quick_jump_input = None
+        self.quick_jump_error = None
 
     def set_timeline(self, timeline) -> None:
         """
@@ -319,6 +334,8 @@ class TranscriptEditor:
 
         if block_id is None or self.caption(block_id) is None:
             return
+
+        self.caret_block = block_id
 
         if self.on_caret is not None:
             self.on_caret(block_id)
@@ -576,6 +593,8 @@ class TranscriptEditor:
         # And this is what refresh_display's caller, select_caption, uses to
         # say which caption search or autoscroll just moved to.
         self.editor.on_select = self.scroll_to
+        # Ctrl/Cmd+G is the page's key, so the editor tells us to open it.
+        self.editor.on_quick_jump = self.open_quick_jump
 
         self.body.on("blocktext", lambda event: self.set_text(event.args))
         self.body.on("splitblock", lambda event: self.split(event.args))
@@ -1372,6 +1391,228 @@ class TranscriptEditor:
         # value back rather than leave the input showing text that was never
         # saved.
         self.refresh()
+
+    # ── quick jump ──────────────────────────────────────────────────────────
+
+    def open_quick_jump(self) -> None:
+        """
+        Ctrl/Cmd+G: a small field to type where to go -- a time, a time
+        relative to the playhead, or a block number (see utils.quick_jump).
+
+        Built once and reopened, like the search dialog: a new one per press
+        would leave the old ones, and their ids, in the page. Seamless, so
+        there is no backdrop and nothing is dimmed or locked -- a prompt
+        rather than a dialog over the work -- and with no OK or Cancel:
+        Enter goes, Escape closes, and a successful jump closes it.
+        """
+
+        if self.quick_jump_dialog is None:
+            self.build_quick_jump()
+
+        self.quick_jump_input.value = ""
+        self.quick_jump_error.text = ""
+        self.quick_jump_dialog.open()
+
+    def build_quick_jump(self) -> None:
+        with ui.dialog().props(
+            'seamless position=top no-refocus aria-label="Quick Jump"'
+        ) as dialog:
+            with ui.card().classes("quick-jump").style(
+                "min-width: min(28rem, 92vw); padding: 12px 16px;"
+            ):
+                label = ui.label("Jump to").classes("text-subtitle2")
+                field = ui.input().props("outlined dense autofocus").classes("w-full")
+                hint = ui.label(HINT).classes("text-caption text-theme-secondary")
+                # Always in the page, so that what is put in it is announced;
+                # the colour is not what says it went wrong, the words are.
+                error = ui.label("").props('role="alert"').classes("text-caption")
+                error.style("color: var(--color-text-danger);")
+
+        field.props(
+            f'aria-labelledby="{label.html_id}" '
+            f'aria-describedby="{hint.html_id} {error.html_id}"'
+        )
+
+        async def submit() -> None:
+            problem = await self.quick_jump(field.value)
+
+            if problem:
+                error.text = problem
+                # Still open, and still where the reader is typing.
+                focus_element(field)
+                return
+
+            error.text = ""
+            dialog.close()
+
+        def close() -> None:
+            dialog.close()
+            self.return_to_text()
+
+        field.on("keydown.enter", submit)
+        field.on("keydown.escape", close)
+        # Typing again withdraws the message about the last attempt.
+        field.on_value_change(lambda: setattr(error, "text", ""))
+
+        def focus_field_on_open(event) -> None:
+            if event.sender.value:
+                focus_element(field)
+
+        dialog.on_value_change(focus_field_on_open)
+
+        self.quick_jump_dialog = dialog
+        self.quick_jump_input = field
+        self.quick_jump_error = error
+
+    def return_to_text(self) -> None:
+        """
+        Put the caret back where it was in the text -- what closing without
+        a jump has to do now that the prompt had the focus.
+        """
+
+        if self.body is not None:
+            self.body.focus_caret()
+
+    async def quick_jump(self, text: str) -> Optional[str]:
+        """
+        Go where the reader typed. None when it went, or a sentence saying
+        why it did not -- which stays on the prompt for them to correct.
+        """
+
+        try:
+            kind, value = parse_jump(text)
+        except JumpError as problem:
+            return str(problem)
+
+        if kind == KIND_BLOCK:
+            return self.go_to_block(int(value))
+
+        if kind == KIND_RELATIVE:
+            return self.go_to_time(await self.playhead() + value)
+
+        return self.go_to_time(value)
+
+    async def playhead(self) -> float:
+        """
+        Where the recording is now: the player's position, or -- with no
+        player, or one that cannot say -- the start of the caption the caret
+        is in, or the start of the recording.
+        """
+
+        seconds = await ui.run_javascript(
+            '(() => { const v = document.querySelector("video");'
+            " return v ? v.currentTime : null; })()"
+        )
+
+        if isinstance(seconds, (int, float)):
+            return float(seconds)
+
+        caption = self.caption(self.caret_block)
+
+        return caption.get_start_seconds() if caption is not None else 0.0
+
+    def go_to_block(self, number: int) -> Optional[str]:
+        """
+        Block number `number`, as numbered on screen. Only a subtitle editor
+        shows numbers, so only there is one a reader could have read off the
+        screen to type.
+        """
+
+        if self.editor.data_format != "srt":
+            return "Block numbers are only shown in subtitles. Use a time instead"
+
+        count = len(self.editor.captions)
+        caption = self.caption(number)
+
+        if caption is None:
+            return (
+                f"There is no caption #{number}. The last one is #{count}"
+                if count
+                else "There are no captions to jump to"
+            )
+
+        self.arrive(caption, caption.get_start_seconds(), 0)
+
+        return None
+
+    def go_to_time(self, seconds: float) -> Optional[str]:
+        """
+        A moment in the recording: the player goes there, and the caret goes
+        to the nearest block, and in it to the nearest word. Out of range
+        is the nearest end rather than an error: "+9999" means "far ahead".
+        """
+
+        captions = self.editor.captions
+
+        if not captions:
+            return "There are no captions to jump to"
+
+        seconds = max(0.0, seconds)
+        limit = self.editor.media_seconds
+
+        if limit is None:
+            limit = max(caption.get_end_seconds() for caption in captions)
+
+        seconds = min(seconds, limit)
+        caption = self.caption_near(seconds)
+
+        self.arrive(caption, seconds, self.caret_offset_at(caption, seconds))
+
+        return None
+
+    def arrive(self, caption: SRTCaption, seconds: float, offset: int) -> None:
+        """
+        Move the player, the playing marker and the caret to where a jump
+        landed, the caret centred in view.
+        """
+
+        self.editor.seek_video(seconds)
+        self.moved_to(seconds)
+        self.focus(caption.index, offset, center=True)
+
+    def caption_near(self, seconds: float) -> SRTCaption:
+        """
+        The caption covering a moment or, in a gap or past either end, the
+        one nearest to it -- by the closer of its two edges, and the later
+        one when they are equally far, since that is the one about to start.
+        """
+
+        def distance(caption: SRTCaption) -> float:
+            start = caption.get_start_seconds()
+            end = caption.get_end_seconds()
+
+            if start <= seconds < end:
+                return 0.0
+
+            return min(abs(seconds - start), abs(seconds - end))
+
+        best = None
+        best_distance = None
+
+        for caption in self.editor.captions:
+            gap = distance(caption)
+
+            if best is None or gap <= best_distance:
+                best, best_distance = caption, gap
+
+        return best
+
+    def caret_offset_at(self, caption: SRTCaption, seconds: float) -> int:
+        """
+        The character offset of the word being spoken at a moment: the last
+        word that has started by then, or the first when none has. Without
+        word timings, the start of the caption.
+        """
+
+        spans = [match.span() for match in re.finditer(r"\S+", caption.text)]
+        words = self.editor.aligned_words(caption)
+        chosen = 0
+
+        for position, word in enumerate(words[: len(spans)]):
+            if word is not None and "s" in word and word["s"] <= seconds:
+                chosen = position
+
+        return spans[chosen][0] if spans else 0
 
     # ── following the video ─────────────────────────────────────────────────
 

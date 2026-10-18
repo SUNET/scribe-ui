@@ -79,6 +79,8 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         self.srt_format = srt_format
         self.captions: List[SRTCaption] = []
         self.selected_caption: Optional[SRTCaption] = None
+        # Opens the Quick Jump prompt; set by the document view that owns it.
+        self.on_quick_jump: Optional[Callable[[], None]] = None
         self.search_term = ""
         self.search_results = []
         self.current_search_index = 0
@@ -402,6 +404,16 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
                 self.redo()
             case "y" if event.modifiers.meta and not event.modifiers.shift:
                 self.redo()
+
+            # Quick Jump, Ctrl+G / Cmd+G: "go to", as in most editors.
+            # Shift is not asked about: Ctrl+Shift+G is find-previous in a
+            # browser, which is just as much not wanted here.
+            case "g" if (
+                (event.modifiers.ctrl or event.modifiers.meta)
+                and not event.modifiers.alt
+            ):
+                if self.on_quick_jump is not None:
+                    self.on_quick_jump()
 
             # Open find, Ctrl+F
             case "f" if event.modifiers.ctrl and not event.modifiers.shift:
