@@ -86,7 +86,7 @@ export default {
             @keydown="onControlKeydown($event, block.id, 'speaker')"
           >{{ block.speaker }}</span><span v-if="!subtitleMode" class="transcript-colon">:</span></div><div
           class="transcript-cell"
-          :class="{ 'transcript-cell-active': block.id === activeId, 'transcript-cell-editing': block.id === caretId, 'transcript-cell-invalid': block.invalid, 'transcript-cell-warning': block.warning, 'transcript-cell-highlighted': block.highlighted, 'transcript-cell-reviewing': block.id === reviewId }"
+          :class="{ 'transcript-cell-active': block.id === activeId, 'transcript-cell-editing': block.id === caretId, 'transcript-cell-invalid': block.invalid, 'transcript-cell-warning': block.warning, 'transcript-cell-highlighted': block.highlighted, 'transcript-cell-reviewing': block.id === reviewId, 'transcript-cell-commenting': block.id === commentId }"
           :data-id="block.id"
         ><div
             v-if="!subtitleMode"
@@ -205,11 +205,11 @@ export default {
                 ><q-icon name="delete_outline" size="16px" /><q-tooltip>Delete caption</q-tooltip></div></div></div><div
               class="transcript-text"
               :data-id="block.id"
-            ><span v-for="(run, i) in block.runs" :key="i" :class="runClass(run)" :role="run.hl ? 'mark' : null" :data-review="run.flag ? reviewLabel : null" :data-edit="editLabel" :aria-label="run.flag ? reviewLabel : (run.edit ? editLabel : null)" :data-comment="run.cm" :aria-description="run.cf ? 'Comment: ' + run.ct : null" :data-s="run.s" :data-e="run.e">{{ run.t }}</span><br v-if="!block.runs || block.runs.length === 0"></div></div><div
+            ><span v-for="(run, i) in block.runs" :key="i" :class="runClass(run)" :role="run.hl ? 'mark' : null" :data-review="run.flag ? reviewLabel : null" :data-edit="editLabel" :aria-label="run.flag ? reviewLabel : (run.edit ? editLabel : null)" :data-comment="run.cm" :data-comment-current="isCommentOnShow(run, block) ? '' : null" :aria-description="run.cf ? 'Comment: ' + run.ct : null" :data-s="run.s" :data-e="run.e">{{ run.t }}</span><br v-if="!block.runs || block.runs.length === 0"></div></div><div
             v-else
             class="transcript-text"
             :data-id="block.id"
-          ><span v-for="(run, i) in block.runs" :key="i" :class="runClass(run)" :role="run.hl ? 'mark' : null" :data-review="run.flag ? reviewLabel : null" :data-edit="editLabel" :aria-label="run.flag ? reviewLabel : (run.edit ? editLabel : null)" :data-comment="run.cm" :aria-description="run.cf ? 'Comment: ' + run.ct : null" :data-s="run.s" :data-e="run.e">{{ run.t }}</span><br v-if="!block.runs || block.runs.length === 0"></div></div></template></div>
+          ><span v-for="(run, i) in block.runs" :key="i" :class="runClass(run)" :role="run.hl ? 'mark' : null" :data-review="run.flag ? reviewLabel : null" :data-edit="editLabel" :aria-label="run.flag ? reviewLabel : (run.edit ? editLabel : null)" :data-comment="run.cm" :data-comment-current="isCommentOnShow(run, block) ? '' : null" :aria-description="run.cf ? 'Comment: ' + run.ct : null" :data-s="run.s" :data-e="run.e">{{ run.t }}</span><br v-if="!block.runs || block.runs.length === 0"></div></div></template></div>
 
       <!-- Outside the contenteditable, or it would become editable content.
            Positioned against this component's own root rather than the
@@ -290,6 +290,11 @@ export default {
     // The caption whose validation issue the panel under the video is
     // showing (utils/validation_panel.py); -1 when none is.
     reviewId: { type: Number, default: -1 },
+    // The caption, and the comment in it, that the comments card under the
+    // video is showing (utils/comments_panel.py); -1 when none is. A comment
+    // being written has a caption but no comment yet.
+    commentId: { type: Number, default: -1 },
+    commentIndex: { type: Number, default: -1 },
     reviewLabel: { type: String, default: "" },
     editLabel: { type: String, default: "" },
     showEdits: { type: Boolean, default: false },
@@ -619,6 +624,18 @@ export default {
         run.cm !== undefined ? "comment-word" : null,
         run.cl ? "comment-end" : null,
       ];
+    },
+
+    // Whether a run is a word of the comment the card under the video is
+    // showing. It is an attribute of its own rather than one more class so
+    // the tint can sit on top of whatever the word is, and a word of that
+    // comment is told apart from the rest of the paragraph.
+    isCommentOnShow(run, block) {
+      return (
+        run.cm !== undefined &&
+        block.id === this.commentId &&
+        run.cm === this.commentIndex
+      );
     },
 
     // The selection as one range per block it reaches into, each as offsets

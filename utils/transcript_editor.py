@@ -115,6 +115,8 @@ class TranscriptBody(
         self._props["blocks"] = []
         self._props["activeId"] = -1
         self._props["reviewId"] = -1
+        self._props["commentId"] = -1
+        self._props["commentIndex"] = -1
         self._props["reviewLabel"] = REVIEW_TOOLTIP
         self._props["editLabel"] = EDIT_TOOLTIP
         self._props["showEdits"] = False
@@ -155,6 +157,23 @@ class TranscriptBody(
         """
 
         self._props["reviewId"] = block_id
+        self.update()
+
+    def set_comment_mark(self, block_id: int, comment_index: int = -1) -> None:
+        """
+        Mark the caption, and the comment in it, that the comments card is
+        showing, or none (-1). A comment still being written has a caption
+        and no comment index.
+        """
+
+        if (
+            self._props["commentId"] == block_id
+            and self._props["commentIndex"] == comment_index
+        ):
+            return
+
+        self._props["commentId"] = block_id
+        self._props["commentIndex"] = comment_index
         self.update()
 
     def set_follow(self, follow: bool) -> None:
@@ -321,6 +340,23 @@ class TranscriptEditor:
         if scroll:
             self.body.scroll_to_block(caption_index)
         self.mark_current(caption_index)
+
+    def mark_comment(
+        self, caption_index: Optional[int], comment_index: int = -1
+    ) -> None:
+        """
+        Mark where the comments card is: the caption with a rule and an
+        outline, and the words of the comment with a tint. None clears it.
+        """
+
+        if self.body is None:
+            return
+
+        if caption_index is None:
+            self.body.set_comment_mark(-1, -1)
+            return
+
+        self.body.set_comment_mark(caption_index, comment_index)
 
     def caret_moved(self, args) -> None:
         """

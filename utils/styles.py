@@ -1932,6 +1932,30 @@ theme_styles = """
         box-shadow: inset 0 0 0 2px var(--color-warning-border);
     }
 
+    /* The caption the comments card under the video is on, marked as the
+       validation panel marks its caption but in the comment colour: a
+       thicker rule and a full outline, so shape and not only colour say
+       which. After the editing and invalid rules, so it wins over them. */
+    .transcript-cell-commenting {
+        border-left-color: var(--color-comment-line);
+        border-left-width: 3px;
+        padding-left: calc(1rem - 2px);
+        box-shadow: inset 0 0 0 2px var(--color-comment-line);
+    }
+    /* And the words of the comment the card is showing: a tint of the comment
+       colour laid over whatever else the word has. It is a background-image,
+       which paints above background-color, so a highlight's or a flagged
+       word's own wash still shows through it and nothing is taken away. At
+       18% the text keeps at least 6.7:1 (light) and 5.9:1 (dark) on every
+       wash a word can have, and the comment line at least 4.3:1 and 3.4:1
+       against it. */
+    .comment-word[data-comment-current] {
+        background-image: linear-gradient(
+            color-mix(in srgb, var(--color-comment-line) 18%, transparent),
+            color-mix(in srgb, var(--color-comment-line) 18%, transparent)
+        );
+    }
+
     /* ── Validation panel, under the video (issue #138) ── */
     /* Design B: a stripe down the left and a tinted header in the colour
        of the issue shown -- the panel's own is-warning / is-error /

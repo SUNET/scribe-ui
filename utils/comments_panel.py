@@ -37,6 +37,7 @@ from nicegui import ui
 
 from utils.caption import SRTCaption, WordComment
 from utils.srt_comments import COMMENT_MAX_LENGTH
+from utils.transcript_editor import format_time_label
 
 # The words a comment is on, as shown in the panel and read out.
 QUOTE_LENGTH = 80
@@ -61,6 +62,17 @@ def heading_text(pending: bool, position: int, total: int) -> str:
         return "New comment"
 
     return f"Comment {position_text(position, total)}"
+
+
+def where_text(caption: SRTCaption) -> str:
+    """
+    Where a comment is, in what the reader can see beside the text: who is
+    speaking and when (the caption's number is not shown in a transcription).
+    """
+
+    when = format_time_label(caption.get_start_seconds())
+
+    return f"{caption.speaker} · {when}" if caption.speaker else when
 
 
 class CommentsPanel:
@@ -165,7 +177,7 @@ class CommentsPanel:
                                 "Save", on_click=self.save
                             ).props("dense no-caps")
 
-        self.container.set_visibility(False)
+        self.hide()
 
     # -- What there is ------------------------------------------------------
 
@@ -275,6 +287,34 @@ class CommentsPanel:
 
     def value_changed(self) -> None:
         self.save_button.set_enabled(bool(self.draft()))
+
+    def hide(self) -> None:
+        """
+        Put the card away, and take its marking off the text.
+        """
+
+        self.container.set_visibility(False)
+        self.transcript.mark_comment(None)
+
+    def mark(self) -> None:
+        """
+        Mark in the text what the card is about: the caption, and for a
+        comment already written, its words.
+        """
+
+        if not self.container.visible:
+            self.transcript.mark_comment(None)
+        elif self.pending is not None:
+            self.transcript.mark_comment(self.pending[0].index)
+        elif self.current is not None:
+            caption, comment = self.current
+            at = next(
+                (i for i, held in enumerate(caption.comments) if held is comment),
+                -1,
+            )
+            self.transcript.mark_comment(caption.index, at)
+        else:
+            self.transcript.mark_comment(None)
 
     # -- Showing ----------------------------------------------------------------
 
@@ -387,7 +427,7 @@ class CommentsPanel:
             self.words_button.set_text(f"“{quote_of(caption.text[start:end])}”")
             spoken = quote_of(caption.text[start:end]).replace('"', "'")
             self.words_button.props(f'aria-label="Go to the words: {spoken}"')
-            self.detail.set_text(f"Paragraph {caption.index}")
+            self.detail.set_text(where_text(caption))
 
             if scroll and self.transcript.body is not None:
                 self.transcript.body.scroll_to_block(caption.index)
@@ -395,6 +435,7 @@ class CommentsPanel:
         self.remove_button.set_visibility(not pending)
         self.cancel_button.set_visibility(True)
         self.save_button.set_enabled(bool(self.draft()))
+        self.mark()
 
     # -- Acting -------------------------------------------------------------------
 
@@ -454,7 +495,7 @@ class CommentsPanel:
             caption_next, comment_next = entries[min(max(before, 0), len(entries) - 1)]
             self.show(caption_next, comment_next, scroll=False)
         else:
-            self.container.set_visibility(False)
+            self.hide()
 
         self.select_words(caption, start, end)
 
@@ -473,7 +514,7 @@ class CommentsPanel:
                 self.show(*self.current, scroll=False)
             else:
                 self.current = None
-                self.container.set_visibility(False)
+                self.hide()
         elif self.current is not None:
             self.text.set_value(self.current[1].text)
 
@@ -488,7 +529,7 @@ class CommentsPanel:
         shown = self.shown_range()
         self.commit()
         self.pending = None
-        self.container.set_visibility(False)
+        self.hide()
 
         if shown is not None:
             self.select_words(*shown)
@@ -554,10 +595,11 @@ class CommentsPanel:
 
         if self.pending is not None:
             if any(caption is self.pending[0] for caption in self.editor.captions):
+                self.mark()
                 return
 
             self.pending = None
-            self.container.set_visibility(False)
+            self.hide()
             return
 
         if self.current is None:
@@ -568,6 +610,7 @@ class CommentsPanel:
         if any(comment is held for held in caption.comments) and any(
             caption is held for held in self.editor.captions
         ):
+            self.mark()
             return
 
         # Replaced rather than gone, as an undo does: the same words in the
@@ -584,7 +627,7 @@ class CommentsPanel:
                     return
 
         self.current = None
-        self.container.set_visibility(False)
+        self.hide()
 
     @staticmethod
     def focus(element: ui.element) -> None:

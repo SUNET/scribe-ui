@@ -823,6 +823,10 @@ class FakeBody:
         self.scrolled = []
         self.asked = 0
         self.caret_asked = 0
+        self.comment_mark = (-1, -1)
+
+    def set_comment_mark(self, block_id, comment_index=-1):
+        self.comment_mark = (block_id, comment_index)
 
     def comment_selection(self):
         self.asked += 1
@@ -932,7 +936,7 @@ class TestThePanel:
         assert panel.text.value == ""
         assert panel.heading.text == "New comment"
         assert panel.words_button.text == "\u201ctv\u00e5 tre\u201d"
-        assert panel.detail.text == "Paragraph 1"
+        assert panel.detail.text == "A \u00b7 00:00:00.000"
         assert panel.focused == 1
 
     def test_opening_changes_nothing_by_itself(self, panel, editor):
@@ -1592,6 +1596,127 @@ class TestThePanelSource:
         assert 'if data_format == "srt":' in page[start - 200 : start]
 
 
+class TestWhereItIs:
+    """
+    A transcription does not show a caption's number, so the card says where
+    a comment is by what is shown beside the text, and the text marks it.
+    """
+
+    def test_it_is_the_speaker_and_the_start_time_as_the_editor_shows_them(
+        self, panel, editor
+    ):
+        editor.captions[1].speaker = "Speaker 2"
+        editor.captions[1].comments = [comment({0}, "here")]
+
+        panel.show(editor.captions[1], editor.captions[1].comments[0])
+
+        from utils.transcript_editor import format_time_label
+
+        assert panel.detail.text == (
+            "Speaker 2 \u00b7 " + format_time_label(editor.captions[1].get_start_seconds())
+        )
+        assert "Paragraph" not in panel.detail.text
+
+    def test_without_a_speaker_it_is_the_time_alone(self, panel, editor):
+        from utils.comments_panel import where_text
+
+        editor.captions[0].speaker = ""
+
+        assert where_text(editor.captions[0]) == "00:00:00.000"
+
+    def test_the_comment_on_show_is_marked_in_the_text(self, panel, editor):
+        editor.captions[1].comments = [comment({0}, "a"), comment({2}, "b")]
+
+        panel.show(editor.captions[1], editor.captions[1].comments[1])
+
+        assert panel.transcript.body.comment_mark == (editor.captions[1].index, 1)
+
+    def test_a_comment_being_written_marks_its_caption_only(self, panel, editor):
+        panel.open_for(editor.captions[0], 5, 9)
+
+        assert panel.transcript.body.comment_mark == (editor.captions[0].index, -1)
+
+    def test_stepping_moves_the_marking_with_the_card(self, panel, editor):
+        editor.captions[0].comments = [comment({0}, "first")]
+        editor.captions[1].comments = [comment({1}, "second")]
+        panel.show(editor.captions[0], editor.captions[0].comments[0])
+
+        panel.go_next()
+
+        assert panel.transcript.body.comment_mark == (editor.captions[1].index, 0)
+
+        panel.go_previous()
+
+        assert panel.transcript.body.comment_mark == (editor.captions[0].index, 0)
+
+    def test_following_the_caret_marks_the_comment_it_lands_on(self, panel, editor):
+        editor.captions[1].comments = [comment({1}, "second")]
+
+        panel.follow(editor.captions[1], editor.captions[1].comments[0], click=True)
+
+        assert panel.transcript.body.comment_mark == (editor.captions[1].index, 0)
+
+    def test_closing_the_card_takes_the_marking_off(self, panel, editor):
+        editor.captions[0].comments = [comment({0}, "x")]
+        panel.show(editor.captions[0], editor.captions[0].comments[0])
+
+        panel.close()
+
+        assert panel.transcript.body.comment_mark == (-1, -1)
+
+    def test_a_comment_that_is_gone_takes_the_marking_with_it(self, panel, editor):
+        editor.captions[0].comments = [comment({0}, "x")]
+        panel.show(editor.captions[0], editor.captions[0].comments[0])
+        editor.captions[0].comments = []
+
+        panel.sync()
+
+        assert panel.container.visible is False
+        assert panel.transcript.body.comment_mark == (-1, -1)
+
+    def test_the_marking_is_set_again_when_the_comment_has_moved_in_its_caption(
+        self, panel, editor
+    ):
+        editor.captions[0].comments = [comment({2}, "late")]
+        panel.show(editor.captions[0], editor.captions[0].comments[0])
+        editor.captions[0].comments.insert(0, comment({0}, "early"))
+
+        panel.sync()
+
+        assert panel.transcript.body.comment_mark == (editor.captions[0].index, 1)
+
+    def test_removing_the_last_comment_takes_it_off(self, panel, editor):
+        editor.captions[0].comments = [comment({1}, "only")]
+        panel.show(editor.captions[0], editor.captions[0].comments[0])
+
+        panel.remove()
+
+        assert panel.transcript.body.comment_mark == (-1, -1)
+
+    def test_the_body_keeps_the_marking_and_ignores_a_repeat(self):
+        from utils.transcript_editor import TranscriptBody
+
+        body = TranscriptBody.__new__(TranscriptBody)
+        body._props = {"commentId": -1, "commentIndex": -1}
+        updates = []
+        body.update = lambda: updates.append(1)
+
+        body.set_comment_mark(3, 1)
+        body.set_comment_mark(3, 1)
+
+        assert (body._props["commentId"], body._props["commentIndex"]) == (3, 1)
+        assert len(updates) == 1
+
+    def test_the_editor_clears_it_with_none(self, view):
+        marks = []
+        view.body.set_comment_mark = lambda *a: marks.append(a)
+
+        view.mark_comment(None)
+        view.mark_comment(2, 0)
+
+        assert marks == [(-1, -1), (2, 0)]
+
+
 class TestPanelHelpers:
     def test_the_quote_is_one_line(self):
         from utils.comments_panel import quote_of
@@ -1683,6 +1808,16 @@ class TestTheComponent:
         assert 'run.cm !== undefined ? "comment-word" : null' in source
         assert 'run.cl ? "comment-end" : null' in source
 
+    def test_the_comment_on_show_is_marked_on_its_caption_and_its_words(self):
+        source = self.source()
+
+        assert "commentId: { type: Number, default: -1 }" in source
+        assert "commentIndex: { type: Number, default: -1 }" in source
+        assert "'transcript-cell-commenting': block.id === commentId" in source
+        assert "block.id === this.commentId" in source
+        assert "run.cm === this.commentIndex" in source
+        assert source.count("isCommentOnShow(run, block)") == 3  # two templates and the method
+
     def test_nothing_of_the_old_box_is_left(self):
         source = self.source()
 
@@ -1725,6 +1860,85 @@ class TestTheStyles:
 
         assert ".comment-end::after" not in css
         assert ".comment-word::after" not in css
+
+    def test_the_caption_on_show_has_a_rule_and_an_outline_in_the_comment_colour(self):
+        rule = self.rule("    .transcript-cell-commenting {")
+
+        assert "border-left-width: 3px;" in rule
+        assert "inset 0 0 0 2px var(--color-comment-line)" in rule
+        assert "var(--color-comment-line)" in rule
+
+    def test_it_comes_after_the_rules_it_has_to_win_over(self):
+        css = self.css()
+        at = css.index("    .transcript-cell-commenting {")
+
+        for earlier in (
+            "    .transcript-cell-editing {",
+            "    .transcript-cell-invalid {",
+            "    .transcript-cell-highlighted {",
+        ):
+            assert css.index(earlier) < at
+
+    def test_the_words_on_show_get_a_tint_that_leaves_their_own_wash_showing(self):
+        rule = self.rule("    .comment-word[data-comment-current] {")
+
+        # background-image paints above background-color, so a highlighted,
+        # flagged or changed word keeps its own wash underneath.
+        assert "background-image" in rule
+        assert "background-color" not in rule
+        assert "18%" in rule
+        assert "padding" not in rule
+        assert "box-shadow" not in rule
+
+    @pytest.mark.parametrize(
+        "line,walls",
+        [
+            (
+                "#a1136a",
+                [
+                    ("#ffffff", "#111827"),
+                    ("#fff1a3", "#2b2400"),
+                    ("#ede9fb", "#2f1c66"),
+                    ("#dcf2ee", "#10453d"),
+                    ("#dbe4f0", "#111827"),
+                ],
+            ),
+            (
+                "#ff9fd2",
+                [
+                    ("#16181d", "#e6e8eb"),
+                    ("#5a4a00", "#fff6cc"),
+                    ("#2f2748", "#ece7ff"),
+                    ("#1d3b37", "#dff5f0"),
+                    ("#1c3252", "#e6e8eb"),
+                ],
+            ),
+        ],
+    )
+    def test_the_tint_keeps_the_text_and_the_line_readable(self, line, walls):
+        def rgb(colour):
+            return [int(colour[i : i + 2], 16) for i in (1, 3, 5)]
+
+        def luminance(channels):
+            linear = [
+                (c / 255) / 12.92
+                if c / 255 <= 0.03928
+                else ((c / 255 + 0.055) / 1.055) ** 2.4
+                for c in channels
+            ]
+            return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+        def ratio(a, b):
+            lighter, darker = sorted((luminance(a), luminance(b)), reverse=True)
+            return (lighter + 0.05) / (darker + 0.05)
+
+        for wall, text in walls:
+            tinted = [
+                round(w * 0.82 + t * 0.18) for w, t in zip(rgb(wall), rgb(line))
+            ]
+
+            assert ratio(rgb(text), tinted) >= 4.5
+            assert ratio(rgb(line), tinted) >= 3
 
     def test_the_panel_has_the_colour_of_the_underline(self):
         rule = self.rule("    .validation-panel.is-comment {")
