@@ -505,6 +505,56 @@ class TestFollowingTheText:
         assert shape(first) == [([3], "c")]
 
 
+class TestUndo:
+    """
+    With the real history, not the stand-in the other tests use: a comment
+    has to travel with the snapshots.
+    """
+
+    @pytest.fixture
+    def real(self, editor):
+        del editor.save_state_for_undo
+        editor._update_undo_redo_buttons = lambda: None
+        editor.update_beforeunload_state = lambda: None
+
+        return editor
+
+    def state(self, editor):
+        first = editor.captions[0]
+
+        return first.text, shape(first)
+
+    def test_adding_one_can_be_undone_and_redone(self, real):
+        real.set_comment(real.captions[0], 0, 7, "note")
+
+        real.undo()
+        assert self.state(real) == ("ett två tre", [])
+
+        real.redo()
+        assert self.state(real) == ("ett två tre", [([0, 1], "note")])
+
+    def test_deleting_the_words_and_undoing_brings_both_back(self, real):
+        real.set_comment(real.captions[0], 0, 7, "note")
+        real.update_caption_text(real.captions[0], "tre")
+        assert self.state(real) == ("tre", [])
+
+        real.undo()
+
+        assert self.state(real) == ("ett två tre", [([0, 1], "note")])
+
+    def test_changing_the_text_and_removing_can_be_undone(self, real):
+        first = real.captions[0]
+        real.set_comment(first, 0, 3, "one")
+        real.set_comment(first, 0, 3, "two")
+        real.remove_comment(first, 0, 3)
+
+        real.undo()
+        assert shape(real.captions[0]) == [([0], "two")]
+
+        real.undo()
+        assert shape(real.captions[0]) == [([0], "one")]
+
+
 class TestDrawing:
     def runs(self, editor, caption):
         return editor.review_runs(caption)
