@@ -94,28 +94,117 @@ class TestContextRange:
         assert end > editor.captions[2].get_start_seconds()
 
     def test_the_context_is_counted_in_words_not_seconds(self):
-        # The same words spoken half as fast: the stretch doubles with them.
-        slow = {
+        # The same words spoken at half the pace: the stretch doubles with
+        # them (both within the limit in seconds).
+        def at_pace(spacing):
+            words = {
+                "version": 1,
+                "words": [
+                    {"t": f"w{n}", "s": n * spacing, "e": n * spacing + spacing * 0.8}
+                    for n in range(12)
+                ],
+            }
+            editor = make_editor(words)
+            for caption, (a, b) in zip(
+                editor.captions, ((0, 5), (5, 7), (7, 12))
+            ):
+                caption.start_time = editor.seconds_to_timestamp(a * spacing)
+                caption.end_time = editor.seconds_to_timestamp(b * spacing)
+
+            return editor.context_range(editor.captions[1])
+
+        fast = at_pace(0.5)
+        slow = at_pace(1.0)
+
+        assert slow[1] - slow[0] == pytest.approx(2 * (fast[1] - fast[0]))
+
+    def test_a_long_silence_is_not_played(self):
+        """
+        Five words back can be minutes back. Words further out than the limit
+        are left out, and the silence before them is not played either.
+        """
+
+        words = {
             "version": 1,
             "words": [
-                {"t": f"w{n}", "s": n * 2.0, "e": n * 2.0 + 1.6}
-                for n in range(12)
+                {"t": "a", "s": 0.0, "e": 0.5},
+                {"t": "b", "s": 0.6, "e": 1.0},
+                # Five minutes of nothing.
+                {"t": "c", "s": 301.0, "e": 301.5},
+                {"t": "d", "s": 301.6, "e": 302.0},
+                {"t": "e", "s": 600.0, "e": 600.5},
             ],
         }
-        fast = make_editor()
-        slow_editor = make_editor(slow)
-        for caption, (a, b) in zip(
-            slow_editor.captions, ((0, 10), (10, 14), (14, 24))
-        ):
-            caption.start_time = slow_editor.seconds_to_timestamp(a)
-            caption.end_time = slow_editor.seconds_to_timestamp(b)
+        editor = make_editor(words)
+        editor.captions = [
+            SRTCaption(1, "00:00:00,000", "00:00:01,000", "a b"),
+            SRTCaption(2, "00:05:01,000", "00:05:02,000", "c d"),
+            SRTCaption(3, "00:10:00,000", "00:10:01,000", "e"),
+        ]
 
-        fast_range = fast.context_range(fast.captions[1])
-        slow_range = slow_editor.context_range(slow_editor.captions[1])
+        # Nothing within reach on either side: the block on its own.
+        assert editor.context_range(editor.captions[1]) == (301.0, 302.0)
 
-        assert slow_range[1] - slow_range[0] == pytest.approx(
-            2 * (fast_range[1] - fast_range[0])
-        )
+    def test_words_inside_the_limit_still_come_with_it(self):
+        words = {
+            "version": 1,
+            "words": [
+                {"t": "far", "s": 0.0, "e": 0.5},
+                {"t": "near", "s": 95.0, "e": 95.4},
+                {"t": "x", "s": 96.0, "e": 97.0},
+                {"t": "after", "s": 98.0, "e": 98.5},
+                {"t": "later", "s": 300.0, "e": 300.5},
+            ],
+        }
+        editor = make_editor(words)
+        editor.captions = [
+            SRTCaption(1, "00:00:00,000", "00:00:01,000", "far"),
+            SRTCaption(2, "00:01:36,000", "00:01:37,000", "x"),
+            SRTCaption(3, "00:05:00,000", "00:05:01,000", "later"),
+        ]
+
+        start, end = editor.context_range(editor.captions[1])
+
+        # "near" is a second before, "after" a second after; the others are
+        # minutes away.
+        assert start == pytest.approx(95.0)
+        assert end == pytest.approx(98.5)
+
+    def test_the_limit_is_five_seconds(self):
+        from utils.srt_review import CONTEXT_SECONDS
+
+        assert CONTEXT_SECONDS == 5.0
+
+    def test_a_word_exactly_at_the_limit_is_in(self):
+        words = {
+            "version": 1,
+            "words": [
+                {"t": "edge", "s": 5.0, "e": 5.4},
+                {"t": "x", "s": 10.0, "e": 11.0},
+                {"t": "edge2", "s": 11.0, "e": 16.0},
+            ],
+        }
+        editor = make_editor(words)
+        editor.captions = [SRTCaption(1, "00:00:10,000", "00:00:11,000", "x")]
+
+        start, end = editor.context_range(editor.captions[0])
+
+        assert start == pytest.approx(5.0)
+        assert end == pytest.approx(16.0)
+
+    def test_one_word_past_the_limit_is_out(self):
+        words = {
+            "version": 1,
+            "words": [
+                {"t": "edge", "s": 4.9, "e": 5.4},
+                {"t": "x", "s": 10.0, "e": 11.0},
+                {"t": "edge2", "s": 11.0, "e": 16.1},
+            ],
+        }
+        editor = make_editor(words)
+        editor.captions = [SRTCaption(1, "00:00:10,000", "00:00:11,000", "x")]
+
+        assert editor.context_range(editor.captions[0]) == (10.0, 11.0)
 
     def test_the_captions_own_times_are_the_floor(self):
         editor = make_editor()
