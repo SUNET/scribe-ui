@@ -130,6 +130,22 @@ const MINOR_GAP = 7;
 // sideways, in milliseconds. See onWheel.
 const SWIPE_LATCH = 200;
 
+// Pinching over the strip zooms it. How much one unit of the gesture is
+// worth: the zoom is multiplied by exp(-deltaY * PINCH_SPEED), so spreading
+// the fingers (a negative deltaY) zooms in and pinching them together zooms
+// out, smoothly and by the same share every time.
+const PINCH_SPEED = 0.01;
+
+// A mouse wheel with Ctrl held reports a hundred or so at a notch, where a
+// pinch reports a few at a time. Capped so a notch is a firm step (about
+// one and a half times) and not a leap.
+const PINCH_MAX = 40;
+
+// How long the zoom has to stand still before the status region says what
+// the strip now shows, in milliseconds. A pinch changes it many times a
+// second, and a screen reader that said every value would say nothing else.
+const PINCH_SETTLE = 500;
+
 // The id a caption being dragged out of empty strip is drawn under. It has
 // no number of its own until the server has made it one -- a caption's
 // number is its position among the others -- and no real caption is ever 0,
@@ -174,6 +190,9 @@ export default {
         @focus="syncAria(true)"
         @keydown="onKey"
         @wheel="onWheel"
+        @gesturestart="onGesture"
+        @gesturechange="onGesture"
+        @gestureend="onGesture"
       >
         <canvas ref="canvas" @click="onClick"></canvas>
         <div
@@ -245,7 +264,8 @@ export default {
         Left and right arrow keys move the playhead a little, Page Up and Page
         Down a whole strip, Home and End to the start and the end of the
         recording. Shift with the up and down arrow keys, or plus and minus,
-        zoom, and 0 resets the zoom.
+        zoom, and 0 resets the zoom. Pinching on a trackpad over the strip
+        zooms it too.
       </span>
       <span class="sr-only" role="status" aria-live="polite" aria-atomic="true">{{ note }}</span>
     </div>
@@ -345,6 +365,10 @@ export default {
       seekFrame: null,
       // Until when wheel events count as sideways whatever they say.
       swipeUntil: 0,
+      // The zoom a Safari pinch started from (see onGesture), and the wait
+      // before the new zoom is said (see sayZoomSoon).
+      gestureFrom: 1,
+      zoomNoteTimer: null,
       // Which of the controls beside the strip is in the tab order. One of
       // them at a time, with the arrow keys moving between them, as in the
       // caption actions.
@@ -456,6 +480,8 @@ export default {
     }
 
     if (this.seekFrame) cancelAnimationFrame(this.seekFrame);
+
+    clearTimeout(this.zoomNoteTimer);
 
     this.releaseSwipe();
 
@@ -1407,8 +1433,8 @@ export default {
     // where it is in the middle (SUNET/scribe-ui#128). Only sideways: up and
     // down is the page's, and a strip that took it would trap the reader in
     // the middle of a long page. Shift with the wheel is sideways on a mouse
-    // that has no other way to say so. Ctrl with the wheel is the browser's
-    // zoom, and is left alone for the same reason as in onKey.
+    // that has no other way to say so. Ctrl with the wheel is a pinch, and
+    // zooms the strip (see pinch).
     //
     // Once a gesture has been sideways, the next few hundred milliseconds of
     // it are too. A swipe often starts more vertical than sideways, and the
@@ -1416,7 +1442,18 @@ export default {
     // whole gesture on -- which is how a swipe over the strip ended up going
     // back to the previous page. See holdSwipe for the other half of that.
     onWheel(event) {
-      if (event.ctrlKey || event.metaKey) return;
+      // A pinch on a trackpad arrives as a wheel with Ctrl held (Chrome,
+      // Edge and Firefox, on a Mac too), and so does Ctrl with a mouse
+      // wheel. Over the strip it zooms the strip; everywhere else it is
+      // still the browser's zoom, and so are Ctrl and Cmd with plus, minus
+      // and 0 (see onKey), so the page can always be enlarged.
+      if (event.ctrlKey) {
+        event.preventDefault();
+        this.pinch(event);
+        return;
+      }
+
+      if (event.metaKey) return;
       if (this.drag || this.creating || this.dockDrag) return;
 
       const now = performance.now();
@@ -1451,6 +1488,66 @@ export default {
 
       this.seekTo(from + pixels / pixelsPerSecond);
       this.syncAria(false);
+    },
+
+    // One step of a pinch, or of Ctrl with the wheel: zoom by an amount
+    // that follows the gesture. The strip is drawn around the playhead, so
+    // there is nowhere to zoom towards. Not while a caption is being dragged,
+    // when what the pixels mean would change under the pointer -- though the
+    // browser's own zoom is still kept off, or the page would grow instead.
+    pinch(event) {
+      const box = this.$refs.root.getBoundingClientRect();
+      const pixels =
+        event.deltaMode === 1
+          ? event.deltaY * 16
+          : event.deltaMode === 2
+          ? event.deltaY * box.height
+          : event.deltaY;
+
+      const capped = Math.max(-PINCH_MAX, Math.min(PINCH_MAX, pixels));
+
+      this.zoomBy(Math.exp(-capped * PINCH_SPEED));
+    },
+
+    // Safari does not send a pinch as a wheel but as its own gesture, with
+    // the whole scale since it began. Cancelled, or the page zooms.
+    onGesture(event) {
+      event.preventDefault();
+
+      if (event.type === "gesturestart") {
+        this.gestureFrom = this.zoom;
+        return;
+      }
+
+      if (event.type === "gesturechange" && event.scale > 0) {
+        this.zoomBy((this.gestureFrom * event.scale) / this.zoom);
+      }
+    },
+
+    // Multiply the zoom, within the same limits as the buttons: nothing
+    // further in than the strip goes, and not further out than the whole
+    // recording on it.
+    zoomBy(factor) {
+      if (this.drag || this.creating || this.dockDrag) return;
+
+      const zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, this.zoom * factor));
+
+      if (zoom === this.zoom) return;
+      if (zoom < this.zoom && !this.canZoomOut()) return;
+
+      this.zoom = zoom;
+      this.draw();
+      this.sayZoomSoon();
+    },
+
+    // Once the zoom has stood still for a moment, not at every step of it.
+    sayZoomSoon() {
+      clearTimeout(this.zoomNoteTimer);
+
+      this.zoomNoteTimer = setTimeout(() => {
+        this.zoomNoteTimer = null;
+        this.note = `The strip shows ${this.seconds(this.visible())}`;
+      }, PINCH_SETTLE);
     },
 
     // The browser goes back to the previous page on a sideways swipe that
@@ -1521,7 +1618,7 @@ export default {
           key: "zoomOut",
           icon: "zoom_out",
           label: "Zoom out",
-          tip: "Zoom out",
+          tip: "Zoom out (or pinch on the strip)",
           off: !this.canZoomOut(),
           gap: true,
           run: this.zoomOut,
@@ -1530,7 +1627,7 @@ export default {
           key: "zoomIn",
           icon: "zoom_in",
           label: "Zoom in",
-          tip: "Zoom in",
+          tip: "Zoom in (or pinch on the strip)",
           off: !this.canZoomIn(),
           run: this.zoomIn,
         },
