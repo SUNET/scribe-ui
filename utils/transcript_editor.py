@@ -1630,6 +1630,21 @@ class TranscriptEditor:
         if self.body is not None:
             self.body.set_show_edits(bool(show))
 
+    def set_show_comments(self, show: bool) -> None:
+        """
+        Show or hide the reader's comments.
+
+        Hiding puts the comments card away first, keeping what was typed in
+        it: its Previous, Next and Remove would otherwise act on comments the
+        reader cannot see. Re-renders, because which words are marked up is
+        worked out on the server.
+        """
+
+        if not show and self.comments_panel is not None:
+            self.comments_panel.put_away()
+
+        self.editor.set_show_comments(show)
+
     def set_highlight_word(self, highlight: bool) -> None:
         """
         Turn word-by-word following on or off.

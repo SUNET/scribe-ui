@@ -31,6 +31,7 @@ from utils.srt_review import (
     AUTOSCROLL_KEY,
     DEFAULT_REVIEW_SENSITIVITY,
     EDIT_TOOLTIP,
+    COMMENTS_SHOW_KEY,
     EDITS_SHOW_KEY,
     OVERLAY_SHOW_KEY,
     TIMELINE_DOCK_KEY,
@@ -51,6 +52,7 @@ __all__ = [
     "AUTOSCROLL_KEY",
     "CHARACTER_LIMIT_EXCEEDED_COLOR",
     "DEFAULT_REVIEW_SENSITIVITY",
+    "COMMENTS_SHOW_KEY",
     "EDITS_SHOW_KEY",
     "EDIT_TOOLTIP",
     "OVERLAY_SHOW_KEY",
@@ -124,6 +126,11 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin, CommentsMixi
         self.has_confidence = False
         self.show_uncertain_words = False
         self.show_my_edits = False
+        # The reader's own comments. On by default: they put them there.
+        # Hiding them draws nothing and reads out nothing, but keeps them.
+        self.show_comments = True
+        # Told when a command turns them back on, so the switch can follow.
+        self.on_comments_shown = None
         # The strip under the video. On by default, the same as the overlay
         # and for the same reason: it shows what is already there rather
         # than adding anything to read.
