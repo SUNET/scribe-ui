@@ -443,13 +443,13 @@ class TestFollowingTheText:
 
         assert shape(editor.captions[0]) == [([2], "a"), ([3, 4], "b")]
 
-    def test_a_word_moved_to_the_previous_caption_leaves_the_comment(self, editor):
+    def test_a_comment_on_a_moved_word_and_others_is_on_both_captions(self, editor):
         first, second = editor.captions
         second.comments = [comment({0, 1}, "c")]
 
         editor.move_first_word_to_previous(second)
 
-        assert first.comments == []
+        assert shape(first) == [([3], "c")]
         assert shape(second) == [([0], "c")]
 
     def test_a_comment_on_only_that_word_goes_with_it(self, editor):
@@ -458,9 +458,31 @@ class TestFollowingTheText:
 
         editor.move_first_word_to_previous(second)
 
+        assert shape(first) == [([3], "c")]
         assert shape(second) == [([1], "d")]
 
-    def test_a_word_moved_to_the_next_caption_leaves_the_comment(self, editor):
+    def test_the_comments_of_the_caption_it_joins_stay_where_they_are(self, editor):
+        first, second = editor.captions
+        first.comments = [comment({0, 1}, "old")]
+        second.comments = [comment({0}, "new")]
+
+        editor.move_first_word_to_previous(second)
+
+        assert shape(first) == [([0, 1], "old"), ([3], "new")]
+
+    def test_a_comment_on_the_last_word_goes_to_the_next_caption(self, editor):
+        first, second = editor.captions
+        first.comments = [comment({2}, "c")]
+        second.comments = [comment({1}, "d")]
+
+        editor.move_last_word_to_next(first)
+
+        assert first.comments == []
+        assert shape(second) == [([0], "c"), ([2], "d")]
+
+    def test_a_comment_on_the_last_word_and_others_is_on_both_going_next(
+        self, editor
+    ):
         first, second = editor.captions
         first.comments = [comment({1, 2}, "c")]
         second.comments = [comment({1}, "d")]
@@ -468,7 +490,18 @@ class TestFollowingTheText:
         editor.move_last_word_to_next(first)
 
         assert shape(first) == [([1], "c")]
-        assert shape(second) == [([2], "d")]
+        assert shape(second) == [([0], "c"), ([2], "d")]
+
+    def test_a_comment_on_a_word_that_stays_keeps_it_when_another_moves(
+        self, editor
+    ):
+        first, second = editor.captions
+        first.comments = [comment({0}, "c")]
+
+        editor.move_last_word_to_next(first)
+
+        assert shape(first) == [([0], "c")]
+        assert second.comments == []
 
     def test_deleting_across_captions_keeps_what_is_left(self, editor):
         first, second = editor.captions
