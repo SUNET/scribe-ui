@@ -326,11 +326,33 @@ class TestPlayRange:
         assert "timeupdate" not in script
         assert "video.currentTime >= end" in script
         assert "video.pause();" in script
-        # A pause by the reader, or a seek away, ends the watch.
+        # A pause by the reader ends the watch.
         assert "video.paused" in script
-        assert "video.currentTime < start - 0.5" in script
         # A second request replaces the first rather than running beside it.
         assert "video._scribeStopWatch()" in script
+
+    def test_a_move_in_either_direction_ends_the_watch_and_leaves_it_playing(self):
+        """
+        Told by the player's own seeking event, which playing never raises, so
+        a jump forward past the end is not mistaken for reaching it -- and no
+        position is compared, which is what let a jump back keep playing and a
+        jump forward pause.
+        """
+
+        script = SRTEditor.PLAY_RANGE_SCRIPT
+        begin = script[script.index("const begin = () => {"):]
+        finish = script[script.index("const finish = () => {"):script.index("video._scribeStopWatch = finish;")]
+
+        assert 'video.addEventListener("seeking", finish);' in begin
+        assert 'video.removeEventListener("seeking", finish);' in finish
+        assert "start - 0.5" not in script
+        # Registered after its own move to the start, which is not the reader's.
+        assert begin.index('"seeking"') < begin.index("video.play();")
+        assert script.index('video.addEventListener("seeked", begin') < script.index(
+            "video.currentTime = start;"
+        )
+        # The only pause is at the end, never on a move.
+        assert script.count("video.pause();") == 1
 
     def test_the_script_does_not_touch_focus(self):
         assert "focus" not in SRTEditor.PLAY_RANGE_SCRIPT
