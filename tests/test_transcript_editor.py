@@ -3023,6 +3023,7 @@ class TestTheShortcutsDialog:
                 "Transport",
                 [
                     ("Play/Pause", "Ctrl + Space"),
+                    ("Play paragraph with context", "Ctrl + Shift + Space"),
                 ],
             ),
         ]
@@ -3082,6 +3083,7 @@ class TestTheShortcutsDialog:
                 "Transport",
                 [
                     ("Play/Pause", "Ctrl + Space"),
+                    ("Play caption with context", "Ctrl + Shift + Space"),
                 ],
             ),
         ]

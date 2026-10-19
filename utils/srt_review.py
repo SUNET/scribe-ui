@@ -42,6 +42,18 @@ settings = get_settings()
 # absent rather than guessed at.
 WORDS_FORMAT_VERSION = 1
 
+# How many words of the speech either side of a caption "Play with context"
+# adds. Counted in words, not seconds, so the context follows the speaking
+# pace; not a setting yet.
+CONTEXT_WORDS = 5
+
+# ... but never further than this many seconds from the block on either side.
+# Five words are normally two seconds, but across a long silence they can be
+# minutes away, and nobody wants to sit through that to hear them. A word
+# further out is left out altogether -- the silence before it is not played
+# either -- so a block with nothing near it is played on its own.
+CONTEXT_SECONDS = 5.0
+
 # How far up the confidence range each sensitivity flags. Words are marked
 # identically whichever setting is in force -- the setting decides how many
 # are marked, not how alarming any one of them looks. The raw score is never
@@ -162,6 +174,73 @@ class ReviewMixin:
         self.words = [loaded[position] for position in order]
         self._word_midpoints = [midpoints[position] for position in order]
 
+
+    def context_range(
+        self,
+        caption: SRTCaption,
+        words: int = CONTEXT_WORDS,
+        seconds: float = CONTEXT_SECONDS,
+    ) -> Optional[tuple]:
+        """
+        The stretch of the recording to play for a caption with its context:
+        from the start of the word `words` words before the caption to the
+        end of the word `words` words after it.
+
+        The caption's own times are the floor -- the stretch never starts
+        later or ends earlier than the caption does, so a caption timed
+        wider than its words is still heard whole. Context crosses caption
+        boundaries, since it is measured in the words of the whole
+        recording; near either end of it there are simply fewer words, and
+        what exists is played. A word more than `seconds` from the caption's
+        edge is not context (see CONTEXT_SECONDS): the stretch stops short of
+        it, and with no word that near it is the caption alone. Without word
+        timings the stretch is the caption alone.
+
+        Returns None for a caption that does not end after it starts: there
+        is nothing to play.
+        """
+
+        start = caption.get_start_seconds()
+        end = caption.get_end_seconds()
+
+        if end <= start:
+            return None
+
+        if not self.words:
+            return (start, end)
+
+        # The same midpoint test words_in_range uses, so "before" and
+        # "after" agree with which caption a word belongs to.
+        before = bisect.bisect_left(self._word_midpoints, start)
+        after = bisect.bisect_right(self._word_midpoints, end)
+
+        # Nearest first, so the first word to be too far away ends it: the
+        # ones beyond it are further still.
+        floor = start - seconds
+        ceiling = end + seconds
+        first, last = start, end
+
+        for position in range(before - 1, max(0, before - words) - 1, -1):
+            word = self.words[position]
+            began = word.get("s", self._word_midpoints[position])
+
+            if began < floor:
+                break
+
+            first = min(first, began)
+
+        for position in range(after, min(len(self.words), after + words)):
+            word = self.words[position]
+            ended = word.get("e", self._word_midpoints[position])
+
+            if ended > ceiling:
+                break
+
+            last = max(last, ended)
+
+        start, end = first, last
+
+        return (max(0.0, start), end)
 
     def words_in_range(self, start: float, end: float) -> List[dict]:
         """

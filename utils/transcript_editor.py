@@ -658,6 +658,7 @@ class TranscriptEditor:
         self.body.on("caretcomment", lambda event: self.caret_comment(event.args))
         self.body.on("movetext", lambda event: self.move_text(event.args))
         self.body.on("nudge", lambda event: self.nudge(event.args))
+        self.body.on("playcontext", lambda event: self.play_with_context(event.args))
         self.body.on("addblock", lambda event: self.add_after(event.args))
         self.body.on("deleteblock", lambda event: self.delete(event.args))
         self.body.on("blockclick", lambda event: self.seek(event.args))
@@ -1258,6 +1259,7 @@ class TranscriptEditor:
         self.refresh()
         self.changed()
         self.focus(landing[0].index, landing[1])
+
     def nudge(self, args) -> None:
         """
         Move a caption's start or end one step, from the keyboard.
@@ -1290,6 +1292,43 @@ class TranscriptEditor:
             caption.index,
             int(offset) if isinstance(offset, (int, float)) else 0,
         )
+
+    def play_with_context(self, args) -> None:
+        """
+        Play the block the caret is in, with a few words of speech either
+        side of it, once.
+
+        Nothing is moved or re-rendered and the caret is not touched: the
+        reader is checking where a boundary falls by ear, and is about to
+        carry on typing. The stretch is worked out from the block's times as
+        they are now, edited or not (see context_range).
+        """
+
+        caption = self.caption(self.block_id(args))
+
+        if caption is None:
+            return
+
+        stretch = self.editor.context_range(caption)
+
+        if stretch is None:
+            ui.notify(
+                "There is nothing to play: the block does not end after it starts",
+                type="warning",
+                timeout=None,
+                close_button="Close",
+            )
+            return
+
+        if not self.editor.words:
+            ui.notify(
+                "No word timings for this recording, so only the block itself is played",
+                type="info",
+                timeout=None,
+                close_button="Close",
+            )
+
+        self.editor.play_range(*stretch)
 
     def delete(self, args) -> None:
         """
