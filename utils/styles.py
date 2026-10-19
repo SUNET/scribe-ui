@@ -2536,7 +2536,11 @@ theme_styles = """
         color: var(--color-text-secondary);
     }
     /* The controls at the end of the key: dock, zoom, and adding a caption at
-       the playhead. The same tray as the caption actions -- surface,
+       the playhead. They follow the key at a fixed distance (the row's gap
+       plus this margin) rather than being pushed to the row's far edge: the
+       row is a video column wide under the video and the whole page wide
+       docked, so an edge-aligned tray looked as if it jumped when the strip
+       moved. The same tray as the caption actions -- surface,
        hairline, fully rounded, round 1.5rem buttons -- so the two read as one
        family; they sit in the strip's own legend row, where they cost it no
        height, which is what matters most docked along the foot of the page.
@@ -2555,7 +2559,7 @@ theme_styles = """
         display: flex;
         align-items: center;
         gap: 2px;
-        margin-left: auto;
+        margin-left: 0.5rem;
         padding: 2px;
         border: 1px solid var(--color-border-subtle);
         border-radius: 999px;
