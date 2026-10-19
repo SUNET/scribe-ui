@@ -22,7 +22,7 @@ from uuid import UUID
 from nicegui import app, ui
 from utils.common import focus_element, get_auth_header
 from utils.styles import default_styles
-from utils.common import job_has_original, page_init
+from utils.common import hidden_page_heading, job_has_original, page_init
 from utils.helpers import storage_decrypt
 from utils.settings import get_settings
 from utils.srt import (
@@ -46,6 +46,15 @@ create_video_proxy()
 settings = get_settings()
 
 
+def editor_title(data_format: str) -> str:
+    """
+    What the page is called, in the tab and to a screen reader: the same
+    words the file list uses for the two kinds of file.
+    """
+
+    return "Subtitle editor" if data_format == "srt" else "Transcript editor"
+
+
 def create() -> None:
     # A long reconnect window, unlike every other page: the captions being
     # edited live in this client's own SRTEditor on the server, and when the
@@ -61,13 +70,17 @@ def create() -> None:
         """
         Display the result of the transcription job.
         """
-        await page_init(use_drawer=True, title="Editor")
+        title = editor_title(data_format)
+
+        await page_init(use_drawer=True, title=title)
 
         try:
             UUID(uuid)
         except (ValueError, TypeError):
             ui.label("Invalid job identifier.").classes("text-h6")
             return
+
+        hidden_page_heading(title)
 
         editor = SRTEditor(uuid, data_format, filename)
         editor.setup_beforeunload_warning()

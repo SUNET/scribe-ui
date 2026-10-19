@@ -50,6 +50,7 @@ The caption the caret is in marks itself too (`caretId` in the component, `.tran
 - NiceGUI `ui.table` uses Quasar slot templates with `$parent.$emit('event_name', props.row)` for per-row actions.
 - Dialog close on validation failure uses short-circuit pattern: `result and (dialog.close(), navigate)`.
 - Use `match/case` statements (Python 3.13+).
+- Every page has a title in the tab and exactly one h1 (WCAG 2.4.2, 1.3.1). The title is `page_init(title=...)`, or `ui.page_title()` where a page does not go through `page_init` (the sign-in and status pages). A page that shows a title gives that label `role=heading aria-level=1`; a page that shows none -- the editor, the viewer and the recorder -- calls `hidden_page_heading()` (`utils/common.py`, `.sr-only`, no change to the look) with the same words as its title, so a reader who cannot see the page can tell where they are. The editor is "Subtitle editor" or "Transcript editor" (`editor_title()`, by `data_format`), the viewer "Viewer" for both kinds of file, the recorder "Recorder". The viewer's visible file name is an h2 under it. `tests/test_page_headings.py` goes through every `@ui.page` module.
 
 ## Security
 

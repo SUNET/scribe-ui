@@ -348,7 +348,7 @@ async def index(request: Request) -> None:
 
                     ui.label(settings.LANDING_TEXT).classes(
                         "text-h5 text-center"
-                    ).style("margin-top: 20px;")
+                    ).props("role=heading aria-level=1").style("margin-top: 20px;")
 
                     if is_not_activated:
                         with ui.card().classes("w-full no-shadow").style(
