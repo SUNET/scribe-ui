@@ -28,6 +28,7 @@ import pathlib
 
 import pytest
 
+from tests.test_highlights import make_editor
 from tests.test_comments import (  # noqa: F401  (fixtures)
     FakeBody,
     comment,
@@ -36,7 +37,6 @@ from tests.test_comments import (  # noqa: F401  (fixtures)
     shape,
     view,
 )
-from utils.srt import COMMENTS_SHOW_KEY
 
 
 @pytest.fixture
@@ -67,24 +67,32 @@ def hide(view, editor):
 
 
 class TestThePreference:
-    def test_they_are_shown_unless_the_reader_has_said_otherwise(self, editor):
+    def test_every_editor_opens_with_them_shown(self, editor):
         assert editor.show_comments is True
 
         editor.restore_review_state(False, "low")
 
         assert editor.show_comments is True
 
-    def test_a_stored_choice_is_applied_before_the_first_render(self, editor):
-        editor.restore_review_state(False, "low", comments=False)
+    def test_hiding_them_is_not_remembered(self, editor):
+        """
+        A way of looking at the text for a while, not a preference: nothing
+        stored is read back, and the next editor starts with them shown.
+        """
 
-        assert editor.show_comments is False
+        editor.set_show_comments(False)
 
-        editor.restore_review_state(False, "low", comments=True)
+        assert make_editor().show_comments is True
 
-        assert editor.show_comments is True
+        with pytest.raises(TypeError):
+            editor.restore_review_state(False, "low", comments=False)
 
-    def test_it_is_stored_under_its_own_key(self):
-        assert COMMENTS_SHOW_KEY == "srt_show_comments"
+    def test_there_is_no_stored_choice(self):
+        import utils.srt
+        import utils.srt_review
+
+        assert not hasattr(utils.srt, "COMMENTS_SHOW_KEY")
+        assert not hasattr(utils.srt_review, "COMMENTS_SHOW_KEY")
 
     def test_switching_redraws(self, editor, notices):
         editor.set_show_comments(False)
@@ -435,11 +443,11 @@ class TestTheSwitch:
 
         assert edits < guard < comments
 
-    def test_it_is_a_saved_preference_like_the_others(self):
+    def test_it_is_not_saved_between_sessions(self):
         source = self.page()
 
-        assert "app.storage.user[COMMENTS_SHOW_KEY] = value" in source
-        assert "app.storage.user.get(COMMENTS_SHOW_KEY, True)" in source
+        assert "COMMENTS_SHOW_KEY" not in source
+        assert "srt_show_comments" not in source
 
     def test_it_listens_for_the_keyboard_too(self):
         assert '"update:model-value", save_show_comments' in self.page()
