@@ -31,6 +31,7 @@ from utils.srt_review import (
     DEFAULT_REVIEW_SENSITIVITY,
     EDIT_TOOLTIP,
     EDITS_SHOW_KEY,
+    HIGHLIGHTS_SHOW_KEY,
     OVERLAY_SHOW_KEY,
     TIMELINE_DOCK_KEY,
     TIMELINE_SHOW_KEY,
@@ -51,6 +52,7 @@ __all__ = [
     "CHARACTER_LIMIT_EXCEEDED_COLOR",
     "DEFAULT_REVIEW_SENSITIVITY",
     "EDITS_SHOW_KEY",
+    "HIGHLIGHTS_SHOW_KEY",
     "EDIT_TOOLTIP",
     "OVERLAY_SHOW_KEY",
     "TIMELINE_DOCK_KEY",
@@ -123,6 +125,11 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         self.has_confidence = False
         self.show_uncertain_words = False
         self.show_my_edits = False
+        # The reader's own highlights. On by default: they put them there.
+        # Hiding them draws nothing and reads out nothing, but keeps them.
+        self.show_highlights = True
+        # Told when a command turns them back on, so the switch can follow.
+        self.on_highlights_shown = None
         # The strip under the video. On by default, the same as the overlay
         # and for the same reason: it shows what is already there rather
         # than adding anything to read.
@@ -1211,8 +1218,8 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         everything taken gets one. A mixed selection therefore becomes fully
         highlighted first -- the reader can press again to clear it.
 
-        Returns "added", "removed", or "" when nothing was selected (a notice
-        says so).
+        Returns "added", "removed", "shown" (hidden highlights were only
+        shown again), or "" when nothing was selected (a notice says so).
 
         Transcriptions only, for now. A set of subtitles is saved as plain
         SRT, which has nowhere to keep a highlight, so it gets none: nothing
@@ -1239,11 +1246,21 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
             )
             return ""
 
-        remove = all(
+        already = [
             position in caption.highlighted_words
             for caption, positions in touched
             for position in positions
-        )
+        ]
+
+        # Hidden highlights are not something the key may take off: what
+        # cannot be seen should not be deleted. The command turns the display
+        # on instead, adds a highlight to any word taken that lacks one, and
+        # says what happened -- a second press, with them showing, is the one
+        # that removes.
+        if not self.show_highlights:
+            return self.reveal_highlights(touched, already)
+
+        remove = all(already)
 
         self.save_state_for_undo()
 
@@ -1257,6 +1274,49 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         self.mark_as_changed()
 
         return "removed" if remove else "added"
+
+    def reveal_highlights(self, touched: list, already: list) -> str:
+        """
+        The highlight command while highlights are hidden.
+
+        Never removes anything. Words taken that have none get one; if they
+        all have one already, nothing changes and the notice says why nothing
+        seems to have happened. Returns "added" or "shown".
+        """
+
+        if all(already):
+            message = (
+                "Highlights were hidden and are shown again. "
+                "Press again to remove this highlight."
+            )
+            result = "shown"
+        else:
+            self.save_state_for_undo()
+
+            for caption, positions in touched:
+                caption.highlighted_words.update(positions)
+
+            self.mark_as_changed()
+
+            message = (
+                "Highlight added. Highlights were hidden and are shown again."
+                if not any(already)
+                else "Highlights were hidden and are shown again, and the "
+                "words without one were highlighted."
+            )
+            result = "added"
+
+        self.set_show_highlights(True)
+
+        # A toast is announced as it appears (Quasar gives it role=alert), so
+        # this is what tells a screen reader user why the key did what it did.
+        # It stays until closed, like the other notices (WCAG 2.2.1).
+        ui.notify(message, type="info", timeout=None, close_button="Close")
+
+        if self.on_highlights_shown is not None:
+            self.on_highlights_shown()
+
+        return result
 
     def add_caption_after(self, caption: SRTCaption) -> None:
         """

@@ -59,6 +59,7 @@ EDIT_TOOLTIP = "You changed this word"
 REVIEW_SHOW_KEY = "srt_show_uncertain_words"
 REVIEW_SENSITIVITY_KEY = "srt_review_sensitivity"
 EDITS_SHOW_KEY = "srt_show_my_edits"
+HIGHLIGHTS_SHOW_KEY = "srt_show_highlights"
 AUTOSCROLL_KEY = "srt_autoscroll"
 OVERLAY_SHOW_KEY = "srt_show_subtitle_overlay"
 TIMELINE_SHOW_KEY = "srt_show_timeline"
@@ -592,7 +593,13 @@ class ReviewMixin:
 
 
     def restore_review_state(
-        self, show, sensitivity, edits=False, overlay=True, timeline=True
+        self,
+        show,
+        sensitivity,
+        edits=False,
+        overlay=True,
+        timeline=True,
+        highlights=True,
     ) -> None:
         """
         Apply persisted review preferences before the first render.
@@ -605,13 +612,16 @@ class ReviewMixin:
         overlay and timeline default to True, unlike the markings: they show
         what is already there rather than adding anything to read, so nothing
         stored yet means a reader who has never touched either switch gets
-        both on.
+        both on. highlights defaults to True for a different reason: a
+        highlight is something the reader put there on purpose, so a reader
+        who has never touched the switch must keep seeing them.
         """
 
         self.show_uncertain_words = bool(show)
         self.show_my_edits = bool(edits)
         self.show_subtitle_overlay = bool(overlay)
         self.show_timeline = bool(timeline)
+        self.show_highlights = bool(highlights)
 
         if sensitivity in REVIEW_SENSITIVITIES:
             self.review_sensitivity = sensitivity
@@ -636,6 +646,19 @@ class ReviewMixin:
         """
 
         self.show_my_edits = bool(show)
+        self.refresh_display(force_full_refresh=True)
+
+
+    def set_show_highlights(self, show: bool) -> None:
+        """
+        Show or hide the reader's highlights.
+
+        Hiding only stops them being drawn and read out: the words stay
+        marked in the data, so they still follow the text through every
+        split, merge and move, and they are still in a save and in an export.
+        """
+
+        self.show_highlights = bool(show)
         self.refresh_display(force_full_refresh=True)
 
 
@@ -840,7 +863,9 @@ class ReviewMixin:
         if not source:
             return []
 
-        highlighted = caption.highlighted_words
+        # Hidden highlights are not drawn: no run carries one, so nothing is
+        # marked up for a screen reader either. They stay in the caption.
+        highlighted = caption.highlighted_words if self.show_highlights else ()
 
         if (
             not self.show_uncertain_words
@@ -852,8 +877,7 @@ class ReviewMixin:
 
         # A word has to be a run of its own before it can be marked at all, so
         # marking the reader's words needs the same split that following the
-        # audio does. So does a highlight, which is always drawn: it is not one
-        # of the switches under the video.
+        # audio does. So does a highlight, while they are shown.
         one_run_per_word = per_word or self.show_my_edits or bool(highlighted)
 
         words = self.aligned_words(caption, source)
@@ -869,7 +893,9 @@ class ReviewMixin:
         tokens = [token for token in re.split(r"(\s+)", source) if token]
 
         def is_highlighted(position: int) -> bool:
-            return self.token_is_highlight(caption, position)
+            return self.show_highlights and self.token_is_highlight(
+                caption, position
+            )
 
         # Which word each token is, so that the space between two highlighted
         # words can be drawn highlighted too: a passage reads as one marked

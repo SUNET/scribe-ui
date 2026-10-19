@@ -989,11 +989,16 @@ class TranscriptEditor:
         if not selections:
             return
 
-        if not self.editor.toggle_highlight(selections):
+        result = self.editor.toggle_highlight(selections)
+
+        if not result:
             return
 
         self.refresh()
-        self.changed()
+
+        # Showing hidden highlights again changes nothing worth saving.
+        if result != "shown":
+            self.changed()
 
         # Offsets are in the text, which a highlight does not change, so the
         # selection can be put back exactly as it was.
@@ -1469,6 +1474,16 @@ class TranscriptEditor:
 
         if self.body is not None:
             self.body.set_show_edits(bool(show))
+
+    def set_show_highlights(self, show: bool) -> None:
+        """
+        Show or hide the reader's highlights.
+
+        Re-renders, because which words are marked up is worked out on the
+        server.
+        """
+
+        self.editor.set_show_highlights(show)
 
     def set_highlight_word(self, highlight: bool) -> None:
         """
