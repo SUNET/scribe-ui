@@ -584,10 +584,14 @@ class CommentsPanel:
 
     def sync(self) -> None:
         """
-        The text has been redrawn: an undo, a merge, a delete or an edit may
-        have replaced the comment on screen or taken it away. Find it again, or
-        shut the panel. A card that is still right is not touched, so what is
-        being typed in it is not.
+        The text has been redrawn: an undo, a merge, a delete, an edit or a
+        renamed speaker may have replaced the comment on screen, moved it, or
+        taken it away. Find it again, or shut the panel.
+
+        The card is drawn again either way, so that what it says about where
+        the comment is (who is speaking, and when) stays what the text shows.
+        What is typed in its text box is not touched, so a comment being
+        written is not lost to a change somewhere else.
         """
 
         if not self.container.visible:
@@ -595,7 +599,7 @@ class CommentsPanel:
 
         if self.pending is not None:
             if any(caption is self.pending[0] for caption in self.editor.captions):
-                self.mark()
+                self.draw(scroll=False)
                 return
 
             self.pending = None
@@ -610,24 +614,64 @@ class CommentsPanel:
         if any(comment is held for held in caption.comments) and any(
             caption is held for held in self.editor.captions
         ):
-            self.mark()
+            self.draw(scroll=False)
             return
 
-        # Replaced rather than gone, as an undo does: the same words in the
-        # caption of the same number.
+        found = self.find_again(caption, comment)
+
+        if found is None:
+            self.current = None
+            self.hide()
+            return
+
+        unsaved = self.dirty()
+        self.current = found
+
+        if not unsaved:
+            self.text.set_value(found[1].text)
+
+        self.draw(scroll=False)
+
+    def find_again(
+        self, caption: SRTCaption, comment: WordComment
+    ) -> Optional[tuple]:
+        """
+        The comment on the card, now that the objects holding it have been
+        replaced: (caption, comment), or None when it is gone.
+
+        An undo puts back a copy with the same words. An edit of the text
+        builds new comments whose words have moved with it (a word typed into
+        the middle of the commented words is one more of them, a word deleted
+        from them one less), so there the same words are not to be had, and
+        the comment is the one in the caption that has the same text and
+        shares the most words with the old one. A caption of the same number
+        is the same caption.
+        """
+
         for candidate in self.editor.captions:
             if candidate.index != caption.index:
                 continue
 
             for held in candidate.comments:
                 if held.words == comment.words:
-                    self.current = (candidate, held)
-                    self.text.set_value(held.text)
-                    self.draw(scroll=False)
-                    return
+                    return candidate, held
 
-        self.current = None
-        self.hide()
+            alike = [held for held in candidate.comments if held.text == comment.text]
+
+            if not alike:
+                continue
+
+            best = max(
+                alike,
+                key=lambda held: (
+                    len(set(held.words) & set(comment.words)),
+                    -abs(min(held.words) - min(comment.words)),
+                ),
+            )
+
+            return candidate, best
+
+        return None
 
     @staticmethod
     def focus(element: ui.element) -> None:

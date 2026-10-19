@@ -1276,17 +1276,121 @@ class TestFollowingTheCaret:
 
 
 class TestKeepingUpWithTheText:
-    def test_a_card_that_is_still_right_is_not_touched(self, panel, editor):
+    def test_a_card_that_is_still_right_keeps_what_is_being_typed(
+        self, panel, editor
+    ):
         editor.captions[0].comments = [comment({0}, "a")]
         panel.show(editor.captions[0], editor.captions[0].comments[0])
         panel.text.value = "being typed"
+
+        panel.sync()
+
+        assert panel.text.value == "being typed"
+
+    def test_a_card_that_is_still_right_is_drawn_again_without_scrolling(
+        self, panel, editor
+    ):
+        editor.captions[0].comments = [comment({0}, "a")]
+        panel.show(editor.captions[0], editor.captions[0].comments[0])
         calls = []
         panel.draw = lambda **k: calls.append(k)
 
         panel.sync()
 
-        assert calls == []
-        assert panel.text.value == "being typed"
+        assert calls == [{"scroll": False}]
+
+    def test_a_renamed_speaker_is_the_one_the_card_names(self, panel, editor):
+        editor.captions[0].comments = [comment({0}, "a")]
+        panel.show(editor.captions[0], editor.captions[0].comments[0])
+        assert panel.detail.text.startswith("A \u00b7 ")
+
+        editor.captions[0].speaker = "Kim"
+        panel.sync()
+
+        assert panel.detail.text.startswith("Kim \u00b7 ")
+
+    def test_a_renamed_speaker_is_the_one_a_new_comment_names(self, panel, editor):
+        panel.open_for(editor.captions[0], 0, 3)
+        assert panel.detail.text.startswith("A \u00b7 ")
+
+        editor.captions[0].speaker = "Kim"
+        panel.sync()
+
+        assert panel.detail.text.startswith("Kim \u00b7 ")
+
+    def test_a_word_typed_into_the_commented_words_keeps_the_card(
+        self, panel, editor
+    ):
+        editor.captions[0].comments = [comment({0, 1, 2}, "all of it")]
+        panel.show(editor.captions[0], editor.captions[0].comments[0])
+        before = panel.current[1]
+
+        editor.update_caption_text(editor.captions[0], "ett två ny tre")
+        assert editor.captions[0].comments[0] is not before
+
+        panel.sync()
+
+        assert panel.container.visible is True
+        assert panel.current[1] is editor.captions[0].comments[0]
+        assert panel.current[1].words == {0, 1, 2, 3}
+        assert panel.text.value == "all of it"
+
+    def test_a_word_deleted_before_the_comment_keeps_the_card(self, panel, editor):
+        editor.captions[0].comments = [comment({2}, "the last one")]
+        panel.show(editor.captions[0], editor.captions[0].comments[0])
+
+        editor.update_caption_text(editor.captions[0], "ett tre")
+        panel.sync()
+
+        assert panel.container.visible is True
+        assert panel.current[1] is editor.captions[0].comments[0]
+        assert panel.current[1].words == {1}
+
+    def test_the_card_follows_the_comment_with_the_same_text_when_there_are_two(
+        self, panel, editor
+    ):
+        editor.captions[0].comments = [comment({0}, "one"), comment({2}, "two")]
+        panel.show(editor.captions[0], editor.captions[0].comments[1])
+
+        editor.update_caption_text(editor.captions[0], "ett två ny tre")
+        panel.sync()
+
+        assert panel.current[1].text == "two"
+        assert panel.current[1] is editor.captions[0].comments[1]
+
+    def test_what_is_typed_in_the_card_is_kept_when_the_comment_is_found_again(
+        self, panel, editor
+    ):
+        editor.captions[0].comments = [comment({0, 1, 2}, "saved text")]
+        panel.show(editor.captions[0], editor.captions[0].comments[0])
+        panel.text.value = "saved text, and more not saved yet"
+
+        editor.update_caption_text(editor.captions[0], "ett två ny tre")
+        panel.sync()
+
+        assert panel.text.value == "saved text, and more not saved yet"
+
+    def test_typing_in_a_block_tells_the_panel(self, view, panel, editor):
+        editor.captions[0].comments = [comment({0}, "a")]
+        panel.show(editor.captions[0], editor.captions[0].comments[0])
+        calls = []
+        panel.sync = lambda: calls.append(1)
+
+        view.set_text({"id": editor.captions[0].index, "text": "ett två tre!"})
+
+        assert calls == [1]
+
+    def test_deleting_the_commented_words_by_typing_puts_the_card_away(
+        self, view, panel, editor
+    ):
+        editor.captions[0].comments = [comment({1}, "a")]
+        panel.show(editor.captions[0], editor.captions[0].comments[0])
+
+        view.set_text({"id": editor.captions[0].index, "text": "ett tre"})
+
+        assert panel.container.visible is False
+        assert panel.current is None
+        assert panel.transcript.body.comment_mark == (-1, -1)
 
     def test_a_comment_that_an_undo_replaced_is_found_again_by_its_words(
         self, panel, editor
