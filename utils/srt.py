@@ -1036,13 +1036,18 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
 
         return "".join(parts[:-2]).strip(), parts[-1]
 
-    def move_first_word_to_previous(self, caption: SRTCaption) -> None:
+    def move_first_word_to_previous(self, caption: SRTCaption) -> Optional[str]:
         """
         Move the first word of a block to the end of the previous one.
 
         Both blocks are re-timed from the word data: the previous block now
         ends where the moved word ends, and this one starts where its new
         first word starts.
+
+        When it is the only word, moving it would leave the block with nothing,
+        so it is a merge with the previous block instead, as it is for
+        move_text_before_cursor_to_previous. Returns "merged" when it merged, and
+        nothing otherwise.
         """
 
         if not caption:
@@ -1062,13 +1067,8 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         moved_word, remaining = self.split_off_first_word(caption.text)
 
         if not remaining:
-            ui.notify(
-                "That is the only word in the block -- merge instead",
-                type="warning",
-                timeout=None,
-                close_button="Close",
-            )
-            return
+            self.merge_with_previous(caption)
+            return "merged"
 
         # Resolve the timings before the text changes, since words are matched
         # to a block by its time range.
@@ -1095,13 +1095,18 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
 
         self.finish_word_move()
 
-    def move_last_word_to_next(self, caption: SRTCaption) -> None:
+    def move_last_word_to_next(self, caption: SRTCaption) -> Optional[str]:
         """
         Move the last word of a block to the start of the next one.
 
         Both blocks are re-timed from the word data: the next block now starts
         where the moved word starts, and this one ends where its new last word
         ends.
+
+        When it is the only word, moving it would leave the block with nothing,
+        so it is a merge with the next block instead, as it is for
+        move_text_after_cursor_to_next. Returns "merged" when it merged, and
+        nothing otherwise.
         """
 
         if not caption:
@@ -1121,13 +1126,8 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         remaining, moved_word = self.split_off_last_word(caption.text)
 
         if not remaining:
-            ui.notify(
-                "That is the only word in the block -- merge instead",
-                type="warning",
-                timeout=None,
-                close_button="Close",
-            )
-            return
+            self.merge_with_next(caption)
+            return "merged"
 
         aligned = self.aligned_words(caption)
         moved_timing = aligned[-1] if aligned else None

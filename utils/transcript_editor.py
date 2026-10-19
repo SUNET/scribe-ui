@@ -928,9 +928,9 @@ class TranscriptEditor:
         Hand one word across the boundary to the caption either side.
 
         The editor's own methods refuse the cases that have nowhere to go --
-        the first caption has no previous, the last has no next, and neither
-        will empty a caption outright -- so this only has to say which way,
-        and re-render whatever came back. Both captions are re-timed from the
+        the first caption has no previous, the last has no next -- and turn a
+        move that would empty a caption into a merge, so this only has to say
+        which way, and re-render whatever came back. Both captions are re-timed from the
         word data by those methods, not here.
 
         The caret is put back in the caption the reader is working in rather
@@ -945,16 +945,40 @@ class TranscriptEditor:
         if caption is None:
             return
 
+        position = self.editor.captions.index(caption)
+        landing = (caption, 0)
+
         if direction == "previous":
-            self.editor.move_first_word_to_previous(caption)
+            # Worked out before the call, which changes the texts: where the
+            # two will meet, should this turn out to be a merge.
+            if position > 0:
+                survivor = self.editor.captions[position - 1]
+                seam = len(survivor.text) + (len("\n") if caption.text else 0)
+            else:
+                survivor, seam = caption, 0
+
+            outcome = self.editor.move_first_word_to_previous(caption)
+
+            if outcome == "merged":
+                landing = (survivor, seam)
         elif direction == "next":
-            self.editor.move_last_word_to_next(caption)
+            seam = len(caption.text)
+            outcome = self.editor.move_last_word_to_next(caption)
+
+            if outcome == "merged":
+                landing = (caption, seam)
         else:
             return
 
         self.refresh()
         self.changed()
-        self.focus(caption.index)
+
+        # A move leaves the caret in the caption being trimmed; a merge, which
+        # takes a caption away, puts it at the seam, as every merge does.
+        if landing[0] is caption and landing[1] == 0:
+            self.focus(caption.index)
+        else:
+            self.focus(landing[0].index, landing[1])
 
     def delete(self, args) -> None:
         """

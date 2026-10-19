@@ -3022,3 +3022,55 @@ class TestReviewFollowsTheCaret:
             ("scroll", 2),
             ("review", 3),
         ]
+
+
+class TestMoveWordThatMerges:
+    """
+    A caption with one word left has nowhere to put it but its neighbour, so
+    the move is a merge, and the caret goes where a merge puts it.
+    """
+
+    def test_a_merge_with_the_previous_puts_the_caret_at_the_seam(
+        self, view, editor, monkeypatch
+    ):
+        first, second = editor.captions[0], editor.captions[1]
+        second.text = "fyra"
+        seam = len(first.text) + 1
+        monkeypatch.setattr(
+            editor, "move_first_word_to_previous", lambda c: "merged"
+        )
+        focused = []
+        view.focus = lambda *a, **k: focused.append(a)
+
+        view.move_word({"id": second.index, "direction": "previous"})
+
+        assert focused == [(first.index, seam)]
+
+    def test_a_merge_with_the_next_puts_the_caret_at_the_seam(
+        self, view, editor, monkeypatch
+    ):
+        first = editor.captions[0]
+        first.text = "ett"
+        monkeypatch.setattr(editor, "move_last_word_to_next", lambda c: "merged")
+        focused = []
+        view.focus = lambda *a, **k: focused.append(a)
+
+        view.move_word({"id": first.index, "direction": "next"})
+
+        assert focused == [(first.index, len("ett"))]
+
+    def test_a_plain_move_leaves_the_caret_where_it_was(
+        self, view, editor, monkeypatch
+    ):
+        monkeypatch.setattr(editor, "move_last_word_to_next", lambda c: None)
+        focused = []
+        view.focus = lambda *a, **k: focused.append(a)
+
+        view.move_word({"id": editor.captions[0].index, "direction": "next"})
+
+        assert focused == [(editor.captions[0].index,)]
+
+    def test_there_is_no_notice_telling_the_reader_to_merge_instead(self):
+        import pathlib
+
+        assert "only word in the block" not in pathlib.Path("utils/srt.py").read_text()
