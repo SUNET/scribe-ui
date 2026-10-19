@@ -168,43 +168,6 @@ class CommentsMixin:
         ]
 
     @staticmethod
-    def drop_word_from_comments(
-        comments: List[WordComment], word: int, shift: int = 0
-    ) -> List[WordComment]:
-        """
-        Comments after the word at this position has left the caption, handed
-        to its neighbour: it is no longer in any of them, and every word after
-        it moves by `shift` (-1 when the first word goes, 0 for the last).
-        A comment left with no words is dropped.
-        """
-
-        kept = []
-
-        for comment in comments:
-            words = {
-                index + shift if index > word else index
-                for index in comment.words
-                if index != word
-            }
-
-            if words:
-                kept.append(WordComment(words, comment.text))
-
-        return kept
-
-    @staticmethod
-    def shift_comments(comments: List[WordComment], by: int) -> List[WordComment]:
-        """
-        Comments after a word has been put in front of the caption's text:
-        every word moves along, and the new word is in none of them.
-        """
-
-        return [
-            WordComment({index + by for index in comment.words}, comment.text)
-            for comment in comments
-        ]
-
-    @staticmethod
     def comment_index_at(caption: SRTCaption, word: int) -> Optional[int]:
         """
         Which of the caption's comments the word at this position is in.

@@ -781,6 +781,13 @@ class TranscriptEditor:
         self.editor.update_caption_text(caption, text)
         self.changed()
 
+        # The block being typed into is not drawn again (that would move the
+        # caret), so the refresh that tells the comments card about a change
+        # does not come. Tell it here: the comment it shows may have grown,
+        # moved or lost all its words by what was just typed.
+        if self.comments_panel is not None:
+            self.comments_panel.sync()
+
     def split(self, args) -> None:
         """
         Break a block where the caret was, or halve it when there was no

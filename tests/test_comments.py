@@ -443,13 +443,13 @@ class TestFollowingTheText:
 
         assert shape(editor.captions[0]) == [([2], "a"), ([3, 4], "b")]
 
-    def test_a_word_moved_to_the_previous_caption_leaves_the_comment(self, editor):
+    def test_a_comment_on_a_moved_word_and_others_is_on_both_captions(self, editor):
         first, second = editor.captions
         second.comments = [comment({0, 1}, "c")]
 
         editor.move_first_word_to_previous(second)
 
-        assert first.comments == []
+        assert shape(first) == [([3], "c")]
         assert shape(second) == [([0], "c")]
 
     def test_a_comment_on_only_that_word_goes_with_it(self, editor):
@@ -458,9 +458,31 @@ class TestFollowingTheText:
 
         editor.move_first_word_to_previous(second)
 
+        assert shape(first) == [([3], "c")]
         assert shape(second) == [([1], "d")]
 
-    def test_a_word_moved_to_the_next_caption_leaves_the_comment(self, editor):
+    def test_the_comments_of_the_caption_it_joins_stay_where_they_are(self, editor):
+        first, second = editor.captions
+        first.comments = [comment({0, 1}, "old")]
+        second.comments = [comment({0}, "new")]
+
+        editor.move_first_word_to_previous(second)
+
+        assert shape(first) == [([0, 1], "old"), ([3], "new")]
+
+    def test_a_comment_on_the_last_word_goes_to_the_next_caption(self, editor):
+        first, second = editor.captions
+        first.comments = [comment({2}, "c")]
+        second.comments = [comment({1}, "d")]
+
+        editor.move_last_word_to_next(first)
+
+        assert first.comments == []
+        assert shape(second) == [([0], "c"), ([2], "d")]
+
+    def test_a_comment_on_the_last_word_and_others_is_on_both_going_next(
+        self, editor
+    ):
         first, second = editor.captions
         first.comments = [comment({1, 2}, "c")]
         second.comments = [comment({1}, "d")]
@@ -468,7 +490,18 @@ class TestFollowingTheText:
         editor.move_last_word_to_next(first)
 
         assert shape(first) == [([1], "c")]
-        assert shape(second) == [([2], "d")]
+        assert shape(second) == [([0], "c"), ([2], "d")]
+
+    def test_a_comment_on_a_word_that_stays_keeps_it_when_another_moves(
+        self, editor
+    ):
+        first, second = editor.captions
+        first.comments = [comment({0}, "c")]
+
+        editor.move_last_word_to_next(first)
+
+        assert shape(first) == [([0], "c")]
+        assert second.comments == []
 
     def test_deleting_across_captions_keeps_what_is_left(self, editor):
         first, second = editor.captions
@@ -1276,17 +1309,121 @@ class TestFollowingTheCaret:
 
 
 class TestKeepingUpWithTheText:
-    def test_a_card_that_is_still_right_is_not_touched(self, panel, editor):
+    def test_a_card_that_is_still_right_keeps_what_is_being_typed(
+        self, panel, editor
+    ):
         editor.captions[0].comments = [comment({0}, "a")]
         panel.show(editor.captions[0], editor.captions[0].comments[0])
         panel.text.value = "being typed"
+
+        panel.sync()
+
+        assert panel.text.value == "being typed"
+
+    def test_a_card_that_is_still_right_is_drawn_again_without_scrolling(
+        self, panel, editor
+    ):
+        editor.captions[0].comments = [comment({0}, "a")]
+        panel.show(editor.captions[0], editor.captions[0].comments[0])
         calls = []
         panel.draw = lambda **k: calls.append(k)
 
         panel.sync()
 
-        assert calls == []
-        assert panel.text.value == "being typed"
+        assert calls == [{"scroll": False}]
+
+    def test_a_renamed_speaker_is_the_one_the_card_names(self, panel, editor):
+        editor.captions[0].comments = [comment({0}, "a")]
+        panel.show(editor.captions[0], editor.captions[0].comments[0])
+        assert panel.detail.text.startswith("A \u00b7 ")
+
+        editor.captions[0].speaker = "Kim"
+        panel.sync()
+
+        assert panel.detail.text.startswith("Kim \u00b7 ")
+
+    def test_a_renamed_speaker_is_the_one_a_new_comment_names(self, panel, editor):
+        panel.open_for(editor.captions[0], 0, 3)
+        assert panel.detail.text.startswith("A \u00b7 ")
+
+        editor.captions[0].speaker = "Kim"
+        panel.sync()
+
+        assert panel.detail.text.startswith("Kim \u00b7 ")
+
+    def test_a_word_typed_into_the_commented_words_keeps_the_card(
+        self, panel, editor
+    ):
+        editor.captions[0].comments = [comment({0, 1, 2}, "all of it")]
+        panel.show(editor.captions[0], editor.captions[0].comments[0])
+        before = panel.current[1]
+
+        editor.update_caption_text(editor.captions[0], "ett två ny tre")
+        assert editor.captions[0].comments[0] is not before
+
+        panel.sync()
+
+        assert panel.container.visible is True
+        assert panel.current[1] is editor.captions[0].comments[0]
+        assert panel.current[1].words == {0, 1, 2, 3}
+        assert panel.text.value == "all of it"
+
+    def test_a_word_deleted_before_the_comment_keeps_the_card(self, panel, editor):
+        editor.captions[0].comments = [comment({2}, "the last one")]
+        panel.show(editor.captions[0], editor.captions[0].comments[0])
+
+        editor.update_caption_text(editor.captions[0], "ett tre")
+        panel.sync()
+
+        assert panel.container.visible is True
+        assert panel.current[1] is editor.captions[0].comments[0]
+        assert panel.current[1].words == {1}
+
+    def test_the_card_follows_the_comment_with_the_same_text_when_there_are_two(
+        self, panel, editor
+    ):
+        editor.captions[0].comments = [comment({0}, "one"), comment({2}, "two")]
+        panel.show(editor.captions[0], editor.captions[0].comments[1])
+
+        editor.update_caption_text(editor.captions[0], "ett två ny tre")
+        panel.sync()
+
+        assert panel.current[1].text == "two"
+        assert panel.current[1] is editor.captions[0].comments[1]
+
+    def test_what_is_typed_in_the_card_is_kept_when_the_comment_is_found_again(
+        self, panel, editor
+    ):
+        editor.captions[0].comments = [comment({0, 1, 2}, "saved text")]
+        panel.show(editor.captions[0], editor.captions[0].comments[0])
+        panel.text.value = "saved text, and more not saved yet"
+
+        editor.update_caption_text(editor.captions[0], "ett två ny tre")
+        panel.sync()
+
+        assert panel.text.value == "saved text, and more not saved yet"
+
+    def test_typing_in_a_block_tells_the_panel(self, view, panel, editor):
+        editor.captions[0].comments = [comment({0}, "a")]
+        panel.show(editor.captions[0], editor.captions[0].comments[0])
+        calls = []
+        panel.sync = lambda: calls.append(1)
+
+        view.set_text({"id": editor.captions[0].index, "text": "ett två tre!"})
+
+        assert calls == [1]
+
+    def test_deleting_the_commented_words_by_typing_puts_the_card_away(
+        self, view, panel, editor
+    ):
+        editor.captions[0].comments = [comment({1}, "a")]
+        panel.show(editor.captions[0], editor.captions[0].comments[0])
+
+        view.set_text({"id": editor.captions[0].index, "text": "ett tre"})
+
+        assert panel.container.visible is False
+        assert panel.current is None
+        assert panel.transcript.body.comment_mark == (-1, -1)
 
     def test_a_comment_that_an_undo_replaced_is_found_again_by_its_words(
         self, panel, editor
@@ -1837,6 +1974,14 @@ class TestTheStyles:
 
     def test_it_has_its_own_colour_in_both_themes(self):
         assert self.css().count("--color-comment-line:") == 2
+
+    def test_remove_and_cancel_do_not_use_the_light_primary_blue(self):
+        # Quasar's primary blue on white is 3.06:1, under 4.5:1 for 14px
+        # text. The text takes the brand colour (a dark navy) in light mode.
+        rule = self.rule("    .body--light .comments-panel-actions .q-btn--flat,")
+
+        assert ".q-btn__content" in rule
+        assert "color: var(--color-brand-primary) !important;" in rule
 
     def test_commented_words_have_a_dotted_underline_that_is_not_only_colour(self):
         rule = self.rule("    .comment-word {")
