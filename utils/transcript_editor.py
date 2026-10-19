@@ -1516,20 +1516,27 @@ class TranscriptEditor:
         Block number `number`, as numbered on screen. Only a subtitle editor
         shows numbers, so only there is one a reader could have read off the
         screen to type.
+
+        A number past the last block goes to the last one, as a time past the
+        end goes to the end (go_to_time): "#900" means "far ahead" as "+9999"
+        does, and an error would make the two ways of asking disagree.
         """
 
         if self.editor.data_format != "srt":
             return "Block numbers are only shown in subtitles. Use a time instead"
 
-        count = len(self.editor.captions)
-        caption = self.caption(number)
+        captions = self.editor.captions
 
-        if caption is None:
-            return (
-                f"There is no caption #{number}. The last one is #{count}"
-                if count
-                else "There are no captions to jump to"
-            )
+        if not captions:
+            return "There are no captions to jump to"
+
+        # The nearest number there is, and the later one if two are equally
+        # near. Numbers count from 1 and run without gaps, so in practice this
+        # is the last caption; it is stated as nearest so that it stays right
+        # if a number is ever missing.
+        caption = min(
+            captions, key=lambda held: (abs(held.index - number), -held.index)
+        )
 
         self.arrive(caption, caption.get_start_seconds(), 0)
 

@@ -326,11 +326,40 @@ class TestJumpingToABlock:
         assert ("seek", 5.0) in journal.events
         assert journal.focused()[1][:2] == (2, 0)
 
-    def test_a_block_that_is_not_there_says_how_many_there_are(self, view):
+    def test_a_block_past_the_last_goes_to_the_last(self, view):
+        """
+        As a time past the end goes to the end: both mean "far ahead".
+        """
+
         result, journal = jump(view, "#9")
 
-        assert "no caption #9" in result
-        assert "#3" in result
+        assert result is None
+        assert ("seek", view.editor.captions[-1].get_start_seconds()) in journal.events
+        assert journal.focused()[1][:2] == (3, 0)
+
+    def test_a_block_far_past_the_last_goes_to_the_last_too(self, view):
+        result, journal = jump(view, "#900")
+
+        assert result is None
+        assert journal.focused()[1][0] == 3
+
+    def test_the_last_block_itself_is_just_that_block(self, view):
+        _, journal = jump(view, "#3")
+
+        assert journal.focused()[1][0] == 3
+
+    def test_a_block_number_below_one_is_still_refused(self, view):
+        result, journal = jump(view, "#0")
+
+        assert "from 1" in result
+        assert journal.events == []
+
+    def test_with_no_captions_there_is_nothing_to_jump_to(self, view):
+        view.editor.captions = []
+
+        result, journal = jump(view, "#2")
+
+        assert result == "There are no captions to jump to"
         assert journal.events == []
 
     def test_a_transcription_has_no_block_numbers_to_type(self):
