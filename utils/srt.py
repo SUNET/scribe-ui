@@ -616,8 +616,13 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin, CommentsMixi
     # words, and a round trip to the server would be later still.
     #
     # Gives way to the reader at once: pausing, or moving the recording
-    # somewhere else, ends the watch rather than being undone by it. Playing
-    # does not take the keyboard focus -- nothing here touches it.
+    # somewhere else -- in either direction, by the strip, Quick Jump or the
+    # player's own bar -- ends the watch rather than being undone by it, and
+    # the recording goes on playing from where the reader put it. A move is
+    # told by the player's own `seeking` event, which playing never raises;
+    # comparing positions could not tell a jump forward past the end from the
+    # recording simply reaching it. Playing does not take the keyboard focus
+    # -- nothing here touches it.
     PLAY_RANGE_SCRIPT = """
         const video = %(element)s;
         if (!video) return;
@@ -628,6 +633,7 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin, CommentsMixi
         const finish = () => {
           if (frame !== null) cancelAnimationFrame(frame);
           frame = null;
+          video.removeEventListener("seeking", finish);
           video._scribeStopWatch = null;
         };
         video._scribeStopWatch = finish;
@@ -637,10 +643,11 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin, CommentsMixi
             video.pause();
             return finish();
           }
-          if (video.currentTime < start - 0.5) return finish();
           frame = requestAnimationFrame(watch);
         };
         const begin = () => {
+          // Any move from here on is the reader's: this one has been made.
+          video.addEventListener("seeking", finish);
           video.play();
           frame = requestAnimationFrame(watch);
         };
