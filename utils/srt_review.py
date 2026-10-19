@@ -59,7 +59,6 @@ EDIT_TOOLTIP = "You changed this word"
 REVIEW_SHOW_KEY = "srt_show_uncertain_words"
 REVIEW_SENSITIVITY_KEY = "srt_review_sensitivity"
 EDITS_SHOW_KEY = "srt_show_my_edits"
-COMMENTS_SHOW_KEY = "srt_show_comments"
 AUTOSCROLL_KEY = "srt_autoscroll"
 OVERLAY_SHOW_KEY = "srt_show_subtitle_overlay"
 TIMELINE_SHOW_KEY = "srt_show_timeline"
@@ -596,13 +595,7 @@ class ReviewMixin:
 
 
     def restore_review_state(
-        self,
-        show,
-        sensitivity,
-        edits=False,
-        overlay=True,
-        timeline=True,
-        comments=True,
+        self, show, sensitivity, edits=False, overlay=True, timeline=True
     ) -> None:
         """
         Apply persisted review preferences before the first render.
@@ -615,14 +608,15 @@ class ReviewMixin:
         overlay and timeline default to True, unlike the markings: they show
         what is already there rather than adding anything to read, so nothing
         stored yet means a reader who has never touched either switch gets
-        both on.
+        both on. The comments switch is not here: hiding them is a way of
+        looking at the text for a while, not a preference, so every editor
+        opens with them shown (show_comments, set in __init__).
         """
 
         self.show_uncertain_words = bool(show)
         self.show_my_edits = bool(edits)
         self.show_subtitle_overlay = bool(overlay)
         self.show_timeline = bool(timeline)
-        self.show_comments = bool(comments)
 
         if sensitivity in REVIEW_SENSITIVITIES:
             self.review_sensitivity = sensitivity
