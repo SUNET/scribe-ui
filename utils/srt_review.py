@@ -72,6 +72,7 @@ REVIEW_SHOW_KEY = "srt_show_uncertain_words"
 REVIEW_SENSITIVITY_KEY = "srt_review_sensitivity"
 EDITS_SHOW_KEY = "srt_show_my_edits"
 HIGHLIGHTS_SHOW_KEY = "srt_show_highlights"
+COMMENTS_SHOW_KEY = "srt_show_comments"
 AUTOSCROLL_KEY = "srt_autoscroll"
 OVERLAY_SHOW_KEY = "srt_show_subtitle_overlay"
 TIMELINE_SHOW_KEY = "srt_show_timeline"
@@ -682,6 +683,7 @@ class ReviewMixin:
         overlay=True,
         timeline=True,
         highlights=True,
+        comments=True,
     ) -> None:
         """
         Apply persisted review preferences before the first render.
@@ -704,10 +706,23 @@ class ReviewMixin:
         self.show_subtitle_overlay = bool(overlay)
         self.show_timeline = bool(timeline)
         self.show_highlights = bool(highlights)
+        self.show_comments = bool(comments)
 
         if sensitivity in REVIEW_SENSITIVITIES:
             self.review_sensitivity = sensitivity
 
+
+    def set_show_comments(self, show: bool) -> None:
+        """
+        Show or hide the reader's comments.
+
+        Hiding only stops them being drawn and read out: the comments stay on
+        their words in the data, so they still follow the text through every
+        split, merge and move, and they are still in a save and in an export.
+        """
+
+        self.show_comments = bool(show)
+        self.refresh_display(force_full_refresh=True)
 
     def set_show_uncertain_words(self, show: bool) -> None:
         """
@@ -945,10 +960,11 @@ class ReviewMixin:
         if not source:
             return []
 
-        # Hidden highlights are not drawn: no run carries one, so nothing is
-        # marked up for a screen reader either. They stay in the caption.
+        # Hidden highlights and comments are not drawn: no run carries one,
+        # so nothing is marked up for a screen reader either. They stay in
+        # the caption.
         highlighted = caption.highlighted_words if self.show_highlights else ()
-        commented = bool(caption.comments)
+        commented = bool(caption.comments) and self.show_comments
 
         if (
             not self.show_uncertain_words
@@ -985,7 +1001,7 @@ class ReviewMixin:
             )
 
         def comment_of(position: Optional[int]) -> Optional[int]:
-            if position is None:
+            if position is None or not self.show_comments:
                 return None
             return self.comment_index_at(caption, position)
 

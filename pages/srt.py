@@ -28,6 +28,7 @@ from utils.settings import get_settings
 from utils.srt import (
     AUTOSCROLL_KEY,
     DEFAULT_REVIEW_SENSITIVITY,
+    COMMENTS_SHOW_KEY,
     EDITS_SHOW_KEY,
     HIGHLIGHTS_SHOW_KEY,
     OVERLAY_SHOW_KEY,
@@ -234,6 +235,7 @@ def create() -> None:
             app.storage.user.get(OVERLAY_SHOW_KEY, True),
             app.storage.user.get(TIMELINE_SHOW_KEY, True),
             app.storage.user.get(HIGHLIGHTS_SHOW_KEY, True),
+            app.storage.user.get(COMMENTS_SHOW_KEY, True),
         )
         editor.set_autoscroll(app.storage.user.get(AUTOSCROLL_KEY, False))
         editor.set_highlight_word(editor.autoscroll)
@@ -894,6 +896,48 @@ def create() -> None:
                                         highlights_switch.value = True
 
                                     editor.on_highlights_shown = highlights_shown
+                                # Only a transcription can hold comments; a
+                                # set of subtitles is saved as plain SRT.
+                                if data_format != "srt":
+
+                                    def save_show_comments(event) -> None:
+                                        value = bool(event.sender.value)
+
+                                        # The comment command turns this on
+                                        # itself and moves the switch to
+                                        # match, which lands here too.
+                                        if value != editor.show_comments:
+                                            transcript.set_show_comments(value)
+
+                                        app.storage.user[COMMENTS_SHOW_KEY] = value
+
+                                        # See save_follow above (F-74).
+                                        focus_element(event.sender)
+
+                                    comments_switch = ui.switch(
+                                        "Comments",
+                                        value=editor.show_comments,
+                                    ).props("dense").classes(
+                                        "editor-switch comments-switch"
+                                    )
+                                    # Same reason as the switches above:
+                                    # "click" is mouse-only on a QToggle,
+                                    # and update:model-value fires for a
+                                    # keyboard activation too.
+                                    comments_switch.on(
+                                        "update:model-value", save_show_comments
+                                    )
+                                    with comments_switch:
+                                        ui.tooltip(
+                                            "Show the comments on words. "
+                                            "Hiding them keeps them."
+                                        )
+
+                                    def comments_shown() -> None:
+                                        app.storage.user[COMMENTS_SHOW_KEY] = True
+                                        comments_switch.value = True
+
+                                    editor.on_comments_shown = comments_shown
 
                             # One control rather than a switch plus a level:
                             # "off" is just the lowest setting of the same
