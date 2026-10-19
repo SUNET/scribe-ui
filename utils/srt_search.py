@@ -127,11 +127,7 @@ class SearchMixin:
             # every mark after it along. Worked out here rather than through
             # update_caption_text, which would take a second undo snapshot on
             # top of the one already taken above.
-            self.selected_caption.edited_words = self.retag_edits(
-                self.selected_caption.text,
-                new_text,
-                self.selected_caption.edited_words,
-            )
+            self.carry_marks(self.selected_caption, new_text)
             self.selected_caption.text = new_text
             self.update_flagged_count()
             self.refresh_display()
@@ -171,9 +167,7 @@ class SearchMixin:
                 # of the reader's, and a replacement of a different length
                 # moves every mark after it. One undo snapshot covers the whole
                 # Replace All, so this cannot go through update_caption_text.
-                caption.edited_words = self.retag_edits(
-                    caption.text, new_text, caption.edited_words
-                )
+                self.carry_marks(caption, new_text)
                 caption.text = new_text
                 count += 1
 

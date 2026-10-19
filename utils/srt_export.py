@@ -25,6 +25,7 @@ The writers here are the ones with nothing to configure.
 """
 
 import json
+from datetime import datetime
 
 from nicegui import ui
 
@@ -37,6 +38,11 @@ from utils.helpers import sanitize_filename
 from utils.recording_api import ORIGINAL_PREFIX
 from utils.settings import get_settings
 from utils.styles import default_styles
+
+# Who a comment in an exported document is from. The editor does not know the
+# reader's name, and the document is only ever the reader's own.
+RTF_COMMENT_AUTHOR = "Scribe"
+RTF_COMMENT_INITIALS = "SC"
 
 settings = get_settings()
 
@@ -160,6 +166,78 @@ class ExportMixin:
     Export formats and the export dialog.
     """
 
+    def rtf_marks_available(self, others: list | None = None) -> tuple:
+        """
+        Whether there is anything for the RTF export to carry: (highlights,
+        changed words). Looked at across this editor and any others exported
+        along with it, so a bulk export offers a choice if any file has one.
+
+        Transcriptions only, for now: a set of subtitles does not carry its
+        marks into an export.
+        """
+
+        editors = [self] + list(others or [])
+        captions = [
+            caption
+            for editor in editors
+            if editor.data_format != "srt"
+            for caption in editor.captions
+        ]
+
+        return (
+            any(caption.highlighted_words for caption in captions),
+            any(caption.edited_words for caption in captions),
+        )
+
+    def rtf_comments_available(self, others: list | None = None) -> bool:
+        """
+        Whether any caption in this editor, or in the others exported along
+        with it, has a comment for the RTF export to carry. Transcriptions
+        only, for now.
+        """
+
+        return any(
+            caption.comments
+            for editor in [self] + list(others or [])
+            if editor.data_format != "srt"
+            for caption in editor.captions
+        )
+
+    @staticmethod
+    def rtf_date(moment: datetime) -> int:
+        """
+        A moment in the packed form RTF keeps an annotation's date in: minute,
+        hour, day, month, years since 1900 and day of the week, in the bits of
+        one number.
+        """
+
+        weekday = (moment.weekday() + 1) % 7
+
+        return (
+            moment.minute
+            | (moment.hour << 6)
+            | (moment.day << 11)
+            | (moment.month << 16)
+            | ((moment.year - 1900) << 20)
+            | (weekday << 29)
+        )
+
+    def comment_ranges(self, caption) -> list:
+        """
+        The caption's comments as (start, end, text), the offsets counted in
+        the caption's text, in the order they occur.
+        """
+
+        ranges = []
+
+        for comment in caption.comments:
+            span = self.word_range(caption.text, min(comment.words), max(comment.words))
+
+            if span is not None:
+                ranges.append((span[0], span[1], comment.text))
+
+        return sorted(ranges)
+
     def export_rtf(
         self,
         speakers: bool,
@@ -167,10 +245,31 @@ class ExportMixin:
         block_nr: bool,
         ts_which: str = "both",
         ts_fmt: str = "srt",
+        highlights: bool = False,
+        edits: bool = False,
+        comments: bool = False,
     ) -> str:
         """
         Export captions to RTF format with proper Unicode handling.
+
+        `highlights` carries the reader's highlights as a yellow marker and
+        `edits` carries the words they changed, underlined and in the teal of
+        the editor's own marking -- underlined as well because a printout
+        may have no colour. Both are off by default, which is the clean
+        transcript: nothing about the text itself changes either way.
+
+        `comments` carries the reader's comments as Word comments on the words
+        they are on. Off by default for the same reason.
+
+        Transcriptions only, for now: subtitles never carry them.
         """
+
+        if self.data_format == "srt":
+            highlights = edits = comments = False
+
+        # One date for the whole export: every comment was made before it.
+        stamp = self.rtf_date(datetime.now())
+        note_count = 0
 
         def fmt_ts(ts: str, f: str) -> str:
             """
@@ -210,8 +309,20 @@ class ExportMixin:
                     )
             return "".join(result)
 
+        # Colour 1 is the marker (pure yellow: it is what Word's own highlighter
+        # palette holds, so it is shown as drawn and not matched to the nearest
+        # colour), colour 2 the editor's teal for changed words. The table is
+        # only written when it is used, so a clean export is the document it
+        # always was.
+        colours = (
+            r"{\colortbl;\red255\green255\blue0;\red18\green121\blue106;}"
+            if highlights or edits
+            else ""
+        )
         rtf_content = (
-            r"{\rtf1\ansi\deff0{\fonttbl{\f0 Arial;}}" r"\viewkind4\uc1\pard\f0\fs20 "
+            r"{\rtf1\ansi\deff0{\fonttbl{\f0 Arial;}}"
+            + colours
+            + r"\viewkind4\uc1\pard\f0\fs20 "
         )
 
         parts = []
@@ -238,9 +349,69 @@ class ExportMixin:
             if header_parts:
                 rtf_data = r"\b " + " ".join(header_parts) + r"\b0\line "
 
-            rtf_data += (
-                to_rtf_unicode(caption.text).replace("\n", r"\line ") + r"\line\line "
-            )
+            # A comment is anchored by a start and an end marker round the
+            # words it is on, and its text follows the end. The pieces are cut
+            # where a comment begins or ends, so a marker never lands inside
+            # one -- the text between the markers is the caption's own text
+            # throughout.
+            notes = self.comment_ranges(caption) if comments else []
+            numbers = {}
+
+            for note in notes:
+                numbers[note] = note_count
+                note_count += 1
+
+            cuts = sorted({edge for start, end, _ in notes for edge in (start, end)})
+            offset = 0
+
+            for text, highlighted, edited in self.marked_spans(
+                caption, highlights, edits
+            ):
+                cut_at = [cut - offset for cut in cuts if 0 < cut - offset < len(text)]
+                segments = [
+                    text[first:last]
+                    for first, last in zip([0] + cut_at, cut_at + [len(text)])
+                ]
+
+                for segment in segments:
+                    here, there = offset, offset + len(segment)
+                    offset = there
+
+                    for note in notes:
+                        if note[0] == here:
+                            rtf_data += r"{\*\atrfstart %d}" % numbers[note]
+
+                    body = to_rtf_unicode(segment).replace("\n", r"\line ")
+
+                    if highlighted or edited:
+                        # A group, so the formatting ends with the piece. The
+                        # one space after a control word is its delimiter and
+                        # is not part of the text, so a piece that starts with
+                        # a space keeps it.
+                        style = (r"\highlight1" if highlighted else "") + (
+                            r"\cf2\ul" if edited else ""
+                        )
+                        body = "{" + style + " " + body + "}"
+
+                    rtf_data += body
+
+                    for note in notes:
+                        if note[1] == there:
+                            note_text = to_rtf_unicode(note[2]).replace(
+                                "\n", r"\line "
+                            )
+                            rtf_data += (
+                                r"{\*\atrfend %d}" % numbers[note]
+                                + "{\\*\\atnid %s}{\\*\\atnauthor %s}\\chatn"
+                                % (RTF_COMMENT_INITIALS, RTF_COMMENT_AUTHOR)
+                                + r"{\*\annotation{\*\atnref %d}{\*\atndate %d}"
+                                % (numbers[note], stamp)
+                                + r"\pard\plain\f0\fs20 "
+                                + note_text
+                                + "}"
+                            )
+
+            rtf_data += r"\line\line "
 
             parts.append(rtf_data)
 
@@ -541,6 +712,31 @@ class ExportMixin:
                                 )
                                 rtf_idx_incl = ui.checkbox(
                                     "Include paragraph numbers", value=False
+                                )
+                                # Off by default: an export is clean unless
+                                # it is asked to carry the marks. And only
+                                # offered for a kind of mark that exists in
+                                # what is being exported -- a choice about
+                                # nothing is just clutter. Transcriptions
+                                # only, for now (see rtf_marks_available).
+                                has_highlights, has_edits = self.rtf_marks_available(
+                                    [editor for _, editor in bulk_editors or []]
+                                )
+                                rtf_hl_incl = ui.checkbox(
+                                    "Include highlights", value=False
+                                )
+                                rtf_hl_incl.set_visibility(has_highlights)
+                                rtf_edits_incl = ui.checkbox(
+                                    "Include my edits (underlined)", value=False
+                                )
+                                rtf_edits_incl.set_visibility(has_edits)
+                                rtf_comments_incl = ui.checkbox(
+                                    "Include comments", value=False
+                                )
+                                rtf_comments_incl.set_visibility(
+                                    self.rtf_comments_available(
+                                        [editor for _, editor in bulk_editors or []]
+                                    )
                                 )
                                 ui.separator()
 
@@ -1007,6 +1203,18 @@ class ExportMixin:
                                             rtf_idx_incl.value,
                                             ts_which.value,
                                             ts_fmt.value,
+                                            highlights=bool(
+                                                rtf_hl_incl.visible
+                                                and rtf_hl_incl.value
+                                            ),
+                                            edits=bool(
+                                                rtf_edits_incl.visible
+                                                and rtf_edits_incl.value
+                                            ),
+                                            comments=bool(
+                                                rtf_comments_incl.visible
+                                                and rtf_comments_incl.value
+                                            ),
                                         )
                                     elif fmt.value == "txt":
                                         parts = []

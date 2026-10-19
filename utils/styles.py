@@ -127,6 +127,18 @@ theme_styles = """
         --color-edit-accent: #12796a;
         --color-edit-text: #10453d;
 
+        /* Words the reader has highlighted for themselves. The one marking
+           that is yellow, as a highlighter is. Yellow on white is barely
+           brighter than the page (1.14:1) so the colour cannot carry it
+           alone: the frame lines carry it, 4.9:1 against the page (1.4.1,
+           1.4.11), and the text on the yellow measures 13.6:1. */
+        --color-highlight-bg: #fff1a3;
+        --color-highlight-frame: #8a6d00;
+        --color-highlight-text: #2b2400;
+        /* A comment's dotted underline: 7.5:1 on white and at least 6.3:1 on
+           every wash a word can have. */
+        --color-comment-line: #a1136a;
+
         /* The word currently being spoken. A pale tint of the brand
            navy, so it reads as "you are here" rather than as a status. */
         --color-playing-bg: #dbe4f0;
@@ -251,6 +263,14 @@ theme_styles = """
         --color-edit-bg: #1d3b37;
         --color-edit-accent: #6fd3c1;
         --color-edit-text: #dff5f0;
+
+        /* Dark mode keeps the yellow as a dark gold. Text on it 8.0:1, the
+           frame 12.6:1 against the surface. */
+        --color-highlight-bg: #5a4a00;
+        --color-highlight-frame: #ffd54f;
+        --color-highlight-text: #fff6cc;
+        /* 4.6:1 on the dark highlight, at least 6.4:1 on the other washes. */
+        --color-comment-line: #ff9fd2;
 
         --color-playing-bg: #1c3252;
 
@@ -1372,6 +1392,75 @@ theme_styles = """
         box-shadow: inset 0 -2px 0 var(--color-edit-accent);
     }
 
+    /* Words the reader has highlighted. Yellow, like a highlighter, with a
+       line above and below so it does not depend on the colour: it is a
+       different shape from the other two markings, which are a wash with a
+       bar underneath. No horizontal padding, unlike them, so highlighting
+       a passage does not move the text -- and a run of highlighted words
+       with the spaces between them reads as one stretch.
+
+       On a flagged or changed word the highlight takes the wash and the text
+       colour, and the word keeps its own bar underneath, so both can be seen.
+       While the word is being played the playing tint wins the wash but the
+       lines stay, so the passage can still be seen under the playback. */
+    .highlight-word {
+        padding: 1px 0;
+        color: var(--color-highlight-text);
+        background-color: var(--color-highlight-bg);
+        box-shadow:
+            inset 0 2px 0 var(--color-highlight-frame),
+            inset 0 -2px 0 var(--color-highlight-frame);
+        box-decoration-break: clone;
+        -webkit-box-decoration-break: clone;
+    }
+    .highlight-word.review-word {
+        box-shadow:
+            inset 0 2px 0 var(--color-highlight-frame),
+            inset 0 -2px 0 var(--color-review-accent);
+    }
+    .highlight-word.edit-word {
+        box-shadow:
+            inset 0 2px 0 var(--color-highlight-frame),
+            inset 0 -2px 0 var(--color-edit-accent);
+    }
+    .transcript-text .highlight-word[data-current] {
+        background-color: var(--color-playing-bg);
+        color: inherit;
+        border-radius: 0;
+        box-shadow:
+            inset 0 2px 0 var(--color-highlight-frame),
+            inset 0 -2px 0 var(--color-highlight-frame);
+    }
+    .transcript-text .highlight-word.review-word[data-current] {
+        box-shadow:
+            inset 0 2px 0 var(--color-highlight-frame),
+            inset 0 -2px 0 var(--color-review-accent);
+    }
+    .transcript-text .highlight-word.edit-word[data-current] {
+        box-shadow:
+            inset 0 2px 0 var(--color-highlight-frame),
+            inset 0 -2px 0 var(--color-edit-accent);
+    }
+
+    /* A comment. The words it is on are underlined with a dotted line: a
+       pattern rather than a colour alone (1.4.1), and a different one from
+       the solid bars of the flagged and changed words. It is 3px thick and
+       sits 4px below the text, clear of the highlight's own frame lines:
+       a thinner line closer in was lost against them on words that are
+       both highlighted and commented. It is drawn with
+       text-decoration, so it needs no room of its own, shows on any wash a
+       word can have, and leaves the box-shadows that draw the other markings
+       alone. Nothing is added to the line: a marker after the last word
+       would sit where the caret goes. */
+    .comment-word {
+        text-decoration-line: underline;
+        text-decoration-style: dotted;
+        text-decoration-thickness: 3px;
+        text-decoration-color: var(--color-comment-line);
+        text-underline-offset: 4px;
+        text-decoration-skip-ink: none;
+    }
+
     /* Shared hover message. A CSS box rather than title=, which the browser
        draws itself and stylesheets cannot reach.
 
@@ -1843,6 +1932,30 @@ theme_styles = """
         box-shadow: inset 0 0 0 2px var(--color-warning-border);
     }
 
+    /* The caption the comments card under the video is on, marked as the
+       validation panel marks its caption but in the comment colour: a
+       thicker rule and a full outline, so shape and not only colour say
+       which. After the editing and invalid rules, so it wins over them. */
+    .transcript-cell-commenting {
+        border-left-color: var(--color-comment-line);
+        border-left-width: 3px;
+        padding-left: calc(1rem - 2px);
+        box-shadow: inset 0 0 0 2px var(--color-comment-line);
+    }
+    /* And the words of the comment the card is showing: a tint of the comment
+       colour laid over whatever else the word has. It is a background-image,
+       which paints above background-color, so a highlight's or a flagged
+       word's own wash still shows through it and nothing is taken away. At
+       18% the text keeps at least 6.7:1 (light) and 5.9:1 (dark) on every
+       wash a word can have, and the comment line at least 4.3:1 and 3.4:1
+       against it. */
+    .comment-word[data-comment-current] {
+        background-image: linear-gradient(
+            color-mix(in srgb, var(--color-comment-line) 18%, transparent),
+            color-mix(in srgb, var(--color-comment-line) 18%, transparent)
+        );
+    }
+
     /* ── Validation panel, under the video (issue #138) ── */
     /* Design B: a stripe down the left and a tinted header in the colour
        of the issue shown -- the panel's own is-warning / is-error /
@@ -1867,6 +1980,33 @@ theme_styles = """
     }
     .validation-panel.is-muted {
         --vp-tone: var(--color-border-subtle);
+    }
+    /* The comments panel, a sibling of this one: the colour of the underline
+       on the words it is about, which is also the one colour in the editor
+       that means nothing else (blue is the playing word, and the
+       progress marks). */
+    .validation-panel.is-comment {
+        --vp-tone: var(--color-comment-line);
+    }
+    .comments-panel-words {
+        max-width: 100%;
+    }
+    .comments-panel-words .q-btn__content {
+        text-align: left;
+        white-space: normal;
+    }
+    .comments-panel-text {
+        margin-top: 8px;
+    }
+    .comments-panel-actions {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 4px;
+        margin-top: 4px;
+    }
+    .comments-panel-remove {
+        margin-right: auto;
     }
     /* Which kinds of issue are stepped through: a row of checkboxes under
        the panel, ticked while that kind is shown. */

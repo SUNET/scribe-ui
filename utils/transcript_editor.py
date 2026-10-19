@@ -115,6 +115,8 @@ class TranscriptBody(
         self._props["blocks"] = []
         self._props["activeId"] = -1
         self._props["reviewId"] = -1
+        self._props["commentId"] = -1
+        self._props["commentIndex"] = -1
         self._props["reviewLabel"] = REVIEW_TOOLTIP
         self._props["editLabel"] = EDIT_TOOLTIP
         self._props["showEdits"] = False
@@ -157,6 +159,23 @@ class TranscriptBody(
         self._props["reviewId"] = block_id
         self.update()
 
+    def set_comment_mark(self, block_id: int, comment_index: int = -1) -> None:
+        """
+        Mark the caption, and the comment in it, that the comments card is
+        showing, or none (-1). A comment still being written has a caption
+        and no comment index.
+        """
+
+        if (
+            self._props["commentId"] == block_id
+            and self._props["commentIndex"] == comment_index
+        ):
+            return
+
+        self._props["commentId"] = block_id
+        self._props["commentIndex"] = comment_index
+        self.update()
+
     def set_follow(self, follow: bool) -> None:
         self._props["follow"] = follow
         self.update()
@@ -183,6 +202,17 @@ class TranscriptBody(
     def scroll_to_block(self, block_id: int) -> None:
         self.run_method("scrollToBlock", block_id)
 
+    def highlight_selection(self) -> None:
+        self.run_method("highlightSelection")
+
+    def select_range(
+        self, start_id: int, start_offset: int, end_id: int, end_offset: int
+    ) -> None:
+        self.run_method("selectRange", start_id, start_offset, end_id, end_offset)
+
+    def comment_selection(self) -> None:
+        self.run_method("commentSelection")
+
     def focus_caret(self) -> None:
         self.run_method("focusCaret")
 
@@ -203,6 +233,9 @@ class TranscriptEditor:
         # Called with the index of the caption the caret has come to rest
         # in -- the validation panel follows it (see caret_moved).
         self.on_caret: Optional[Callable[[int], None]] = None
+        # The panel under the video where comments are written and read
+        # (utils/comments_panel.py), set by the page; transcriptions only.
+        self.comments_panel = None
         self.overlay: Optional[ui.element] = None
         # The speech strip under the video, when there are word timings to
         # draw one from -- see set_timeline.
@@ -307,6 +340,23 @@ class TranscriptEditor:
         if scroll:
             self.body.scroll_to_block(caption_index)
         self.mark_current(caption_index)
+
+    def mark_comment(
+        self, caption_index: Optional[int], comment_index: int = -1
+    ) -> None:
+        """
+        Mark where the comments card is: the caption with a rule and an
+        outline, and the words of the comment with a tint. None clears it.
+        """
+
+        if self.body is None:
+            return
+
+        if caption_index is None:
+            self.body.set_comment_mark(-1, -1)
+            return
+
+        self.body.set_comment_mark(caption_index, comment_index)
 
     def caret_moved(self, args) -> None:
         """
@@ -582,6 +632,11 @@ class TranscriptEditor:
         self.body.on("mergeblock", lambda event: self.merge(event.args))
         self.body.on("deleterange", lambda event: self.delete_range(event.args))
         self.body.on("moveword", lambda event: self.move_word(event.args))
+        self.body.on(
+            "togglehighlight", lambda event: self.toggle_highlight(event.args)
+        )
+        self.body.on("opencomment", lambda event: self.open_comment(event.args))
+        self.body.on("caretcomment", lambda event: self.caret_comment(event.args))
         self.body.on("addblock", lambda event: self.add_after(event.args))
         self.body.on("deleteblock", lambda event: self.delete(event.args))
         self.body.on("blockclick", lambda event: self.seek(event.args))
@@ -651,6 +706,10 @@ class TranscriptEditor:
         # And where the captions divide the recording, which the strip under
         # the video draws.
         self.refresh_timeline()
+        # And the comment the panel is showing, which an undo, a merge or a
+        # delete may have replaced or taken away.
+        if self.comments_panel is not None:
+            self.comments_panel.sync()
 
     # ── lookup ──────────────────────────────────────────────────────────────
 
@@ -922,6 +981,178 @@ class TranscriptEditor:
         self.refresh()
         self.changed()
         self.focus(first.index, seam)
+
+    def highlight_selection(self) -> None:
+        """
+        What the toolbar's Highlight button does: ask the component for the
+        selection, which it reports as it does for the key.
+        """
+
+        if self.body is not None:
+            self.body.highlight_selection()
+
+    def toggle_highlight(self, args) -> None:
+        """
+        Highlight the words the reader has selected, or take it off.
+
+        The editor does the work and says whether it did anything; this only
+        turns the ranges the component measured into captions and puts the
+        selection back, since drawing the highlight rebuilds the blocks it
+        sits in and a selection does not survive that. Selecting it again is
+        what lets the same key undo what it just did.
+        """
+
+        raw = args.get("spans") if isinstance(args, dict) else None
+
+        if not isinstance(raw, list):
+            return
+
+        # Nothing selected, from the button: the editor says so.
+        if not raw:
+            self.editor.toggle_highlight([])
+            return
+
+        selections = []
+        spans = []
+
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+
+            caption = self.caption(self.block_id(item))
+            start, end = item.get("start"), item.get("end")
+
+            if (
+                caption is None
+                or isinstance(start, bool)
+                or isinstance(end, bool)
+                or not isinstance(start, int)
+                or not isinstance(end, int)
+            ):
+                continue
+
+            selections.append((caption, start, end))
+            spans.append((caption.index, start, end))
+
+        if not selections:
+            return
+
+        if not self.editor.toggle_highlight(selections):
+            return
+
+        self.refresh()
+        self.changed()
+
+        # Offsets are in the text, which a highlight does not change, so the
+        # selection can be put back exactly as it was.
+        if self.body is not None:
+            first, last = spans[0], spans[-1]
+            self.body.select_range(first[0], first[1], last[0], last[2])
+
+    def comment_selection(self) -> None:
+        """
+        What the toolbar's Comment button does: ask the component for the
+        selection, which it reports as it does for the key.
+        """
+
+        if self.body is not None:
+            self.body.comment_selection()
+
+    def tell_to_select_words(self) -> None:
+        ui.notify(
+            "Select the words to comment on first",
+            type="warning",
+            timeout=None,
+            close_button="Close",
+        )
+
+    def open_comment(self, args) -> None:
+        """
+        The key or the button: comment on the selected words, or open the
+        comment they already have -- in the comments panel, which is where a
+        comment is written, read and changed.
+
+        A comment belongs to one block, so a selection reaching across blocks
+        is refused. A selection that merely ends at the very edge of the next
+        block, taking none of it, is still within one.
+        """
+
+        if self.editor.data_format == "srt" or self.comments_panel is None:
+            return
+
+        raw = args.get("spans") if isinstance(args, dict) else None
+
+        if not isinstance(raw, list):
+            return
+
+        if not raw:
+            self.tell_to_select_words()
+            return
+
+        taken = []
+
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+
+            caption = self.caption(self.block_id(item))
+            start, end = item.get("start"), item.get("end")
+
+            if (
+                caption is None
+                or isinstance(start, bool)
+                or isinstance(end, bool)
+                or not isinstance(start, int)
+                or not isinstance(end, int)
+            ):
+                continue
+
+            taken.append((caption, start, end))
+
+        # Blocks the selection only brushes, with nothing taken from them, do
+        # not count -- unless that is all there is, which is a caret.
+        reaching = [entry for entry in taken if entry[1] != entry[2]]
+
+        if len(reaching) > 1:
+            ui.notify(
+                "A comment has to stay within one paragraph",
+                type="warning",
+                timeout=None,
+                close_button="Close",
+            )
+            return
+
+        if not taken:
+            return
+
+        caption, start, end = (reaching or taken)[0]
+
+        if not self.comments_panel.open_for(caption, start, end):
+            self.tell_to_select_words()
+
+    def caret_comment(self, args) -> None:
+        """
+        The caret has come into a comment's words (or a click has landed on
+        them): the panel shows that comment.
+        """
+
+        if self.editor.data_format == "srt" or self.comments_panel is None:
+            return
+
+        caption = self.caption(self.block_id(args))
+        number = args.get("cm") if isinstance(args, dict) else None
+
+        if (
+            caption is None
+            or isinstance(number, bool)
+            or not isinstance(number, int)
+            or not 0 <= number < len(caption.comments)
+        ):
+            return
+
+        self.comments_panel.follow(
+            caption, caption.comments[number], click=args.get("click") is True
+        )
 
     def move_word(self, args) -> None:
         """

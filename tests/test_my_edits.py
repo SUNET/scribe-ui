@@ -716,7 +716,10 @@ class TestClientContract:
     def test_the_template_renders_the_edit_marking(self):
         source = self.source()
 
-        assert "'edit-word'" in source
+        # Chosen in runClass, which the template calls for every run, so the
+        # highlight can be added to the same list without a second binding.
+        assert '"edit-word"' in source
+        assert ':class="runClass(run)"' in source
         # Bound on every word, not only the ones the server marked, so the
         # stylesheet can reach the message on a word the browser marked too.
         assert ':data-edit="editLabel"' in source

@@ -37,6 +37,7 @@ from utils.srt import (
     TIMELINE_SHOW_KEY,
 )
 from utils.speech_timeline import SpeechTimeline
+from utils.comments_panel import CommentsPanel
 from utils.validation_panel import ValidationPanel
 from utils.transcript_editor import TranscriptEditor
 from utils.video import create_video_proxy
@@ -255,6 +256,52 @@ def create() -> None:
                         validate_button.on(
                             "click",
                             lambda: editor.validate_captions(),
+                        )
+                else:
+                    # Where Validate is in the subtitle editor: the one thing
+                    # about the text that is not history or finding. The same
+                    # as Ctrl+Shift+H. Transcriptions only, for now.
+                    #
+                    # A mouse press must not take focus, or the selection it
+                    # is meant to act on is the first thing it would lose --
+                    # the same reason the caption row's music-note icon
+                    # prevents the default on mousedown.
+                    # sym_o_ is Quasar's prefix for Material Symbols Outlined, which
+                    # ships with NiceGUI and has the marker pen the plain
+                    # Material Icons "highlight" (a torch) does not.
+                    with ui.button("Highlight", icon="sym_o_format_ink_highlighter").props(
+                        "flat aria-keyshortcuts=Control+Shift+H"
+                    ).classes(
+                        "editor-btn editor-toolbar-btn editor-quiet"
+                    ) as highlight_button:
+                        highlight_button.tooltip(
+                            "Highlight the selection, or remove the highlight "
+                            "(Ctrl + Shift + H)"
+                        )
+                        highlight_button.on(
+                            "mousedown", js_handler="(event) => event.preventDefault()"
+                        )
+                        highlight_button.on(
+                            "click", lambda: transcript.highlight_selection()
+                        )
+
+                    # Beside it: a note on the selected words. The same as
+                    # Ctrl+Shift+K, and for the same reason it does not take
+                    # focus on a mouse press.
+                    with ui.button("Comment", icon="sym_o_add_comment").props(
+                        "flat aria-keyshortcuts=Control+Shift+K"
+                    ).classes(
+                        "editor-btn editor-toolbar-btn editor-quiet"
+                    ) as comment_button:
+                        comment_button.tooltip(
+                            "Comment on the selection, or open its comment "
+                            "(Ctrl + Shift + K)"
+                        )
+                        comment_button.on(
+                            "mousedown", js_handler="(event) => event.preventDefault()"
+                        )
+                        comment_button.on(
+                            "click", lambda: transcript.comment_selection()
                         )
 
             with ui.row().classes("editor-toolbar-group"):
@@ -928,3 +975,12 @@ def create() -> None:
                             transcript.on_caret = (
                                 editor.validation_panel.follow_caret
                             )
+                        else:
+                            # Its counterpart in a transcription: the card
+                            # where comments are written and read, drawn like
+                            # the validation card and following the caret the
+                            # same way. Shut until needed -- except in a file
+                            # that already has comments, which opens on the
+                            # first.
+                            transcript.comments_panel = CommentsPanel(transcript)
+                            transcript.comments_panel.open_first()

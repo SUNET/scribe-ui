@@ -86,7 +86,7 @@ export default {
             @keydown="onControlKeydown($event, block.id, 'speaker')"
           >{{ block.speaker }}</span><span v-if="!subtitleMode" class="transcript-colon">:</span></div><div
           class="transcript-cell"
-          :class="{ 'transcript-cell-active': block.id === activeId, 'transcript-cell-editing': block.id === caretId, 'transcript-cell-invalid': block.invalid, 'transcript-cell-warning': block.warning, 'transcript-cell-highlighted': block.highlighted, 'transcript-cell-reviewing': block.id === reviewId }"
+          :class="{ 'transcript-cell-active': block.id === activeId, 'transcript-cell-editing': block.id === caretId, 'transcript-cell-invalid': block.invalid, 'transcript-cell-warning': block.warning, 'transcript-cell-highlighted': block.highlighted, 'transcript-cell-reviewing': block.id === reviewId, 'transcript-cell-commenting': block.id === commentId }"
           :data-id="block.id"
         ><div
             v-if="!subtitleMode"
@@ -205,11 +205,11 @@ export default {
                 ><q-icon name="delete_outline" size="16px" /><q-tooltip>Delete caption</q-tooltip></div></div></div><div
               class="transcript-text"
               :data-id="block.id"
-            ><span v-for="(run, i) in block.runs" :key="i" :class="run.flag ? 'review-word' : (run.edit ? 'edit-word' : null)" :data-review="run.flag ? reviewLabel : null" :data-edit="editLabel" :aria-label="run.flag ? reviewLabel : (run.edit ? editLabel : null)" :data-s="run.s" :data-e="run.e">{{ run.t }}</span><br v-if="!block.runs || block.runs.length === 0"></div></div><div
+            ><span v-for="(run, i) in block.runs" :key="i" :class="runClass(run)" :role="run.hl ? 'mark' : null" :data-review="run.flag ? reviewLabel : null" :data-edit="editLabel" :aria-label="run.flag ? reviewLabel : (run.edit ? editLabel : null)" :data-comment="run.cm" :data-comment-current="isCommentOnShow(run, block) ? '' : null" :aria-description="run.cf ? 'Comment: ' + run.ct : null" :data-s="run.s" :data-e="run.e">{{ run.t }}</span><br v-if="!block.runs || block.runs.length === 0"></div></div><div
             v-else
             class="transcript-text"
             :data-id="block.id"
-          ><span v-for="(run, i) in block.runs" :key="i" :class="run.flag ? 'review-word' : (run.edit ? 'edit-word' : null)" :data-review="run.flag ? reviewLabel : null" :data-edit="editLabel" :aria-label="run.flag ? reviewLabel : (run.edit ? editLabel : null)" :data-s="run.s" :data-e="run.e">{{ run.t }}</span><br v-if="!block.runs || block.runs.length === 0"></div></div></template></div>
+          ><span v-for="(run, i) in block.runs" :key="i" :class="runClass(run)" :role="run.hl ? 'mark' : null" :data-review="run.flag ? reviewLabel : null" :data-edit="editLabel" :aria-label="run.flag ? reviewLabel : (run.edit ? editLabel : null)" :data-comment="run.cm" :data-comment-current="isCommentOnShow(run, block) ? '' : null" :aria-description="run.cf ? 'Comment: ' + run.ct : null" :data-s="run.s" :data-e="run.e">{{ run.t }}</span><br v-if="!block.runs || block.runs.length === 0"></div></div></template></div>
 
       <!-- Outside the contenteditable, or it would become editable content.
            Positioned against this component's own root rather than the
@@ -290,6 +290,11 @@ export default {
     // The caption whose validation issue the panel under the video is
     // showing (utils/validation_panel.py); -1 when none is.
     reviewId: { type: Number, default: -1 },
+    // The caption, and the comment in it, that the comments card under the
+    // video is showing (utils/comments_panel.py); -1 when none is. A comment
+    // being written has a caption but no comment yet.
+    commentId: { type: Number, default: -1 },
+    commentIndex: { type: Number, default: -1 },
     reviewLabel: { type: String, default: "" },
     editLabel: { type: String, default: "" },
     showEdits: { type: Boolean, default: false },
@@ -606,6 +611,166 @@ export default {
           return text.slice(from, to);
         })
         .join("\n");
+    },
+
+    // The classes a run is drawn with: which of the two word markings it
+    // carries (a word is never both), and whether the reader has highlighted
+    // it on top of that. The highlight is a class of its own so it can sit on
+    // a flagged or changed word without taking either marking away.
+    runClass(run) {
+      return [
+        run.flag ? "review-word" : run.edit ? "edit-word" : null,
+        run.hl ? "highlight-word" : null,
+        run.cm !== undefined ? "comment-word" : null,
+        run.cl ? "comment-end" : null,
+      ];
+    },
+
+    // Whether a run is a word of the comment the card under the video is
+    // showing. It is an attribute of its own rather than one more class so
+    // the tint can sit on top of whatever the word is, and a word of that
+    // comment is told apart from the rest of the paragraph.
+    isCommentOnShow(run, block) {
+      return (
+        run.cm !== undefined &&
+        block.id === this.commentId &&
+        run.cm === this.commentIndex
+      );
+    },
+
+    // The selection as one range per block it reaches into, each as offsets
+    // in that block's own text -- what the server needs to say which words
+    // are taken. A selection inside one block is one entry; one that reaches
+    // across blocks is the tail of the first, all of those between, and the
+    // head of the last. Empty without a selection in the text. A caret with
+    // nothing selected is a range of nothing, which the server reads as the
+    // word the caret touches.
+    highlightSpans() {
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0) return [];
+
+      const range = selection.getRangeAt(0);
+      const first = this.blockOf(range.startContainer);
+      const last = this.blockOf(range.endContainer);
+
+      if (!first || !last) return [];
+
+      const start = this.offsetIn(first, range.startContainer, range.startOffset);
+      const end = this.offsetIn(last, range.endContainer, range.endOffset);
+
+      if (first === last) {
+        return [{ id: Number(first.dataset.id), start, end }];
+      }
+
+      const blocks = Array.from(
+        this.$refs.body?.querySelectorAll(".transcript-text") ?? []
+      );
+      const from = blocks.indexOf(first);
+      const to = blocks.indexOf(last);
+
+      if (from < 0 || to < 0) return [];
+
+      return blocks.slice(from, to + 1).map((block, at) => ({
+        id: Number(block.dataset.id),
+        start: at === 0 ? start : 0,
+        end: from + at === to ? end : this.plainText(block.textContent).length,
+      }));
+    },
+
+    // The toolbar's Highlight button: the same as the key, reading the
+    // selection as it is. The button does not take the selection with it --
+    // it does not take focus on a mouse press either (see the page) -- so
+    // this finds it where the reader left it. Nothing selected sends an empty
+    // list, which the server answers with the notice.
+    highlightSelection() {
+      this.flush();
+      this.$emit("togglehighlight", { spans: this.highlightSpans() });
+    },
+
+    // The toolbar's Comment button, and the key: ask the server to open the
+    // comment on the selected words. The server decides what that means --
+    // a new comment, or the one the words already have -- and shows it in the
+    // comments panel under the video.
+    commentSelection() {
+      this.flush();
+      this.$emit("opencomment", { spans: this.highlightSpans() });
+    },
+
+    // The comment the caret is in, as the block and the comment's number in
+    // it -- what the comments panel under the video follows. Nothing for a
+    // selection, or a caret in words that have no comment.
+    commentAtCaret() {
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0 || !selection.isCollapsed) {
+        return null;
+      }
+
+      const node = selection.anchorNode;
+      const element = node && (node.nodeType === 1 ? node : node.parentElement);
+      const word = element?.closest?.("[data-comment]");
+      const block = element ? this.blockOf(element) : null;
+
+      if (!word || !block) return null;
+
+      return { id: Number(block.dataset.id), cm: Number(word.dataset.comment) };
+    },
+
+    // Tell the server when the caret comes into a different comment, so the
+    // panel can show it. Said once per comment rather than per key, and again
+    // for a click, which also opens the panel if it is shut -- an arrow key
+    // that happens to cross a commented word does not.
+    reportCommentCaret(clicked = false) {
+      const at = this.commentAtCaret();
+      const key = at ? `${at.id}:${at.cm}` : null;
+
+      if (key === this.lastCommentKey && !clicked) return;
+      this.lastCommentKey = key;
+
+      if (at) this.$emit("caretcomment", { ...at, click: clicked });
+    },
+
+    // The text node and offset a block's character offset falls at. An
+    // offset past the end gives null, for the caller to treat as "the end".
+    pointAt(block, offset) {
+      const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+      let remaining = offset;
+      let node = walker.nextNode();
+
+      while (node) {
+        const length = node.textContent.length;
+        if (remaining <= length) return { node, offset: remaining };
+        remaining -= length;
+        node = walker.nextNode();
+      }
+
+      return null;
+    },
+
+    // Select a stretch of text again after a block has been rebuilt -- the
+    // selection a highlight was applied to does not survive the redraw, and
+    // the same key undoes it only while it is still there.
+    selectRange(startId, startOffset, endId, endOffset) {
+      this.$nextTick(() => {
+        const body = this.$refs.body;
+        const first = body?.querySelector(`.transcript-text[data-id="${startId}"]`);
+        const last = body?.querySelector(`.transcript-text[data-id="${endId}"]`);
+        if (!first || !last) return;
+
+        const from = this.pointAt(first, startOffset);
+        const to = this.pointAt(last, endOffset);
+        if (!from || !to) return;
+
+        const range = document.createRange();
+        range.setStart(from.node, from.offset);
+        range.setEnd(to.node, to.offset);
+
+        // preventScroll for the reason placeCaretAt gives.
+        body.focus({ preventScroll: true });
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        this.caretId = endId;
+      });
     },
 
     // The inverse of caret()'s own offset -- used to put the caret back
@@ -1118,6 +1283,7 @@ export default {
       const at = this.caret();
       this.caretId = at ? at.id : null;
       if (at) this.lastCaret = { id: at.id, offset: at.offset };
+      this.reportCommentCaret();
     },
 
     // Leaving the editor sends whatever was pending and takes the editing
@@ -1720,6 +1886,43 @@ export default {
         }
       }
 
+      // Highlight the selection, or take the highlight off. Ctrl only and by
+      // physical key: Cmd+Shift+H is the browser's own Home on a Mac. Ahead
+      // of the block-scoped lists because a selection may reach across
+      // blocks, which those lists, working from the caret's block alone,
+      // cannot see. For transcriptions only, for now: subtitles are saved as
+      // plain SRT, which has nowhere to keep a highlight.
+      if (
+        !this.subtitleMode &&
+        event.ctrlKey &&
+        event.shiftKey &&
+        !event.altKey &&
+        !event.metaKey &&
+        event.code === "KeyH"
+      ) {
+        const spans = this.highlightSpans();
+        if (spans.length > 0) {
+          return this.report(event, "togglehighlight", { spans });
+        }
+      }
+
+      // Comment on the selection, or open the comment the words already
+      // have. Ctrl only and by physical key, for the reasons given for the
+      // highlight above. Transcriptions only, for now.
+      if (
+        !this.subtitleMode &&
+        event.ctrlKey &&
+        event.shiftKey &&
+        !event.altKey &&
+        !event.metaKey &&
+        event.code === "KeyK"
+      ) {
+        const spans = this.highlightSpans();
+        if (spans.length > 0) {
+          return this.report(event, "opencomment", { spans });
+        }
+      }
+
       const at = this.caret();
       if (!at) return;
 
@@ -1950,6 +2153,7 @@ export default {
       const at = this.caret();
 
       this.caretId = id;
+      this.reportCommentCaret(true);
 
       this.$emit("blockclick", {
         id,

@@ -347,6 +347,181 @@ class ReviewMixin:
         return set(first) | {index + offset for index in second}
 
 
+    @staticmethod
+    def carry_highlights(previous: str, current: str, marked: set) -> set:
+        """
+        Carry a caption's highlights across a change to its text.
+
+        Unlike an edit mark, a highlight is the reader's note about a passage
+        and not about who wrote it, so a change does not earn one: typing a
+        new word somewhere does not highlight it. The reader's marks do have
+        to survive the corrections made inside a highlighted passage, though,
+        or fixing a typo would quietly take the highlight away.
+
+        - Words that stay move with their marks, however far they shift.
+        - Words replaced one for one keep the mark of the word they replace.
+        - A longer or shorter replacement is highlighted when everything it
+          replaced was.
+        - Words inserted between two highlighted words are inside the
+          highlight and take it; anywhere else they do not.
+        - Words that are gone take their highlight with them.
+        """
+
+        before = previous.split()
+        after = current.split()
+        carried: set = set()
+
+        matcher = SequenceMatcher(None, before, after, autojunk=False)
+
+        for tag, before_start, before_end, after_start, after_end in (
+            matcher.get_opcodes()
+        ):
+            if tag == "equal":
+                for offset in range(before_end - before_start):
+                    if before_start + offset in marked:
+                        carried.add(after_start + offset)
+            elif tag == "replace":
+                old = range(before_start, before_end)
+                new = range(after_start, after_end)
+
+                if len(old) == len(new):
+                    carried.update(
+                        after_start + offset
+                        for offset, index in enumerate(old)
+                        if index in marked
+                    )
+                elif all(index in marked for index in old):
+                    carried.update(new)
+            elif tag == "insert":
+                if before_start - 1 in marked and before_start in marked:
+                    carried.update(range(after_start, after_end))
+
+        return carried
+
+    def marked_spans(
+        self, caption: SRTCaption, highlights: bool, edits: bool
+    ) -> list:
+        """
+        A caption's text as (text, highlighted, edited) pieces, for a format
+        that draws the marks itself -- the RTF export.
+
+        Not the editor's own runs (review_runs): those follow the switches
+        under the video, while an export is told what to carry. A piece's
+        text is whole words and the space between them, so concatenating the
+        pieces gives the caption's text back exactly.
+
+        The space between two marked words is marked with them, so a passage
+        is one stretch and not a row of words, as it is drawn in the editor.
+        A line break is left outside the marking, for the same reason as
+        there.
+        """
+
+        tokens = [token for token in re.split(r"(\s+)", caption.text) if token]
+        position = -1
+        positions: list = []
+
+        for token in tokens:
+            if token.strip():
+                position += 1
+                positions.append(position)
+            else:
+                positions.append(None)
+
+        def flags(at: int) -> tuple:
+            word = positions[at]
+
+            if word is not None:
+                return (
+                    highlights and self.token_is_highlight(caption, word),
+                    edits and self.token_is_edit(caption, word),
+                )
+
+            before = positions[at - 1] if at > 0 else None
+            after = positions[at + 1] if at + 1 < len(tokens) else None
+
+            if before is None or after is None or "\n" in tokens[at]:
+                return (False, False)
+
+            return (
+                highlights
+                and self.token_is_highlight(caption, before)
+                and self.token_is_highlight(caption, after),
+                edits
+                and self.token_is_edit(caption, before)
+                and self.token_is_edit(caption, after),
+            )
+
+        pieces: list = []
+
+        for at, token in enumerate(tokens):
+            highlighted, edited = flags(at)
+
+            if pieces and pieces[-1][1:] == (highlighted, edited):
+                pieces[-1] = (pieces[-1][0] + token, highlighted, edited)
+            else:
+                pieces.append((token, highlighted, edited))
+
+        return pieces
+
+    def carry_marks(self, caption: SRTCaption, new_text: str) -> None:
+        """
+        Carry every kind of mark on a caption across a change to its text.
+
+        Called before the text itself is replaced, while there is still
+        something to compare the new text against.
+        """
+
+        caption.edited_words = self.retag_edits(
+            caption.text, new_text, caption.edited_words
+        )
+        caption.highlighted_words = self.carry_highlights(
+            caption.text, new_text, caption.highlighted_words
+        )
+        caption.comments = self.carry_comments(
+            caption.text, new_text, caption.comments
+        )
+
+    @staticmethod
+    def words_in_selection(text: str, start: int, end: int) -> list:
+        """
+        The positions of the words a selection touches, counted in
+        whitespace separated words from the start of the text.
+
+        A word is touched when the selection takes any of it, so a selection
+        that ends part way through a word takes the whole word: marking a
+        passage never cuts a word in two. A selection that only brushes a
+        word's edge, ending where it begins or starting where it ends, does
+        not touch it.
+
+        Nothing selected means the word the caret is in or against: either
+        edge counts, since the caret is as often just after a word as in it,
+        and no two words share an edge because whitespace separates them. A
+        caret in the space between words touches neither.
+        """
+
+        if end < start:
+            start, end = end, start
+
+        touched = []
+
+        for position, match in enumerate(re.finditer(r"\S+", text)):
+            if start == end:
+                if match.start() <= start <= match.end():
+                    touched.append(position)
+            elif match.start() < end and match.end() > start:
+                touched.append(position)
+
+        return touched
+
+    @staticmethod
+    def token_is_highlight(caption: SRTCaption, index: int) -> bool:
+        """
+        Whether the reader has highlighted the word at this position.
+        """
+
+        return index in caption.highlighted_words
+
+
     def speech_runs(self, gap: float = 0.3) -> List[list]:
         """
         Where speech actually is, as [start, end] pairs.
@@ -668,17 +843,25 @@ class ReviewMixin:
         if not source:
             return []
 
+        highlighted = caption.highlighted_words
+        commented = bool(caption.comments)
+
         if (
             not self.show_uncertain_words
             and not self.show_my_edits
             and not per_word
+            and not highlighted
+            and not commented
         ):
             return [{"t": source, "flag": False}]
 
         # A word has to be a run of its own before it can be marked at all, so
         # marking the reader's words needs the same split that following the
-        # audio does.
-        one_run_per_word = per_word or self.show_my_edits
+        # audio does. So does a highlight, which is always drawn: it is not one
+        # of the switches under the video. Nor does a comment.
+        one_run_per_word = (
+            per_word or self.show_my_edits or bool(highlighted) or commented
+        )
 
         words = self.aligned_words(caption, source)
         runs: list = []
@@ -690,12 +873,58 @@ class ReviewMixin:
                 runs.append({"t": "".join(plain), "flag": False})
                 plain.clear()
 
-        for token in re.split(r"(\s+)", source):
-            if not token:
-                continue
+        tokens = [token for token in re.split(r"(\s+)", source) if token]
 
+        def is_highlighted(position: int) -> bool:
+            return self.token_is_highlight(caption, position)
+
+        def comment_of(position: Optional[int]) -> Optional[int]:
+            if position is None:
+                return None
+            return self.comment_index_at(caption, position)
+
+        # Which word each token is, so that the space between two highlighted
+        # words can be drawn highlighted too: a passage reads as one marked
+        # stretch, not a row of separate words.
+        word_position = -1
+        positions: list = []
+
+        for token in tokens:
+            if token.strip():
+                word_position += 1
+                positions.append(word_position)
+            else:
+                positions.append(None)
+
+        for at, token in enumerate(tokens):
             if not token.strip():
-                plain.append(token)
+                before = positions[at - 1] if at > 0 else None
+                after = positions[at + 1] if at + 1 < len(tokens) else None
+
+                # A line break is left unmarked: a highlight running out to the
+                # edge of the block would draw a stub at the end of the line.
+                # The same goes for a comment, and for the space between two
+                # words that belong to different comments, which is in neither.
+                inside = (
+                    "\n" not in token
+                    and before is not None
+                    and after is not None
+                )
+                space: dict = {"t": token, "flag": False}
+
+                if inside and is_highlighted(before) and is_highlighted(after):
+                    space["hl"] = True
+
+                note = comment_of(before) if inside else None
+
+                if note is not None and note == comment_of(after):
+                    space["cm"] = note
+
+                if len(space) > 2:
+                    flush()
+                    runs.append(space)
+                else:
+                    plain.append(token)
                 continue
 
             word = words[index] if index < len(words) else None
@@ -704,22 +933,50 @@ class ReviewMixin:
             # be honoured here too or words stay marked with them switched off.
             flagged = self.show_uncertain_words and self.word_needs_review(word)
             edited = self.show_my_edits and self.token_is_edit(caption, index - 1)
+            marked = is_highlighted(index - 1)
+            note = comment_of(index - 1)
 
-            if not one_run_per_word and not flagged and not edited:
+            if (
+                not one_run_per_word
+                and not flagged
+                and not edited
+                and not marked
+                and note is None
+            ):
                 plain.append(token)
                 continue
 
             flush()
             run = {"t": token, "flag": flagged}
 
+            # Only carried when true, like "edit".
+            if marked:
+                run["hl"] = True
+
             # Only carried when true, so a run reads the same as it always did
             # wherever nothing has been edited.
             if edited:
                 run["edit"] = True
 
+            # A word in a comment says which one, and the first and last word
+            # of it say so too -- the first carries the text, which is what a
+            # screen reader is given, and the last is where the comment is
+            # opened from. Only carried when there is one.
+            if note is not None:
+                comment = caption.comments[note]
+                run["cm"] = note
+
+                if index - 1 == min(comment.words):
+                    run["cf"] = True
+                    run["ct"] = comment.text
+
+                if index - 1 == max(comment.words):
+                    run["cl"] = True
+
             # Only a word still matching what the model transcribed has a
             # timing we can attribute to it; an edited word has none, and nor
-            # has a word transcribed without one. Neither is ever highlighted.
+            # has a word transcribed without one. Neither is ever lit up as the
+            # word being played.
             if per_word and self.word_is_timed(word):
                 run["s"] = word["s"]
                 run["e"] = word["e"]
