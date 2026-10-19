@@ -687,9 +687,10 @@ class ReviewMixin:
         overlay and timeline default to True, unlike the markings: they show
         what is already there rather than adding anything to read, so nothing
         stored yet means a reader who has never touched either switch gets
-        both on. The highlights switch is not here: hiding them is a way of
-        looking at the text for a while, not a preference, so every editor
-        opens with them shown (show_highlights, set in __init__).
+        both on. The highlights and comments switches are not here: hiding
+        them is a way of looking at the text for a while, not a preference, so
+        every editor opens with them shown (show_highlights and show_comments,
+        set in __init__).
         """
 
         self.show_uncertain_words = bool(show)
