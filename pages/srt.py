@@ -29,6 +29,7 @@ from utils.srt import (
     AUTOSCROLL_KEY,
     DEFAULT_REVIEW_SENSITIVITY,
     EDITS_SHOW_KEY,
+    HIGHLIGHTS_SHOW_KEY,
     OVERLAY_SHOW_KEY,
     REVIEW_SENSITIVITY_KEY,
     REVIEW_SHOW_KEY,
@@ -232,6 +233,7 @@ def create() -> None:
             app.storage.user.get(EDITS_SHOW_KEY, False),
             app.storage.user.get(OVERLAY_SHOW_KEY, True),
             app.storage.user.get(TIMELINE_SHOW_KEY, True),
+            app.storage.user.get(HIGHLIGHTS_SHOW_KEY, True),
         )
         editor.set_autoscroll(app.storage.user.get(AUTOSCROLL_KEY, False))
         editor.set_highlight_word(editor.autoscroll)
@@ -848,6 +850,50 @@ def create() -> None:
                                             "Highlight words you have added or "
                                             "changed"
                                         )
+
+                                # Only a transcription can hold highlights;
+                                # a set of subtitles is saved as plain SRT.
+                                if data_format != "srt":
+
+                                    def save_show_highlights(event) -> None:
+                                        value = bool(event.sender.value)
+
+                                        # The highlight command turns this on
+                                        # itself and moves the switch to
+                                        # match, which lands here too.
+                                        if value != editor.show_highlights:
+                                            transcript.set_show_highlights(value)
+
+                                        app.storage.user[HIGHLIGHTS_SHOW_KEY] = value
+
+                                        # See save_follow above (F-74).
+                                        focus_element(event.sender)
+
+                                    highlights_switch = ui.switch(
+                                        "Highlights",
+                                        value=editor.show_highlights,
+                                    ).props("dense").classes(
+                                        "editor-switch highlights-switch"
+                                    )
+                                    # Same reason as the switches above:
+                                    # "click" is mouse-only on a QToggle,
+                                    # and update:model-value fires for a
+                                    # keyboard activation too.
+                                    highlights_switch.on(
+                                        "update:model-value", save_show_highlights
+                                    )
+                                    with highlights_switch:
+                                        ui.tooltip(
+                                            "Show the words you have "
+                                            "highlighted. Hiding them keeps "
+                                            "them."
+                                        )
+
+                                    def highlights_shown() -> None:
+                                        app.storage.user[HIGHLIGHTS_SHOW_KEY] = True
+                                        highlights_switch.value = True
+
+                                    editor.on_highlights_shown = highlights_shown
 
                             # One control rather than a switch plus a level:
                             # "off" is just the lowest setting of the same
