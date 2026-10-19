@@ -74,13 +74,20 @@ class TestMoveFirstWordToPrevious:
 
         assert editor.captions[0].text == "ett två tre"
 
-    def test_refuses_to_empty_a_block(self, editor):
+    def test_the_only_word_is_a_merge_with_the_previous_block(self, editor):
         editor.captions[1] = SRTCaption(2, "00:00:02,000", "00:00:03,500", "fyra")
 
-        editor.move_first_word_to_previous(editor.captions[1])
+        outcome = editor.move_first_word_to_previous(editor.captions[1])
 
-        assert editor.captions[1].text == "fyra"
-        assert editor.captions[0].text == "ett två tre"
+        assert outcome == "merged"
+        assert len(editor.captions) == 1
+        assert editor.captions[0].text.split() == ["ett", "två", "tre", "fyra"]
+
+    def test_a_move_does_not_say_it_merged(self, editor):
+        assert editor.move_first_word_to_previous(editor.captions[1]) is None
+
+    def test_nothing_to_do_does_not_say_it_merged(self, editor):
+        assert editor.move_first_word_to_previous(editor.captions[0]) is None
 
 
 class TestMoveLastWordToNext:
@@ -105,12 +112,20 @@ class TestMoveLastWordToNext:
 
         assert editor.captions[-1].text == "fyra fem sex"
 
-    def test_refuses_to_empty_a_block(self, editor):
+    def test_the_only_word_is_a_merge_with_the_next_block(self, editor):
         editor.captions[0] = SRTCaption(1, "00:00:00,000", "00:00:01,500", "ett")
 
-        editor.move_last_word_to_next(editor.captions[0])
+        outcome = editor.move_last_word_to_next(editor.captions[0])
 
-        assert editor.captions[0].text == "ett"
+        assert outcome == "merged"
+        assert len(editor.captions) == 1
+        assert editor.captions[0].text.split() == ["ett", "fyra", "fem", "sex"]
+
+    def test_a_move_does_not_say_it_merged(self, editor):
+        assert editor.move_last_word_to_next(editor.captions[0]) is None
+
+    def test_nothing_to_do_does_not_say_it_merged(self, editor):
+        assert editor.move_last_word_to_next(editor.captions[-1]) is None
 
 
 class TestWithoutWordData:
