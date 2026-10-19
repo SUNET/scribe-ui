@@ -756,6 +756,12 @@ class RenderMixin:
                 ],
             ),
             (
+                "Navigation",
+                [
+                    ("Quick jump to a time or block", "Ctrl/⌘ + G"),
+                ],
+            ),
+            (
                 "Transport",
                 [
                     ("Play/Pause", "Ctrl + Space"),

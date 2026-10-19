@@ -2855,6 +2855,12 @@ class TestTheShortcutsDialog:
                 ],
             ),
             (
+                "Navigation",
+                [
+                    ("Quick jump to a time or block", "Ctrl/⌘ + G"),
+                ],
+            ),
+            (
                 "Transport",
                 [
                     ("Play/Pause", "Ctrl + Space"),
@@ -2901,6 +2907,12 @@ class TestTheShortcutsDialog:
                 [
                     ("Undo", "Ctrl/⌘ + Z"),
                     ("Redo", "Ctrl + Y / ⌘ + Shift + Z"),
+                ],
+            ),
+            (
+                "Navigation",
+                [
+                    ("Quick jump to a time or block", "Ctrl/⌘ + G"),
                 ],
             ),
             (

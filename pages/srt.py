@@ -105,6 +105,11 @@ def create() -> None:
                 e.preventDefault();
             }
 
+            // Block Ctrl + g / Cmd + g (find next in a browser): Quick Jump
+            if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'g') {
+                e.preventDefault();
+            }
+
             // Block Ctrl + e / Cmd + e for search
             if ((e.metaKey || e.ctrlKey) && ! e.shiftKey && e.key.toLowerCase() === 'e') {
                 e.preventDefault();
