@@ -2021,6 +2021,27 @@ export default {
         });
       }
 
+      // Nudge this caption's start (Ctrl+, / Ctrl+.) or end (Ctrl+Shift+,
+      // / Ctrl+Shift+.) a step earlier / later: < and > on a US keyboard,
+      // which is what they mean. By physical key, event.code, because
+      // Shift turns the character into ; and : on a Swedish one. Ctrl only,
+      // never Cmd -- Cmd+, opens the browser's settings on a Mac -- and no
+      // Alt, so AltGr cannot be mistaken for it. The caret goes along so
+      // it can be put back where it was after the redraw.
+      if (
+        event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey &&
+        (event.code === "Comma" || event.code === "Period")
+      ) {
+        return this.report(event, "nudge", {
+          id: at.id,
+          edge: event.shiftKey ? "end" : "start",
+          direction: event.code === "Comma" ? "earlier" : "later",
+          offset: at.offset,
+        });
+      }
+
       // Hand a word across the boundary to the caption either side. The
       // server picks the timings back up from the word data, so this is a
       // report rather than anything worked out here.

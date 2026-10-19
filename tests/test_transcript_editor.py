@@ -3049,6 +3049,8 @@ class TestTheShortcutsDialog:
                     ("Move last word to next caption", "Ctrl/⌘ + ↓"),
                     ("Move text before cursor to previous caption", "Ctrl/⌘ + Shift + ↑"),
                     ("Move text after cursor to next caption", "Ctrl/⌘ + Shift + ↓"),
+                    ("Nudge start earlier / later", "Ctrl + , / Ctrl + ."),
+                    ("Nudge end earlier / later", "Ctrl + Shift + , / Ctrl + Shift + ."),
                     ("Merge with next", "Ctrl + M"),
                     ("Add caption after", "Ctrl/⌘ + Shift + Enter"),
                     ("Delete caption", "Ctrl + D"),
