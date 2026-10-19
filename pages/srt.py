@@ -288,6 +288,11 @@ def create() -> None:
                             "The source file for this transcription.",
                         ),
                         (
+                            "Media length",
+                            "media",
+                            "The length of the source file.",
+                        ),
+                        (
                             "Language",
                             language,
                             "The language used for the transcription.",
@@ -313,7 +318,7 @@ def create() -> None:
                                     # A figure the editor keeps up to
                                     # date is registered by name; the
                                     # fixed ones are drawn as they are.
-                                    if value in ("captions", "wpm"):
+                                    if value in ("captions", "wpm", "media"):
                                         figures[value] = ui.label().classes(
                                             "editor-info-figure"
                                         )
@@ -480,6 +485,16 @@ def create() -> None:
                                 loop=False,
                             ).classes("w-full h-full")
                             editor.set_video_player(video)
+                            # The length is only known to the player; asked
+                            # once the page is up, for the information box
+                            # and for Validate's check against it.
+                            ui.timer(
+                                0, lambda: editor.look_up_media_seconds(video), once=True
+                            )
+                            video.on(
+                                "loadedmetadata",
+                                lambda: editor.look_up_media_seconds(video),
+                            )
                             # playsinline: iOS plays a video fullscreen
                             # without it, which takes the captions off
                             # the screen every time the reader presses
@@ -908,3 +923,8 @@ def create() -> None:
                                 revalidate=editor.revalidate_items,
                             )
                             editor.validation_panel.skip_link = validation_skip
+                            # The panel shows the issue of whichever caption
+                            # the caret is in (WCAG 1.4.1).
+                            transcript.on_caret = (
+                                editor.validation_panel.follow_caret
+                            )

@@ -100,6 +100,11 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         self.words_per_minute_element = None
         # The status line's own figures, by name -- see set_status_elements.
         self.status_elements: dict = {}
+        # How long the media file is, in seconds, as the player reports it.
+        # None until the player has read the file, and for a file whose
+        # length it cannot tell. Only the browser knows it -- see
+        # look_up_media_seconds.
+        self.media_seconds: Optional[float] = None
         self.speakers = set()
 
         # Seeded from what the page opened, not left as None until parsing:
@@ -471,7 +476,52 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
                 else ""
             ),
             "wpm": f"{self.get_words_per_minute():.0f} wpm",
+            "media": (
+                self.format_duration(self.media_seconds)
+                if self.media_seconds is not None
+                else "\u2013"
+            ),
         }
+
+    def set_media_seconds(self, seconds: Optional[float]) -> None:
+        """
+        Record how long the media file is, and redraw the figures that show it.
+        """
+
+        self.media_seconds = seconds
+        self.update_status()
+
+    async def look_up_media_seconds(self, video) -> None:
+        """
+        Ask the browser how long the media file is. The length lives in the
+        player's own element, so it has to come from there: wait for the file's
+        metadata if the player has not read it yet, then answer the length --
+        or nothing, when the player cannot tell. A recording made in the
+        browser has no length in the file until it has been played to the end,
+        and the player then says Infinity, which is no length to compare
+        captions against.
+        """
+
+        try:
+            seconds = await ui.run_javascript(
+                f"""
+                const video = getHtmlElement({video.id});
+                if (!video) return null;
+                if (video.readyState < 1) {{
+                  await new Promise((resolve) => {{
+                    video.addEventListener("loadedmetadata", resolve, {{ once: true }});
+                    video.addEventListener("error", resolve, {{ once: true }});
+                  }});
+                }}
+                return Number.isFinite(video.duration) ? video.duration : null;
+                """,
+                timeout=30.0,
+            )
+        except TimeoutError:
+            return
+
+        if isinstance(seconds, (int, float)) and seconds > 0:
+            self.set_media_seconds(float(seconds))
 
     def update_status(self) -> None:
         """

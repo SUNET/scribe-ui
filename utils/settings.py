@@ -79,6 +79,32 @@ class Settings(BaseSettings):
     # perfectly valid file, just gone before a viewer can read it.
     MIN_CAPTION_SECONDS: float = 0.8
 
+    # Longest stretch of speech that may go without a caption over it, in
+    # seconds. "Validate" warns about a longer one (SUNET/scribe-ui#142).
+    # Speech is where the word timings say someone is talking, and those
+    # timings are typically off by 0.1-0.2s, so a limit much tighter than
+    # this would mostly report noise; half a second is about one or two
+    # words, and the unit subtitle timing guidelines (Netflix) work in.
+    MAX_UNCAPTIONED_SPEECH_SECONDS: float = 0.5
+
+    # Longest a caption should be on screen, in seconds. The Swedish subtitling
+    # guidelines (Medietextarna) put the upper limit at about 7 seconds,
+    # depending on the audience; a caption well past that is reported by
+    # "Validate" as a warning, since it is usually a caption that was cut in
+    # the wrong place or left up through a pause.
+    MAX_CAPTION_SECONDS: float = 8.0
+
+    # Fastest a caption should be read, in characters per second, spaces and
+    # punctuation counted and the line break not. A faster one is reported by
+    # "Validate" as a warning: readable text in a valid file, with more of it
+    # than there is time to read. The Swedish guidelines give display times
+    # rather than a speed -- a full line for 3 seconds or more, two full lines
+    # for 5 to 6 -- which works out at about 14 to 17 for the length of line
+    # kept to here, and recent eye-tracking research finds viewers coping well
+    # with 20. Set just above the guidelines so that only a caption clearly
+    # past them is flagged; to be tuned against real transcriptions.
+    MAX_CHARS_PER_SECOND: float = 18.0
+
     # Review sensitivity: how far up the confidence range to flag words for
     # review. A word is flagged when its score falls below the threshold for
     # the selected sensitivity, so raising sensitivity flags strictly more.

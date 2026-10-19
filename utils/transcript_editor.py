@@ -74,6 +74,11 @@ TIME_LABEL_PATTERN = re.compile(
 # short-circuits before the overlay is ever told to hide.
 UNDRAWN = object()
 
+# The least room a caption made at the playhead may have, in seconds -- the
+# same floor as the drag's (MIN_NEW_SECONDS in speech_timeline.js): below it
+# there is nothing to see or take hold of.
+MIN_NEW_SECONDS = 0.05
+
 
 def parse_time_label(text: str) -> Optional[float]:
     """
@@ -195,6 +200,9 @@ class TranscriptEditor:
         self.editor = editor
         self.body: Optional[TranscriptBody] = None
         self.on_change: Optional[Callable] = None
+        # Called with the index of the caption the caret has come to rest
+        # in -- the validation panel follows it (see caret_moved).
+        self.on_caret: Optional[Callable[[int], None]] = None
         self.overlay: Optional[ui.element] = None
         # The speech strip under the video, when there are word timings to
         # draw one from -- see set_timeline.
@@ -223,6 +231,9 @@ class TranscriptEditor:
         )
         timeline.on("retimespan", lambda event: self.retime_span(event.args))
         timeline.on("createcaption", lambda event: self.create_caption(event.args))
+        timeline.on(
+            "createatplayhead", lambda event: self.create_at_playhead(event.args)
+        )
         timeline.on("selectcaption", lambda event: self.select_from_timeline(event.args))
         self.refresh_timeline()
 
@@ -271,13 +282,18 @@ class TranscriptEditor:
         self.focus(caption.index)
         self.mark_current(caption.index)
 
-    def review(self, caption_index: Optional[int]) -> None:
+    def review(self, caption_index: Optional[int], scroll: bool = True) -> None:
         """
         Bring the caption the validation panel is on into view and mark it
         as the one being reviewed, or clear that marking (None). The panel
         steps through issues, not captions, so this is not select_caption():
         that toggles, and a second issue in the same caption would have
         unselected it.
+
+        `scroll=False` marks it without moving the text: the panel is
+        following the caret, which is already in that caption, and scrolling
+        the page under someone who is typing would be the one thing worse
+        than not showing the issue.
         """
 
         if self.body is None:
@@ -288,8 +304,24 @@ class TranscriptEditor:
             return
 
         self.body.set_review(caption_index)
-        self.body.scroll_to_block(caption_index)
+        if scroll:
+            self.body.scroll_to_block(caption_index)
         self.mark_current(caption_index)
+
+    def caret_moved(self, args) -> None:
+        """
+        The caret has settled in a caption (the client waits a moment, and
+        says nothing while it stays in the same one). Pass it on to whoever
+        shows something about that caption -- the validation panel.
+        """
+
+        block_id = self.block_id(args)
+
+        if block_id is None or self.caption(block_id) is None:
+            return
+
+        if self.on_caret is not None:
+            self.on_caret(block_id)
 
     def mark_current(self, caption_index: int) -> None:
         """
@@ -331,7 +363,87 @@ class TranscriptEditor:
             # dropped.
             self.refresh()
 
-    def create_caption(self, args) -> None:
+    def create_at_playhead(self, args) -> None:
+        """
+        The button under the strip: a caption where the playhead is.
+
+        Dragging one out names a stretch; this names a moment, so the stretch
+        is worked out here -- NEW_CAPTION_SECONDS from the playhead, or up to
+        the next caption when that comes sooner, and no further than the end
+        of the recording (`limit`, the player's duration, when it has one).
+        Then it is made exactly as a drag makes one (create_caption): empty,
+        the caret in it, the recording moved to it, one undo step.
+
+        A playhead already inside a caption has nothing to add: a second
+        caption over the same instant is one of the errors "Validate"
+        reports. That caption is what the reader wants, so the caret goes
+        into it, and they are told why nothing was made.
+        """
+
+        if not isinstance(args, dict):
+            return
+
+        try:
+            at = float(args.get("at"))
+        except (TypeError, ValueError):
+            return
+
+        if at < 0:
+            return
+
+        covering = next(
+            (
+                caption
+                for caption in self.editor.captions
+                if caption.get_start_seconds() <= at < caption.get_end_seconds()
+            ),
+            None,
+        )
+
+        if covering is not None:
+            self.focus(covering.index)
+            self.mark_current(covering.index)
+            ui.notify(
+                f"Caption {covering.index} already covers this point",
+                type="info",
+                timeout=None,
+                close_button="Close",
+            )
+
+            return
+
+        end = at + settings.NEW_CAPTION_SECONDS
+
+        following = [
+            caption.get_start_seconds()
+            for caption in self.editor.captions
+            if caption.get_start_seconds() > at
+        ]
+
+        if following:
+            end = min(end, min(following))
+
+        try:
+            limit = float(args.get("limit"))
+        except (TypeError, ValueError):
+            limit = 0.0
+
+        if limit > 0:
+            end = min(end, limit)
+
+        if end - at < MIN_NEW_SECONDS:
+            ui.notify(
+                "There is no room for a caption here",
+                type="warning",
+                timeout=None,
+                close_button="Close",
+            )
+
+            return
+
+        self.create_caption({"start": at, "end": end})
+
+    def create_caption(self, args) -> Optional[SRTCaption]:
         """
         An empty stretch of the strip dragged out: a new caption covering
         exactly it.
@@ -345,19 +457,23 @@ class TranscriptEditor:
         The client keeps the drag inside the gap it was started in, so the
         overlap check below is a guard rather than the rule: captions can
         have moved since the strip was last drawn.
+
+        Answers the caption made, or None when nothing was: the validation
+        panel's "Add caption" (utils/validation_panel.py) makes one the same
+        way and says which.
         """
 
         if not isinstance(args, dict):
-            return
+            return None
 
         try:
             start = float(args.get("start"))
             end = float(args.get("end"))
         except (TypeError, ValueError):
-            return
+            return None
 
         if end <= start:
-            return
+            return None
 
         overlaps = any(
             start < caption.get_end_seconds() and end > caption.get_start_seconds()
@@ -370,7 +486,7 @@ class TranscriptEditor:
             self.refresh()
             ui.notify("A caption already covers part of that", type="warning", timeout=None, close_button="Close")
 
-            return
+            return None
 
         self.editor.save_state_for_undo()
 
@@ -413,6 +529,8 @@ class TranscriptEditor:
         self.moved_to(middle)
         self.focus(added.index)
         self.mark_current(added.index)
+
+        return added
 
     def set_overlay(self, container: ui.element) -> None:
         """
@@ -467,6 +585,7 @@ class TranscriptEditor:
         self.body.on("addblock", lambda event: self.add_after(event.args))
         self.body.on("deleteblock", lambda event: self.delete(event.args))
         self.body.on("blockclick", lambda event: self.seek(event.args))
+        self.body.on("caretblock", lambda event: self.caret_moved(event.args))
         self.body.on("assignspeaker", lambda event: self.assign_speaker(event.args))
         self.body.on("addspeaker", lambda event: self.prompt_new_speaker())
         self.body.on("renamespeaker", lambda event: self.prompt_rename(event.args))
