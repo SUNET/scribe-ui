@@ -63,10 +63,12 @@ const SNAP = 8;
 // that a gap no viewer can perceive sits between them, never is.
 const CAPTION_SNAP = 14;
 
-// Seconds across the strip. Fixed rather than offered as a choice: this is
-// the scale at which a caption edge can be seen and aimed at, and a strip
-// whose scale changes underfoot is harder to read, not easier. Within the
-// 10-30s the issue asks for (SUNET/scribe-ui#126).
+// Seconds across the strip at the default zoom. This is the scale at which a
+// caption edge can be seen and aimed at, and it is where the strip starts and
+// where "Reset zoom" brings it back: zooming is offered (SUNET/scribe-ui#134)
+// for the work that wants more precision or more context, as a step the reader
+// takes, never something that changes underfoot. Within the 10-30s the issue
+// asks for (SUNET/scribe-ui#126).
 const WINDOW = 20;
 
 // The same, docked along the foot of the page. It is three or four times as
@@ -76,6 +78,57 @@ const DOCKED_WINDOW = 60;
 
 // How far down the window the grip has to be let go for the strip to dock.
 const DOCK_AT = 0.7;
+
+// How far the strip can be zoomed, as a factor of the window above: 2 shows
+// half as many seconds across the same width. Each step doubles or halves, so
+// there are five levels -- a quarter to four times -- and the default is one
+// of them rather than somewhere between two. Not remembered between visits:
+// it is a way of looking at one recording, not a preference.
+const ZOOM_MIN = 0.25;
+const ZOOM_MAX = 4;
+const ZOOM_STEP = 2;
+
+// The keyboard moves the playhead by a share of what is on the strip, so the
+// step follows the zoom: a fine step when zoomed in to aim at an edge, a wide
+// one when zoomed out to find one. An arrow key is a fortieth of the strip
+// (half a second at the default), Page Up and Page Down a whole strip.
+const STEP_SMALL = 1 / 40;
+const STEP_PAGE = 1;
+
+// The ruler along the top edge: a band this tall (px), above everything else
+// on the strip. Fixed rather than a share of the height, since the numbers in
+// it are drawn at a fixed size; the strip is this much taller than the rest of
+// it needs (see .speech-timeline in styles.py).
+const RULER = 16;
+
+// What the ruler can count in, as [a labelled tick every, a small tick every]
+// seconds. The coarsest of these that still leaves LABEL_GAP pixels between
+// two labels is used, so zooming in and out changes the unit by itself, and
+// a small tick is left out when it would be closer than MINOR_GAP pixels.
+const RULER_STEPS = [
+  [0.1, 0.05],
+  [0.2, 0.05],
+  [0.5, 0.1],
+  [1, 0.5],
+  [2, 0.5],
+  [5, 1],
+  [10, 2],
+  [15, 5],
+  [30, 5],
+  [60, 10],
+  [120, 30],
+  [300, 60],
+  [600, 120],
+  [1800, 300],
+  [3600, 600],
+  [7200, 1800],
+];
+const LABEL_GAP = 64;
+const MINOR_GAP = 7;
+
+// How long after a sideways wheel event the next ones still count as
+// sideways, in milliseconds. See onWheel.
+const SWIPE_LATCH = 200;
 
 // The id a caption being dragged out of empty strip is drawn under. It has
 // no number of its own until the server has made it one -- a caption's
@@ -93,6 +146,7 @@ export default {
     <Teleport to="body" :disabled="!docked">
     <div
       class="speech-timeline-wrap"
+      ref="wrap"
       v-show="shown"
       :class="{
         'speech-timeline-docked': docked,
@@ -103,10 +157,23 @@ export default {
       <div
         class="speech-timeline"
         ref="root"
+        role="slider"
+        tabindex="0"
+        aria-label="Playhead position"
+        aria-orientation="horizontal"
+        aria-valuemin="0"
+        aria-describedby="speech-timeline-keys"
+        :aria-valuemax="ariaMax()"
+        :aria-valuenow="ariaNow()"
+        :aria-valuetext="ariaText"
         :class="{ 'speech-timeline-dragging': drag !== null }"
+        @mouseenter="holdSwipe"
         @mousemove="onMove"
         @mouseleave="onLeave"
         @mousedown="onDown"
+        @focus="syncAria(true)"
+        @keydown="onKey"
+        @wheel="onWheel"
       >
         <canvas ref="canvas" @click="onClick"></canvas>
         <div
@@ -139,27 +206,63 @@ export default {
           <span class="speech-timeline-swatch speech-timeline-swatch-playhead"></span>
           Playhead
         </span>
-        <q-btn
-          flat
-          dense
-          no-caps
-          icon="add"
-          label="Add caption at playhead"
-          class="editor-btn editor-toolbar-btn editor-outlined speech-timeline-add"
-          @click="addAtPlayhead"
-        />
+        <div
+          class="speech-timeline-actions"
+          ref="actions"
+          role="toolbar"
+          aria-label="Timeline controls"
+        >
+          <template v-for="(action, index) in actions()" :key="action.key">
+            <span
+              v-if="action.gap"
+              class="speech-timeline-actions-gap"
+              aria-hidden="true"
+            ></span>
+            <button
+              type="button"
+              class="speech-timeline-action"
+              :class="{
+                'speech-timeline-action-off': action.off,
+                'speech-timeline-action-on': action.pressed,
+              }"
+              :data-key="action.key"
+              :aria-label="action.label"
+              :aria-disabled="action.off ? 'true' : null"
+              :aria-pressed="action.pressed === undefined ? null : String(action.pressed)"
+              :tabindex="index === pillStop ? 0 : -1"
+              @focus="pillStop = index"
+              @keydown="onActionKey($event, index)"
+              @click="action.run()"
+            ><q-icon :name="action.icon" size="16px" /><q-tooltip>{{ action.tip }}</q-tooltip></button>
+          </template>
+        </div>
         <span class="speech-timeline-hint">
           Click a caption to go to it · drag it, or one of its brackets, to
           retime · drag across empty space to add a caption
         </span>
-        <span class="speech-timeline-range" :title="rangeTitle">{{ range }}</span>
-        <span v-if="dockDrag" class="speech-timeline-dock-hint">
-          {{ dockDrag.willDock
-            ? "Release to dock along the bottom"
-            : "Release to put it back under the video" }}
-        </span>
       </div>
+      <span id="speech-timeline-keys" class="sr-only">
+        Left and right arrow keys move the playhead a little, Page Up and Page
+        Down a whole strip, Home and End to the start and the end of the
+        recording. Shift with the up and down arrow keys, or plus and minus,
+        zoom, and 0 resets the zoom.
+      </span>
+      <span class="sr-only" role="status" aria-live="polite" aria-atomic="true">{{ note }}</span>
     </div>
+    </Teleport>
+    <div
+      v-if="ghost === 'rest'"
+      class="speech-timeline-ghost speech-timeline-ghost-rest"
+      aria-hidden="true"
+      :style="{ height: restHeight + 'px' }"
+    >Release to dock Timeline here</div>
+    <Teleport to="body">
+      <div
+        v-if="ghost === 'foot'"
+        class="speech-timeline-ghost speech-timeline-ghost-foot"
+        aria-hidden="true"
+        :style="{ left: dockLeft + 'px' }"
+      >Release to dock Timeline here</div>
     </Teleport>
   `,
   props: {
@@ -201,6 +304,12 @@ export default {
       // there would dock -- so the reader can see the answer before
       // committing to it.
       dockDrag: null,
+      // How tall the strip and its legend are where it sits under the video,
+      // for the placeholder that shows where it will land when it is on its
+      // way back there from the foot of the page -- see ghost. Measured as
+      // it leaves; this is what stands in for a page that opened docked, and
+      // is what they measured at the default text size, 180 px.
+      restHeight: 180,
       // The caption under the pointer. Distinct from the caption being
       // played and from the one being edited: hovering one here must not
       // take the text editor's focus off another.
@@ -219,6 +328,27 @@ export default {
       dragged: false,
       readout: "",
       readoutLeft: "0px",
+      // How far the strip is zoomed: 1 is the default window, 2 half as many
+      // seconds across, 0.5 twice as many. See ZOOM_MIN and ZOOM_MAX.
+      zoom: 1,
+      // The playhead position the slider reports to assistive technology.
+      // Kept apart from `position`, which moves every frame while the
+      // recording plays: a screen reader told about every frame says nothing
+      // else. It follows the playhead when the reader moves it, when the
+      // recording stops or lands somewhere, and when the strip takes focus.
+      ariaPosition: 0,
+      // What the status region says: the new zoom, the new place.
+      note: "",
+      // Where a requested move is waiting for the next frame, so that a
+      // wheel turned fast makes one seek per frame and not one per event.
+      seekPending: null,
+      seekFrame: null,
+      // Until when wheel events count as sideways whatever they say.
+      swipeUntil: 0,
+      // Which of the controls beside the strip is in the tab order. One of
+      // them at a time, with the arrow keys moving between them, as in the
+      // caption actions.
+      pillStop: 0,
       video: null,
       observer: null,
       railObserver: null,
@@ -241,6 +371,9 @@ export default {
       this.draw();
     },
     shown(on) {
+      // A strip that is hidden gets no mouseleave.
+      if (!on) this.releaseSwipe();
+
       // A hidden strip must not keep the page padded out of its way, and a
       // strip coming back has been display: none -- so it has no size to
       // have measured itself against, and settle() is what waits for the
@@ -263,6 +396,8 @@ export default {
       this.video.addEventListener("seeked", this.follow);
       this.video.addEventListener("play", this.animate);
       this.video.addEventListener("pause", this.stop);
+      this.video.addEventListener("pause", this.rest);
+      this.video.addEventListener("seeked", this.rest);
     }
 
     // A drag continues wherever the pointer goes, including off the strip
@@ -316,7 +451,13 @@ export default {
       this.video.removeEventListener("seeked", this.follow);
       this.video.removeEventListener("play", this.animate);
       this.video.removeEventListener("pause", this.stop);
+      this.video.removeEventListener("pause", this.rest);
+      this.video.removeEventListener("seeked", this.rest);
     }
+
+    if (this.seekFrame) cancelAnimationFrame(this.seekFrame);
+
+    this.releaseSwipe();
 
     window.removeEventListener("mousemove", this.onDragMove);
     window.removeEventListener("mouseup", this.onUp);
@@ -335,22 +476,16 @@ export default {
     window.removeEventListener("resize", this.followTheRail);
   },
   computed: {
-    // Which part of the recording is on the strip: one stretch of speech
-    // looks much like another, and the strip says nothing about where in
-    // the recording it is otherwise.
-    range() {
-      const span = this.span();
+    // Where the strip would land if it were let go now, when that is not
+    // where it is: "foot" along the bottom of the window, "rest" back under
+    // the video, null when there is nothing to show (not being moved, or the
+    // pointer is over the place it is already in).
+    ghost() {
+      if (!this.dockDrag || this.dockDrag.willDock === this.docked) return null;
 
-      if (!span) return "";
-      if (this.visible() >= span) {
-        return `whole recording · ${this.clock(span)}`;
-      }
-
-      const from = Math.max(0, this.viewStart());
-      const to = Math.min(span, this.viewStart() + this.visible());
-
-      return `${this.clock(from)}–${this.clock(to)} of ${this.clock(span)}`;
+      return this.dockDrag.willDock ? "foot" : "rest";
     },
+
     // The caption being played. Worked out here rather than sent: it follows
     // from the position, which this component already has, and pushing it
     // from the server would be a round trip several times a second.
@@ -362,8 +497,21 @@ export default {
 
       return found ? found.id : -1;
     },
-    rangeTitle() {
-      return "The part of the recording on the strip. It follows the playhead.";
+    // What the slider says its value is, in words rather than a number of
+    // seconds: where in the recording, and which caption that is in.
+    ariaText() {
+      const span = this.span();
+      if (!span) return "";
+
+      const at = this.ariaPosition;
+      const caption = this.captions.find(
+        (entry) => at >= entry.start && at < entry.end
+      );
+
+      return (
+        `${this.moment(at)} of ${this.clock(span)}, ` +
+        (caption ? `in caption ${caption.id}` : "no caption here")
+      );
     },
   },
   methods: {
@@ -379,13 +527,14 @@ export default {
     },
 
     // Seconds across the strip: twenty under the video, a minute docked
-    // along the foot of the page. Not a choice offered for its own sake --
-    // the docked strip is several times as wide, so it holds the longer
-    // window at much the same seconds per pixel, which is the thing that
-    // actually decides whether an edge can be seen and aimed at. A
-    // recording shorter than the window simply shows all of itself.
+    // along the foot of the page, divided by the zoom. The docked strip is
+    // several times as wide, so it holds the longer window at much the same
+    // seconds per pixel, which is the thing that actually decides whether an
+    // edge can be seen and aimed at -- and the zoom is a factor of whichever
+    // of the two applies, so "Reset zoom" is always that. A recording shorter
+    // than the window simply shows all of itself.
     visible() {
-      const window = this.docked ? DOCKED_WINDOW : WINDOW;
+      const window = (this.docked ? DOCKED_WINDOW : WINDOW) / this.zoom;
 
       return Math.min(window, this.span()) || this.span();
     },
@@ -504,6 +653,7 @@ export default {
     // taking hold of a caption, and one gesture cannot mean two things.
     startDockDrag(event) {
       event.preventDefault();
+      this.followTheRail();
       this.dockDrag = { willDock: this.docked };
       this.onDockDragMove(event);
     },
@@ -523,8 +673,13 @@ export default {
       const willDock = this.dockDrag.willDock;
       this.dockDrag = null;
 
+      this.setDocked(willDock);
+    },
+
+    setDocked(willDock) {
       if (willDock === this.docked) return;
 
+      this.noteRestHeight();
       this.docked = willDock;
       this.palette = null;
       this.markDocked();
@@ -532,6 +687,33 @@ export default {
 
       // A different width, and a different window across it.
       this.settle();
+    },
+
+    // How much room the strip and its legend take where they sit under the
+    // video, for the placeholder that shows it where it is on its way back
+    // to. Only while they are there -- docked, they are somewhere else and a
+    // different width -- so it is noted as it leaves, by the drop and by the
+    // button alike.
+    noteRestHeight() {
+      const wrap = this.$refs.wrap;
+
+      if (this.docked || !wrap || !wrap.offsetHeight) return;
+
+      this.restHeight = wrap.offsetHeight;
+    },
+
+    // The same move as the grip, for whoever cannot drag. Docking teleports
+    // the strip to the body, which moves the nodes in it, and a node that is
+    // moved loses focus -- so focus is put back on the button once the move
+    // has happened, or a keyboard user would find themselves at the top of
+    // the page every time they pressed it.
+    toggleDock() {
+      this.setDocked(!this.docked);
+      this.note = this.docked
+        ? "Timeline docked along the bottom of the page"
+        : "Timeline back under the video";
+
+      this.$nextTick(() => this.focusAction("dock"));
     },
 
     // Redraw once the page has settled into its new shape.
@@ -658,6 +840,8 @@ export default {
     },
 
     onLeave() {
+      this.releaseSwipe();
+
       if (this.drag || this.creating) return;
 
       this.readout = "";
@@ -1020,9 +1204,392 @@ export default {
       return `${minutes}:${String(rest).padStart(2, "0")}`;
     },
 
+    // ── the ruler ──────────────────────────────────────────────────────────
+
+    // The ticks to draw between two moments, for a strip `pixels` wide showing
+    // `visible` seconds: { step, major: [seconds], minor: [seconds] }, all
+    // inside the recording. Counted in whole multiples of the step rather
+    // than by adding it up, so a tenth of a second does not drift.
+    rulerTicks(from, to, visible, pixels) {
+      if (!(visible > 0) || !(pixels > 0)) return { step: 0, major: [], minor: [] };
+
+      const perSecond = pixels / visible;
+      const row =
+        RULER_STEPS.find(([major]) => major * perSecond >= LABEL_GAP) ||
+        RULER_STEPS[RULER_STEPS.length - 1];
+      const [step, small] = row;
+
+      const first = Math.max(0, from);
+      const last = Math.min(this.span(), to);
+      const major = [];
+      const minor = [];
+
+      // Whole thousandths: 0.1 * 3 is 0.30000000000000004.
+      const at = (index, size) => Math.round(index * size * 1000) / 1000;
+
+      for (let n = Math.ceil(first / step - 1e-9); at(n, step) <= last; n++) {
+        major.push(at(n, step));
+      }
+
+      if (small * perSecond >= MINOR_GAP) {
+        for (let n = Math.ceil(first / small - 1e-9); at(n, small) <= last; n++) {
+          const seconds = at(n, small);
+
+          // The labelled ticks have a longer one of their own.
+          if (Math.abs(seconds / step - Math.round(seconds / step)) > 1e-6) {
+            minor.push(seconds);
+          }
+        }
+      }
+
+      return { step, major, minor };
+    },
+
+    // What a labelled tick says: minutes and seconds, with a tenth only when
+    // the step is finer than a second, and hours only when there are some.
+    tickLabel(seconds, step) {
+      const whole = Math.floor(seconds + 1e-6);
+      const hours = Math.floor(whole / 3600);
+      const minutes = Math.floor((whole % 3600) / 60);
+      const rest = whole % 60;
+      const pad = (value) => String(value).padStart(2, "0");
+
+      let text = hours
+        ? `${hours}:${pad(minutes)}:${pad(rest)}`
+        : `${minutes}:${pad(rest)}`;
+
+      if (step < 1) {
+        text += `.${Math.round((seconds - whole) * 10) % 10}`;
+      }
+
+      return text;
+    },
+
+    // ── zoom ───────────────────────────────────────────────────────────────
+
+    canZoomIn() {
+      return this.zoom < ZOOM_MAX;
+    },
+
+    // Not when the whole recording is on the strip already: there is nothing
+    // more to show, and a button that only changes a number does nothing.
+    canZoomOut() {
+      return this.zoom > ZOOM_MIN && this.visible() < this.span();
+    },
+
+    zoomIn() {
+      if (!this.canZoomIn()) {
+        this.note = "Already zoomed in as far as it goes";
+        return;
+      }
+
+      this.zoomTo(this.zoom * ZOOM_STEP);
+    },
+
+    zoomOut() {
+      if (!this.canZoomOut()) {
+        this.note =
+          this.zoom > ZOOM_MIN
+            ? "The whole recording is already on the strip"
+            : "Already zoomed out as far as it goes";
+        return;
+      }
+
+      this.zoomTo(this.zoom / ZOOM_STEP);
+    },
+
+    zoomReset() {
+      if (this.zoom === 1) {
+        this.note = "The zoom is already the default";
+        return;
+      }
+
+      this.zoomTo(1);
+    },
+
+    // Zooming changes how the strip is drawn and nothing else: not a
+    // caption, not the playhead, not what the player is doing.
+    zoomTo(zoom) {
+      this.zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoom));
+      this.note = `The strip shows ${this.seconds(this.visible())}`;
+      this.draw();
+    },
+
+    // Said in words, for the status region.
+    seconds(value) {
+      const whole = Math.round(value);
+
+      if (whole < 60) return `${whole} ${whole === 1 ? "second" : "seconds"}`;
+
+      const minutes = Math.floor(whole / 60);
+      const rest = whole % 60;
+      const head = `${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
+
+      return rest ? `${head} ${rest} seconds` : head;
+    },
+
+    // ── moving the playhead ────────────────────────────────────────────────
+
+    // The one place the playhead is moved from, for the keyboard and the
+    // wheel alike. The strip moves at once, since it is only a drawing; the
+    // player is told on the next frame, once, whatever has been asked for in
+    // between -- a wheel turned fast makes dozens of events a frame, and
+    // every one of them a seek the player would start and abandon. Never
+    // past either end of the recording.
+    seekTo(seconds) {
+      const span = this.span();
+      if (!span) return;
+
+      const to = Math.max(0, Math.min(span, seconds));
+
+      this.position = to;
+      this.draw();
+
+      this.seekPending = to;
+
+      if (this.seekFrame === null) {
+        this.seekFrame = requestAnimationFrame(() => {
+          this.seekFrame = null;
+
+          const target = this.seekPending;
+          this.seekPending = null;
+
+          if (this.video && target !== null) this.video.currentTime = target;
+        });
+      }
+    },
+
+    onKey(event) {
+      // Only the strip itself: the controls beside it have keys of their own.
+      if (event.target !== this.$refs.root) return;
+
+      // Ctrl and Cmd with plus, minus and 0 are the browser's own zoom, and
+      // the reader who uses it for the page is not to lose it here.
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      if (this.drag || this.creating || this.dockDrag) return;
+
+      // Shift with up and down: zoom, where plus and minus need a modifier of
+      // their own on some keyboards. Up and down on their own are the page's.
+      if (event.shiftKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+        event.preventDefault();
+
+        if (event.key === "ArrowUp") this.zoomIn();
+        else this.zoomOut();
+
+        this.syncAria(true);
+        return;
+      }
+
+      const visible = this.visible();
+      const keys = {
+        ArrowRight: () => this.seekTo(this.position + visible * STEP_SMALL),
+        ArrowLeft: () => this.seekTo(this.position - visible * STEP_SMALL),
+        PageUp: () => this.seekTo(this.position + visible * STEP_PAGE),
+        PageDown: () => this.seekTo(this.position - visible * STEP_PAGE),
+        Home: () => this.seekTo(0),
+        End: () => this.seekTo(this.span()),
+        "+": () => this.zoomIn(),
+        "=": () => this.zoomIn(),
+        "-": () => this.zoomOut(),
+        _: () => this.zoomOut(),
+        0: () => this.zoomReset(),
+      };
+
+      const move = keys[event.key];
+      if (!move) return;
+
+      event.preventDefault();
+      move();
+      this.syncAria(true);
+    },
+
+    // Sideways scrolling moves the recording under the playhead, which stays
+    // where it is in the middle (SUNET/scribe-ui#128). Only sideways: up and
+    // down is the page's, and a strip that took it would trap the reader in
+    // the middle of a long page. Shift with the wheel is sideways on a mouse
+    // that has no other way to say so. Ctrl with the wheel is the browser's
+    // zoom, and is left alone for the same reason as in onKey.
+    //
+    // Once a gesture has been sideways, the next few hundred milliseconds of
+    // it are too. A swipe often starts more vertical than sideways, and the
+    // first event that is let through is the one the browser decides the
+    // whole gesture on -- which is how a swipe over the strip ended up going
+    // back to the previous page. See holdSwipe for the other half of that.
+    onWheel(event) {
+      if (event.ctrlKey || event.metaKey) return;
+      if (this.drag || this.creating || this.dockDrag) return;
+
+      const now = performance.now();
+      const sideways =
+        Math.abs(event.deltaX) > Math.abs(event.deltaY) ||
+        event.shiftKey ||
+        now < this.swipeUntil;
+      if (!sideways) return;
+
+      this.swipeUntil = now + SWIPE_LATCH;
+      event.preventDefault();
+
+      // Shift with a plain wheel arrives as vertical movement on some
+      // systems; a latched event is sideways whatever its vertical part.
+      const delta = event.deltaX || (event.shiftKey ? event.deltaY : 0);
+      if (!delta) return;
+
+      const pixelsPerSecond = this.pixelsPerSecond();
+      if (!pixelsPerSecond) return;
+
+      // Pixels, lines or pages, depending on the device.
+      const box = this.$refs.root.getBoundingClientRect();
+      const pixels =
+        event.deltaMode === 1
+          ? delta * 16
+          : event.deltaMode === 2
+          ? delta * box.width
+          : delta;
+
+      // From where the playhead is going, not where the player has got to.
+      const from = this.seekPending !== null ? this.seekPending : this.position;
+
+      this.seekTo(from + pixels / pixelsPerSecond);
+      this.syncAria(false);
+    },
+
+    // The browser goes back to the previous page on a sideways swipe that
+    // nothing has taken, and cancelling the wheel events is not enough to stop
+    // that: overscroll-behavior on the page's own root is what says the swipe
+    // is not for navigating. (It has no effect on the strip itself, which is
+    // not a scroll container.) Held only while the pointer is over the strip,
+    // so Back works as before everywhere else on the page.
+    holdSwipe() {
+      document.documentElement.style.overscrollBehaviorX = "none";
+      document.body.style.overscrollBehaviorX = "none";
+    },
+
+    releaseSwipe() {
+      document.documentElement.style.overscrollBehaviorX = "";
+      document.body.style.overscrollBehaviorX = "";
+    },
+
+    // ── what assistive technology is told ──────────────────────────────────
+
+    ariaMax() {
+      return Math.round(this.span() * 10) / 10;
+    },
+
+    ariaNow() {
+      return Math.round(this.ariaPosition * 10) / 10;
+    },
+
+    // Brings the slider's value up to the playhead -- except while the
+    // recording plays with the strip in focus, when it would change many
+    // times a second and the screen reader would say nothing else. `force`
+    // is for a move the reader has just made themselves.
+    syncAria(force) {
+      const playing = this.video && !this.video.paused && !this.video.ended;
+      const focused =
+        this.$refs.root && document.activeElement === this.$refs.root;
+
+      if (!force && playing && focused) return;
+
+      this.ariaPosition = this.position;
+    },
+
+    // The recording has stopped, or landed somewhere new.
+    rest() {
+      this.syncAria(false);
+    },
+
+    // ── the controls beside the strip ──────────────────────────────────────
+
+    // Dock, zoom and add a caption. Icons only, so every one carries its
+    // name; the state of the dock button is aria-pressed rather than a label
+    // that changes, and a control that cannot be used says so with
+    // aria-disabled and stays focusable, so that pressing it at the end of
+    // its range does not drop focus on the page.
+    actions() {
+      return [
+        {
+          key: "dock",
+          icon: "vertical_align_bottom",
+          label: "Dock timeline",
+          tip: this.docked
+            ? "Put the timeline back under the video"
+            : "Dock the timeline along the bottom of the page",
+          pressed: this.docked,
+          run: this.toggleDock,
+        },
+        {
+          key: "zoomOut",
+          icon: "zoom_out",
+          label: "Zoom out",
+          tip: "Zoom out",
+          off: !this.canZoomOut(),
+          gap: true,
+          run: this.zoomOut,
+        },
+        {
+          key: "zoomIn",
+          icon: "zoom_in",
+          label: "Zoom in",
+          tip: "Zoom in",
+          off: !this.canZoomIn(),
+          run: this.zoomIn,
+        },
+        {
+          key: "zoomReset",
+          icon: "zoom_out_map",
+          label: "Reset zoom",
+          tip: "Reset zoom",
+          off: this.zoom === 1,
+          run: this.zoomReset,
+        },
+        {
+          key: "add",
+          icon: "playlist_add",
+          label: "Add caption at playhead",
+          tip: "Add caption at playhead",
+          gap: true,
+          run: this.addAtPlayhead,
+        },
+      ];
+    },
+
+    focusAction(key) {
+      const root = this.$refs.actions;
+      const button = root && root.querySelector(`[data-key="${key}"]`);
+
+      if (button) button.focus();
+    },
+
+    onActionKey(event, index) {
+      const buttons = this.$refs.actions.querySelectorAll(
+        ".speech-timeline-action"
+      );
+      const last = buttons.length - 1;
+
+      const to =
+        event.key === "ArrowRight"
+          ? index === last ? 0 : index + 1
+          : event.key === "ArrowLeft"
+          ? index === 0 ? last : index - 1
+          : event.key === "Home"
+          ? 0
+          : event.key === "End"
+          ? last
+          : null;
+
+      if (to === null) return;
+
+      event.preventDefault();
+      buttons[to].focus();
+    },
+
     // ── the player ────────────────────────────────────────────────────────
 
     follow() {
+      // A move that has not been handed to the player yet is the truth, and
+      // the player's own position is the one it replaces.
+      if (this.seekPending !== null) return;
+
       this.position = this.video ? this.video.currentTime : 0;
       this.draw();
     },
@@ -1072,6 +1639,7 @@ export default {
         "--timeline-void",
         "--timeline-playhead",
         "--timeline-label",
+        "--timeline-ruler",
       ]) {
         palette[name] = style.getPropertyValue(name).trim();
       }
@@ -1127,10 +1695,13 @@ export default {
       // Speech is the reference, the captions are the subject: speech is
       // drawn quietly along the top, the captions below it at full weight.
       // The issue this follows is explicit about the order of those two.
-      const speechTop = height * 0.1;
-      const speechHeight = height * 0.2;
-      const bandTop = height * 0.42;
-      const bandHeight = height * 0.42;
+      // Everything below the ruler keeps the proportions it always had, in
+      // the height that is left.
+      const body = height - RULER;
+      const speechTop = RULER + body * 0.1;
+      const speechHeight = body * 0.2;
+      const bandTop = RULER + body * 0.42;
+      const bandHeight = body * 0.42;
 
       // Before the recording starts and after it ends there is nothing --
       // said outright rather than left as blank strip, since the playhead
@@ -1227,6 +1798,33 @@ export default {
         if (!making && context.measureText(label).width < room) {
           context.fillStyle = this.colour("--timeline-label", "#111827");
           context.fillText(label, left + arm + 2, bandTop + bandHeight / 2);
+        }
+      }
+
+      // The ruler: ticks hanging from the top edge, a time at each long one.
+      // Only inside the recording -- the void before and after it has no time.
+      if (span) {
+        const ticks = this.rulerTicks(from, from + visible, visible, width);
+        const ink = this.colour("--timeline-ruler", "#4b5563");
+
+        context.fillStyle = ink;
+        context.font = "500 10px system-ui, sans-serif";
+        context.textBaseline = "middle";
+
+        for (const seconds of ticks.minor) {
+          context.fillRect(Math.round(at(seconds)), 0, 1, 3);
+        }
+
+        for (const seconds of ticks.major) {
+          const x = Math.round(at(seconds));
+          const label = this.tickLabel(seconds, ticks.step);
+
+          context.fillRect(x, 0, 1, 7);
+
+          // Not past the edge, where it would be cut in half.
+          if (x + 3 + context.measureText(label).width <= width) {
+            context.fillText(label, x + 3, RULER / 2 + 0.5);
+          }
         }
       }
 

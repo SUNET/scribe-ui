@@ -2329,7 +2329,28 @@ theme_styles = """
     }
     .transcript-cell:hover .transcript-cell-actions,
     .transcript-gutter:hover + .transcript-cell .transcript-cell-actions,
-    .transcript-cell-actions:focus-within {
+    .transcript-cell-actions:focus-within,
+    /* Also where a keyboard reader is, not only where the pointer is: the
+       caret in the caption's text (the whole transcript is one
+       contenteditable, so the caret never makes the cell itself
+       :focus-within -- the editor marks the caption with
+       .transcript-cell-editing instead, and clears it when the caret
+       leaves) and focus on one of the caption's timestamps. Without this the
+       tray was a control only someone who already knew to press Tab from the
+       text would ever find.
+
+       Only while the keyboard is what is being used (the body class the
+       focus-ring rules above use, set by a Tab and cleared by a click or a
+       tap). With a pointer the tray follows the pointer, which is quicker --
+       it is under the cursor before the caption has been clicked -- and
+       showing it for the caption the caret is in as well would put two on
+       screen whenever the pointer is over another caption.
+
+       Opacity only, as before: the tray stays in the tab order and the
+       accessibility tree, and its space is reserved, so nothing moves when
+       it appears. */
+    body.scribe-user-is-tabbing .transcript-cell-editing .transcript-cell-actions,
+    body.scribe-user-is-tabbing .transcript-cell:focus-within .transcript-cell-actions {
         opacity: 1;
     }
     .transcript-action {
@@ -2513,10 +2534,11 @@ theme_styles = """
        by the page because the strip is fixed and takes no space of its own;
        the component sets the class (see markDocked). */
     body.timeline-docked .nicegui-content {
-        padding-bottom: 9rem;
+        padding-bottom: calc(9rem + 16px);
     }
 
-    /* The grip that moves it, and what it says while it is being moved. */
+    /* The grip that moves it. What letting go will do is said by the
+       placeholder, not by the strip: see .speech-timeline-ghost. */
     .speech-timeline-grip {
         cursor: grab;
         user-select: none;
@@ -2530,9 +2552,39 @@ theme_styles = """
         outline: 2px dashed var(--color-brand-primary);
         outline-offset: 4px;
     }
-    .speech-timeline-dock-hint {
+
+    /* Where it will land if it is let go now, while it is being moved
+       (SUNET/scribe-ui#127): the same dashed brand line as the strip's own,
+       over the room it will take. Never the pointer's: it has to let the
+       drop through. Along the foot it is as tall as the docked strip is; back under the video it is as tall as the
+       strip and its legend were there, and in the page's flow, so what
+       moves out of its way is what will move for the strip. */
+    .speech-timeline-ghost {
+        box-sizing: border-box;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 2px dashed var(--color-brand-primary);
+        border-radius: 6px;
+        background-color: var(--color-bg-surface-hover);
         color: var(--color-brand-primary);
+        font-size: 0.75rem;
         font-weight: 600;
+        pointer-events: none;
+    }
+    .speech-timeline-ghost-rest {
+        width: 100%;
+    }
+    .speech-timeline-ghost-foot {
+        position: fixed;
+        /* left is set by the component, as for the strip itself. */
+        right: 0;
+        bottom: 0;
+        z-index: 899;
+        /* The strip along the foot as it measures there: its padding, the
+           strip with its ruler, the legend and a line of hint. */
+        height: calc(10rem + 22px);
+        margin: 0 0.5rem 0.5rem;
     }
 
     /* Where someone is talking, under the video. The colours are stated as
@@ -2557,9 +2609,14 @@ theme_styles = """
         --timeline-label: var(--color-text-primary);
         --timeline-void: var(--color-bg-surface-hover);
         --timeline-playhead: var(--color-text-danger);
+        /* The time marks along the top edge. Secondary text, since they are
+           text (and ticks that are read with it). */
+        --timeline-ruler: var(--color-text-secondary);
         position: relative;
         width: 100%;
-        height: 4.5rem;
+        /* What the strip always was, plus the ruler's band (RULER in
+           speech_timeline.js). */
+        height: calc(4.5rem + 16px);
         margin-top: 0.5rem;
         border-radius: 6px;
         background-color: var(--color-bg-surface-alt);
@@ -2618,31 +2675,96 @@ theme_styles = """
         font-size: 0.75rem;
         color: var(--color-text-secondary);
     }
-    /* The same small outlined button the validation card carries ("Check
-       again"), a size down to sit in the legend's own type. */
-    .speech-timeline-legend .speech-timeline-add {
-        min-height: 1.5rem;
-        font-size: 0.75rem;
-        padding: 0 0.5rem !important;
+    /* The controls at the end of the key: dock, zoom, and adding a caption at
+       the playhead. The same tray as the caption actions -- surface,
+       hairline, fully rounded, round 1.5rem buttons -- so the two read as one
+       family; they sit in the strip's own legend row, where they cost it no
+       height, which is what matters most docked along the foot of the page.
+
+       Out of the way until the strip is pointed at, or the keyboard is on it
+       or on one of the buttons (a button with focus is never hidden). The
+       keyboard rule uses the same body class as the caption actions and the
+       focus rings: a click on the strip focuses it too, and then the tray
+       should follow the pointer as before. Opacity only, as with the caption
+       actions:
+       the tray stays in the tab order and the accessibility tree, and its
+       place is reserved, so nothing moves when it appears. Where nothing can
+       point (hover: none) it is simply there, since there is no way to
+       reveal it. */
+    .speech-timeline-actions {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        margin-left: auto;
+        padding: 2px;
+        border: 1px solid var(--color-border-subtle);
+        border-radius: 999px;
+        background-color: var(--color-bg-surface);
+        opacity: 0;
+        transition: opacity 0.12s ease-in-out;
+    }
+    .speech-timeline-wrap:hover .speech-timeline-actions,
+    body.scribe-user-is-tabbing .speech-timeline-wrap:focus-within .speech-timeline-actions,
+    .speech-timeline-actions:focus-within {
+        opacity: 1;
+    }
+    @media (hover: none) {
+        .speech-timeline-actions {
+            opacity: 1;
+        }
+    }
+    .speech-timeline-actions-gap {
+        align-self: stretch;
+        width: 1px;
+        margin: 3px 2px;
+        background-color: var(--color-border-subtle);
+    }
+    .speech-timeline-action {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.5rem;
+        height: 1.5rem;
+        padding: 0;
+        border: 0;
+        border-radius: 50%;
+        background-color: transparent;
+        color: var(--color-text-muted);
+        cursor: pointer;
+        transition: color 0.12s ease-in-out, background-color 0.12s ease-in-out;
+    }
+    .speech-timeline-action:hover {
+        color: var(--color-brand-primary);
+        background-color: var(--color-bg-surface-alt);
+    }
+    /* A button that is on -- the dock while the strip is docked -- says so
+       with a ring as well as a colour, so it does not rest on colour alone. */
+    .speech-timeline-action-on {
+        color: var(--color-brand-primary);
+        background-color: var(--color-bg-surface-alt);
+        box-shadow: inset 0 0 0 1px var(--color-brand-primary);
+    }
+    /* At the end of its range, and stays focusable: see actions() in
+       speech_timeline.js. Dimmed, since an inactive control is not asked to
+       meet the contrast of an active one. */
+    .speech-timeline-action-off {
+        cursor: default;
+        opacity: 0.45;
+    }
+    .speech-timeline-action-off:hover {
+        color: var(--color-text-muted);
+        background-color: transparent;
     }
     .speech-timeline-key {
         display: inline-flex;
         align-items: center;
         gap: 0.3rem;
     }
-    /* Reads as part of the key -- what the strip is and what can be done to
-       it -- so it stays with it on the left. */
+    /* On a row of its own below the key and the controls, so what the
+       controls cost in width never moves it. */
     .speech-timeline-hint {
+        flex-basis: 100%;
         color: var(--color-text-muted);
-    }
-
-    /* Which minute of the recording is on the strip. A different question
-       from the key's, so it sits at the far end of the row rather than in
-       the queue behind it. */
-    .speech-timeline-range {
-        margin-left: auto;
-        color: var(--color-text-secondary);
-        font-variant-numeric: tabular-nums;
     }
 
     /* While a caption is being dragged the pointer owns it wherever it
