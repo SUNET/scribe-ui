@@ -1395,7 +1395,11 @@ theme_styles = """
        with the spaces between them reads as one stretch.
 
        On a flagged or changed word the highlight takes the wash and the text
-       colour, and the word keeps its own bar underneath, so both can be seen.
+       colour and keeps its own frame, line above and line below, exactly as
+       on any other highlighted word; the word's own bar is drawn outside it,
+       3px below. Letting the bar take the place of the frame's lower line
+       made a flagged highlight read as a flagged word on a yellow wash, and
+       was hard to tell from a plain highlight.
        While the word is being played the playing tint wins the wash but the
        lines stay, so the passage can still be seen under the playback. */
     .highlight-word {
@@ -1411,12 +1415,14 @@ theme_styles = """
     .highlight-word.review-word {
         box-shadow:
             inset 0 2px 0 var(--color-highlight-frame),
-            inset 0 -2px 0 var(--color-review-accent);
+            inset 0 -2px 0 var(--color-highlight-frame),
+            0 3px 0 var(--color-review-accent);
     }
     .highlight-word.edit-word {
         box-shadow:
             inset 0 2px 0 var(--color-highlight-frame),
-            inset 0 -2px 0 var(--color-edit-accent);
+            inset 0 -2px 0 var(--color-highlight-frame),
+            0 3px 0 var(--color-edit-accent);
     }
     .transcript-text .highlight-word[data-current] {
         background-color: var(--color-playing-bg);
@@ -1429,12 +1435,14 @@ theme_styles = """
     .transcript-text .highlight-word.review-word[data-current] {
         box-shadow:
             inset 0 2px 0 var(--color-highlight-frame),
-            inset 0 -2px 0 var(--color-review-accent);
+            inset 0 -2px 0 var(--color-highlight-frame),
+            0 3px 0 var(--color-review-accent);
     }
     .transcript-text .highlight-word.edit-word[data-current] {
         box-shadow:
             inset 0 2px 0 var(--color-highlight-frame),
-            inset 0 -2px 0 var(--color-edit-accent);
+            inset 0 -2px 0 var(--color-highlight-frame),
+            0 3px 0 var(--color-edit-accent);
     }
 
     /* Shared hover message. A CSS box rather than title=, which the browser
