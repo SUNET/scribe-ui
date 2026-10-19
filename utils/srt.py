@@ -1118,9 +1118,13 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin, CommentsMixi
         if first_was_highlighted:
             previous.highlighted_words.add(previous_count)
 
-        # A comment does not go with the word: the word is no longer one of the
-        # words it was written about, and the rest keep their places.
-        caption.comments = self.drop_word_from_comments(caption.comments, 0, -1)
+        # A comment stays on the word it was written about: one on the moved
+        # word goes with it, and one on that word and others is on both sides
+        # (a copy with the same text), as when a block is split.
+        moved_comments, caption.comments = self.split_comments(caption.comments, 1)
+        previous.comments = self.join_comments(
+            previous.comments, moved_comments, previous_count
+        )
 
         if self.word_is_timed(moved_timing) and self.word_is_timed(next_timing):
             previous.end_time = self.seconds_to_timestamp(moved_timing["e"])
@@ -1191,9 +1195,13 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin, CommentsMixi
         if last_was_highlighted:
             following.highlighted_words.add(0)
 
-        # See move_first_word_to_previous: the comment stays behind.
-        caption.comments = self.drop_word_from_comments(caption.comments, last_index)
-        following.comments = self.shift_comments(following.comments, 1)
+        # See move_first_word_to_previous: a comment stays on its word.
+        caption.comments, moved_comments = self.split_comments(
+            caption.comments, last_index
+        )
+        following.comments = self.join_comments(
+            moved_comments, following.comments, 1
+        )
 
         if self.word_is_timed(moved_timing) and self.word_is_timed(previous_timing):
             following.start_time = self.seconds_to_timestamp(moved_timing["s"])
