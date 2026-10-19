@@ -75,11 +75,11 @@ class TestThePreference:
         assert editor.show_comments is True
 
     def test_a_stored_choice_is_applied_before_the_first_render(self, editor):
-        editor.restore_review_state(False, "low", False, True, True, False)
+        editor.restore_review_state(False, "low", comments=False)
 
         assert editor.show_comments is False
 
-        editor.restore_review_state(False, "low", False, True, True, True)
+        editor.restore_review_state(False, "low", comments=True)
 
         assert editor.show_comments is True
 
