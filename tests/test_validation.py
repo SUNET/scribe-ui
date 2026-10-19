@@ -692,18 +692,6 @@ class TestFollowingTheCaret:
         assert panel.container.visible is False
         assert panel.draws == []
 
-    def test_a_hidden_kind_is_not_followed(self, monkeypatch):
-        from utils.validation_panel import shown_items
-
-        panel = self.panel(monkeypatch, visible=False)
-        panel.hidden = {"overlap", "length"}
-        panel.items = shown_items(panel.all_items, panel.hidden)
-
-        panel.follow_caret(3)
-
-        assert panel.container.visible is False
-        assert panel.draws == []
-
     def test_an_issue_whose_caption_is_gone_is_not_followed(self, monkeypatch):
         panel = self.panel(monkeypatch)
         stale = panel.items[2]["caption"]
@@ -760,6 +748,163 @@ def speech_items(subject: SRTEditor) -> list:
         for item in subject.validation_items(subject.collect_validation_issues())
         if item["rule"] == "speech"
     ]
+
+
+class TestAMarkedCaptionNeverRefusesToOpen:
+    """
+    A caption marked in the text always opens its card, whatever the filters
+    say. The caret landing in one whose issues are all of hidden kinds shows
+    the kind of its first issue again; a caption with an issue of a shown kind
+    opens on that, and its hidden kinds stay hidden.
+    """
+
+    def panel(self, monkeypatch, visible=True):
+        panel = TestFollowingTheCaret().panel(monkeypatch, visible=visible)
+        panel.drawn_filters = 0
+        panel.draw_filters = lambda: setattr(
+            panel, "drawn_filters", panel.drawn_filters + 1
+        )
+
+        class Label:
+            def __init__(self):
+                self.text = ""
+                self.shown = False
+
+            def set_text(self, text):
+                self.text = text
+
+            def set_visibility(self, shown):
+                self.shown = shown
+
+        panel.note = Label()
+        panel.spoken_position = Label()
+        panel.pending_speech = ""
+
+        return panel
+
+    def hide(self, panel, *rules):
+        from utils.validation_panel import shown_items
+
+        panel.hidden = set(rules)
+        panel.items = shown_items(panel.all_items, panel.hidden)
+        panel.position = 0
+
+    def test_a_caption_with_only_hidden_issues_shows_its_kind_again(
+        self, monkeypatch
+    ):
+        panel = self.panel(monkeypatch)
+        self.hide(panel, "overlap", "length")
+
+        # Caption 3 is marked for an overlap, which is hidden.
+        panel.follow_caret(3)
+
+        assert panel.hidden == {"length"}
+        assert panel.current()["caption"].index == 3
+        assert panel.current()["rule"] == "overlap"
+        assert panel.drawn_filters == 1
+        assert panel.draws == [{"scroll": False}]
+
+    def test_only_the_kind_of_its_first_issue_comes_back(self, monkeypatch):
+        panel = self.panel(monkeypatch)
+        self.hide(panel, "overlap", "length")
+
+        # Caption 2 has both an overlap and a long line, both hidden.
+        panel.follow_caret(2)
+
+        assert len(panel.hidden) == 1
+        assert panel.current()["caption"].index == 2
+
+    def test_a_caption_with_a_shown_kind_opens_on_that_and_keeps_the_rest_hidden(
+        self, monkeypatch
+    ):
+        panel = self.panel(monkeypatch)
+        self.hide(panel, "overlap")
+
+        # Caption 2: overlap (hidden) and length (shown).
+        panel.follow_caret(2)
+
+        assert panel.hidden == {"overlap"}
+        assert panel.current()["rule"] == "length"
+        assert panel.drawn_filters == 0
+
+    def test_it_is_said_on_the_card_and_to_a_screen_reader(self, monkeypatch):
+        panel = self.panel(monkeypatch)
+        self.hide(panel, "overlap", "length")
+
+        panel.follow_caret(3)
+
+        said = "Showing \u201cOverlaps\u201d again \u2014 it was hidden."
+
+        assert panel.note.text == said and panel.note.shown
+        assert panel.spoken_position.text.startswith(said)
+        assert "Issue" in panel.spoken_position.text
+
+    def test_nothing_is_said_when_nothing_came_back(self, monkeypatch):
+        panel = self.panel(monkeypatch)
+
+        panel.follow_caret(3)
+
+        assert panel.note.text == ""
+        assert panel.spoken_position.text == ""
+
+    def test_a_closed_panel_opens_and_says_it_a_moment_later(self, monkeypatch):
+        panel = self.panel(monkeypatch, visible=False)
+        self.hide(panel, "overlap", "length")
+
+        panel.follow_caret(3)
+
+        assert panel.container.visible is True
+        assert panel.note.shown
+        assert panel.spoken_position.text == ""
+        assert panel.timers
+
+        panel.speak()
+
+        assert panel.spoken_position.text.startswith("Showing")
+        assert panel.pending_speech == ""
+
+        panel.speak()
+
+        assert panel.spoken_position.text.startswith("Issue")
+
+    def test_a_caption_with_no_issue_still_changes_nothing(self, monkeypatch):
+        panel = self.panel(monkeypatch, visible=False)
+        self.hide(panel, "overlap", "length")
+
+        panel.follow_caret(1)
+
+        assert panel.container.visible is False
+        assert panel.hidden == {"overlap", "length"}
+        assert panel.draws == []
+
+    def test_a_gone_caption_does_not_bring_a_kind_back(self, monkeypatch):
+        panel = self.panel(monkeypatch)
+        self.hide(panel, "overlap", "length")
+        panel.captions = lambda: []
+
+        panel.follow_caret(3)
+
+        assert panel.hidden == {"overlap", "length"}
+        assert panel.draws == []
+
+    def test_speech_without_a_caption_never_brings_its_kind_back(self, monkeypatch):
+        panel = self.panel(monkeypatch)
+        panel.all_items = [
+            {
+                "caption": panel.all_items[0]["caption"],
+                "error": False,
+                "rule": "speech",
+                "speech": {"start": 0.0, "end": 1.0, "until": None},
+            }
+        ]
+        panel.items = []
+        panel.hidden = {"speech"}
+        index = panel.all_items[0]["caption"].index
+
+        panel.follow_caret(index)
+
+        assert panel.hidden == {"speech"}
+        assert panel.draws == []
 
 
 class TestSpeechOutsideCaptions:
