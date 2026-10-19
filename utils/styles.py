@@ -2008,6 +2008,15 @@ theme_styles = """
     .comments-panel-remove {
         margin-right: auto;
     }
+    /* Remove and Cancel are flat Quasar buttons, which take the primary
+       blue (#5898d4) for their text: 3.06:1 on the card's white, under the
+       4.5:1 that 14px text needs. They take the editor's own text colour
+       instead, the way the toolbar's quiet buttons do. Light mode only: in
+       dark mode the global flat-button rule already draws them white. */
+    .body--light .comments-panel-actions .q-btn--flat,
+    .body--light .comments-panel-actions .q-btn--flat .q-btn__content {
+        color: var(--color-brand-primary) !important;
+    }
     /* Which kinds of issue are stepped through: a row of checkboxes under
        the panel, ticked while that kind is shown. */
     .validation-panel-wrap {
