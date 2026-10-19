@@ -31,7 +31,6 @@ from utils.srt_review import (
     DEFAULT_REVIEW_SENSITIVITY,
     EDIT_TOOLTIP,
     EDITS_SHOW_KEY,
-    HIGHLIGHTS_SHOW_KEY,
     OVERLAY_SHOW_KEY,
     TIMELINE_DOCK_KEY,
     TIMELINE_SHOW_KEY,
@@ -52,7 +51,6 @@ __all__ = [
     "CHARACTER_LIMIT_EXCEEDED_COLOR",
     "DEFAULT_REVIEW_SENSITIVITY",
     "EDITS_SHOW_KEY",
-    "HIGHLIGHTS_SHOW_KEY",
     "EDIT_TOOLTIP",
     "OVERLAY_SHOW_KEY",
     "TIMELINE_DOCK_KEY",
@@ -125,8 +123,11 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         self.has_confidence = False
         self.show_uncertain_words = False
         self.show_my_edits = False
-        # The reader's own highlights. On by default: they put them there.
-        # Hiding them draws nothing and reads out nothing, but keeps them.
+        # The reader's own highlights, shown whenever an editor is opened.
+        # Hiding them draws nothing and reads out nothing, but keeps them, and
+        # is not remembered: it is a way of looking at the text for a while,
+        # and a hidden highlight forgotten for days is worse than having to
+        # switch them off again.
         self.show_highlights = True
         # Told when a command turns them back on, so the switch can follow.
         self.on_highlights_shown = None
