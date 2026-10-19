@@ -1022,14 +1022,28 @@ class TestTheStyles:
         assert "inset 0 2px 0 var(--color-highlight-frame)" in rule
         assert "inset 0 -2px 0 var(--color-highlight-frame)" in rule
 
-    def test_a_flagged_or_changed_word_keeps_its_own_bar(self):
-        review = self.rule("    .highlight-word.review-word {")
-        edit = self.rule("    .highlight-word.edit-word {")
+    @pytest.mark.parametrize(
+        "selector, accent",
+        [
+            ("    .highlight-word.review-word {", "review"),
+            ("    .highlight-word.edit-word {", "edit"),
+            ("    .transcript-text .highlight-word.review-word[data-current] {", "review"),
+            ("    .transcript-text .highlight-word.edit-word[data-current] {", "edit"),
+        ],
+    )
+    def test_a_flagged_or_changed_word_keeps_the_frame_and_its_own_bar_outside_it(
+        self, selector, accent
+    ):
+        rule = self.rule(selector)
 
-        assert "inset 0 2px 0 var(--color-highlight-frame)" in review
-        assert "inset 0 -2px 0 var(--color-review-accent)" in review
-        assert "inset 0 2px 0 var(--color-highlight-frame)" in edit
-        assert "inset 0 -2px 0 var(--color-edit-accent)" in edit
+        # The frame is the same line above and below as on any highlighted
+        # word, so a highlight always looks like a highlight ...
+        assert "inset 0 2px 0 var(--color-highlight-frame)" in rule
+        assert "inset 0 -2px 0 var(--color-highlight-frame)" in rule
+        # ... and the word's own bar sits outside it, where it is not taken
+        # for the frame's lower line.
+        assert f"0 3px 0 var(--color-{accent}-accent)" in rule
+        assert f"inset 0 -2px 0 var(--color-{accent}-accent)" not in rule
 
     def test_the_word_being_played_keeps_the_lines(self):
         rule = self.rule("    .transcript-text .highlight-word[data-current] {")
