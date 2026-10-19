@@ -697,6 +697,8 @@ class RenderMixin:
                 ("New line", "Shift + Enter"),
                 ("Move first word to previous caption", "Ctrl/⌘ + ↑"),
                 ("Move last word to next caption", "Ctrl/⌘ + ↓"),
+                ("Move text before cursor to previous caption", "Ctrl/⌘ + Shift + ↑"),
+                ("Move text after cursor to next caption", "Ctrl/⌘ + Shift + ↓"),
                 ("Merge with next", "Ctrl + M"),
                 ("Add caption after", "Ctrl/⌘ + Shift + Enter"),
                 ("Delete caption", "Ctrl + D"),
@@ -707,6 +709,8 @@ class RenderMixin:
                 ("New line", "Shift + Enter"),
                 ("Move first word to previous paragraph", "Ctrl/⌘ + ↑"),
                 ("Move last word to next paragraph", "Ctrl/⌘ + ↓"),
+                ("Move text before cursor to previous paragraph", "Ctrl/⌘ + Shift + ↑"),
+                ("Move text after cursor to next paragraph", "Ctrl/⌘ + Shift + ↓"),
                 ("Merge with next", "Ctrl + M"),
                 ("Delete paragraph", "Ctrl + D"),
             ]

@@ -2000,6 +2000,27 @@ export default {
         return this.report(event, "addblock", { id: at.id });
       }
 
+      // Hand everything up to the caret to the previous caption, or
+      // everything from it to the next. Ahead of the plain arrows below,
+      // which hand over one word and would otherwise swallow the Shift.
+      // The offset goes along because, unlike a word, the amount moved
+      // depends on where the caret is; the server works out the rest.
+      if (event.shiftKey && event.key === "ArrowUp") {
+        return this.report(event, "movetext", {
+          id: at.id,
+          direction: "previous",
+          offset: at.offset,
+        });
+      }
+
+      if (event.shiftKey && event.key === "ArrowDown") {
+        return this.report(event, "movetext", {
+          id: at.id,
+          direction: "next",
+          offset: at.offset,
+        });
+      }
+
       // Hand a word across the boundary to the caption either side. The
       // server picks the timings back up from the word data, so this is a
       // report rather than anything worked out here.
@@ -2031,6 +2052,23 @@ export default {
     // there.
     transcriptionShortcut(event, at) {
       const key = event.key.toLowerCase();
+
+      // Text up to / from the caret, as in the subtitle list.
+      if (event.shiftKey && event.key === "ArrowUp") {
+        return this.report(event, "movetext", {
+          id: at.id,
+          direction: "previous",
+          offset: at.offset,
+        });
+      }
+
+      if (event.shiftKey && event.key === "ArrowDown") {
+        return this.report(event, "movetext", {
+          id: at.id,
+          direction: "next",
+          offset: at.offset,
+        });
+      }
 
       if (event.key === "ArrowUp") {
         return this.report(event, "moveword", { id: at.id, direction: "previous" });

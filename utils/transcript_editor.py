@@ -656,6 +656,7 @@ class TranscriptEditor:
         )
         self.body.on("opencomment", lambda event: self.open_comment(event.args))
         self.body.on("caretcomment", lambda event: self.caret_comment(event.args))
+        self.body.on("movetext", lambda event: self.move_text(event.args))
         self.body.on("addblock", lambda event: self.add_after(event.args))
         self.body.on("deleteblock", lambda event: self.delete(event.args))
         self.body.on("blockclick", lambda event: self.seek(event.args))
@@ -1205,6 +1206,57 @@ class TranscriptEditor:
         self.refresh()
         self.changed()
         self.focus(caption.index)
+
+    def move_text(self, args) -> None:
+        """
+        Hand everything before the caret to the previous caption, or
+        everything after it to the next.
+
+        The editor's methods do the work -- including turning a move that
+        would empty this caption into a merge -- and say which they did, so
+        the caret can be put where the reader is going to want it: after
+        a move it stays in this caption, at the edge the text left (the
+        start for "previous", the end for "next"), so a second press has
+        nothing to move and does not mean something different; after a
+        merge it lands at the seam, as it does for any merge. The seam
+        offsets are worked out before the call, which changes the texts.
+        """
+
+        if not isinstance(args, dict):
+            return
+
+        caption = self.caption(self.block_id(args))
+        direction = args.get("direction")
+        offset = args.get("offset")
+
+        if caption is None or not isinstance(offset, (int, float)):
+            return
+
+        offset = int(offset)
+        position = self.editor.captions.index(caption)
+
+        if direction == "previous":
+            if position > 0:
+                survivor = self.editor.captions[position - 1]
+                seam = len(survivor.text) + (len("\n") if caption.text else 0)
+            else:
+                survivor, seam = caption, 0
+
+            outcome = self.editor.move_text_before_cursor_to_previous(caption, offset)
+            landing = (caption, 0) if outcome == "moved" else (survivor, seam)
+        elif direction == "next":
+            seam = len(caption.text)
+            outcome = self.editor.move_text_after_cursor_to_next(caption, offset)
+            landing = (caption, seam if outcome == "merged" else len(caption.text))
+        else:
+            return
+
+        if not outcome:
+            return
+
+        self.refresh()
+        self.changed()
+        self.focus(landing[0].index, landing[1])
 
     def delete(self, args) -> None:
         """

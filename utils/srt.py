@@ -1220,6 +1220,199 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin, CommentsMixi
 
         self.finish_word_move()
 
+    @staticmethod
+    def word_spans(text: str) -> list:
+        """
+        Where each whitespace-separated word of the text starts and ends, as
+        (start, end) character offsets -- the words as the alignment and the
+        marks count them.
+        """
+
+        return [match.span() for match in re.finditer(r"\S+", text)]
+
+    def move_text_before_cursor_to_previous(
+        self, caption: SRTCaption, offset: int
+    ) -> str:
+        """
+        Move everything before the cursor to the end of the previous block.
+
+        The word the cursor is in goes too: the move divides the text between
+        words, never through one. Both blocks are re-timed from the word data,
+        as when one word is moved (move_first_word_to_previous): the previous
+        block now ends where the last moved word ends, and this one starts
+        where its new first word starts.
+
+        When that would leave this block with nothing, it is a merge with the
+        previous one instead. Returns "moved", "merged", or "" when there was
+        nothing to do.
+        """
+
+        if not caption:
+            return ""
+
+        position = self.captions.index(caption)
+
+        if position == 0:
+            ui.notify(
+                "No previous block to move the text to",
+                type="warning",
+                timeout=None,
+                close_button="Close",
+            )
+            return ""
+
+        spans = self.word_spans(caption.text)
+        offset = max(0, min(int(offset), len(caption.text)))
+
+        # Every word that starts before the cursor: the ones wholly before it,
+        # and the one it is in.
+        count = sum(1 for start, _ in spans if start < offset)
+
+        if count == 0:
+            ui.notify(
+                "There is no text before the cursor to move",
+                type="warning",
+                timeout=None,
+                close_button="Close",
+            )
+            return ""
+
+        if count == len(spans):
+            # All of it: nothing would be left. The same as joining the block
+            # to the previous one, so that is what happens (and what saves the
+            # undo state).
+            self.merge_with_previous(caption)
+            return "merged"
+
+        moved_text = caption.text[: spans[count - 1][1]].strip()
+        remaining = caption.text[spans[count][0]:].strip()
+
+        # Timings are looked up before the text changes, since words are
+        # matched to a block by its time range.
+        aligned = self.aligned_words(caption)
+        last_moved = aligned[count - 1] if len(aligned) >= count else None
+        first_left = aligned[count] if len(aligned) > count else None
+
+        self.save_state_for_undo()
+
+        previous = self.captions[position - 1]
+        previous_text = previous.text.rstrip()
+
+        # The marks of edited words are word positions, so they follow their
+        # words across.
+        carried, kept = self.split_edits(caption.edited_words, count)
+        previous.edited_words = self.joined_edits(
+            previous.edited_words, carried, len(previous_text.split())
+        )
+        caption.edited_words = kept
+
+        previous.text = " ".join(part for part in (previous_text, moved_text) if part)
+        caption.text = remaining
+
+        if self.word_is_timed(last_moved) and self.word_is_timed(first_left):
+            previous.end_time = self.seconds_to_timestamp(last_moved["e"])
+            caption.start_time = self.seconds_to_timestamp(first_left["s"])
+        else:
+            ui.notify(
+                "Text moved, but the timings could not be updated",
+                type="warning",
+                timeout=None,
+                close_button="Close",
+            )
+
+        self.finish_word_move()
+
+        return "moved"
+
+    def move_text_after_cursor_to_next(
+        self, caption: SRTCaption, offset: int
+    ) -> str:
+        """
+        Move everything after the cursor to the start of the next block.
+
+        The word the cursor is in goes too, as in
+        move_text_before_cursor_to_previous. Both blocks are re-timed from the
+        word data: the next block now starts where the first moved word
+        starts, and this one ends where its new last word ends.
+
+        When that would leave this block with nothing, it is a merge with the
+        next one instead. Returns "moved", "merged", or "" when there was
+        nothing to do.
+        """
+
+        if not caption:
+            return ""
+
+        position = self.captions.index(caption)
+
+        if position == len(self.captions) - 1:
+            ui.notify(
+                "No next block to move the text to",
+                type="warning",
+                timeout=None,
+                close_button="Close",
+            )
+            return ""
+
+        spans = self.word_spans(caption.text)
+        offset = max(0, min(int(offset), len(caption.text)))
+
+        # The first word that ends after the cursor: the one it is in, or the
+        # first one wholly after it.
+        first = next(
+            (index for index, (_, end) in enumerate(spans) if end > offset),
+            len(spans),
+        )
+
+        if first == len(spans):
+            ui.notify(
+                "There is no text after the cursor to move",
+                type="warning",
+                timeout=None,
+                close_button="Close",
+            )
+            return ""
+
+        if first == 0:
+            self.merge_with_next(caption)
+            return "merged"
+
+        remaining = caption.text[: spans[first - 1][1]].strip()
+        moved_text = caption.text[spans[first][0]:].strip()
+
+        aligned = self.aligned_words(caption)
+        first_moved = aligned[first] if len(aligned) > first else None
+        last_left = aligned[first - 1] if len(aligned) >= first else None
+
+        self.save_state_for_undo()
+
+        following = self.captions[position + 1]
+        kept, carried = self.split_edits(caption.edited_words, first)
+        following.edited_words = self.joined_edits(
+            carried, following.edited_words, len(moved_text.split())
+        )
+        caption.edited_words = kept
+
+        following.text = " ".join(
+            part for part in (moved_text, following.text.lstrip()) if part
+        )
+        caption.text = remaining
+
+        if self.word_is_timed(first_moved) and self.word_is_timed(last_left):
+            following.start_time = self.seconds_to_timestamp(first_moved["s"])
+            caption.end_time = self.seconds_to_timestamp(last_left["e"])
+        else:
+            ui.notify(
+                "Text moved, but the timings could not be updated",
+                type="warning",
+                timeout=None,
+                close_button="Close",
+            )
+
+        self.finish_word_move()
+
+        return "moved"
+
     def finish_word_move(self) -> None:
         """
         Shared bookkeeping after a word has moved between blocks.
