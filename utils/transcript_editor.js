@@ -402,6 +402,14 @@ export default {
           ?.querySelectorAll("[data-changed]")
           .forEach((el) => el.removeAttribute("data-changed"));
 
+        // The same for a word that was highlighted here because it was typed
+        // between two highlighted ones: the server's render says which words
+        // are highlighted now.
+        this.$refs.body?.querySelectorAll("[data-highlighted]").forEach((el) => {
+          el.removeAttribute("data-highlighted");
+          el.removeAttribute("role");
+        });
+
         if (restoring) {
           const block = this.$refs.body?.querySelector(
             `.transcript-text[data-id="${restoring.id}"]`
@@ -1110,7 +1118,39 @@ export default {
       selection.removeAllRanges();
       selection.addRange(range);
 
+      this.highlightNewWord(wrapper);
+
       return wrapper;
+    },
+
+    // A word typed between two highlighted words is highlighted too: the rule
+    // carry_highlights follows on the server, which has recorded it by the
+    // time the next render comes. That render is the problem -- set_text does
+    // not re-render the block being typed into, so until some later render
+    // the word stood there plain in the middle of a highlighted passage and
+    // only turned yellow after a reload. Done here, in the DOM, for the same
+    // reason markChanged is, and it follows the server's rule exactly: only a
+    // *new* word (this is called from splitNewWord and nowhere else), and only
+    // when the nearest word on each side is highlighted -- a word typed
+    // beside a highlight, or between a highlight and anything else, is not.
+    //
+    // An attribute rather than a class, because Vue owns the class and
+    // rewrites it whenever it patches the span; role=mark because that is
+    // what a highlighted word is told as. Both go at the next real render.
+    highlightNewWord(span) {
+      const nearestWord = (step) => {
+        for (let node = span[step]; node; node = node[step]) {
+          if (node.nodeType === 1 && !/^\s*$/.test(node.textContent)) return node;
+        }
+        return null;
+      };
+      const highlighted = (node) =>
+        !!node && (node.classList.contains("highlight-word") || node.hasAttribute("data-highlighted"));
+
+      if (highlighted(nearestWord("previousSibling")) && highlighted(nearestWord("nextSibling"))) {
+        span.setAttribute("data-highlighted", "");
+        span.setAttribute("role", "mark");
+      }
     },
 
     // Text typed straight into a block, belonging to no span at all -- what

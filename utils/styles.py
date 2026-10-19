@@ -1400,7 +1400,11 @@ theme_styles = """
        with the spaces between them reads as one stretch.
 
        On a flagged or changed word the highlight takes the wash and the text
-       colour, and the word keeps its own bar underneath, so both can be seen.
+       colour and keeps its own frame, line above and line below, exactly as
+       on any other highlighted word; the word's own bar is drawn outside it,
+       3px below. Letting the bar take the place of the frame's lower line
+       made a flagged highlight read as a flagged word on a yellow wash, and
+       was hard to tell from a plain highlight.
        While the word is being played the playing tint wins the wash but the
        lines stay, so the passage can still be seen under the playback. */
     .highlight-word {
@@ -1416,12 +1420,14 @@ theme_styles = """
     .highlight-word.review-word {
         box-shadow:
             inset 0 2px 0 var(--color-highlight-frame),
-            inset 0 -2px 0 var(--color-review-accent);
+            inset 0 -2px 0 var(--color-highlight-frame),
+            0 3px 0 var(--color-review-accent);
     }
     .highlight-word.edit-word {
         box-shadow:
             inset 0 2px 0 var(--color-highlight-frame),
-            inset 0 -2px 0 var(--color-edit-accent);
+            inset 0 -2px 0 var(--color-highlight-frame),
+            0 3px 0 var(--color-edit-accent);
     }
     .transcript-text .highlight-word[data-current] {
         background-color: var(--color-playing-bg);
@@ -1434,12 +1440,14 @@ theme_styles = """
     .transcript-text .highlight-word.review-word[data-current] {
         box-shadow:
             inset 0 2px 0 var(--color-highlight-frame),
-            inset 0 -2px 0 var(--color-review-accent);
+            inset 0 -2px 0 var(--color-highlight-frame),
+            0 3px 0 var(--color-review-accent);
     }
     .transcript-text .highlight-word.edit-word[data-current] {
         box-shadow:
             inset 0 2px 0 var(--color-highlight-frame),
-            inset 0 -2px 0 var(--color-edit-accent);
+            inset 0 -2px 0 var(--color-highlight-frame),
+            0 3px 0 var(--color-edit-accent);
     }
 
     /* A comment. The words it is on are underlined with a dotted line: a
@@ -1539,6 +1547,30 @@ theme_styles = """
     }
     .review-word[data-changed]::after {
         content: none;
+    }
+
+    /* A word typed between two highlighted words, until the next render says
+       so itself (highlightNewWord in transcript_editor.js): drawn as a
+       highlight, with an attribute because Vue owns the class. Written as
+       span[...] so it outranks .transcript-show-edits [data-changed], which
+       comes later and would otherwise paint the word as a plain edit. */
+    .transcript-text span[data-highlighted] {
+        padding: 1px 0;
+        color: var(--color-highlight-text);
+        background-color: var(--color-highlight-bg);
+        border-radius: 0;
+        box-shadow:
+            inset 0 2px 0 var(--color-highlight-frame),
+            inset 0 -2px 0 var(--color-highlight-frame);
+        box-decoration-break: clone;
+        -webkit-box-decoration-break: clone;
+    }
+    .transcript-show-edits .transcript-text span[data-highlighted][data-changed] {
+        border-radius: 3px;
+        box-shadow:
+            inset 0 2px 0 var(--color-highlight-frame),
+            inset 0 -2px 0 var(--color-highlight-frame),
+            0 3px 0 var(--color-edit-accent);
     }
     .transcript-show-edits [data-changed] {
         /* Stated here as well as on .edit-word: a word that was not flagged
