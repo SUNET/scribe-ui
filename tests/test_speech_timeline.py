@@ -1623,19 +1623,21 @@ class TestMovingThePlayhead:
             "event.shiftKey &&"
         )
 
-    def test_the_browsers_own_zoom_is_left_alone(self):
+    def test_the_browsers_own_zoom_keys_are_left_alone(self):
         """
-        Ctrl and Cmd with plus, minus and 0 are the browser's zoom, and
-        Ctrl with the wheel is too; whoever uses it to enlarge the page
-        keeps it over the strip.
+        Ctrl and Cmd with plus, minus and 0 are the browser's zoom, over the
+        strip as everywhere: whoever enlarges the page with them keeps it.
         """
 
-        source = self.source()
-        keys = method(source, "onKey(event) {")
-        wheel = method(source, "onWheel(event) {")
+        keys = method(self.source(), "onKey(event) {")
 
         assert "event.ctrlKey || event.metaKey || event.altKey" in keys
-        assert "event.ctrlKey || event.metaKey" in wheel
+
+    def test_cmd_with_the_wheel_is_left_to_the_browser(self):
+        wheel = method(self.source(), "onWheel(event) {")
+
+        assert "if (event.metaKey) return;" in wheel
+        assert wheel.index("if (event.metaKey) return;") < wheel.index("sideways")
 
     def test_only_the_strip_itself_answers_to_the_keys(self):
         """
@@ -1656,7 +1658,7 @@ class TestMovingThePlayhead:
 
         assert "Math.abs(event.deltaX) > Math.abs(event.deltaY)" in body
         assert "event.shiftKey" in body
-        assert body.index("if (!sideways) return;") < body.index("event.preventDefault();")
+        assert body.index("if (!sideways) return;") < body.rindex("event.preventDefault();")
 
     def test_scrolling_right_goes_forward(self):
         body = method(self.source(), "onWheel(event) {")
@@ -1709,9 +1711,123 @@ class TestMovingThePlayhead:
 
         assert "now < this.swipeUntil" in body
         assert "this.swipeUntil = now + SWIPE_LATCH;" in body
-        assert body.index("this.swipeUntil = now + SWIPE_LATCH;") < body.index(
+        assert body.index("this.swipeUntil = now + SWIPE_LATCH;") < body.rindex(
             "event.preventDefault();"
         )
+
+
+class TestPinchingToZoom:
+    """
+    A pinch over the strip zooms the strip, not the page. A trackpad sends it
+    as a wheel with Ctrl held (Chrome, Edge and Firefox) or, in Safari, as a
+    gesture of its own; both are taken over the strip and nowhere else.
+    """
+
+    def source(self) -> str:
+        return pathlib.Path("utils/speech_timeline.js").read_text()
+
+    def test_ctrl_with_the_wheel_is_taken_and_cancelled(self):
+        body = method(self.source(), "onWheel(event) {")
+        branch = body[: body.index("if (event.metaKey) return;")]
+
+        assert "if (event.ctrlKey) {" in branch
+        assert "event.preventDefault();" in branch
+        assert "this.pinch(event);" in branch
+        assert "return;" in branch
+
+    def test_it_is_only_over_the_strip(self):
+        source = self.source()
+
+        assert '@wheel="onWheel"' in source
+        assert source.index('@wheel="onWheel"') < source.index('<canvas ref="canvas"')
+
+    def test_spreading_the_fingers_zooms_in(self):
+        """
+        A negative deltaY is fingers apart; the zoom is multiplied by a
+        factor above one for it.
+        """
+
+        source = self.source()
+        body = method(source, "pinch(event) {")
+
+        assert "const PINCH_SPEED = 0.01;" in source
+        assert "Math.exp(-capped * PINCH_SPEED)" in body
+
+    def test_a_mouse_wheel_notch_is_capped(self):
+        source = self.source()
+        body = method(source, "pinch(event) {")
+
+        assert "const PINCH_MAX = 40;" in source
+        assert "Math.max(-PINCH_MAX, Math.min(PINCH_MAX, pixels))" in body
+
+    def test_lines_and_pages_are_turned_into_pixels(self):
+        body = method(self.source(), "pinch(event) {")
+
+        assert "event.deltaMode === 1" in body
+        assert "event.deltaMode === 2" in body
+
+    def test_it_stays_within_the_limits_of_the_buttons(self):
+        body = method(self.source(), "zoomBy(factor) {")
+
+        assert "Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, this.zoom * factor))" in body
+        assert "if (zoom === this.zoom) return;" in body
+        assert "if (zoom < this.zoom && !this.canZoomOut()) return;" in body
+
+    def test_it_does_not_zoom_while_a_caption_is_being_dragged(self):
+        body = method(self.source(), "zoomBy(factor) {")
+
+        assert "if (this.drag || this.creating || this.dockDrag) return;" in body
+
+    def test_the_page_still_does_not_zoom_during_a_drag(self):
+        """
+        The wheel is cancelled before pinch() decides, or the page would grow
+        under a caption being dragged.
+        """
+
+        body = method(self.source(), "onWheel(event) {")
+
+        assert body.index("event.preventDefault();") < body.index("this.pinch(event);")
+        assert body.index("if (event.ctrlKey) {") < body.index(
+            "if (this.drag || this.creating || this.dockDrag) return;"
+        )
+
+    def test_the_strip_is_drawn_at_once_and_said_once_it_settles(self):
+        source = self.source()
+        zoom = method(source, "zoomBy(factor) {")
+        say = method(source, "sayZoomSoon() {")
+
+        assert "this.draw();" in zoom
+        assert "this.sayZoomSoon();" in zoom
+        assert "this.note" not in zoom
+        assert "clearTimeout(this.zoomNoteTimer);" in say
+        assert "PINCH_SETTLE" in say
+        assert "const PINCH_SETTLE = 500;" in source
+
+    def test_the_timer_is_cleared_when_the_strip_goes(self):
+        body = method(self.source(), "beforeUnmount() {") if False else self.source()
+        unmount = body[body.index("beforeUnmount() {"):]
+        unmount = unmount[: unmount.index("\n  },")]
+
+        assert "clearTimeout(this.zoomNoteTimer);" in unmount
+
+    def test_safari_sends_a_gesture_and_it_is_taken_too(self):
+        source = self.source()
+        body = method(source, "onGesture(event) {")
+
+        for name in ("gesturestart", "gesturechange", "gestureend"):
+            assert f'@{name}="onGesture"' in source
+
+        assert "event.preventDefault();" in body
+        assert 'event.type === "gesturestart"' in body
+        assert "this.gestureFrom = this.zoom;" in body
+        assert "(this.gestureFrom * event.scale) / this.zoom" in body
+
+    def test_the_buttons_say_pinching_works(self):
+        source = self.source()
+
+        assert 'tip: "Zoom out (or pinch on the strip)"' in source
+        assert 'tip: "Zoom in (or pinch on the strip)"' in source
+        assert "Pinching on a trackpad over the strip" in source
 
 
 class TestTheStripIsASlider:
