@@ -29,7 +29,6 @@ import pytest
 
 from test_highlights import FakeBody, make_editor
 
-from utils.srt import HIGHLIGHTS_SHOW_KEY
 from utils.transcript_editor import TranscriptEditor
 
 
@@ -63,24 +62,32 @@ def hidden(editor):
 
 
 class TestThePreference:
-    def test_they_are_shown_unless_the_reader_has_said_otherwise(self, editor):
+    def test_every_editor_opens_with_them_shown(self, editor):
         assert editor.show_highlights is True
 
         editor.restore_review_state(False, "low")
 
         assert editor.show_highlights is True
 
-    def test_a_stored_choice_is_applied_before_the_first_render(self, editor):
-        editor.restore_review_state(False, "low", highlights=False)
+    def test_hiding_them_is_not_remembered(self, editor):
+        """
+        A way of looking at the text for a while, not a preference: nothing
+        stored is read back, and the next editor starts with them shown.
+        """
 
-        assert editor.show_highlights is False
+        editor.set_show_highlights(False)
 
-        editor.restore_review_state(False, "low", highlights=True)
+        assert make_editor().show_highlights is True
 
-        assert editor.show_highlights is True
+        with pytest.raises(TypeError):
+            editor.restore_review_state(False, "low", highlights=False)
 
-    def test_it_is_stored_under_its_own_key(self):
-        assert HIGHLIGHTS_SHOW_KEY == "srt_show_highlights"
+    def test_there_is_no_stored_choice(self):
+        import utils.srt
+        import utils.srt_review
+
+        assert not hasattr(utils.srt, "HIGHLIGHTS_SHOW_KEY")
+        assert not hasattr(utils.srt_review, "HIGHLIGHTS_SHOW_KEY")
 
     def test_switching_redraws(self, editor):
         editor.set_show_highlights(False)
@@ -423,11 +430,11 @@ class TestTheSwitch:
 
         assert edits < guard < highlights
 
-    def test_it_is_a_saved_preference_like_the_others(self):
+    def test_it_is_not_saved_between_sessions(self):
         source = self.page()
 
-        assert "app.storage.user[HIGHLIGHTS_SHOW_KEY] = value" in source
-        assert "app.storage.user.get(HIGHLIGHTS_SHOW_KEY, True)" in source
+        assert "HIGHLIGHTS_SHOW_KEY" not in source
+        assert "srt_show_highlights" not in source
 
     def test_it_listens_for_the_keyboard_too(self):
         assert '"update:model-value", save_show_highlights' in self.page()
