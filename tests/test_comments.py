@@ -1838,6 +1838,14 @@ class TestTheStyles:
     def test_it_has_its_own_colour_in_both_themes(self):
         assert self.css().count("--color-comment-line:") == 2
 
+    def test_remove_and_cancel_do_not_use_the_light_primary_blue(self):
+        # Quasar's primary blue on white is 3.06:1, under 4.5:1 for 14px
+        # text. The text takes the brand colour (a dark navy) in light mode.
+        rule = self.rule("    .body--light .comments-panel-actions .q-btn--flat,")
+
+        assert ".q-btn__content" in rule
+        assert "color: var(--color-brand-primary) !important;" in rule
+
     def test_commented_words_have_a_dotted_underline_that_is_not_only_colour(self):
         rule = self.rule("    .comment-word {")
 
