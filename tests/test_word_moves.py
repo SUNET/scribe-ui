@@ -17,7 +17,7 @@
 
 import pytest
 
-from utils.caption import SRTCaption
+from utils.caption import SRTCaption, WordComment
 from utils.srt import SRTEditor
 
 
@@ -467,3 +467,115 @@ class TestMoveTextAfterCursorToNext:
         editor.move_text_after_cursor_to_next(editor.captions[0], 4)
 
         assert editor.captions[1].text == "två tre"
+
+
+def words_of(caption):
+    """
+    A caption's comments as plain data: (sorted words, text).
+    """
+
+    return [(sorted(c.words), c.text) for c in caption.comments]
+
+
+class TestMovedTextKeepsItsMarks:
+    """
+    A highlight and a comment are on words, counted from the first word of
+    their block, so text moved to the next or previous block takes them along:
+    left where they were, they would sit on whatever words are now at those
+    positions, or in the other block altogether.
+    """
+
+    def test_a_comment_on_text_sent_to_the_previous_block_goes_with_it(self, editor):
+        editor.captions[1].comments = [WordComment({0}, "about fyra")]
+
+        # "fyra fem| sex": fyra and fem go.
+        editor.move_text_before_cursor_to_previous(editor.captions[1], 8)
+
+        assert words_of(editor.captions[0]) == [([3], "about fyra")]
+        assert editor.captions[1].comments == []
+
+    def test_a_comment_on_the_words_left_behind_keeps_its_words(self, editor):
+        editor.captions[1].comments = [WordComment({2}, "about sex")]
+
+        editor.move_text_before_cursor_to_previous(editor.captions[1], 8)
+
+        assert editor.captions[0].comments == []
+        assert words_of(editor.captions[1]) == [([0], "about sex")]
+
+    def test_a_comment_across_the_cursor_is_on_both_sides(self, editor):
+        editor.captions[1].comments = [WordComment({1, 2}, "fem and sex")]
+
+        editor.move_text_before_cursor_to_previous(editor.captions[1], 8)
+
+        assert words_of(editor.captions[0]) == [([4], "fem and sex")]
+        assert words_of(editor.captions[1]) == [([0], "fem and sex")]
+
+    def test_the_comments_the_previous_block_already_had_stay_where_they_are(
+        self, editor
+    ):
+        editor.captions[0].comments = [WordComment({0, 1}, "old")]
+        editor.captions[1].comments = [WordComment({0}, "new")]
+
+        editor.move_text_before_cursor_to_previous(editor.captions[1], 5)
+
+        assert words_of(editor.captions[0]) == [([0, 1], "old"), ([3], "new")]
+
+    def test_a_highlight_on_text_sent_to_the_previous_block_goes_with_it(self, editor):
+        editor.captions[0].highlighted_words = {0}
+        editor.captions[1].highlighted_words = {0, 2}
+
+        editor.move_text_before_cursor_to_previous(editor.captions[1], 8)
+
+        assert editor.captions[0].highlighted_words == {0, 3}
+        assert editor.captions[1].highlighted_words == {0}
+
+    def test_a_comment_on_text_sent_to_the_next_block_goes_with_it(self, editor):
+        editor.captions[0].comments = [WordComment({2}, "about tre")]
+
+        # "ett |två tre": två and tre go.
+        editor.move_text_after_cursor_to_next(editor.captions[0], 4)
+
+        assert editor.captions[0].comments == []
+        assert words_of(editor.captions[1]) == [([1], "about tre")]
+
+    def test_a_comment_on_the_words_kept_stays(self, editor):
+        editor.captions[0].comments = [WordComment({0}, "about ett")]
+
+        editor.move_text_after_cursor_to_next(editor.captions[0], 4)
+
+        assert words_of(editor.captions[0]) == [([0], "about ett")]
+        assert editor.captions[1].comments == []
+
+    def test_the_comments_the_next_block_already_had_move_along(self, editor):
+        editor.captions[0].comments = [WordComment({2}, "moved")]
+        editor.captions[1].comments = [WordComment({0}, "own")]
+
+        editor.move_text_after_cursor_to_next(editor.captions[0], 4)
+
+        assert words_of(editor.captions[1]) == [([1], "moved"), ([2], "own")]
+
+    def test_a_comment_across_the_cursor_is_on_both_blocks_going_next(self, editor):
+        editor.captions[0].comments = [WordComment({0, 1, 2}, "all of it")]
+
+        editor.move_text_after_cursor_to_next(editor.captions[0], 4)
+
+        assert words_of(editor.captions[0]) == [([0], "all of it")]
+        assert words_of(editor.captions[1]) == [([0, 1], "all of it")]
+
+    def test_a_highlight_on_text_sent_to_the_next_block_goes_with_it(self, editor):
+        editor.captions[0].highlighted_words = {0, 2}
+        editor.captions[1].highlighted_words = {1}
+
+        editor.move_text_after_cursor_to_next(editor.captions[0], 4)
+
+        assert editor.captions[0].highlighted_words == {0}
+        assert editor.captions[1].highlighted_words == {1, 3}
+
+    def test_every_comment_is_still_there_after_a_move_either_way(self, editor):
+        editor.captions[0].comments = [WordComment({1}, "a")]
+        editor.captions[1].comments = [WordComment({1}, "b")]
+
+        editor.move_text_before_cursor_to_previous(editor.captions[1], 8)
+        texts = sorted(c.text for cap in editor.captions for c in cap.comments)
+
+        assert texts == ["a", "b"]

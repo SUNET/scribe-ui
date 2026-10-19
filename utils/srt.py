@@ -1483,6 +1483,21 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin, CommentsMixi
         )
         caption.edited_words = kept
 
+        # So are a highlight and a comment: both are on words, counted from
+        # the first word of the block, and so go where their words go. A
+        # comment across the cursor is on both sides, as when a block is split.
+        carried, kept = self.split_edits(caption.highlighted_words, count)
+        previous.highlighted_words = self.joined_edits(
+            previous.highlighted_words, carried, len(previous_text.split())
+        )
+        caption.highlighted_words = kept
+
+        carried, kept = self.split_comments(caption.comments, count)
+        previous.comments = self.join_comments(
+            previous.comments, carried, len(previous_text.split())
+        )
+        caption.comments = kept
+
         previous.text = " ".join(part for part in (previous_text, moved_text) if part)
         caption.text = remaining
 
@@ -1569,6 +1584,19 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin, CommentsMixi
             carried, following.edited_words, len(moved_text.split())
         )
         caption.edited_words = kept
+
+        # And the highlights and comments, as in move_text_before_cursor_to_previous.
+        kept, carried = self.split_edits(caption.highlighted_words, first)
+        following.highlighted_words = self.joined_edits(
+            carried, following.highlighted_words, len(moved_text.split())
+        )
+        caption.highlighted_words = kept
+
+        kept, carried = self.split_comments(caption.comments, first)
+        following.comments = self.join_comments(
+            carried, following.comments, len(moved_text.split())
+        )
+        caption.comments = kept
 
         following.text = " ".join(
             part for part in (moved_text, following.text.lstrip()) if part
