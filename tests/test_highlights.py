@@ -1036,3 +1036,51 @@ class TestTheStyles:
 
         assert "background-color: var(--color-playing-bg);" in rule
         assert "inset 0 2px 0 var(--color-highlight-frame)" in rule
+
+
+class TestANewWordTypedBetweenTwoHighlights:
+    """
+    The server highlights it (carry_highlights); the editor has to draw it
+    that way at once, since the block being typed into is not re-rendered.
+    """
+
+    def js(self):
+        return pathlib.Path("utils/transcript_editor.js").read_text()
+
+    def css(self):
+        return pathlib.Path("utils/styles.py").read_text()
+
+    def test_only_a_word_split_off_by_typing_can_be_highlighted_this_way(self):
+        # splitNewWord is the one place a new word gets a span of its own, and
+        # a word that already existed must not pick up a highlight by being
+        # edited.
+        assert self.js().count("this.highlightNewWord(") == 1
+        assert "this.highlightNewWord(wrapper);" in self.js()
+
+    def test_it_needs_a_highlighted_word_on_each_side(self):
+        source = self.js()
+        body = source[source.index("    highlightNewWord(span) {") :]
+        body = body[: body.index("\n    },")]
+
+        assert 'nearestWord("previousSibling")' in body
+        assert 'nearestWord("nextSibling")' in body
+        assert "&&" in body
+
+    def test_it_is_an_attribute_and_a_mark_that_the_next_render_takes_away(self):
+        source = self.js()
+
+        assert 'span.setAttribute("data-highlighted", "")' in source
+        assert 'span.setAttribute("role", "mark")' in source
+        assert 'el.removeAttribute("data-highlighted")' in source
+        assert 'el.removeAttribute("role")' in source
+
+    def test_it_is_drawn_as_a_highlight_and_outranks_the_edit_marking(self):
+        css = self.css()
+        rule = css[css.index("    .transcript-text span[data-highlighted] {") :]
+        rule = rule[: rule.index("}")]
+
+        assert "background-color: var(--color-highlight-bg);" in rule
+        assert "inset 0 2px 0 var(--color-highlight-frame)" in rule
+        assert "inset 0 -2px 0 var(--color-highlight-frame)" in rule
+        # span[...] is more specific than .transcript-show-edits [data-changed].
+        assert ".transcript-show-edits .transcript-text span[data-highlighted][data-changed]" in css
