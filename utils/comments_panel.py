@@ -357,6 +357,7 @@ class CommentsPanel:
         if target is None:
             return False
 
+        self.reveal()
         self.commit()
 
         if target["index"] is not None:
@@ -366,11 +367,51 @@ class CommentsPanel:
 
         return True
 
+    def reveal(self) -> None:
+        """
+        The key or the button, while comments are hidden: turn them on again,
+        and say so. The comment on these words, or the one about to be
+        written, opens as it always does; nothing is taken away, and what is
+        hidden is not touched.
+
+        The notice is a toast, which is announced as it appears (Quasar gives
+        it role=alert) and stays until closed, like the others.
+        """
+
+        if self.editor.show_comments:
+            return
+
+        self.editor.set_show_comments(True)
+
+        ui.notify(
+            "Comments were hidden and are shown again.",
+            type="info",
+            timeout=None,
+            close_button="Close",
+        )
+
+        if self.editor.on_comments_shown is not None:
+            self.editor.on_comments_shown()
+
+    def put_away(self) -> None:
+        """
+        The comments have been hidden: keep what was typed, as when the panel
+        is shut, and shut it without moving focus off the switch.
+        """
+
+        self.commit()
+        self.pending = None
+        self.current = None
+        self.hide()
+
     def open_first(self) -> None:
         """
         A file with comments has just been opened: show the first, without
-        taking focus or moving the text.
+        taking focus or moving the text. Not while they are hidden.
         """
+
+        if not self.editor.show_comments:
+            return
 
         entries = self.entries()
 
@@ -387,6 +428,9 @@ class CommentsPanel:
         a card up under someone typing. A comment already on screen is left
         alone.
         """
+
+        if not self.editor.show_comments:
+            return
 
         if not (self.container.visible or click):
             return
