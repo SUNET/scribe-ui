@@ -1943,7 +1943,11 @@ class TestTheTimelineControls:
         rule = theme_styles[theme_styles.index("    .speech-timeline-actions {"):]
         rule = rule[: rule.index("}")]
 
-        assert "margin-left: auto;" in rule
+        # A fixed distance from the key, not pushed to the row's far edge: the
+        # row is a different width under the video and docked, and an
+        # edge-aligned tray looked as if it jumped between the two.
+        assert "margin-left: 0.5rem;" in rule
+        assert "margin-left: auto" not in rule
 
         hint = theme_styles[theme_styles.index("    .speech-timeline-hint {"):]
         hint = hint[: hint.index("}")]
