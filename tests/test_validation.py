@@ -953,15 +953,22 @@ class TestAddingACaptionForSpeech:
 
         assert (start, end) == (2.0, 2.0 + settings.NEW_CAPTION_SECONDS)
 
-    def panel(self, item, made):
+    def panel(self, item, made, media_seconds=None):
         from utils.validation_panel import ValidationPanel
 
         panel = ValidationPanel.__new__(ValidationPanel)
         panel.items = [item]
         panel.position = 0
 
+        class Editor:
+            pass
+
         class Transcript:
             asked = []
+
+            def __init__(self):
+                self.editor = Editor()
+                self.editor.media_seconds = media_seconds
 
             def create_caption(self, args):
                 Transcript.asked.append(args)
@@ -1011,6 +1018,15 @@ class TestAddingACaptionForSpeech:
         panel.add_for_speech()
 
         assert len(panel.transcript.asked) == 1
+
+    def test_it_ends_no_later_than_the_recording(self):
+        item = self.item()
+        made = caption(2, "00:00:02,000", "00:00:03,500", "")
+        panel = self.panel(item, made, media_seconds=3.5)
+
+        panel.add_for_speech()
+
+        assert panel.transcript.asked == [{"start": 2.0, "end": 3.5}]
 
     def test_a_refused_caption_changes_nothing(self):
         item = self.item()
