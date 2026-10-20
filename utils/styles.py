@@ -2678,6 +2678,11 @@ theme_styles = """
     .speech-timeline-wrap {
         min-width: 0;
         max-width: 100%;
+        /* The legend lays itself out by how wide the strip is, not by how
+           wide the window is: under the video and docked are very different
+           widths in the same window. Inline size only, so the wrap still
+           takes its width from its parent. */
+        container-type: inline-size;
     }
     .body--dark .speech-timeline {
         background-color: var(--color-bg-surface-alt);
@@ -2716,15 +2721,23 @@ theme_styles = """
         font-size: 0.75rem;
         color: var(--color-text-secondary);
     }
-    /* The controls at the end of the key: dock, zoom, and adding a caption at
-       the playhead. They follow the key at a fixed distance (the row's gap
-       plus this margin) rather than being pushed to the row's far edge: the
-       row is a video column wide under the video and the whole page wide
-       docked, so an edge-aligned tray looked as if it jumped when the strip
-       moved. The same tray as the caption actions -- surface,
-       hairline, fully rounded, round 1.5rem buttons -- so the two read as one
-       family; they sit in the strip's own legend row, where they cost it no
-       height, which is what matters most docked along the foot of the page.
+    /* The controls beside the key: dock, zoom, and adding a caption at the
+       playhead. The playhead is always in the middle of the strip -- it is
+       "now", where the reader works and where "Add caption at playhead"
+       acts -- so where there is room the tray sits under it, and where there
+       is not it follows the key, as it did before. Both come from the same
+       rule (see the container query below the hint): the legend is a grid of
+       1fr, auto, 1fr, whose middle column is the strip's own centre, and the
+       first column is never narrower than the key, which cannot wrap there.
+       The tray therefore moves between the two places continuously, never
+       jumping, and is never over the key. Narrower than 30rem the key and the
+       tray cannot share a row at all, and the legend is the wrapping row it
+       always was.
+
+       The same tray as the caption actions -- surface, hairline, fully
+       rounded, round 1.5rem buttons -- so the two read as one family; they
+       sit in the strip's own legend row, where they cost it no height, which
+       is what matters most docked along the foot of the page.
 
        Out of the way until the strip is pointed at, or the keyboard is on it
        or on one of the buttons (a button with focus is never hidden). The
@@ -2810,6 +2823,33 @@ theme_styles = """
     .speech-timeline-hint {
         flex-basis: 100%;
         color: var(--color-text-muted);
+    }
+    /* The grip and the four keys, as one item of the legend: the first
+       column of the wide layout. Where the legend wraps it is not a box at
+       all, so the items wrap on their own as they did. */
+    .speech-timeline-keyrow {
+        display: contents;
+    }
+    @container (min-width: 30rem) {
+        .speech-timeline-legend {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            column-gap: 0.75rem;
+            row-gap: 0.75rem;
+        }
+        .speech-timeline-keyrow {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            white-space: nowrap;
+        }
+        /* Equal on both sides, so the middle column's centre is the tray's. */
+        .speech-timeline-actions {
+            margin: 0 0.5rem;
+        }
+        .speech-timeline-hint {
+            grid-column: 1 / -1;
+        }
     }
 
     /* While a caption is being dragged the pointer owns it wherever it

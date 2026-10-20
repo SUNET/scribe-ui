@@ -202,29 +202,31 @@ export default {
         >{{ readout }}</div>
       </div>
       <div class="speech-timeline-legend">
-        <span
-          class="speech-timeline-grip"
-          :title="docked
-            ? 'Drag up to put the timeline back under the video'
-            : 'Drag to the bottom of the page to widen the timeline'"
-          @mousedown="startDockDrag"
-        >⠿</span>
-        <span class="speech-timeline-key">
-          <span class="speech-timeline-swatch speech-timeline-swatch-speech"></span>
-          Speech
-        </span>
-        <span class="speech-timeline-key">
-          <span class="speech-timeline-swatch speech-timeline-swatch-silence"></span>
-          Silence
-        </span>
-        <span class="speech-timeline-key">
-          <span class="speech-timeline-swatch speech-timeline-swatch-caption"></span>
-          Caption
-        </span>
-        <span class="speech-timeline-key">
-          <span class="speech-timeline-swatch speech-timeline-swatch-playhead"></span>
-          Playhead
-        </span>
+        <div class="speech-timeline-keyrow">
+          <span
+            class="speech-timeline-grip"
+            :title="docked
+              ? 'Drag up to put the timeline back under the video'
+              : 'Drag to the bottom of the page to widen the timeline'"
+            @mousedown="startDockDrag"
+          >⠿</span>
+          <span class="speech-timeline-key">
+            <span class="speech-timeline-swatch speech-timeline-swatch-speech"></span>
+            Speech
+          </span>
+          <span class="speech-timeline-key">
+            <span class="speech-timeline-swatch speech-timeline-swatch-silence"></span>
+            Silence
+          </span>
+          <span class="speech-timeline-key">
+            <span class="speech-timeline-swatch speech-timeline-swatch-caption"></span>
+            Caption
+          </span>
+          <span class="speech-timeline-key">
+            <span class="speech-timeline-swatch speech-timeline-swatch-playhead"></span>
+            Playhead
+          </span>
+        </div>
         <div
           class="speech-timeline-actions"
           ref="actions"
