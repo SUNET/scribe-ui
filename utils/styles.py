@@ -2676,12 +2676,17 @@ theme_styles = """
         min-width: 0;
     }
     .speech-timeline-wrap {
+        /* Said here rather than left to the component's own w-full class:
+           a container with inline-size containment has no width of its own
+           to offer, so in the editor's column (a flex column that aligns its
+           children to the start) a wrap that did not get that class came out
+           0 wide, and the strip and legend with it. */
+        width: 100%;
         min-width: 0;
         max-width: 100%;
         /* The legend lays itself out by how wide the strip is, not by how
            wide the window is: under the video and docked are very different
-           widths in the same window. Inline size only, so the wrap still
-           takes its width from its parent. */
+           widths in the same window. Inline size only. */
         container-type: inline-size;
     }
     .body--dark .speech-timeline {
