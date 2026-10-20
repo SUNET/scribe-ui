@@ -2059,9 +2059,10 @@ class TestTheTimelineControls:
         rule = theme_styles[theme_styles.index("    .speech-timeline-actions {"):]
         rule = rule[: rule.index("}")]
 
-        # A fixed distance from the key, not pushed to the row's far edge: the
-        # row is a different width under the video and docked, and an
-        # edge-aligned tray looked as if it jumped between the two.
+        # A fixed distance from the key where the strip is narrow, not pushed
+        # to the row's far edge: the row is a different width under the video
+        # and docked, and an edge-aligned tray looked as if it jumped between
+        # the two.
         assert "margin-left: 0.5rem;" in rule
         assert "margin-left: auto" not in rule
 
@@ -2070,6 +2071,95 @@ class TestTheTimelineControls:
 
         assert "flex-basis: 100%;" in hint
         assert "speech-timeline-range" not in theme_styles
+
+
+class TestTheTrayFollowsThePlayhead:
+    """
+    The playhead is always in the middle of the strip, so where the strip is
+    wide the tray sits under it; where it is narrow it stays after the key,
+    which stays at the left either way.
+    """
+
+    def legend_rules(self):
+        from utils.styles import theme_styles
+
+        start = theme_styles.index("    @container (min-width: 30rem) {")
+        block = theme_styles[start:]
+
+        return block[: block.index("\n    }\n") + 7]
+
+    def test_the_strip_is_a_container_so_the_legend_can_ask_how_wide_it_is(self):
+        from utils.styles import theme_styles
+
+        wrap = theme_styles[theme_styles.index("    .speech-timeline-wrap {"):]
+        wrap = wrap[: wrap.index("}")]
+
+        assert "container-type: inline-size;" in wrap
+
+    def test_the_middle_column_is_the_strips_own_centre(self):
+        rules = self.legend_rules()
+
+        # 1fr, auto, 1fr: the middle column's centre is the legend's centre,
+        # which is the strip's, which is where the playhead is.
+        assert "grid-template-columns: 1fr auto 1fr;" in rules
+
+    def test_the_first_column_is_the_key_and_it_never_wraps_there(self):
+        rules = self.legend_rules()
+        keyrow = rules[rules.index(".speech-timeline-keyrow {"):]
+        keyrow = keyrow[: keyrow.index("}")]
+
+        # Never narrower than the key, so a tray that would not fit beside it
+        # at the centre follows it instead of lying over it.
+        assert "white-space: nowrap;" in keyrow
+        assert "display: flex;" in keyrow
+
+    def test_the_tray_has_equal_margins_so_the_centre_is_its_own(self):
+        rules = self.legend_rules()
+        tray = rules[rules.index(".speech-timeline-actions {"):]
+        tray = tray[: tray.index("}")]
+
+        assert "margin: 0 0.5rem;" in tray
+
+    def test_the_hint_has_the_whole_row_to_itself(self):
+        rules = self.legend_rules()
+        hint = rules[rules.index(".speech-timeline-hint {"):]
+        hint = hint[: hint.index("}")]
+
+        assert "grid-column: 1 / -1;" in hint
+
+    def test_narrow_it_is_the_wrapping_row_it_was(self):
+        from utils.styles import theme_styles
+
+        # Outside the query the legend is the flex row, the key's own box
+        # is not one (its items wrap on their own), and the tray follows the
+        # key at a fixed distance.
+        assert "    .speech-timeline-keyrow {\n        display: contents;" in theme_styles
+
+        legend = theme_styles[theme_styles.index("    .speech-timeline-legend {"):]
+        legend = legend[: legend.index("}")]
+
+        assert "display: flex;" in legend
+        assert "flex-wrap: wrap;" in legend
+
+    def test_the_key_stays_at_the_left_in_the_template(self):
+        source = self.source()
+        legend = source[source.index('class="speech-timeline-legend"'):]
+
+        assert legend.index('class="speech-timeline-keyrow"') < legend.index(
+            'class="speech-timeline-grip"'
+        )
+        assert legend.index('class="speech-timeline-key"') < legend.index(
+            'class="speech-timeline-actions"'
+        )
+        # Grip and keys share one box, which is the grid's first column.
+        keyrow = legend[legend.index('class="speech-timeline-keyrow"'):]
+        keyrow = keyrow[: keyrow.index('class="speech-timeline-actions"')]
+
+        assert keyrow.count('class="speech-timeline-key"') == 4
+        assert 'class="speech-timeline-grip"' in keyrow
+
+    def source(self):
+        return pathlib.Path("utils/speech_timeline.js").read_text()
 
 
 class TestTheRuler:
