@@ -16,7 +16,8 @@
 # limitations under the License.
 
 """
-The player's own controls, under the picture, in place of the browser's bar.
+The player's own controls, over the foot of the picture, in place of the
+browser's bar.
 
 What is pinned down here is the contract that made them worth building: Space
 never plays or pauses the recording from the page, Ctrl+Space always does, and
@@ -70,21 +71,25 @@ class TestTheNativeBarIsGone:
         assert "controls=False" in video
         assert "controls=True" not in video
 
-    def test_the_controls_sit_under_the_picture_and_say_where_they_go(self):
+    def test_the_controls_are_in_the_frame_over_the_picture(self):
         source = page()
 
         assert "PlayerControls(filename)" in source
         assert (
-            'player_controls.on("playcontext", transcript.play_with_context_here)'
-            in source
+            '"playcontext", transcript.play_with_context_here' in source
         )
-        # After the frame that holds the picture, before the strip.
-        assert source.index("PlayerControls(filename)") > source.index(
-            'ui.element("div").classes("video-frame'
-        )
-        assert source.index("PlayerControls(filename)") < source.index(
-            "timeline = SpeechTimeline()"
-        )
+        # Inside the frame that holds the picture (one level in from it), so
+        # they share its rounded corners and sit over its foot; before the
+        # strip, which is under the frame.
+        frame = source.index('ui.element("div").classes("video-frame')
+        controls = source.index("PlayerControls(filename)")
+
+        assert controls > frame
+        assert controls < source.index("timeline = None")
+        line_start = source.rindex("\n", 0, controls) + 1
+        frame_line = source.rindex("\n", 0, frame) + 1
+        indent = lambda at, text: len(text[at:]) - len(text[at:].lstrip(" "))
+        assert indent(line_start, source) == indent(frame_line, source) + 4
 
     def test_the_script_that_lifted_the_subtitle_over_the_bar_is_gone(self):
         """
@@ -252,8 +257,29 @@ class TestRecordingsWithoutAPicture:
         assert "video.videoWidth === 0" in script
         assert "video-frame-audio" in script
 
-    def test_the_frame_gives_way(self):
-        assert "display: none;" in rule(".video-frame.video-frame-audio")
+    def test_the_frame_becomes_the_players_own_surface(self):
+        frame = rule(".video-frame.video-frame-audio")
+
+        # Dark, as tall as the controls, and not clipping (the menu opens
+        # past it).
+        assert "height: auto;" in frame
+        assert "overflow: visible;" in frame
+        assert "background-color: var(--player-surface" in frame
+        assert "display: none !important;" in rule(
+            ".video-frame-audio video,\n    .video-frame-audio .video-subtitle-overlay"
+        )
+
+    def test_the_controls_stop_being_laid_over_anything(self):
+        controls = rule(".video-frame-audio .player-controls")
+
+        assert "position: static;" in controls
+        assert "background: none;" in controls
+
+    def test_the_menu_opens_downward_there(self):
+        menu = rule(".video-frame-audio .player-menu")
+
+        assert "top: calc(100% + 8px);" in menu
+        assert "bottom: auto;" in menu
 
     def test_the_file_name_stands_in_for_the_picture(self):
         script = component()
@@ -263,49 +289,88 @@ class TestRecordingsWithoutAPicture:
 
 
 class TestTheLook:
-    def test_it_is_the_strips_tray_family(self):
-        pill = rule(".player-pill")
+    def test_it_is_laid_over_the_foot_of_the_picture_on_a_tone(self):
+        controls = rule(".video-frame .player-controls")
 
-        assert "border-radius: 999px;" in pill
-        assert "var(--color-border-subtle)" in pill
-        assert "var(--color-bg-surface)" in pill
+        assert "position: absolute;" in controls
+        assert "bottom: 0;" in controls
+        assert "linear-gradient(" in controls
+        # No pill any more: the picture is the player.
+        assert ".player-pill" not in stylesheet()
+
+    def test_it_is_white_whatever_the_theme(self):
+        """
+        What it sits on is a video (or the audio surface), not the page.
+        """
+
+        base = rule(".player-controls")
+
+        assert "--player-fg: #fff;" in base
+        assert "color: var(--player-fg);" in base
+        assert "--color-bg-page" not in base
 
     def test_it_answers_to_its_own_width(self):
         css = stylesheet()
 
         assert "container-type: inline-size;" in rule(".player-controls")
-        assert "@container (max-width: 30rem)" in css
+        assert "@container (max-width: 20rem)" in css
 
-    def test_narrow_puts_the_bar_on_its_own_row(self):
-        css = stylesheet()
-        narrow = css[css.index("@container (max-width: 30rem)"):]
-        narrow = narrow[: narrow.index("/* ── SRT editor controls")]
-
-        assert "flex-wrap: wrap;" in narrow
-        assert "order: -1;" in narrow
-        assert "flex: 1 0 100%;" in narrow
-
-    def test_the_unfilled_track_is_not_a_fainter_hairline(self):
+    def test_the_unfilled_track_holds_three_to_one_on_a_white_picture(self):
         """
-        A component's boundary has to hold 3:1 against the surface (1.4.11); a
-        track drawn at half opacity measured 2.2:1.
+        1.4.11. A half-white track on the tone measured 4.1:1 against a white
+        picture; the tone is dense under the rows to keep it there, and a
+        flatter one would not.
         """
 
         css = stylesheet()
+        controls = rule(".video-frame .player-controls")
 
-        assert "var(--color-border-subtle) var(--fill, 0%)" in css
-        assert "background: var(--color-border-subtle);" in css
+        assert "--player-track: rgba(255, 255, 255, 0.55);" in css
+        assert "rgba(0, 0, 0, 0.72) 62%" in controls
+        assert "rgba(0, 0, 0, 0.85) 0" in controls
 
-    def test_the_main_button_is_dark_on_the_dark_themes_blue(self):
+    def test_it_goes_while_the_picture_plays_and_never_from_the_keyboard(self):
+        css = stylesheet()
+        script = component()
+
+        assert (
+            ".video-frame .player-controls-asleep:not(:focus-within) {"
+            in css
+        )
+        assert "opacity: 0;" in rule(
+            ".video-frame .player-controls-asleep:not(:focus-within)"
+        )
+        # Where there is no pointer to bring them back they stay.
+        hover_none = css[css.index("@media (hover: none) {"):]
+        assert "opacity: 1;" in hover_none[: hover_none.index("}\n    }")]
+        # Only while playing, and not with the menu open or without a picture.
+        assert "this.playing && !this.awake && !this.menuOpen && !this.audioOnly" in script
+        assert 'frame.addEventListener("pointermove"' in script
+        assert 'frame.addEventListener("pointerleave"' in script
+
+    def test_the_focus_ring_is_white_and_wins_against_the_pages_own(self):
         """
-        White on #5b9bd5 is 2.96:1, under the 3:1 a control's glyph needs.
+        The page's ring is the brand colour, nearly the colour of the tone it
+        would be drawn on. Its rule is !important in `@layer theme`, so this
+        one has to be too, in the same layer.
         """
 
         css = stylesheet()
+        start = css.index(
+            ".player-controls.player-controls.player-controls .player-bar *:focus-visible"
+        )
+        layer = css[css.rindex("@layer theme {", 0, start) : start]
+        ring = css[start : css.index("}", start)]
 
-        assert ".body--dark .player-btn-main," in css
-        dark = css[css.index(".body--dark .player-btn-main,"):]
-        assert "color: var(--color-bg-page);" in dark[: dark.index("}")]
+        assert layer.count("{") == layer.count("}") + 1
+        assert "outline: 3px solid #fff !important;" in ring
+
+    def test_the_speed_menu_fits_a_short_frame(self):
+        script = component()
+
+        assert "frame.clientHeight" in script
+        assert "maxHeight" in script
+        assert "overflow-y: auto;" in rule(".player-menu")
 
 
 class TestPlayWithContextFromTheButton:

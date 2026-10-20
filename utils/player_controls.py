@@ -16,13 +16,18 @@
 # limitations under the License.
 
 """
-The player's controls, under the video.
+The player's controls, over the foot of the picture (or, for sound alone,
+on a surface of their own).
 
 The browser's own bar is gone (see player_controls.js for why): this is what
 replaces it. Everything it shows -- position, length, volume, speed -- it reads
 from the video element itself, so the server is not asked for any of it. The
 one thing it needs the server for is "play with context", which depends on
 which caption the caret was last in, and that is the one event it emits.
+
+It has to be made inside the `.video-frame` that holds the picture: it finds
+the frame with `closest()`, lays itself over its foot, and tells it (a class)
+when the recording turns out to have no picture.
 
 The same registration gotcha applies here as to speech_timeline.js: the
 component is keyed by file content at import time, so an edit to the .js

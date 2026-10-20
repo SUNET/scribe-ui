@@ -1694,9 +1694,10 @@ theme_styles = """
     .video-subtitle-overlay {
         position: absolute;
         left: 50%;
-        /* Where a viewer would see it: at the bottom of the frame, and
-           always there. The player's controls are under the picture, not
-           over it, so there is nothing for it to move out of the way of. */
+        /* Where a viewer would see it: at the bottom of the frame. The
+           player's controls are laid over that foot while they are up, and
+           the preview rises clear of them (see "The player's controls"
+           below). */
         bottom: 1rem;
         transform: translateX(-50%);
         max-width: 90%;
@@ -2888,25 +2889,93 @@ theme_styles = """
     }
 
     /* ── The player's controls (utils/player_controls.js) ── */
-    /* One pill under the picture, in the family of the strip's tray and the
-       caption actions: surface, hairline, fully rounded, round buttons. Play
-       and pause is the one solid thing in it, since it is the one thing a
-       reader reaches for without looking. The width the pill has is its own
-       container's, not the window's -- the splitter can leave the video very
-       narrow -- so below 30rem the position bar takes a row of its own above
-       the buttons, as the strip's legend does. */
+    /* Laid over the foot of the picture on a dark tone, the way the browser's
+       own bar is: nothing of their own to look at, the picture is the
+       player. They are white on that tone whatever the theme, because what
+       they sit on is a video and not the page. A recording with no picture
+       has nothing to lay them over, so the frame becomes a dark surface of
+       its own and they sit on that: the same rows, the same glyphs. The
+       width they have is their own container's, not the window's -- the
+       splitter can leave the video very narrow. */
     .player-controls {
+        --player-fg: #fff;
+        --player-track: rgba(255, 255, 255, 0.55);
+        --player-surface: #101c2e;
         container-type: inline-size;
-        margin-top: 0.5rem;
+        color: var(--player-fg);
     }
-    .player-pill {
+    .video-frame .player-controls {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 2;
+        /* The fade above the rows, so the tone has somewhere to come from.
+           Dense under the rows and fading out above them: the position bar's
+           unfilled track is half-white, and on a white picture it needs the
+           tone behind it to hold 3:1 (measured 4.1:1 there). */
+        padding-top: 2.75rem;
+        background: linear-gradient(
+            to top,
+            rgba(0, 0, 0, 0.85) 0,
+            rgba(0, 0, 0, 0.72) 62%,
+            rgba(0, 0, 0, 0.3) 82%,
+            rgba(0, 0, 0, 0) 100%
+        );
+        transition: opacity 0.2s ease-in-out;
+    }
+    /* While it plays and nothing is being done to them they go, as the
+       browser's do. Never from the keyboard: a control with focus is
+       there. Never where there is no pointer to bring them back. */
+    .video-frame .player-controls-asleep:not(:focus-within) {
+        opacity: 0;
+    }
+    @media (hover: none), (prefers-reduced-motion: reduce) {
+        .video-frame .player-controls {
+            transition: none;
+        }
+    }
+    @media (hover: none) {
+        .video-frame .player-controls-asleep {
+            opacity: 1;
+        }
+    }
+    /* The preview keeps clear of them while they are up, and goes back to the
+       foot of the picture when they are not, as it does under the browser's
+       bar. Their height is fixed: two rows, whatever the width. Only the
+       foot of the frame is theirs, so a recording with no picture (and no
+       preview) is left out. */
+    .video-frame:has(.player-controls:not(.player-controls-asleep):not(.player-controls-audio))
+        .video-subtitle-overlay,
+    .video-frame:has(.player-controls-asleep:focus-within) .video-subtitle-overlay {
+        bottom: 6.25rem;
+    }
+    .video-subtitle-overlay {
+        transition: bottom 0.2s ease-in-out;
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .video-subtitle-overlay {
+            transition: none;
+        }
+    }
+    .player-bar {
+        padding: 0 0.6rem 0.4rem;
+    }
+    .player-seekrow {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
-        padding: 4px 10px 4px 4px;
-        border: 1px solid var(--color-border-subtle);
-        border-radius: 999px;
-        background-color: var(--color-bg-surface);
+        gap: 0.6rem;
+        min-width: 0;
+        padding: 0 0.25rem;
+    }
+    .player-buttons {
+        display: flex;
+        align-items: center;
+        gap: 0.15rem;
+        min-width: 0;
+    }
+    .player-spacer {
+        flex: 1;
     }
     .player-btn {
         display: flex;
@@ -2919,55 +2988,31 @@ theme_styles = """
         border: 0;
         border-radius: 50%;
         background-color: transparent;
-        color: var(--color-text-muted);
+        color: var(--player-fg);
         cursor: pointer;
-        transition: color 0.12s ease-in-out, background-color 0.12s ease-in-out;
+        transition: background-color 0.12s ease-in-out;
     }
-    .player-btn:hover {
-        color: var(--color-brand-primary);
-        background-color: var(--color-bg-surface-alt);
+    .player-btn:hover,
+    .player-speed-btn:hover {
+        background-color: rgba(255, 255, 255, 0.2);
     }
-    .player-btn-main,
-    .player-btn-main:hover {
-        color: var(--color-text-on-brand);
-        background-color: var(--color-brand-primary);
-    }
-    .player-btn-main:hover {
-        filter: brightness(1.12);
-    }
-    /* White on the dark theme's light blue is 2.96:1, under the 3:1 a
-       control's own glyph needs (1.4.11); the page's own black is 7.1:1. */
-    .body--dark .player-btn-main,
-    .body--dark .player-btn-main:hover {
-        color: var(--color-bg-page);
-    }
-    .player-sep {
-        align-self: stretch;
-        flex: none;
-        width: 1px;
-        margin: 6px 0;
-        background-color: var(--color-border-subtle);
+    .player-btn-main {
+        width: 2.25rem;
+        height: 2.25rem;
     }
     .player-time {
         flex: none;
         font-family: var(--font-mono);
-        font-size: 0.78rem;
+        font-size: 0.75rem;
         font-variant-numeric: tabular-nums;
-        color: var(--color-text-secondary);
+        color: var(--player-fg);
         white-space: nowrap;
-    }
-    .player-seekrow {
-        display: flex;
-        align-items: center;
-        flex: 1;
-        gap: 0.5rem;
-        min-width: 0;
     }
     .player-volume {
         display: flex;
         align-items: center;
         flex: none;
-        gap: 0.15rem;
+        gap: 0.1rem;
     }
     .player-volume-range {
         flex: none;
@@ -2978,15 +3023,16 @@ theme_styles = """
        a screen reader all get what the browser already does for a slider; only
        the look is drawn here. The filled part is a gradient up to --fill,
        which the component sets, in WebKit and Blink, and the engine's own
-       progress part in Firefox. The unfilled track is the same hairline colour
-       as the pill's border, not a fainter one: it is a component's boundary
-       and has to hold 3:1 against the surface (1.4.11). */
+       progress part in Firefox. The unfilled track is a clear half-white on
+       the tone, not a fainter one: it is a component's boundary and has to
+       hold 3:1 against what is behind it (1.4.11), a white picture
+       included. */
     .player-range {
         -webkit-appearance: none;
         appearance: none;
         flex: 1;
         min-width: 3rem;
-        height: 2rem;
+        height: 1.5rem;
         margin: 0;
         padding: 0;
         background: transparent;
@@ -3001,38 +3047,38 @@ theme_styles = """
         border-radius: 2px;
         background: linear-gradient(
             to right,
-            var(--color-brand-primary) var(--fill, 0%),
-            var(--color-border-subtle) var(--fill, 0%)
+            var(--player-fg) var(--fill, 0%),
+            var(--player-track) var(--fill, 0%)
         );
     }
     .player-range::-moz-range-track {
         height: 4px;
         border-radius: 2px;
-        background: var(--color-border-subtle);
+        background: var(--player-track);
     }
     .player-range::-moz-range-progress {
         height: 4px;
         border-radius: 2px;
-        background: var(--color-brand-primary);
+        background: var(--player-fg);
     }
     .player-range::-webkit-slider-thumb {
         -webkit-appearance: none;
         appearance: none;
-        width: 14px;
-        height: 14px;
-        margin-top: -5px;
+        width: 12px;
+        height: 12px;
+        margin-top: -4px;
         border: 0;
         border-radius: 50%;
-        background: var(--color-brand-primary);
-        box-shadow: 0 0 0 2px var(--color-bg-surface);
+        background: var(--player-fg);
+        box-shadow: 0 0 3px rgba(0, 0, 0, 0.6);
     }
     .player-range::-moz-range-thumb {
-        width: 14px;
-        height: 14px;
+        width: 12px;
+        height: 12px;
         border: 0;
         border-radius: 50%;
-        background: var(--color-brand-primary);
-        box-shadow: 0 0 0 2px var(--color-bg-surface);
+        background: var(--player-fg);
+        box-shadow: 0 0 3px rgba(0, 0, 0, 0.6);
     }
 
     .player-speed {
@@ -3043,31 +3089,26 @@ theme_styles = """
         display: flex;
         align-items: center;
         justify-content: center;
-        min-width: 2.6rem;
-        height: 2rem;
-        padding: 0 0.55rem;
-        border: 0;
+        min-width: 2.4rem;
+        height: 1.65rem;
+        margin: 0 0.25rem;
+        padding: 0 0.5rem;
+        border: 1px solid rgba(255, 255, 255, 0.7);
         border-radius: 999px;
         background-color: transparent;
-        color: var(--color-text-secondary);
+        color: var(--player-fg);
         font-family: var(--font-mono);
-        font-size: 0.78rem;
+        font-size: 0.75rem;
         font-variant-numeric: tabular-nums;
         cursor: pointer;
     }
-    .player-speed-btn:hover {
-        color: var(--color-brand-primary);
-        background-color: var(--color-bg-surface-alt);
-    }
-    /* Open says so with a ring as well as a colour, as the strip's dock
-       button does while the strip is docked. */
+    /* Open says so with a fill as well as a ring. */
     .player-speed-btn-open {
-        color: var(--color-brand-primary);
-        background-color: var(--color-bg-surface-alt);
-        box-shadow: inset 0 0 0 1px var(--color-brand-primary);
+        background-color: rgba(255, 255, 255, 0.28);
+        border-color: var(--player-fg);
     }
-    /* Opens upward: the pill is at the foot of the picture, and there is
-       more room over the picture than under the page. */
+    /* Opens upward: the controls are at the foot of the picture, and there is
+       more room over it than under. */
     .player-menu {
         position: absolute;
         bottom: calc(100% + 8px);
@@ -3076,10 +3117,11 @@ theme_styles = """
         z-index: 10;
         min-width: 6.2rem;
         padding: 4px;
-        border: 1px solid var(--color-border-subtle);
+        overflow-y: auto;
+        border: 1px solid rgba(255, 255, 255, 0.28);
         border-radius: 8px;
-        background-color: var(--color-bg-surface);
-        box-shadow: 0 4px 14px var(--color-shadow-medium);
+        background-color: rgba(16, 28, 46, 0.97);
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
     }
     .player-menu-item {
         display: flex;
@@ -3091,17 +3133,17 @@ theme_styles = """
         border: 0;
         border-radius: 6px;
         background-color: transparent;
-        color: var(--color-text-primary);
+        color: var(--player-fg);
         font-size: 0.78rem;
         font-variant-numeric: tabular-nums;
         text-align: left;
         cursor: pointer;
     }
     .player-menu-item:hover {
-        background-color: var(--color-bg-surface-hover);
+        background-color: rgba(255, 255, 255, 0.16);
     }
     .player-menu-item-on {
-        background-color: var(--color-bg-surface-alt);
+        background-color: rgba(255, 255, 255, 0.22);
         font-weight: 600;
     }
     .player-menu-check {
@@ -3111,39 +3153,64 @@ theme_styles = """
         visibility: visible;
     }
 
-    /* A recording that is sound alone has no picture, so the frame that would
-       have held one -- and the subtitle preview inside it, which has nothing
-       to be a preview over -- gives way, and the controls are the player. */
+    /* The ring that says where the keyboard is. The page's own is the brand
+       colour, which is nearly the colour of the tone it would be drawn on;
+       white holds there, over a picture and on the audio surface alike. Stated
+       in the same layer, and heavily enough to win against the page's rule,
+       which is !important. */
+    @layer theme {
+        .player-controls.player-controls.player-controls .player-bar *:focus-visible {
+            outline: 3px solid #fff !important;
+            outline-offset: 1px !important;
+        }
+    }
+
+    /* A recording that is sound alone has no picture to lay the controls
+       over, so the frame that would have held one becomes the player's own
+       surface: dark, with the file name where the picture was, and the same
+       rows under it. The picture and the subtitle preview over it, which has
+       nothing to be a preview of, are gone; and the frame no longer clips,
+       so the speed menu is free to open past it. */
     .video-frame.video-frame-audio {
-        display: none;
+        flex: none;
+        height: auto;
+        overflow: visible;
+        background-color: var(--player-surface, #101c2e);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+    }
+    .video-frame-audio video,
+    .video-frame-audio .video-subtitle-overlay {
+        display: none !important;
+    }
+    /* Down rather than up: there is nothing above the surface to open over. */
+    .video-frame-audio .player-menu {
+        bottom: auto;
+        top: calc(100% + 8px);
+    }
+    .video-frame-audio .player-controls {
+        position: static;
+        padding-top: 0.75rem;
+        background: none;
     }
     .player-name {
         display: flex;
         align-items: center;
-        gap: 0.4rem;
-        margin: 0.4rem 0 0 0.6rem;
-        font-size: 0.75rem;
-        color: var(--color-text-muted);
+        gap: 0.5rem;
+        min-width: 0;
+        margin: 0 0.85rem 0.35rem;
+        font-size: 0.85rem;
+        color: var(--player-fg);
+    }
+    .player-name span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
-    /* Narrow: the position bar on a row of its own, the buttons below it. */
-    @container (max-width: 30rem) {
-        .player-pill {
-            flex-wrap: wrap;
-            border-radius: 1.4rem;
-            padding: 4px 10px 6px 4px;
-        }
-        .player-seekrow {
-            order: -1;
-            flex: 1 0 100%;
-            box-sizing: border-box;
-            padding: 0 0.35rem 0 0.6rem;
-        }
-        .player-sep {
+    /* Narrow: the slider goes and the mute button stays. */
+    @container (max-width: 20rem) {
+        .player-volume-range {
             display: none;
-        }
-        .player-volume {
-            margin-left: auto;
         }
     }
 

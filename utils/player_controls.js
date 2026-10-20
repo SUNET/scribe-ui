@@ -15,7 +15,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// The player's own controls, under the picture.
+// The player's own controls, over the foot of the picture.
 //
 // Why they exist: the browser's native bar handles keys inside itself, in
 // ways that differ from one browser to the next and that the page cannot
@@ -54,67 +54,21 @@ const STEP_PAGE = 30;
 
 export default {
   template: `
-    <div class="player-controls" :class="{ 'player-controls-audio': audioOnly }">
+    <div
+      class="player-controls"
+      :class="{ 'player-controls-audio': audioOnly, 'player-controls-asleep': asleep }"
+    >
+      <div v-if="audioOnly && label" class="player-name">
+        <q-icon name="sym_o_audio_file" size="18px" />
+        <span>{{ label }}</span>
+      </div>
       <div
-        class="player-pill"
+        class="player-bar"
         role="group"
         aria-label="Player controls"
         @keydown="keepModifiedSpace"
         @keyup="keepModifiedSpace"
       >
-        <button
-          type="button"
-          class="player-btn player-btn-main"
-          :aria-label="playing ? 'Pause' : 'Play'"
-          @mousedown.prevent
-          @click="toggle"
-        ><q-icon :name="playing ? 'pause' : 'play_arrow'" size="22px" /><q-tooltip>{{ playing ? 'Pause' : 'Play' }} (Ctrl + Space)</q-tooltip></button>
-        <button
-          type="button"
-          class="player-btn player-btn-context"
-          aria-label="Play with context"
-          aria-keyshortcuts="Control+Shift+Space"
-          @mousedown.prevent
-          @click="$emit('playcontext')"
-        ><q-icon :name="contextIcon" size="22px" /><q-tooltip>Play the caption with some of what is said around it (Ctrl + Shift + Space)</q-tooltip></button>
-        <div class="player-speed" ref="speed">
-          <button
-            type="button"
-            class="player-speed-btn"
-            :class="{ 'player-speed-btn-open': menuOpen }"
-            :aria-label="'Playback speed ' + rateLabel(rate)"
-            aria-haspopup="menu"
-            :aria-expanded="String(menuOpen)"
-            @mousedown.prevent
-            @click="toggleMenu"
-            @keydown.down.prevent="openMenu"
-            @keydown.up.prevent="openMenu"
-          >{{ rateLabel(rate) }}<q-tooltip v-if="!menuOpen">Playback speed</q-tooltip></button>
-          <div
-            v-if="menuOpen"
-            class="player-menu"
-            role="menu"
-            aria-label="Playback speed"
-            @keydown="onMenuKey"
-          >
-            <button
-              v-for="option in rates"
-              :key="option"
-              type="button"
-              class="player-menu-item"
-              :class="{ 'player-menu-item-on': option === rate }"
-              role="menuitemradio"
-              :aria-checked="String(option === rate)"
-              :data-rate="option"
-              tabindex="-1"
-              @click="setRate(option)"
-            >
-              <q-icon name="check" size="16px" class="player-menu-check" />
-              {{ rateLabel(option) }}
-            </button>
-          </div>
-        </div>
-        <span class="player-sep" aria-hidden="true"></span>
         <div class="player-seekrow">
           <span class="player-time" aria-hidden="true">{{ clock(current) }}</span>
           <input
@@ -135,32 +89,83 @@ export default {
           />
           <span class="player-time" aria-hidden="true">{{ duration ? clock(duration) : '--:--' }}</span>
         </div>
-        <span class="player-sep" aria-hidden="true"></span>
-        <div class="player-volume">
+        <div class="player-buttons">
           <button
             type="button"
-            class="player-btn"
-            :aria-label="muted || !volume ? 'Unmute' : 'Mute'"
+            class="player-btn player-btn-main"
+            :aria-label="playing ? 'Pause' : 'Play'"
             @mousedown.prevent
-            @click="toggleMute"
-          ><q-icon :name="volumeIcon" size="20px" /><q-tooltip>{{ muted || !volume ? 'Unmute' : 'Mute' }}</q-tooltip></button>
-          <input
-            type="range"
-            class="player-range player-volume-range"
-            aria-label="Volume"
-            min="0"
-            max="1"
-            step="0.05"
-            :value="muted ? 0 : volume"
-            :aria-valuetext="Math.round((muted ? 0 : volume) * 100) + ' percent'"
-            :style="{ '--fill': (muted ? 0 : volume) * 100 + '%' }"
-            @input="onVolumeInput"
-          />
+            @click="toggle"
+          ><q-icon :name="playing ? 'pause' : 'play_arrow'" size="28px" /><q-tooltip>{{ playing ? 'Pause' : 'Play' }} (Ctrl + Space)</q-tooltip></button>
+          <button
+            type="button"
+            class="player-btn player-btn-context"
+            aria-label="Play with context"
+            aria-keyshortcuts="Control+Shift+Space"
+            @mousedown.prevent
+            @click="$emit('playcontext')"
+          ><q-icon :name="contextIcon" size="22px" /><q-tooltip>Play the caption with some of what is said around it (Ctrl + Shift + Space)</q-tooltip></button>
+          <div class="player-speed" ref="speed">
+            <button
+              type="button"
+              class="player-speed-btn"
+              :class="{ 'player-speed-btn-open': menuOpen }"
+              :aria-label="'Playback speed ' + rateLabel(rate)"
+              aria-haspopup="menu"
+              :aria-expanded="String(menuOpen)"
+              @mousedown.prevent
+              @click="toggleMenu"
+              @keydown.down.prevent="openMenu"
+              @keydown.up.prevent="openMenu"
+            >{{ rateLabel(rate) }}<q-tooltip v-if="!menuOpen">Playback speed</q-tooltip></button>
+            <div
+              v-if="menuOpen"
+              class="player-menu"
+              role="menu"
+              aria-label="Playback speed"
+              :style="menuMax ? { maxHeight: menuMax + 'px' } : null"
+              @keydown="onMenuKey"
+            >
+              <button
+                v-for="option in rates"
+                :key="option"
+                type="button"
+                class="player-menu-item"
+                :class="{ 'player-menu-item-on': option === rate }"
+                role="menuitemradio"
+                :aria-checked="String(option === rate)"
+                :data-rate="option"
+                tabindex="-1"
+                @click="setRate(option)"
+              >
+                <q-icon name="check" size="16px" class="player-menu-check" />
+                {{ rateLabel(option) }}
+              </button>
+            </div>
+          </div>
+          <span class="player-spacer"></span>
+          <div class="player-volume">
+            <button
+              type="button"
+              class="player-btn"
+              :aria-label="muted || !volume ? 'Unmute' : 'Mute'"
+              @mousedown.prevent
+              @click="toggleMute"
+            ><q-icon :name="volumeIcon" size="22px" /><q-tooltip>{{ muted || !volume ? 'Unmute' : 'Mute' }}</q-tooltip></button>
+            <input
+              type="range"
+              class="player-range player-volume-range"
+              aria-label="Volume"
+              min="0"
+              max="1"
+              step="0.05"
+              :value="muted ? 0 : volume"
+              :aria-valuetext="Math.round((muted ? 0 : volume) * 100) + ' percent'"
+              :style="{ '--fill': (muted ? 0 : volume) * 100 + '%' }"
+              @input="onVolumeInput"
+            />
+          </div>
         </div>
-      </div>
-      <div v-if="audioOnly && label" class="player-name">
-        <q-icon name="sym_o_audio_file" size="16px" />
-        <span>{{ label }}</span>
       </div>
     </div>
   `,
@@ -182,6 +187,12 @@ export default {
       // read the file's header, which is when the frame gives way.
       audioOnly: false,
       menuOpen: false,
+      // How tall the speed menu may be: over a picture it has to fit in the
+      // frame, which a narrow splitter leaves short. 0 is no limit.
+      menuMax: 0,
+      // Something has just been done to the controls (the pointer moved over
+      // the picture); see `asleep`.
+      awake: true,
       // The bar is being dragged, and so is not to be moved by the recording
       // underneath it.
       scrubbing: false,
@@ -197,6 +208,13 @@ export default {
       if (this.muted || !this.volume) return "volume_off";
       return this.volume < 0.5 ? "volume_down" : "volume_up";
     },
+    // Over the picture the controls get out of the way while it plays and
+    // nothing is being done to them, as the browser's own bar does. Never
+    // while they have the keyboard (CSS keeps them up for :focus-within), and
+    // never on a recording without a picture: there is nothing to see past.
+    asleep() {
+      return this.playing && !this.awake && !this.menuOpen && !this.audioOnly;
+    },
     // What a screen reader says for the bar, which is more than a bare number
     // of seconds.
     positionText() {
@@ -207,8 +225,14 @@ export default {
   watch: {
     audioOnly(value) {
       // The frame is the page's, not this component's; it is told rather than
-      // hidden from here.
-      document.querySelector(".video-frame")?.classList.toggle("video-frame-audio", value);
+      // changed from here. Without a picture it becomes the player's own
+      // surface and the controls stop being laid over anything.
+      this.frameElement()?.classList.toggle("video-frame-audio", value);
+    },
+    playing(value) {
+      // Playback has just started: the controls stay for a moment, then go.
+      if (value) this.wake();
+      else this.awake = true;
     },
   },
   mounted() {
@@ -227,6 +251,18 @@ export default {
       if (this.menuOpen && !this.$refs.speed?.contains(event.target)) this.menuOpen = false;
     };
     document.addEventListener("pointerdown", this.onOutside, true);
+
+    // The controls are over the picture, so the pointer over the picture is
+    // what keeps them up; a moment after it stops, or leaves, they go (while
+    // playing).
+    this.onWake = () => this.wake();
+    this.onLeave = () => this.wake(1000);
+    const frame = this.frameElement();
+    if (frame) {
+      frame.addEventListener("pointermove", this.onWake);
+      frame.addEventListener("pointerdown", this.onWake);
+      frame.addEventListener("pointerleave", this.onLeave);
+    }
     this.attach();
 
     // The player is drawn by the page, a sibling and not a child of this
@@ -242,13 +278,34 @@ export default {
   beforeUnmount() {
     clearInterval(this.waiting);
     cancelAnimationFrame(this.frame);
+    clearTimeout(this.sleepTimer);
     document.removeEventListener("pointerdown", this.onOutside, true);
+    const frame = this.frameElement();
+    if (frame) {
+      frame.removeEventListener("pointermove", this.onWake);
+      frame.removeEventListener("pointerdown", this.onWake);
+      frame.removeEventListener("pointerleave", this.onLeave);
+    }
     if (this.video) {
       for (const name of this.events) this.video.removeEventListener(name, this.sync);
     }
-    document.querySelector(".video-frame")?.classList.remove("video-frame-audio");
+    frame?.classList.remove("video-frame-audio");
   },
   methods: {
+    // The page's frame around the picture, which this component sits in.
+    frameElement() {
+      return this.$el?.closest?.(".video-frame") || null;
+    },
+
+    // Awake now, and asleep again after `delay` ms if nothing else is done.
+    wake(delay = 3000) {
+      this.awake = true;
+      clearTimeout(this.sleepTimer);
+      this.sleepTimer = setTimeout(() => {
+        this.awake = false;
+      }, delay);
+    },
+
     attach() {
       if (this.video) return;
       this.video = document.querySelector("video");
@@ -351,6 +408,13 @@ export default {
       else this.openMenu();
     },
     openMenu() {
+      // Over a picture the menu has to fit in the frame, which a narrow
+      // splitter leaves short; it scrolls rather than being cut off. A frame
+      // that has become the player's own surface (no picture) does not clip.
+      const frame = this.frameElement();
+      this.menuMax = frame && !this.audioOnly
+        ? Math.max(96, frame.clientHeight - this.$el.offsetHeight - 16)
+        : 0;
       this.menuOpen = true;
       // On the one in force, so Enter alone changes nothing and an arrow key
       // moves from where the reader is.

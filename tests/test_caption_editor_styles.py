@@ -470,25 +470,46 @@ class TestSubtitleTextOffset:
 class TestVideoSubtitleOverlay:
     """
     The overlay is a preview of what a viewer sees, at the foot of the frame.
-    The player's controls are under the picture (see PlayerControls), so there
-    is no bar of the player's own for it to clear or to move for.
+    The player's controls (see PlayerControls) are laid over that foot while
+    they are up, and it rises clear of them for as long as they are.
     """
 
     def test_it_sits_at_the_foot_of_the_frame(self):
         """
-        Where a viewer would see it, and always there: nothing over the
-        picture asks it to move.
+        Where a viewer would see it, and where it is whenever the controls
+        are not over it.
         """
 
         assert rem(effective(".video-subtitle-overlay")["bottom"]) == 1
 
-    def test_it_does_not_move_for_anything(self):
+    def test_it_rises_clear_of_the_controls_while_they_are_up(self):
         """
-        It used to rise above the browser's bar while that was up. A transition
-        on `bottom` would be the trace of that.
+        The controls are over the foot of the picture, where it would have
+        sat; it rises above them while they are up and comes back down when
+        they go, which they do while the recording plays and nothing is being
+        done to them. Not for a recording with no picture (no preview there).
         """
 
-        assert "transition" not in effective(".video-subtitle-overlay")
+        from utils.styles import default_styles
+
+        start = default_styles.index(".video-frame:has(.player-controls:not(")
+        rule = default_styles[start : default_styles.index("}", start)]
+
+        assert "not(.player-controls-asleep)" in rule
+        assert "not(.player-controls-audio)" in rule
+        assert "bottom: 6.25rem;" in rule
+        # Kept up by the keyboard as well, whatever the timer says.
+        assert ".player-controls-asleep:focus-within" in rule
+
+    def test_it_moves_gently_and_not_at_all_for_those_who_ask(self):
+        from utils.styles import default_styles
+
+        assert "transition: bottom 0.2s ease-in-out;" in default_styles
+        reduced = default_styles[
+            default_styles.index("@media (prefers-reduced-motion: reduce) {\n        .video-subtitle-overlay")
+        :]
+
+        assert "transition: none;" in reduced[: reduced.index("}\n    }") + 1]
 
     def test_the_offset_is_fixed_not_a_percentage(self):
         bottom = effective(".video-subtitle-overlay")["bottom"]

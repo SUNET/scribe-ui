@@ -556,17 +556,21 @@ def create() -> None:
                                     editor.show_subtitle_overlay
                                 )
 
-                        # The player's own controls, in place of the browser's
-                        # bar: play and pause, "play with context", speed, a
-                        # position bar and the volume. Under the picture
-                        # rather than over it, so the subtitle preview keeps
-                        # one place instead of moving out of their way, and
-                        # they are always there for the keyboard to find.
-                        # Everything they show they read from the video; the
-                        # one thing that needs the editor is the stretch
-                        # around the caption the caret was last in.
-                        player_controls = PlayerControls(filename).classes("w-full")
-                        player_controls.on("playcontext", transcript.play_with_context_here)
+                            # The player's own controls, in place of the
+                            # browser's bar: play and pause, "play with
+                            # context", speed, a position bar and the volume.
+                            # Over the foot of the picture, as the browser's
+                            # were, and in the frame so they share its
+                            # rounded corners; a recording with no picture
+                            # turns the frame into the player's own surface
+                            # instead (see PlayerControls). Everything they
+                            # show they read from the video; the one thing
+                            # that needs the editor is the stretch around the
+                            # caption the caret was last in.
+                            player_controls = PlayerControls(filename)
+                            player_controls.on(
+                                "playcontext", transcript.play_with_context_here
+                            )
 
                         # Where speech is, under the video: drawn from the
                         # word timings rather than from the audio, so it
