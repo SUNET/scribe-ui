@@ -187,6 +187,19 @@ class TestWhatIsOnOffer:
         assert "@click=\"$emit('playcontext')\"" in script
         assert 'emits: ["playcontext"]' in script
 
+    def test_its_tooltip_is_its_name_and_no_more(self):
+        """
+        It was a sentence about what it does and the shortcut; the name says
+        enough, and the shortcut is on the button for those who use one
+        (aria-keyshortcuts) and in the keyboard help.
+        """
+
+        script = component()
+        button = script[script.index('class="player-btn player-btn-context"'):]
+        button = button[: button.index("</button>")]
+
+        assert "<q-tooltip>Play with context</q-tooltip>" in button
+
     def test_a_mouse_press_does_not_take_focus_from_the_text(self):
         """
         So the reader can click Play and carry on typing, and a Space after the
