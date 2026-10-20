@@ -39,8 +39,10 @@ from utils.recording_api import ORIGINAL_PREFIX
 from utils.settings import get_settings
 from utils.styles import default_styles
 
-# Who a comment in an exported document is from. The editor does not know the
-# reader's name, and the document is only ever the reader's own.
+# Who a comment in an exported document is from. It is "Scribe" on purpose, not
+# the reader's username: the editor could get that (utils/token.get_user_info),
+# but it would put a personal identifier into every exported file, and the
+# document is only ever the reader's own, so there is no one to tell apart.
 RTF_COMMENT_AUTHOR = "Scribe"
 RTF_COMMENT_INITIALS = "SC"
 
