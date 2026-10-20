@@ -254,6 +254,19 @@ class TestWhatIsOnOffer:
             assert f'"{event}"' in script
         assert "this.playing = !video.paused && !video.ended;" in script
 
+    def test_the_position_does_not_cost_a_redraw_every_frame(self):
+        """
+        An animation-frame loop for the thumb was measured at about a tenth of a
+        core while playing, against nothing without it; the position moves on
+        timeupdate instead.
+        """
+
+        script = component()
+
+        assert "requestAnimationFrame" not in script
+        assert "cancelAnimationFrame" not in script
+        assert '"timeupdate"' in script
+
     def test_unmuting_at_zero_brings_the_sound_up(self):
         script = component()
 

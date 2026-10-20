@@ -279,7 +279,6 @@ export default {
   },
   beforeUnmount() {
     clearInterval(this.waiting);
-    cancelAnimationFrame(this.frame);
     clearTimeout(this.sleepTimer);
     document.removeEventListener("pointerdown", this.onOutside, true);
     const frame = this.frameElement();
@@ -319,7 +318,12 @@ export default {
     // Everything the bar shows is read back off the element, whichever of the
     // events fired: it is cheap, and it means nothing here can drift from what
     // the player is doing, whoever started it -- this bar, Ctrl+Space, the
-    // strip, or a caption played with its context.
+    // strip, or a caption played with its context. The position moves on
+    // timeupdate (about four times a second) and not on every animation frame:
+    // the time only changes once a second and the thumb, on a recording of any
+    // length, a fraction of a pixel, so a per-frame redraw of the bar (60 a
+    // second, restyle and repaint each) measured at about a tenth of a core
+    // for nothing anyone could see.
     sync() {
       const video = this.video;
       if (!video) return;
@@ -330,22 +334,6 @@ export default {
       this.muted = video.muted;
       this.rate = video.playbackRate;
       this.audioOnly = video.readyState >= 1 && video.videoWidth === 0;
-      if (this.playing && !this.frame) this.follow();
-    },
-
-    // While playing, the position is read every frame rather than at the
-    // few times a second timeupdate comes, so the thumb glides.
-    follow() {
-      const step = () => {
-        const video = this.video;
-        if (!video || video.paused || video.ended) {
-          this.frame = null;
-          return;
-        }
-        if (!this.scrubbing) this.current = video.currentTime;
-        this.frame = requestAnimationFrame(step);
-      };
-      this.frame = requestAnimationFrame(step);
     },
 
     toggle() {
