@@ -2899,6 +2899,17 @@ class TestSpeakerMenuIcons:
         assert "renamespeaker" in icon
 
 
+# Quick jump works from anywhere; the Timeline's keys while the strip has focus.
+NAVIGATION = [
+    ("Quick jump to a time or block", "Ctrl/⌘ + G"),
+    ("Timeline, when focused: move playhead a little", "← / →"),
+    ("Timeline: move playhead a whole strip", "Page Up / Page Down"),
+    ("Timeline: playhead to start / end", "Home / End"),
+    ("Timeline: zoom in / out", "Shift + ↑ / ↓, + / −"),
+    ("Timeline: reset zoom", "0"),
+]
+
+
 class TestTheShortcutsDialog:
     """
     The dialog is worded for whichever format is open. A reader editing
@@ -2979,33 +2990,13 @@ class TestTheShortcutsDialog:
                 ],
             ),
             (
-                "Highlighting",
+                "Playback",
                 [
-                    (
-                        "Highlight selection, or remove the highlight",
-                        "Ctrl + Shift + H",
-                    ),
+                    ("Play/Pause", "Ctrl + Space"),
+                    ("Play paragraph with context", "Ctrl + Shift + Space"),
                 ],
             ),
-            (
-                "Comments",
-                [
-                    (
-                        "Comment on the selection, or open its comment",
-                        "Ctrl + Shift + K",
-                    ),
-                    ("Save the comment you are writing", "Ctrl/⌘ + Enter"),
-                    ("Close the comment without saving", "Esc"),
-                ],
-            ),
-            (
-                "File operations",
-                [
-                    ("Save file", "Ctrl/⌘ + S"),
-                    ("Export file", "Ctrl/⌘ + E"),
-                    ("Find", "Ctrl/⌘ + F"),
-                ],
-            ),
+            ("Navigation", NAVIGATION),
             (
                 "History",
                 [
@@ -3014,16 +3005,19 @@ class TestTheShortcutsDialog:
                 ],
             ),
             (
-                "Navigation",
+                "Tools",
                 [
-                    ("Quick jump to a time or block", "Ctrl/⌘ + G"),
+                    ("Find", "Ctrl/⌘ + F"),
+                    ("Toggle highlight on selected text", "Ctrl + Shift + H"),
+                    ("Add or open comment", "Ctrl + Shift + K"),
+                    ("Save the comment you are writing", "Ctrl/⌘ + Enter"),
                 ],
             ),
             (
-                "Transport",
+                "File operations",
                 [
-                    ("Play/Pause", "Ctrl + Space"),
-                    ("Play paragraph with context", "Ctrl + Shift + Space"),
+                    ("Save file", "Ctrl/⌘ + S"),
+                    ("Export file", "Ctrl/⌘ + E"),
                 ],
             ),
         ]
@@ -3050,22 +3044,21 @@ class TestTheShortcutsDialog:
                     ("Move last word to next caption", "Ctrl/⌘ + ↓"),
                     ("Move text before cursor to previous caption", "Ctrl/⌘ + Shift + ↑"),
                     ("Move text after cursor to next caption", "Ctrl/⌘ + Shift + ↓"),
-                    ("Nudge start earlier / later", "Ctrl + , / Ctrl + ."),
-                    ("Nudge end earlier / later", "Ctrl + Shift + , / Ctrl + Shift + ."),
+                    ("Nudge start earlier / later (0.1 s)", "Ctrl + , / Ctrl + ."),
+                    ("Nudge end earlier / later (0.1 s)", "Ctrl + Shift + , / Ctrl + Shift + ."),
                     ("Merge with next", "Ctrl + M"),
                     ("Add caption after", "Ctrl/⌘ + Shift + Enter"),
                     ("Delete caption", "Ctrl + D"),
                 ],
             ),
             (
-                "File operations",
+                "Playback",
                 [
-                    ("Save file", "Ctrl/⌘ + S"),
-                    ("Export file", "Ctrl/⌘ + E"),
-                    ("Find", "Ctrl/⌘ + F"),
-                    ("Validate captions", "Ctrl + Shift + V"),
+                    ("Play/Pause", "Ctrl + Space"),
+                    ("Play caption with context", "Ctrl + Shift + Space"),
                 ],
             ),
+            ("Navigation", NAVIGATION),
             (
                 "History",
                 [
@@ -3074,16 +3067,17 @@ class TestTheShortcutsDialog:
                 ],
             ),
             (
-                "Navigation",
+                "Tools",
                 [
-                    ("Quick jump to a time or block", "Ctrl/⌘ + G"),
+                    ("Find", "Ctrl/⌘ + F"),
+                    ("Validate captions", "Ctrl + Shift + V"),
                 ],
             ),
             (
-                "Transport",
+                "File operations",
                 [
-                    ("Play/Pause", "Ctrl + Space"),
-                    ("Play caption with context", "Ctrl + Shift + Space"),
+                    ("Save file", "Ctrl/⌘ + S"),
+                    ("Export file", "Ctrl/⌘ + E"),
                 ],
             ),
         ]
@@ -3101,8 +3095,52 @@ class TestTheShortcutsDialog:
         assert captions["Add caption after"] == "Ctrl/⌘ + Shift + Enter"
         assert captions["Validate captions"] == "Ctrl + Shift + V"
 
-        assert not any("Add " in action for action in paragraphs)
+        assert not any(action.startswith("Add caption") for action in paragraphs)
         assert not any("Validate" in action for action in paragraphs)
+
+    def test_the_groups_follow_the_work_and_the_toolbar(self):
+        for data_format in ("srt", "txt"):
+            names = [name for name, _ in self.editor(data_format).keyboard_shortcut_groups()]
+
+            assert names == [
+                "Editing", "Playback", "Navigation", "History", "Tools", "File operations"
+            ]
+
+    def test_it_is_playback_not_transport(self):
+        for data_format in ("srt", "txt"):
+            names = [name for name, _ in self.editor(data_format).keyboard_shortcut_groups()]
+
+            assert "Transport" not in names
+
+    def test_find_is_in_tools_for_both_and_validate_is_not_a_file_operation(self):
+        for data_format in ("srt", "txt"):
+            groups = dict(self.editor(data_format).keyboard_shortcut_groups())
+
+            assert ("Find", "Ctrl/⌘ + F") in groups["Tools"]
+            assert "Find" not in [a for a, _ in groups["File operations"]]
+
+        assert ("Validate captions", "Ctrl + Shift + V") in dict(
+            self.editor("srt").keyboard_shortcut_groups()
+        )["Tools"]
+
+    def test_the_nudge_rows_say_how_far(self):
+        captions = self.actions("srt")
+
+        assert "Nudge start earlier / later (0.1 s)" in captions
+        assert "Nudge end earlier / later (0.1 s)" in captions
+        assert SRTEditor.NUDGE_MILLISECONDS == 100
+
+    def test_the_comment_that_is_saved_is_listed_but_not_esc(self):
+        paragraphs = self.actions("txt")
+
+        assert paragraphs["Save the comment you are writing"] == "Ctrl/⌘ + Enter"
+        assert "Esc" not in paragraphs.values()
+
+    def test_the_timeline_keys_are_listed_for_both(self):
+        for data_format in ("srt", "txt"):
+            groups = dict(self.editor(data_format).keyboard_shortcut_groups())
+
+            assert groups["Navigation"] == NAVIGATION
 
     def test_the_keys_that_both_formats_share_agree(self):
         captions = self.actions("srt")

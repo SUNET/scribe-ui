@@ -785,13 +785,21 @@ class TestTheShortcutsDialog:
     def groups(self, data_format):
         return dict(make_editor(data_format).keyboard_shortcut_groups())
 
-    def test_a_transcription_lists_it(self):
-        assert self.groups("txt")["Highlighting"] == [
-            ("Highlight selection, or remove the highlight", "Ctrl + Shift + H")
-        ]
+    def test_a_transcription_lists_it_in_tools(self):
+        assert (
+            "Toggle highlight on selected text",
+            "Ctrl + Shift + H",
+        ) in self.groups("txt")["Tools"]
+
+    def test_there_is_no_group_of_its_own_for_it(self):
+        assert "Highlighting" not in self.groups("txt")
 
     def test_subtitles_do_not_for_now(self):
-        assert "Highlighting" not in self.groups("srt")
+        assert not any(
+            "highlight" in action.lower()
+            for _, rows in make_editor("srt").keyboard_shortcut_groups()
+            for action, _ in rows
+        )
 
 
 class TestTheHandler:

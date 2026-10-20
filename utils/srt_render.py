@@ -699,8 +699,8 @@ class RenderMixin:
                 ("Move last word to next caption", "Ctrl/⌘ + ↓"),
                 ("Move text before cursor to previous caption", "Ctrl/⌘ + Shift + ↑"),
                 ("Move text after cursor to next caption", "Ctrl/⌘ + Shift + ↓"),
-                ("Nudge start earlier / later", "Ctrl + , / Ctrl + ."),
-                ("Nudge end earlier / later", "Ctrl + Shift + , / Ctrl + Shift + ."),
+                ("Nudge start earlier / later (0.1 s)", "Ctrl + , / Ctrl + ."),
+                ("Nudge end earlier / later (0.1 s)", "Ctrl + Shift + , / Ctrl + Shift + ."),
                 ("Merge with next", "Ctrl + M"),
                 ("Add caption after", "Ctrl/⌘ + Shift + Enter"),
                 ("Delete caption", "Ctrl + D"),
@@ -718,57 +718,45 @@ class RenderMixin:
             ]
         )
 
-        # The selection's own highlight. A transcription's alone, for now: a
-        # set of subtitles is plain SRT, which has nowhere to keep it.
-        highlighting = (
-            []
+        # What is specific to the format, in Tools beside Find. A set of
+        # subtitles is checked against guidelines only subtitles are held to
+        # (the toolbar's Validate sits in this group too). A transcription
+        # has the selection's own highlight and its comments, which a set of
+        # subtitles cannot keep: plain SRT has nowhere to put them. Saving a
+        # comment is listed because Ctrl/⌘ + Enter is not what a reader would
+        # try; Esc, which closes it, is what Esc does everywhere, and is not.
+        tools = [("Find", "Ctrl/⌘ + F")] + (
+            [("Validate captions", "Ctrl + Shift + V")]
             if subtitles
             else [
-                ("Highlight selection, or remove the highlight", "Ctrl + Shift + H"),
-            ]
-        )
-
-        # And its comments, also a transcription's alone.
-        commenting = (
-            []
-            if subtitles
-            else [
-                ("Comment on the selection, or open its comment", "Ctrl + Shift + K"),
+                ("Toggle highlight on selected text", "Ctrl + Shift + H"),
+                ("Add or open comment", "Ctrl + Shift + K"),
                 ("Save the comment you are writing", "Ctrl/⌘ + Enter"),
-                ("Close the comment without saving", "Esc"),
             ]
         )
 
+        # The Timeline's keys work while the strip itself has focus, unlike
+        # Quick jump, which works from anywhere; the first row says so and
+        # the rest follow it. They are navigation in time, apart from the
+        # zoom, which belongs with them rather than on a row of its own.
+        navigation = [
+            ("Quick jump to a time or block", "Ctrl/⌘ + G"),
+            ("Timeline, when focused: move playhead a little", "← / →"),
+            ("Timeline: move playhead a whole strip", "Page Up / Page Down"),
+            ("Timeline: playhead to start / end", "Home / End"),
+            ("Timeline: zoom in / out", "Shift + ↑ / ↓, + / −"),
+            ("Timeline: reset zoom", "0"),
+        ]
+
+        # In the order of the work, which is also the toolbar's from left to
+        # right: what is done to the text; playing it and getting around in
+        # it; then undo, the tools and, last, the file. Playback, not
+        # "transport": the term is a sound engineer's, and the reader looks
+        # for what plays the recording.
         shortcut_groups = [
             ("Editing", editing),
-            *([("Highlighting", highlighting)] if highlighting else []),
-            *([("Comments", commenting)] if commenting else []),
             (
-                "File operations",
-                [
-                    ("Save file", "Ctrl/⌘ + S"),
-                    ("Export file", "Ctrl/⌘ + E"),
-                    ("Find", "Ctrl/⌘ + F"),
-                ]
-                # Validate is a subtitle's alone: it checks the line-length
-                # and line-count guidelines only subtitles are held to.
-                + ([("Validate captions", "Ctrl + Shift + V")] if subtitles else []),
-            ),
-            (
-                "History",
-                [
-                    ("Undo", "Ctrl/⌘ + Z"),
-                    ("Redo", "Ctrl + Y / ⌘ + Shift + Z"),
-                ],
-            ),
-            (
-                "Navigation",
-                [
-                    ("Quick jump to a time or block", "Ctrl/⌘ + G"),
-                ],
-            ),
-            (
-                "Transport",
+                "Playback",
                 [
                     ("Play/Pause", "Ctrl + Space"),
                     (
@@ -777,6 +765,22 @@ class RenderMixin:
                         else "Play paragraph with context",
                         "Ctrl + Shift + Space",
                     ),
+                ],
+            ),
+            ("Navigation", navigation),
+            (
+                "History",
+                [
+                    ("Undo", "Ctrl/⌘ + Z"),
+                    ("Redo", "Ctrl + Y / ⌘ + Shift + Z"),
+                ],
+            ),
+            ("Tools", tools),
+            (
+                "File operations",
+                [
+                    ("Save file", "Ctrl/⌘ + S"),
+                    ("Export file", "Ctrl/⌘ + E"),
                 ],
             ),
         ]

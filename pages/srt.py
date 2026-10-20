@@ -280,8 +280,7 @@ def create() -> None:
                         "editor-btn editor-toolbar-btn editor-quiet"
                     ) as highlight_button:
                         highlight_button.tooltip(
-                            "Highlight the selection, or remove the highlight "
-                            "(Ctrl + Shift + H)"
+                            "Toggle highlight on selected text (Ctrl + Shift + H)"
                         )
                         highlight_button.on(
                             "mousedown", js_handler="(event) => event.preventDefault()"
@@ -299,8 +298,7 @@ def create() -> None:
                         "editor-btn editor-toolbar-btn editor-quiet"
                     ) as comment_button:
                         comment_button.tooltip(
-                            "Comment on the selection, or open its comment "
-                            "(Ctrl + Shift + K)"
+                            "Add or open comment (Ctrl + Shift + K)"
                         )
                         comment_button.on(
                             "mousedown", js_handler="(event) => event.preventDefault()"
