@@ -59,6 +59,7 @@ export default {
     <div
       class="player-controls"
       :class="{ 'player-controls-audio': audioOnly, 'player-controls-asleep': asleep }"
+      @click.capture="swallowWakingTap"
     >
       <div v-if="audioOnly && label" class="player-name">
         <q-icon name="sym_o_audio_file" size="18px" />
@@ -85,8 +86,11 @@ export default {
             :aria-valuetext="positionText"
             :style="{ '--fill': fill + '%' }"
             @input="onSeekInput"
-            @change="scrubbing = false"
-            @pointerdown="scrubbing = true"
+            @change="endScrub"
+            @pointerdown="startScrub"
+            @pointerup="endScrub"
+            @pointercancel="endScrub"
+            @blur="endScrub"
             @keydown="onSeekKey"
           />
           <span class="player-time" aria-hidden="true">{{ duration ? clock(duration) : '--:--' }}</span>
@@ -155,6 +159,7 @@ export default {
               @click="toggleMute"
             ><q-icon :name="volumeIcon" size="22px" /><q-tooltip>{{ muted || !volume ? 'Unmute' : 'Mute' }}</q-tooltip></button>
             <input
+              v-if="volumeSettable"
               type="range"
               class="player-range player-volume-range"
               aria-label="Volume"
@@ -198,6 +203,11 @@ export default {
       // The bar is being dragged, and so is not to be moved by the recording
       // underneath it.
       scrubbing: false,
+      // Whether the browser lets a page set the volume at all. iOS does not
+      // (it is always 1 there, and only the device's own buttons change it),
+      // so a slider would be a control that does nothing; the mute button
+      // still works there and is all that is shown.
+      volumeSettable: true,
       rates: RATES,
       contextIcon: CONTEXT_ICON,
     };
@@ -212,10 +222,11 @@ export default {
     },
     // Over the picture the controls get out of the way while it plays and
     // nothing is being done to them, as the browser's own bar does. Never
-    // while they have the keyboard (CSS keeps them up for :focus-within), and
-    // never on a recording without a picture: there is nothing to see past.
+    // while they have the keyboard (CSS keeps them up for :focus-within), not
+    // mid-drag, and never on a recording without a picture: there is nothing
+    // to see past. On a touch screen a tap on the picture brings them back.
     asleep() {
-      return this.playing && !this.awake && !this.menuOpen && !this.audioOnly;
+      return this.playing && !this.awake && !this.menuOpen && !this.scrubbing && !this.audioOnly;
     },
     // What a screen reader says for the bar, which is more than a bare number
     // of seconds.
@@ -254,15 +265,28 @@ export default {
     };
     document.addEventListener("pointerdown", this.onOutside, true);
 
+    // On a throwaway element, so the real one is not touched.
+    const probe = new Audio();
+    probe.volume = 0.5;
+    this.volumeSettable = probe.volume === 0.5;
+
     // The controls are over the picture, so the pointer over the picture is
     // what keeps them up; a moment after it stops, or leaves, they go (while
     // playing).
     this.onWake = () => this.wake();
+    this.onFrameDown = (event) => {
+      // A tap that brings the controls back is not a tap on them. Asleep they
+      // let it through to the picture, but the click that follows the tap is
+      // aimed after they have woken, and would land on whatever button lay
+      // there. (A mouse wakes them by moving, before it clicks.)
+      if (this.asleep && event.pointerType !== "mouse") this.swallowUntil = performance.now() + 700;
+      this.wake();
+    };
     this.onLeave = () => this.wake(1000);
     const frame = this.frameElement();
     if (frame) {
       frame.addEventListener("pointermove", this.onWake);
-      frame.addEventListener("pointerdown", this.onWake);
+      frame.addEventListener("pointerdown", this.onFrameDown);
       frame.addEventListener("pointerleave", this.onLeave);
     }
     this.attach();
@@ -284,7 +308,7 @@ export default {
     const frame = this.frameElement();
     if (frame) {
       frame.removeEventListener("pointermove", this.onWake);
-      frame.removeEventListener("pointerdown", this.onWake);
+      frame.removeEventListener("pointerdown", this.onFrameDown);
       frame.removeEventListener("pointerleave", this.onLeave);
     }
     if (this.video) {
@@ -296,6 +320,16 @@ export default {
     // The page's frame around the picture, which this component sits in.
     frameElement() {
       return this.$el?.closest?.(".video-frame") || null;
+    },
+
+    // The click that follows a tap which woke the controls: stopped before it
+    // reaches a button (see onFrameDown).
+    swallowWakingTap(event) {
+      if (performance.now() < (this.swallowUntil || 0)) {
+        event.preventDefault();
+        event.stopPropagation();
+        this.swallowUntil = 0;
+      }
     },
 
     // Awake now, and asleep again after `delay` ms if nothing else is done.
@@ -353,7 +387,18 @@ export default {
       }
     },
 
-    // The bar.
+    // The bar. Dragging it holds the thumb where the reader puts it instead of
+    // where the recording is. It has to be let go of however the press ends:
+    // a click on the thumb that does not move it fires no `change`, and a
+    // gesture the browser takes over (a scroll on a touch screen) ends in
+    // `pointercancel`; either left the bar frozen while the recording played.
+    startScrub() {
+      this.scrubbing = true;
+    },
+    endScrub() {
+      this.scrubbing = false;
+      if (this.video) this.current = this.video.currentTime || 0;
+    },
     onSeekInput(event) {
       this.scrubbing = true;
       this.moveTo(Number(event.target.value));

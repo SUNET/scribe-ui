@@ -2925,19 +2925,19 @@ theme_styles = """
         transition: opacity 0.2s ease-in-out;
     }
     /* While it plays and nothing is being done to them they go, as the
-       browser's do. Never from the keyboard: a control with focus is
-       there. Never where there is no pointer to bring them back. */
+       browser's do. Never from the keyboard: a control with focus is there.
+       Out of reach as well as out of sight: a tap on a touch screen that
+       brought them back must not also land on the Play button it brought
+       back (the tap that wakes them goes to the picture, the next one to
+       the control), and a pointer that moves over the frame wakes them
+       before any click. */
     .video-frame .player-controls-asleep:not(:focus-within) {
         opacity: 0;
+        pointer-events: none;
     }
-    @media (hover: none), (prefers-reduced-motion: reduce) {
+    @media (prefers-reduced-motion: reduce) {
         .video-frame .player-controls {
             transition: none;
-        }
-    }
-    @media (hover: none) {
-        .video-frame .player-controls-asleep {
-            opacity: 1;
         }
     }
     /* The preview keeps clear of them while they are up, and goes back to the

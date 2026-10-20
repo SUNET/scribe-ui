@@ -267,6 +267,37 @@ class TestWhatIsOnOffer:
         assert "cancelAnimationFrame" not in script
         assert '"timeupdate"' in script
 
+    def test_the_bar_is_let_go_of_however_a_press_ends(self):
+        """
+        A click on the thumb that does not move it fires no `change`, and a
+        touch gesture the browser takes over ends in `pointercancel`; with only
+        `change` letting go the bar stayed frozen while the recording played
+        (reproduced: it did not follow after a plain click on the thumb).
+        """
+
+        script = component()
+        seek = script[script.index('class="player-range player-seek"'):]
+        seek = seek[: seek.index("/>")]
+
+        for event in ("change", "pointerdown", "pointerup", "pointercancel", "blur"):
+            assert f'@{event}="' in seek, event
+        assert "endScrub() {" in script
+
+    def test_no_volume_slider_where_the_page_cannot_set_the_volume(self):
+        """
+        iOS never lets a page set it (it reads 1 and stays), so a slider there
+        would be a control that does nothing; mute still works and stays.
+        """
+
+        script = component()
+
+        assert 'v-if="volumeSettable"' in script
+        # Asked of a throwaway element, so the real player is not touched.
+        assert "new Audio()" in script
+        assert "this.volumeSettable = probe.volume === 0.5;" in script
+        mute = script[script.index("Unmute"):]
+        assert "toggleMute" in script[: script.index("player-volume-range")]
+
     def test_unmuting_at_zero_brings_the_sound_up(self):
         script = component()
 
@@ -363,21 +394,53 @@ class TestTheLook:
     def test_it_goes_while_the_picture_plays_and_never_from_the_keyboard(self):
         css = stylesheet()
         script = component()
+        asleep = rule(".video-frame .player-controls-asleep:not(:focus-within)")
 
+        assert "opacity: 0;" in asleep
+        # Out of reach as well as out of sight: the tap that wakes them on a
+        # touch screen must not also press the button it brought back.
+        assert "pointer-events: none;" in asleep
+        # Only while playing, and not with the menu open, mid-drag, or without
+        # a picture.
         assert (
-            ".video-frame .player-controls-asleep:not(:focus-within) {"
-            in css
+            "this.playing && !this.awake && !this.menuOpen && !this.scrubbing"
+            " && !this.audioOnly" in script
         )
-        assert "opacity: 0;" in rule(
-            ".video-frame .player-controls-asleep:not(:focus-within)"
-        )
-        # Where there is no pointer to bring them back they stay.
-        hover_none = css[css.index("@media (hover: none) {"):]
-        assert "opacity: 1;" in hover_none[: hover_none.index("}\n    }")]
-        # Only while playing, and not with the menu open or without a picture.
-        assert "this.playing && !this.awake && !this.menuOpen && !this.audioOnly" in script
         assert 'frame.addEventListener("pointermove"' in script
+        assert 'frame.addEventListener("pointerdown"' in script
         assert 'frame.addEventListener("pointerleave"' in script
+
+    def test_the_tap_that_wakes_them_is_not_a_tap_on_them(self):
+        """
+        Asleep they let the tap through to the picture, but the click that
+        follows is aimed after they have woken and landed on the button that
+        lay under the finger (touch emulation: a tap on the hidden Play paused
+        the recording). The click is swallowed, for touch and pen only.
+        """
+
+        script = component()
+
+        assert '@click.capture="swallowWakingTap"' in script
+        assert 'event.pointerType !== "mouse"' in script
+        assert "event.stopPropagation();" in script[script.index("swallowWakingTap(event)"):]
+        assert 'frame.addEventListener("pointerdown", this.onFrameDown);' in script
+
+    def test_a_touch_screen_is_not_given_a_rule_that_loses_to_the_fade(self):
+        """
+        An `(hover: none)` rule that put the opacity back was here once and
+        never applied: `:not(:focus-within)` makes the fade's selector more
+        specific, so on a phone the controls faded after all (seen with touch
+        emulation; the test then only looked for the text of the rule). Touch
+        is handled by the tap that wakes them instead.
+        """
+
+        css = stylesheet()
+        block = css[
+            css.index("The player's controls (utils/player_controls.js)") :
+            css.index("SRT editor controls under the video")
+        ]
+
+        assert "hover: none" not in block
 
     def test_the_figures_and_the_speed_are_set_in_the_pages_own_type(self):
         """
