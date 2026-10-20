@@ -1366,6 +1366,37 @@ class TranscriptEditor:
 
         self.editor.play_range(*stretch)
 
+    async def play_with_context_here(self) -> None:
+        """
+        Play with context from the player's own button, which -- unlike
+        Ctrl+Shift+Space -- is pressed from outside the text and so has no
+        caret to read the block from.
+
+        The block is the one the caret was last in (the client reports it once
+        the caret has settled, and it is kept when the caret leaves, so
+        reaching for a button does not lose it). Before the caret has been in
+        any, or if that block has gone, it is the one under the playhead: the
+        reader has pointed at a moment with the strip or by playing, and that
+        is a fair thing to mean.
+        """
+
+        caption = self.caption(self.caret_block)
+
+        if caption is None:
+            caption = self.caption_at(await self.playhead())
+
+        if caption is None:
+            ui.notify(
+                "There is no caption to play: click in one, or move the "
+                "playhead onto one",
+                type="info",
+                timeout=None,
+                close_button="Close",
+            )
+            return
+
+        self.play_with_context({"id": caption.index})
+
     def delete(self, args) -> None:
         """
         Drop a caption outright, rather than merging its text into a

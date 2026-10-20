@@ -36,6 +36,7 @@ from utils.srt import (
     TIMELINE_DOCK_KEY,
     TIMELINE_SHOW_KEY,
 )
+from utils.player_controls import PlayerControls
 from utils.speech_timeline import SpeechTimeline
 from utils.comments_panel import CommentsPanel
 from utils.validation_panel import ValidationPanel
@@ -115,40 +116,16 @@ def create() -> None:
                 e.preventDefault();
             }
 
-            // Space plays and pauses, unless something is being typed into.
-            // Handled here rather than through the page's keyboard handler
-            // so that the player answers immediately, with no round trip --
-            // and so the check for "is the reader typing" can be made
-            // against the real focus, which only the browser knows.
-            //
-            // A button keeps its own space: a focused button is activated by
-            // it, and taking that would break every dialog on the page. The
-            // same goes for anything else Space means something to: Quasar's
-            // switches and checkboxes are a div with a role, not an INPUT or
-            // a BUTTON, so the tag names alone let Space toggle "Follow
-            // audio" and start the video as well.
-            if (e.key === ' ' && !e.metaKey && !e.ctrlKey && !e.altKey) {
-                const active = document.activeElement;
-                const typing = active && (
-                    active.isContentEditable
-                    || ['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON', 'SUMMARY'].includes(active.tagName)
-                    || active.closest(
-                        '[role="switch"], [role="checkbox"], [role="radio"],'
-                        + ' [role="button"], [role="tab"], [role="menuitem"],'
-                        + ' [role="option"], [role="slider"], [role="combobox"],'
-                        + ' [role="textbox"], [role="listbox"]'
-                    )
-                );
-
-                if (!typing) {
-                    const video = document.querySelector('video');
-
-                    if (video) {
-                        e.preventDefault();
-                        video.paused ? video.play() : video.pause();
-                    }
-                }
-            }
+            // Space never plays or pauses the recording from here. It used to,
+            // whenever nothing was being typed into, and it was the source of
+            // the page's one inconsistency: Space played and paused with one
+            // thing focused and typed or pressed with another, and the native
+            // player added its own rules on top. Now the recording has no
+            // controls of its own to land on (see PlayerControls), so Space
+            // means what it means on whatever has focus -- a space in the
+            // text, a press on a button -- and the keyboard's way to play and
+            // pause is Ctrl+Space (see SRTEditor.handle_key_event), which works
+            // wherever focus is.
 
             // There used to be a global Escape handler here that
             // unconditionally blurred document.activeElement (2.4.3: it
@@ -532,7 +509,7 @@ def create() -> None:
                         with ui.element("div").classes("video-frame w-full h-full"):
                             video = ui.video(
                                 f"/video/{uuid}",
-                                controls=True,
+                                controls=False,
                                 autoplay=False,
                                 loop=False,
                             ).classes("w-full h-full")
@@ -575,79 +552,21 @@ def create() -> None:
                                 overlay.set_visibility(False)
                                 transcript.set_overlay(overlay)
 
-                                # The overlay clears the player's own control
-                                # bar while that bar is up, and drops to the
-                                # bottom of the frame -- where a viewer would
-                                # actually see it -- once it goes away.
-                                #
-                                # A browser offers no signal for that, so the
-                                # same rules it draws the bar by are followed
-                                # here: controls are up while the recording
-                                # is paused, and while the pointer has moved
-                                # over the frame within the last few seconds.
-                                ui.add_head_html(
-                                    """
-                                    <script>
-                                    (function () {
-                                      const HIDE_AFTER = 2600;
-
-                                      function wire() {
-                                        const frame =
-                                          document.querySelector(".video-frame");
-                                        const video =
-                                          frame && frame.querySelector("video");
-
-                                        if (!video) return false;
-
-                                        let idle = null;
-
-                                        const show = () => {
-                                          frame.classList.add(
-                                            "video-controls-visible"
-                                          );
-                                        };
-                                        const hide = () => {
-                                          if (video.paused) return;
-                                          frame.classList.remove(
-                                            "video-controls-visible"
-                                          );
-                                        };
-
-                                        const stir = () => {
-                                          show();
-                                          clearTimeout(idle);
-                                          idle = setTimeout(hide, HIDE_AFTER);
-                                        };
-
-                                        frame.addEventListener("mousemove", stir);
-                                        frame.addEventListener("mouseleave", hide);
-                                        video.addEventListener("pause", show);
-                                        video.addEventListener("play", stir);
-
-                                        // Paused when the page opens, so the
-                                        // bar is up.
-                                        show();
-
-                                        return true;
-                                      }
-
-                                      if (!wire()) {
-                                        // The player is drawn after this
-                                        // script arrives.
-                                        const waiting = setInterval(() => {
-                                          if (wire()) clearInterval(waiting);
-                                        }, 200);
-                                        setTimeout(
-                                          () => clearInterval(waiting), 10000
-                                        );
-                                      }
-                                    })();
-                                    </script>
-                                    """
-                                )
                                 transcript.set_overlay_enabled(
                                     editor.show_subtitle_overlay
                                 )
+
+                        # The player's own controls, in place of the browser's
+                        # bar: play and pause, "play with context", speed, a
+                        # position bar and the volume. Under the picture
+                        # rather than over it, so the subtitle preview keeps
+                        # one place instead of moving out of their way, and
+                        # they are always there for the keyboard to find.
+                        # Everything they show they read from the video; the
+                        # one thing that needs the editor is the stretch
+                        # around the caption the caret was last in.
+                        player_controls = PlayerControls(filename).classes("w-full")
+                        player_controls.on("playcontext", transcript.play_with_context_here)
 
                         # Where speech is, under the video: drawn from the
                         # word timings rather than from the audio, so it

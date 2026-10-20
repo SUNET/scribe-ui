@@ -469,27 +469,26 @@ class TestSubtitleTextOffset:
 
 class TestVideoSubtitleOverlay:
     """
-    The overlay sits above the video's own native controls, not over them --
-    a percentage offset once put it there on a short or wide video, since
-    the control bar's own height is fixed while a percentage of the frame's
-    height is not, and shrinks below it.
+    The overlay is a preview of what a viewer sees, at the foot of the frame.
+    The player's controls are under the picture (see PlayerControls), so there
+    is no bar of the player's own for it to clear or to move for.
     """
 
     def test_it_sits_at_the_foot_of_the_frame(self):
         """
-        Where a viewer would see it. It only moves up while the player's own
-        control bar is up, so the rest of the time the preview is where the
-        real thing is.
+        Where a viewer would see it, and always there: nothing over the
+        picture asks it to move.
         """
 
         assert rem(effective(".video-subtitle-overlay")["bottom"]) == 1
 
-    def test_it_clears_the_control_bar_while_that_is_up(self):
-        raised = effective(".video-controls-visible .video-subtitle-overlay")
+    def test_it_does_not_move_for_anything(self):
+        """
+        It used to rise above the browser's bar while that was up. A transition
+        on `bottom` would be the trace of that.
+        """
 
-        assert rem(raised["bottom"]) > rem(
-            effective(".video-subtitle-overlay")["bottom"]
-        )
+        assert "transition" not in effective(".video-subtitle-overlay")
 
     def test_the_offset_is_fixed_not_a_percentage(self):
         bottom = effective(".video-subtitle-overlay")["bottom"]
@@ -498,9 +497,8 @@ class TestVideoSubtitleOverlay:
 
     def test_it_never_captures_a_click(self):
         """
-        Belt and suspenders alongside the fixed offset above -- clicks (the
-        seek bar, a click-to-pause) always reach the video underneath, even
-        if the two ever end up overlapping regardless.
+        A preview, not a control: clicks anywhere on the frame go to the video
+        underneath, as they would on a viewer's own screen.
         """
 
         assert effective(".video-subtitle-overlay")["pointer-events"] == "none"

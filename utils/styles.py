@@ -1694,11 +1694,10 @@ theme_styles = """
     .video-subtitle-overlay {
         position: absolute;
         left: 50%;
-        /* Where a viewer would see it: at the bottom of the frame. It only
-           moves up when the player's own control bar is up (see below), so
-           the rest of the time the preview is where the real thing is. */
+        /* Where a viewer would see it: at the bottom of the frame, and
+           always there. The player's controls are under the picture, not
+           over it, so there is nothing for it to move out of the way of. */
         bottom: 1rem;
-        transition: bottom 0.15s ease-in-out;
         transform: translateX(-50%);
         max-width: 90%;
         padding: 0.35rem 0.75rem;
@@ -1722,22 +1721,10 @@ theme_styles = """
            backstop for a line that still arrives carrying its own "\n". */
         white-space: pre-line;
         border-radius: 4px;
-        /* Belt and suspenders alongside the fixed offset above: never in
-           the way of the seek bar or a click-to-pause anywhere else on the
-           frame, even if the two ever end up overlapping regardless. */
+        /* A preview, not a control: a click anywhere on the frame goes to
+           the video underneath, as it would on a viewer's own screen. */
         pointer-events: none;
     }
-    /* Clear of the control bar while that bar is up. A fixed offset, not a
-       percentage of the frame's own height -- the bar's height is fixed too,
-       so a percentage shrinks below it on a short or wide video and the
-       overlay ends up drawn over the seek bar, hiding it rather than sitting
-       above it. The class is put on the frame by pages/srt.py, which follows
-       the same rules the browser draws the bar by: up while paused, and
-       while the pointer has moved over the frame in the last few seconds. */
-    .video-controls-visible .video-subtitle-overlay {
-        bottom: 4.25rem;
-    }
-
     .video-subtitle-line {
         /* Never break a line the editor did not break: draw_overlay gives
            each of the caption's own lines an element, and a wrap inside one
@@ -2893,6 +2880,266 @@ theme_styles = """
         width: 2px;
         height: 0.75rem;
         background-color: var(--color-text-danger);
+    }
+
+    /* ── The player's controls (utils/player_controls.js) ── */
+    /* One pill under the picture, in the family of the strip's tray and the
+       caption actions: surface, hairline, fully rounded, round buttons. Play
+       and pause is the one solid thing in it, since it is the one thing a
+       reader reaches for without looking. The width the pill has is its own
+       container's, not the window's -- the splitter can leave the video very
+       narrow -- so below 30rem the position bar takes a row of its own above
+       the buttons, as the strip's legend does. */
+    .player-controls {
+        container-type: inline-size;
+        margin-top: 0.5rem;
+    }
+    .player-pill {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 4px 10px 4px 4px;
+        border: 1px solid var(--color-border-subtle);
+        border-radius: 999px;
+        background-color: var(--color-bg-surface);
+    }
+    .player-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex: none;
+        width: 2rem;
+        height: 2rem;
+        padding: 0;
+        border: 0;
+        border-radius: 50%;
+        background-color: transparent;
+        color: var(--color-text-muted);
+        cursor: pointer;
+        transition: color 0.12s ease-in-out, background-color 0.12s ease-in-out;
+    }
+    .player-btn:hover {
+        color: var(--color-brand-primary);
+        background-color: var(--color-bg-surface-alt);
+    }
+    .player-btn-main,
+    .player-btn-main:hover {
+        color: var(--color-text-on-brand);
+        background-color: var(--color-brand-primary);
+    }
+    .player-btn-main:hover {
+        filter: brightness(1.12);
+    }
+    /* White on the dark theme's light blue is 2.96:1, under the 3:1 a
+       control's own glyph needs (1.4.11); the page's own black is 7.1:1. */
+    .body--dark .player-btn-main,
+    .body--dark .player-btn-main:hover {
+        color: var(--color-bg-page);
+    }
+    .player-sep {
+        align-self: stretch;
+        flex: none;
+        width: 1px;
+        margin: 6px 0;
+        background-color: var(--color-border-subtle);
+    }
+    .player-time {
+        flex: none;
+        font-family: var(--font-mono);
+        font-size: 0.78rem;
+        font-variant-numeric: tabular-nums;
+        color: var(--color-text-secondary);
+        white-space: nowrap;
+    }
+    .player-seekrow {
+        display: flex;
+        align-items: center;
+        flex: 1;
+        gap: 0.5rem;
+        min-width: 0;
+    }
+    .player-volume {
+        display: flex;
+        align-items: center;
+        flex: none;
+        gap: 0.15rem;
+    }
+    .player-volume-range {
+        flex: none;
+        width: 4.5rem;
+    }
+
+    /* The two bars are native range inputs, so the keyboard, the pointer and
+       a screen reader all get what the browser already does for a slider; only
+       the look is drawn here. The filled part is a gradient up to --fill,
+       which the component sets, in WebKit and Blink, and the engine's own
+       progress part in Firefox. The unfilled track is the same hairline colour
+       as the pill's border, not a fainter one: it is a component's boundary
+       and has to hold 3:1 against the surface (1.4.11). */
+    .player-range {
+        -webkit-appearance: none;
+        appearance: none;
+        flex: 1;
+        min-width: 3rem;
+        height: 2rem;
+        margin: 0;
+        padding: 0;
+        background: transparent;
+        cursor: pointer;
+    }
+    .player-range:disabled {
+        cursor: default;
+        opacity: 0.55;
+    }
+    .player-range::-webkit-slider-runnable-track {
+        height: 4px;
+        border-radius: 2px;
+        background: linear-gradient(
+            to right,
+            var(--color-brand-primary) var(--fill, 0%),
+            var(--color-border-subtle) var(--fill, 0%)
+        );
+    }
+    .player-range::-moz-range-track {
+        height: 4px;
+        border-radius: 2px;
+        background: var(--color-border-subtle);
+    }
+    .player-range::-moz-range-progress {
+        height: 4px;
+        border-radius: 2px;
+        background: var(--color-brand-primary);
+    }
+    .player-range::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 14px;
+        height: 14px;
+        margin-top: -5px;
+        border: 0;
+        border-radius: 50%;
+        background: var(--color-brand-primary);
+        box-shadow: 0 0 0 2px var(--color-bg-surface);
+    }
+    .player-range::-moz-range-thumb {
+        width: 14px;
+        height: 14px;
+        border: 0;
+        border-radius: 50%;
+        background: var(--color-brand-primary);
+        box-shadow: 0 0 0 2px var(--color-bg-surface);
+    }
+
+    .player-speed {
+        position: relative;
+        flex: none;
+    }
+    .player-speed-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 2.6rem;
+        height: 2rem;
+        padding: 0 0.55rem;
+        border: 0;
+        border-radius: 999px;
+        background-color: transparent;
+        color: var(--color-text-secondary);
+        font-family: var(--font-mono);
+        font-size: 0.78rem;
+        font-variant-numeric: tabular-nums;
+        cursor: pointer;
+    }
+    .player-speed-btn:hover {
+        color: var(--color-brand-primary);
+        background-color: var(--color-bg-surface-alt);
+    }
+    /* Open says so with a ring as well as a colour, as the strip's dock
+       button does while the strip is docked. */
+    .player-speed-btn-open {
+        color: var(--color-brand-primary);
+        background-color: var(--color-bg-surface-alt);
+        box-shadow: inset 0 0 0 1px var(--color-brand-primary);
+    }
+    /* Opens upward: the pill is at the foot of the picture, and there is
+       more room over the picture than under the page. */
+    .player-menu {
+        position: absolute;
+        bottom: calc(100% + 8px);
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 10;
+        min-width: 6.2rem;
+        padding: 4px;
+        border: 1px solid var(--color-border-subtle);
+        border-radius: 8px;
+        background-color: var(--color-bg-surface);
+        box-shadow: 0 4px 14px var(--color-shadow-medium);
+    }
+    .player-menu-item {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        width: 100%;
+        height: 1.9rem;
+        padding: 0 0.6rem;
+        border: 0;
+        border-radius: 6px;
+        background-color: transparent;
+        color: var(--color-text-primary);
+        font-size: 0.78rem;
+        font-variant-numeric: tabular-nums;
+        text-align: left;
+        cursor: pointer;
+    }
+    .player-menu-item:hover {
+        background-color: var(--color-bg-surface-hover);
+    }
+    .player-menu-item-on {
+        background-color: var(--color-bg-surface-alt);
+        font-weight: 600;
+    }
+    .player-menu-check {
+        visibility: hidden;
+    }
+    .player-menu-item-on .player-menu-check {
+        visibility: visible;
+    }
+
+    /* A recording that is sound alone has no picture, so the frame that would
+       have held one -- and the subtitle preview inside it, which has nothing
+       to be a preview over -- gives way, and the controls are the player. */
+    .video-frame.video-frame-audio {
+        display: none;
+    }
+    .player-name {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        margin: 0.4rem 0 0 0.6rem;
+        font-size: 0.75rem;
+        color: var(--color-text-muted);
+    }
+
+    /* Narrow: the position bar on a row of its own, the buttons below it. */
+    @container (max-width: 30rem) {
+        .player-pill {
+            flex-wrap: wrap;
+            border-radius: 1.4rem;
+            padding: 4px 10px 6px 4px;
+        }
+        .player-seekrow {
+            order: -1;
+            flex: 1 0 100%;
+            box-sizing: border-box;
+            padding: 0 0.35rem 0 0.6rem;
+        }
+        .player-sep {
+            display: none;
+        }
+        .player-volume {
+            margin-left: auto;
+        }
     }
 
     /* ── SRT editor controls under the video ── */
