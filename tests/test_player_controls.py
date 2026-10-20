@@ -348,6 +348,22 @@ class TestTheLook:
         assert 'frame.addEventListener("pointermove"' in script
         assert 'frame.addEventListener("pointerleave"' in script
 
+    def test_the_figures_and_the_speed_are_set_in_the_pages_own_type(self):
+        """
+        The "Uncertain words" choices beside the video are 14px at weight 500
+        in the page's own face; a thin monospace for the times and the speed
+        broke with that. The figures keep their width with tabular numerals.
+        """
+
+        for selector in (".player-time", ".player-speed-btn", ".player-menu-item"):
+            body = rule(selector)
+
+            assert "font-family: inherit;" in body, selector
+            assert "font-size: 0.875rem;" in body, selector
+            assert "font-weight: 500;" in body, selector
+            assert "font-variant-numeric: tabular-nums;" in body, selector
+            assert "--font-mono" not in body, selector
+
     def test_the_focus_ring_is_white_and_wins_against_the_pages_own(self):
         """
         The page's ring is the brand colour, nearly the colour of the tone it

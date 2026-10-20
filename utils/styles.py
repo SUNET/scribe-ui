@@ -3000,10 +3000,14 @@ theme_styles = """
         width: 2.25rem;
         height: 2.25rem;
     }
+    /* The page's own type (the "Uncertain words" choices beside the video
+       are 14px at weight 500), not a thin monospace: the figures keep their
+       width through tabular numerals instead. */
     .player-time {
         flex: none;
-        font-family: var(--font-mono);
-        font-size: 0.75rem;
+        font-family: inherit;
+        font-size: 0.875rem;
+        font-weight: 500;
         font-variant-numeric: tabular-nums;
         color: var(--player-fg);
         white-space: nowrap;
@@ -3090,15 +3094,16 @@ theme_styles = """
         align-items: center;
         justify-content: center;
         min-width: 2.4rem;
-        height: 1.65rem;
+        height: 1.75rem;
         margin: 0 0.25rem;
         padding: 0 0.5rem;
         border: 1px solid rgba(255, 255, 255, 0.7);
         border-radius: 999px;
         background-color: transparent;
         color: var(--player-fg);
-        font-family: var(--font-mono);
-        font-size: 0.75rem;
+        font-family: inherit;
+        font-size: 0.875rem;
+        font-weight: 500;
         font-variant-numeric: tabular-nums;
         cursor: pointer;
     }
@@ -3134,7 +3139,9 @@ theme_styles = """
         border-radius: 6px;
         background-color: transparent;
         color: var(--player-fg);
-        font-size: 0.78rem;
+        font-family: inherit;
+        font-size: 0.875rem;
+        font-weight: 500;
         font-variant-numeric: tabular-nums;
         text-align: left;
         cursor: pointer;
@@ -3144,7 +3151,7 @@ theme_styles = """
     }
     .player-menu-item-on {
         background-color: rgba(255, 255, 255, 0.22);
-        font-weight: 600;
+        font-weight: 700;
     }
     .player-menu-check {
         visibility: hidden;
