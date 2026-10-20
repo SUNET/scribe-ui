@@ -3093,11 +3093,14 @@ theme_styles = """
         display: flex;
         align-items: center;
         justify-content: center;
-        min-width: 2.4rem;
-        height: 1.75rem;
-        margin: 0 0.25rem;
+        min-width: 2.5rem;
+        height: 2rem;
+        margin: 0 0.1rem;
         padding: 0 0.5rem;
-        border: 1px solid rgba(255, 255, 255, 0.7);
+        /* Just the figure, no frame: it reads as the speed and the pointer
+           and the keyboard say it is a button (a fill on hover, the ring on
+           focus, the tooltip). */
+        border: 0;
         border-radius: 999px;
         background-color: transparent;
         color: var(--player-fg);
@@ -3107,10 +3110,9 @@ theme_styles = """
         font-variant-numeric: tabular-nums;
         cursor: pointer;
     }
-    /* Open says so with a fill as well as a ring. */
+    /* Open says so with a fill. */
     .player-speed-btn-open {
         background-color: rgba(255, 255, 255, 0.28);
-        border-color: var(--player-fg);
     }
     /* Opens upward: the controls are at the foot of the picture, and there is
        more room over it than under. */

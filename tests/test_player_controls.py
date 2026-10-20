@@ -382,6 +382,16 @@ class TestTheLook:
             assert "font-variant-numeric: tabular-nums;" in body, selector
             assert "--font-mono" not in body, selector
 
+    def test_the_speed_is_the_bare_figure_without_a_frame(self):
+        button = rule(".player-speed-btn")
+
+        assert "border: 0;" in button
+        assert "border-radius: 999px;" in button
+        assert "rgba(255, 255, 255, 0.7)" not in button
+        # It still says when it is open, and when the pointer is on it.
+        assert "background-color:" in rule(".player-speed-btn-open")
+        assert ".player-speed-btn:hover" in stylesheet()
+
     def test_the_focus_ring_is_white_and_wins_against_the_pages_own(self):
         """
         The page's ring is the brand colour, nearly the colour of the tone it
