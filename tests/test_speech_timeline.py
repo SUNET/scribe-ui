@@ -2052,6 +2052,17 @@ class TestTheTrayFollowsThePlayhead:
 
         assert "container-type: inline-size;" in wrap
 
+    def test_the_strip_asks_for_the_width_it_is_a_container_of(self):
+        from utils.styles import theme_styles
+
+        wrap = theme_styles[theme_styles.index("    .speech-timeline-wrap {"):]
+        wrap = wrap[: wrap.index("}")]
+
+        # Containment on the inline axis means the wrap's own content cannot
+        # give it a width. In a flex column that aligns to the start (the
+        # editor's) nothing else does either, and it was 0 wide.
+        assert "width: 100%;" in wrap
+
     def test_the_middle_column_is_the_strips_own_centre(self):
         rules = self.legend_rules()
 
