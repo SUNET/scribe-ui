@@ -51,6 +51,12 @@ from utils.srt_review import EDIT_TOOLTIP, REVIEW_TOOLTIP
 
 settings = get_settings()
 
+# How near the playhead must be to where "Play with context" last stopped for
+# a second press to mean the same stretch again. The stop is decided a frame at
+# a time, so the playhead rests within a few hundredths of the end; a reader
+# who has moved it has moved it by more than this.
+REPEAT_TOLERANCE = 0.3
+
 
 def format_time_label(seconds: float) -> str:
     """
@@ -259,6 +265,11 @@ class TranscriptEditor:
         # The caption the caret last settled in, for Quick Jump's relative
         # times when there is no player to ask.
         self.caret_block: Optional[int] = None
+        # What the player's own "Play with context" button last played, so a
+        # second press from where it stopped plays the same stretch again
+        # rather than the next one: (anchor, stop), the anchor being
+        # ("block", index) or ("time", seconds).
+        self.last_context: Optional[tuple] = None
         # Built the first time it is wanted -- see open_quick_jump.
         self.quick_jump_dialog = None
         self.quick_jump_input = None
@@ -1329,7 +1340,7 @@ class TranscriptEditor:
             int(offset) if isinstance(offset, (int, float)) else 0,
         )
 
-    def play_with_context(self, args) -> None:
+    def play_with_context(self, args) -> Optional[tuple]:
         """
         Play the block the caret is in, with a few words of speech either
         side of it, once.
@@ -1338,12 +1349,14 @@ class TranscriptEditor:
         reader is checking where a boundary falls by ear, and is about to
         carry on typing. The stretch is worked out from the block's times as
         they are now, edited or not (see context_range).
+
+        Returns the stretch played, or None if nothing was.
         """
 
         caption = self.caption(self.block_id(args))
 
         if caption is None:
-            return
+            return None
 
         stretch = self.editor.context_range(caption)
 
@@ -1354,7 +1367,7 @@ class TranscriptEditor:
                 timeout=None,
                 close_button="Close",
             )
-            return
+            return None
 
         if not self.editor.words:
             ui.notify(
@@ -1366,36 +1379,85 @@ class TranscriptEditor:
 
         self.editor.play_range(*stretch)
 
+        return stretch
+
     async def play_with_context_here(self) -> None:
         """
-        Play with context from the player's own button, which -- unlike
-        Ctrl+Shift+Space -- is pressed from outside the text and so has no
-        caret to read the block from.
+        Play with context from the player's own button: around where the
+        recording is now, wherever the caret is.
 
-        The block is the one the caret was last in (the client reports it once
-        the caret has settled, and it is kept when the caret leaves, so
-        reaching for a button does not lose it). Before the caret has been in
-        any, or if that block has gone, it is the one under the playhead: the
-        reader has pointed at a moment with the strip or by playing, and that
-        is a fair thing to mean.
+        The playhead is what the button is about, so that is what it goes on.
+        Under it there is a caption or there is not:
+
+        - Inside a caption it is that caption with its context, exactly what
+          Ctrl+Shift+Space plays for it (context_range).
+        - Anywhere else -- a pause, a stretch not marked as speech, a
+          recording with no word timings -- it is the words around that
+          moment, or failing words the plain window of CONTEXT_SECONDS either
+          side (context_range_at). The button never has nothing to play: a
+          reader who wants to hear a part that was not identified as speech
+          is let.
+
+        Playing moves the playhead to where the stretch ends, so a second
+        press would take whatever is under *that* and the stretch would walk
+        forward a caption at a time. A press from where the last one stopped
+        is therefore the same stretch again (REPEAT_TOLERANCE); a press from
+        anywhere else, the reader having moved on, starts afresh.
+
+        The caret plays no part. Ctrl+Shift+Space is the key for "the caption
+        I am in"; this is the button for "here", and it is pressed from
+        outside the text, where the caret may long since have been left
+        behind.
         """
 
-        caption = self.caption(self.caret_block)
+        playhead = await self.playhead()
+        anchor = self.repeated_anchor(playhead)
 
-        if caption is None:
-            caption = self.caption_at(await self.playhead())
+        if anchor is None:
+            caption = self.caption_at(playhead)
 
-        if caption is None:
-            ui.notify(
-                "There is no caption to play: click in one, or move the "
-                "playhead onto one",
-                type="info",
-                timeout=None,
-                close_button="Close",
-            )
-            return
+            if caption is None:
+                anchor = ("time", playhead)
+            else:
+                anchor = ("block", caption.index)
 
-        self.play_with_context({"id": caption.index})
+        stretch = None
+
+        if anchor[0] == "block":
+            caption = self.caption(anchor[1])
+
+            if caption is not None and self.editor.context_range(caption):
+                stretch = self.play_with_context({"id": caption.index})
+            elif caption is not None:
+                # Timed to nothing: there is no block to play, but there is a
+                # moment, and the button does not turn the reader away.
+                anchor = ("time", caption.get_start_seconds())
+
+        if stretch is None:
+            if anchor[0] == "block":
+                # The block went (an undo, a merge) between presses.
+                anchor = ("time", playhead)
+
+            stretch = self.editor.context_range_at(anchor[1])
+            self.editor.play_range(*stretch)
+
+        self.last_context = (anchor, stretch[1])
+
+    def repeated_anchor(self, playhead: float) -> Optional[tuple]:
+        """
+        The anchor of the last "Play with context" from the button if the
+        playhead is still where that stopped, else None.
+        """
+
+        if self.last_context is None:
+            return None
+
+        anchor, stop = self.last_context
+
+        if abs(playhead - stop) > REPEAT_TOLERANCE:
+            return None
+
+        return anchor
 
     def delete(self, args) -> None:
         """

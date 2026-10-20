@@ -477,3 +477,76 @@ class TestTheKey:
             'case " " if event.modifiers.ctrl and not event.modifiers.shift'
             in source
         )
+
+
+class TestContextRangeAt:
+    """
+    The stretch around a moment that belongs to no caption: the words about
+    it, or the plain window, and never nothing.
+    """
+
+    def test_words_five_either_side(self):
+        editor = make_editor()
+
+        # Between word 5 (5.0-5.8) and word 6 (6.0-6.8): words 1-5 before,
+        # 6-10 after.
+        assert editor.context_range_at(5.9) == (1.0, 10.8)
+
+    def test_a_word_further_than_the_cap_is_left_out(self):
+        editor = make_editor(
+            {
+                "version": 1,
+                "words": [
+                    {"t": "a", "s": 1.0, "e": 1.5},
+                    {"t": "b", "s": 20.0, "e": 20.5},
+                ],
+            }
+        )
+
+        # Neither is within 5 s of 10: the plain window, not the silence up
+        # to a word 10 s off.
+        assert editor.context_range_at(10.0) == (5.0, 15.0)
+
+    def test_with_no_word_near_it_it_is_the_plain_window(self):
+        assert make_editor().context_range_at(50.0) == (45.0, 55.0)
+
+    def test_with_no_word_timings_at_all_it_is_the_plain_window(self):
+        editor = make_editor()
+        editor.words = []
+
+        assert editor.context_range_at(20.0) == (15.0, 25.0)
+
+    def test_with_words_only_before_it_stops_at_the_moment(self):
+        editor = make_editor()
+
+        # Words 8-11 are within 5 s of 13 and word 7 is not.
+        assert editor.context_range_at(13.0) == (8.0, 13.0)
+
+    def test_with_words_only_after_it_starts_at_the_moment(self):
+        editor = make_editor(
+            {"version": 1, "words": [{"t": "a", "s": 4.0, "e": 4.5}]}
+        )
+
+        assert editor.context_range_at(1.0) == (1.0, 4.5)
+
+    def test_a_word_straddling_the_moment_is_heard_whole(self):
+        editor = make_editor(
+            {"version": 1, "words": [{"t": "a", "s": 5.0, "e": 5.8}]}
+        )
+
+        assert editor.context_range_at(5.2) == (5.0, 5.8)
+
+    @pytest.mark.parametrize("moment", [0.0, 0.5, 3.3, 5.9, 12.0, 50.0])
+    def test_the_moment_is_always_inside_it(self, moment):
+        start, end = make_editor().context_range_at(moment)
+
+        assert start <= moment <= end
+        assert end > start
+
+    def test_never_before_zero(self):
+        editor = make_editor()
+        editor.words = []
+
+        assert editor.context_range_at(2.0) == (0.0, 7.0)
+        assert editor.context_range_at(-3.0) == (0.0, 5.0)
+

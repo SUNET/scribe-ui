@@ -21,8 +21,8 @@ browser's bar.
 
 What is pinned down here is the contract that made them worth building: Space
 never plays or pauses the recording from the page, Ctrl+Space always does, and
-the one control that reaches the editor ("play with context") plays the block
-the caret was last in. How the bar looks and moves was checked in a browser;
+the one control that reaches the editor ("play with context") plays around
+the playhead and never has nothing to play. How the bar looks and moves was checked in a browser;
 these are the parts that can silently be undone by a later edit.
 """
 
@@ -495,9 +495,10 @@ class TestTheLook:
 
 class TestPlayWithContextFromTheButton:
     """
-    Unlike Ctrl+Shift+Space the button is pressed from outside the text, so
-    the block comes from where the caret was last, and failing that from the
-    playhead.
+    The button is about the playhead, not the caret: inside a caption it is
+    that caption with its context, anywhere else the words around the moment,
+    or the plain window. It never turns the reader away, and a second press
+    from where the last one stopped plays the same stretch again.
     """
 
     @pytest.fixture
@@ -521,56 +522,115 @@ class TestPlayWithContextFromTheButton:
 
         return view
 
-    def test_the_block_the_caret_was_last_in(self, view):
-        view.caret_block = view.editor.captions[1].index
-
+    def press(self, view, seconds):
+        self.seconds = seconds
         asyncio.run(view.play_with_context_here())
+
+        return self.played[-1]
+
+    def with_a_pause(self, view):
+        # Caption 2 ends at 6 and caption 3 starts at 7: a second of nothing.
+        view.editor.captions[1].end_time = "00:00:06,000"
+
+    def test_inside_a_caption_it_is_that_caption_with_its_context(self, view):
+        self.press(view, 6.0)
 
         assert self.played == [view.editor.context_range(view.editor.captions[1])]
 
-    def test_it_is_that_block_even_when_the_playhead_is_elsewhere(self, view):
-        view.caret_block = view.editor.captions[1].index
-        self.seconds = 1.0
+    def test_the_caret_plays_no_part(self, view):
+        view.caret_block = view.editor.captions[0].index
 
-        asyncio.run(view.play_with_context_here())
-
-        assert self.played == [view.editor.context_range(view.editor.captions[1])]
-
-    def test_before_the_caret_has_been_anywhere_it_is_the_block_at_the_playhead(
-        self, view
-    ):
-        view.caret_block = None
-        self.seconds = 8.0
-
-        asyncio.run(view.play_with_context_here())
-
-        assert self.played == [view.editor.context_range(view.editor.captions[2])]
-
-    def test_a_block_that_has_gone_falls_back_to_the_playhead(self, view):
-        view.caret_block = 9999
-        self.seconds = 6.0
-
-        asyncio.run(view.play_with_context_here())
+        self.press(view, 6.0)
 
         assert self.played == [view.editor.context_range(view.editor.captions[1])]
 
-    def test_with_nothing_to_go_on_it_says_so(self, view):
-        view.caret_block = None
-        self.seconds = 99.0
+    def test_in_a_pause_it_is_the_words_around_the_moment(self, view):
+        self.with_a_pause(view)
 
-        asyncio.run(view.play_with_context_here())
+        self.press(view, 6.5)
 
-        assert self.played == []
-        assert len(self.notes) == 1
+        assert self.played == [view.editor.context_range_at(6.5)]
+
+    def test_with_nothing_near_it_is_the_plain_window(self, view):
+        self.press(view, 99.0)
+
+        assert self.played == [(94.0, 104.0)]
+
+    def test_a_recording_with_no_word_timings_still_plays(self, view):
+        view.editor.words = []
+        self.with_a_pause(view)
+
+        self.press(view, 6.5)
+
+        assert self.played == [(1.5, 11.5)]
+
+    def test_it_never_answers_with_a_message(self, view):
+        self.with_a_pause(view)
+
+        for seconds in (0.0, 6.5, 12.0, 99.0):
+            self.press(view, seconds)
+
+        assert len(self.played) == 4
+        assert self.notes == []
+
+    def test_a_second_press_from_where_it_stopped_is_the_same_stretch(self, view):
+        first = self.press(view, 6.0)
+
+        # Playing leaves the playhead at the end of the stretch -- in caption
+        # 3 here, so going by what is under it would give a different one.
+        assert view.caption_at(first[1]) is view.editor.captions[2]
+
+        assert self.press(view, first[1] + 0.02) == first
+        assert self.press(view, first[1]) == first
+
+    def test_a_pause_repeats_too(self, view):
+        self.with_a_pause(view)
+        first = self.press(view, 6.5)
+
+        assert self.press(view, first[1] + 0.02) == first
+
+    def test_from_anywhere_else_it_starts_afresh(self, view):
+        first = self.press(view, 6.0)
+
+        second = self.press(view, 9.0)
+
+        assert second == view.editor.context_range(view.editor.captions[2])
+        assert second != first
+
+    def test_the_repeat_is_only_where_it_stopped(self, view):
+        first = self.press(view, 6.0)
+
+        # Half a second off is the reader having moved, not a repeat.
+        second = self.press(view, first[1] - 0.5)
+
+        assert second == view.editor.context_range(view.editor.captions[2])
+
+    def test_a_repeated_block_timed_to_nothing_by_an_edit_still_plays(self, view):
+        first = self.press(view, 6.0)
+        view.editor.captions[1].end_time = view.editor.captions[1].start_time
+
+        second = self.press(view, first[1])
+
+        assert second == view.editor.context_range_at(5.0)
+        assert self.notes == []
+
+    def test_a_repeated_block_that_has_gone_still_plays(self, view):
+        first = self.press(view, 6.0)
+        view.editor.captions.pop(1)
+
+        second = self.press(view, first[1])
+
+        assert second == view.editor.context_range_at(first[1])
+        assert self.notes == []
 
     def test_it_is_not_an_edit_and_touches_nothing_on_screen(self, view):
         calls = []
         view.refresh = lambda *a, **k: calls.append("refresh")
         view.changed = lambda *a, **k: calls.append("changed")
         view.focus = lambda *a, **k: calls.append("focus")
-        view.caret_block = view.editor.captions[1].index
 
-        asyncio.run(view.play_with_context_here())
+        self.press(view, 6.0)
+        self.press(view, 99.0)
 
         assert calls == []
 
