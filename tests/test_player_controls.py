@@ -497,8 +497,9 @@ class TestPlayWithContextFromTheButton:
     """
     The button is about the playhead, not the caret: inside a caption it is
     that caption with its context, anywhere else the words around the moment,
-    or the plain window. It never turns the reader away, and a second press
-    from where the last one stopped plays the same stretch again.
+    or the plain window. It never turns the reader away, and it plays the same
+    stretch again while that is still the reader's current one: running, or
+    stopped with neither playhead nor caret moved since.
     """
 
     @pytest.fixture
@@ -511,13 +512,24 @@ class TestPlayWithContextFromTheButton:
             lambda *a, **k: self.notes.append((a, k)),
         )
         self.played = []
-        editor.play_range = lambda start, end: self.played.append((start, end))
+        # What the player would say about the stretch: play_range starts it.
+        self.state = None
+
+        def play_range(start, end):
+            self.played.append((start, end))
+            self.state = "playing"
+
+        editor.play_range = play_range
+
+        async def context_state():
+            return self.state
+
+        editor.context_state = context_state
 
         async def at(seconds):
             return seconds
 
-        self.at = at
-        view.playhead = lambda: self.at(self.seconds)
+        view.playhead = lambda: at(self.seconds)
         self.seconds = 0.0
 
         return view
@@ -568,59 +580,80 @@ class TestPlayWithContextFromTheButton:
         self.with_a_pause(view)
 
         for seconds in (0.0, 6.5, 12.0, 99.0):
+            self.state = None
             self.press(view, seconds)
 
         assert len(self.played) == 4
         assert self.notes == []
 
-    def test_a_second_press_from_where_it_stopped_is_the_same_stretch(self, view):
+    def test_pressed_while_it_runs_it_is_the_same_stretch(self, view):
         first = self.press(view, 6.0)
 
-        # Playing leaves the playhead at the end of the stretch -- in caption
-        # 3 here, so going by what is under it would give a different one.
-        assert view.caption_at(first[1]) is view.editor.captions[2]
+        # Still playing, the playhead somewhere in the middle of it.
+        assert self.state == "playing"
+        assert self.press(view, 9.0) == first
 
-        assert self.press(view, first[1] + 0.02) == first
+    def test_stopped_and_untouched_it_is_the_same_stretch(self, view):
+        first = self.press(view, 6.0)
+        self.state = "stopped"
+
+        # The playhead is where it stopped -- in caption 3 here, so going by
+        # what is under it would give a different one. It is not even asked.
+        assert view.caption_at(first[1]) is view.editor.captions[2]
         assert self.press(view, first[1]) == first
+        assert self.press(view, 123.0) == first
 
     def test_a_pause_repeats_too(self, view):
         self.with_a_pause(view)
         first = self.press(view, 6.5)
+        self.state = "stopped"
 
-        assert self.press(view, first[1] + 0.02) == first
+        assert self.press(view, first[1]) == first
 
-    def test_from_anywhere_else_it_starts_afresh(self, view):
+    def test_after_the_reader_moved_the_playhead_it_starts_afresh(self, view):
         first = self.press(view, 6.0)
+        # The player lets go of it on a pause, a seek or playing on.
+        self.state = None
 
         second = self.press(view, 9.0)
 
         assert second == view.editor.context_range(view.editor.captions[2])
         assert second != first
 
-    def test_the_repeat_is_only_where_it_stopped(self, view):
+    def test_after_the_caret_settled_elsewhere_it_starts_afresh(self, view):
         first = self.press(view, 6.0)
+        self.state = "stopped"
 
-        # Half a second off is the reader having moved, not a repeat.
-        second = self.press(view, first[1] - 0.5)
+        view.caret_moved({"id": view.editor.captions[0].index})
+        second = self.press(view, 9.0)
 
         assert second == view.editor.context_range(view.editor.captions[2])
+        assert second != first
+
+    def test_the_shortcut_is_what_a_press_after_it_repeats(self, view):
+        first = view.play_with_context({"id": view.editor.captions[0].index})
+        self.state = "stopped"
+
+        assert self.press(view, 99.0) == first
 
     def test_a_repeated_block_timed_to_nothing_by_an_edit_still_plays(self, view):
-        first = self.press(view, 6.0)
+        self.press(view, 6.0)
+        self.state = "stopped"
         view.editor.captions[1].end_time = view.editor.captions[1].start_time
 
-        second = self.press(view, first[1])
+        second = self.press(view, 40.0)
 
         assert second == view.editor.context_range_at(5.0)
         assert self.notes == []
 
     def test_a_repeated_block_that_has_gone_still_plays(self, view):
-        first = self.press(view, 6.0)
+        self.press(view, 6.0)
+        self.state = "stopped"
         view.editor.captions.pop(1)
 
-        second = self.press(view, first[1])
+        second = self.press(view, 40.0)
 
-        assert second == view.editor.context_range_at(first[1])
+        assert second == view.editor.context_range_at(40.0)
         assert self.notes == []
 
     def test_it_is_not_an_edit_and_touches_nothing_on_screen(self, view):
@@ -630,6 +663,7 @@ class TestPlayWithContextFromTheButton:
         view.focus = lambda *a, **k: calls.append("focus")
 
         self.press(view, 6.0)
+        self.state = None
         self.press(view, 99.0)
 
         assert calls == []

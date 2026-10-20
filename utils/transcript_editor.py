@@ -51,12 +51,6 @@ from utils.srt_review import EDIT_TOOLTIP, REVIEW_TOOLTIP
 
 settings = get_settings()
 
-# How near the playhead must be to where "Play with context" last stopped for
-# a second press to mean the same stretch again. The stop is decided a frame at
-# a time, so the playhead rests within a few hundredths of the end; a reader
-# who has moved it has moved it by more than this.
-REPEAT_TOLERANCE = 0.3
-
 
 def format_time_label(seconds: float) -> str:
     """
@@ -265,10 +259,11 @@ class TranscriptEditor:
         # The caption the caret last settled in, for Quick Jump's relative
         # times when there is no player to ask.
         self.caret_block: Optional[int] = None
-        # What the player's own "Play with context" button last played, so a
-        # second press from where it stopped plays the same stretch again
-        # rather than the next one: (anchor, stop), the anchor being
-        # ("block", index) or ("time", seconds).
+        # What "Play with context" last played, as an anchor -- ("block",
+        # index) or ("time", seconds) -- so a press while it is still the
+        # reader's current stretch plays that stretch again rather than the
+        # next one. Cleared when the caret settles in another block; the
+        # player says whether the stretch is still current (context_state).
         self.last_context: Optional[tuple] = None
         # Built the first time it is wanted -- see open_quick_jump.
         self.quick_jump_dialog = None
@@ -397,6 +392,8 @@ class TranscriptEditor:
             return
 
         self.caret_block = block_id
+        # The reader has moved on to something else.
+        self.last_context = None
 
         if self.on_caret is not None:
             self.on_caret(block_id)
@@ -1378,6 +1375,7 @@ class TranscriptEditor:
             )
 
         self.editor.play_range(*stretch)
+        self.last_context = ("block", caption.index)
 
         return stretch
 
@@ -1398,22 +1396,30 @@ class TranscriptEditor:
           reader who wants to hear a part that was not identified as speech
           is let.
 
-        Playing moves the playhead to where the stretch ends, so a second
-        press would take whatever is under *that* and the stretch would walk
-        forward a caption at a time. A press from where the last one stopped
-        is therefore the same stretch again (REPEAT_TOLERANCE); a press from
-        anywhere else, the reader having moved on, starts afresh.
+        Playing leaves the playhead where the stretch ends, so a second press
+        would take whatever is under *that* and the stretch would walk
+        forward a caption at a time. The same stretch is therefore played
+        again if the last one is still the reader's current one: it is
+        running, or it has stopped and the reader has since moved neither the
+        playhead nor the caret (the player knows the first, caret_moved the
+        second). Otherwise the press starts afresh from the playhead.
 
-        The caret plays no part. Ctrl+Shift+Space is the key for "the caption
-        I am in"; this is the button for "here", and it is pressed from
-        outside the text, where the caret may long since have been left
+        The caret plays no other part. Ctrl+Shift+Space is the key for "the
+        caption I am in"; this is the button for "here", and it is pressed
+        from outside the text, where the caret may long since have been left
         behind.
         """
 
-        playhead = await self.playhead()
-        anchor = self.repeated_anchor(playhead)
+        anchor = None
+
+        if self.last_context is not None:
+            if await self.editor.context_state() is not None:
+                anchor = self.last_context
+
+        playhead = None
 
         if anchor is None:
+            playhead = await self.playhead()
             caption = self.caption_at(playhead)
 
             if caption is None:
@@ -1432,32 +1438,18 @@ class TranscriptEditor:
                 # Timed to nothing: there is no block to play, but there is a
                 # moment, and the button does not turn the reader away.
                 anchor = ("time", caption.get_start_seconds())
+            else:
+                # The block went (an undo, a merge) since it was played.
+                if playhead is None:
+                    playhead = await self.playhead()
 
-        if stretch is None:
-            if anchor[0] == "block":
-                # The block went (an undo, a merge) between presses.
                 anchor = ("time", playhead)
 
+        if stretch is None:
             stretch = self.editor.context_range_at(anchor[1])
             self.editor.play_range(*stretch)
 
-        self.last_context = (anchor, stretch[1])
-
-    def repeated_anchor(self, playhead: float) -> Optional[tuple]:
-        """
-        The anchor of the last "Play with context" from the button if the
-        playhead is still where that stopped, else None.
-        """
-
-        if self.last_context is None:
-            return None
-
-        anchor, stop = self.last_context
-
-        if abs(playhead - stop) > REPEAT_TOLERANCE:
-            return None
-
-        return anchor
+        self.last_context = anchor
 
     def delete(self, args) -> None:
         """
