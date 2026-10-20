@@ -259,8 +259,10 @@ class TestWhatIsOnOffer:
     def test_the_icon_is_one_line_to_change(self):
         script = component()
 
-        assert script.count("playlist_play") == 1
-        assert "const CONTEXT_ICON" in script
+        assert script.count("auto_read_play") == 1
+        assert 'const CONTEXT_ICON = "sym_o_auto_read_play";' in script
+        # A Material Symbols name, which NiceGUI's own font already has.
+        assert "playlist_play" not in script
 
 
 class TestRecordingsWithoutAPicture:

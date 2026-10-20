@@ -38,9 +38,11 @@
 // "play with context" needs the server, which knows which caption the caret
 // was last in, so that one is emitted.
 
-// Where "play with context" is drawn from. A standard Material icon until a
-// better one is decided; kept in one place so that is the only line to change.
-const CONTEXT_ICON = "playlist_play";
+// What "play with context" is drawn with: a speech bubble with a play
+// triangle, "play what this caption says". Material Symbols (the sym_o_ prefix),
+// whose font NiceGUI already ships, so no font of our own. Kept in one place so
+// that is the only line to change.
+const CONTEXT_ICON = "sym_o_auto_read_play";
 
 // The speeds on offer, as playbackRate values. Quarter steps either side of
 // normal and the usual halves and doubles: for checking a boundary by ear,
