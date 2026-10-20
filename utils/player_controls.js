@@ -106,7 +106,7 @@ export default {
             aria-keyshortcuts="Control+Shift+Space"
             @mousedown.prevent
             @click="$emit('playcontext')"
-          ><q-icon :name="contextIcon" size="22px" /><q-tooltip>Play with context</q-tooltip></button>
+          ><q-icon :name="contextIcon" size="22px" /><q-tooltip>Play with context (Ctrl + Shift + Space)</q-tooltip></button>
           <div class="player-speed" ref="speed">
             <button
               type="button"
