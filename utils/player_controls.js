@@ -122,7 +122,7 @@ export default {
             @click="$emit('playcontext')"
           ><q-icon :name="contextIcon" size="22px" /><q-tooltip>Play with context (Ctrl + Shift + Space)</q-tooltip></button>
           <button
-            v-if="captions"
+            v-if="captions && !audioOnly"
             type="button"
             class="player-btn player-btn-captions"
             aria-label="Subtitles"
@@ -200,9 +200,10 @@ export default {
     // -- the frame that would have carried it is gone then.
     label: { type: String, default: "" },
     // Subtitles only: whether there is a CC button at all (a transcription has
-    // no subtitles to show on the picture), and whether they are showing. The
-    // setting is the page's, kept on the server; this is only told what it is
-    // and says when the reader changes it.
+    // no subtitles to show on the picture; a recording that is sound alone has
+    // no picture to show them on either, so no button there -- see audioOnly),
+    // and whether they are showing. The setting is the page's, kept on the
+    // server; this is only told what it is and says when the reader changes it.
     captions: { type: Boolean, default: false },
     captionsOn: { type: Boolean, default: true },
   },

@@ -345,9 +345,26 @@ class TestTheSubtitlesButton:
         opening = script[: script.index('class="player-btn player-btn-captions"')]
         opening = opening[opening.rindex("<button") :]
 
-        assert 'v-if="captions"' in opening
+        # And not for a recording that is sound alone: the frame hides the
+        # subtitle preview there (nothing to lay it over), so a button for it
+        # would change a setting with no visible effect.
+        assert 'v-if="captions && !audioOnly"' in opening
         assert PlayerControls("a.mp4")._props["captions"] is False
         assert PlayerControls("a.mp4", captions=True)._props["captions"] is True
+
+    def test_a_recording_with_no_picture_has_no_such_button(self):
+        """
+        The audio surface hides the subtitle overlay (`display: none`), so the
+        button would do nothing the reader could see.
+        """
+
+        css = stylesheet()
+        hidden = css[css.index(".video-frame-audio video,") :]
+        hidden = hidden[: hidden.index("}")]
+
+        assert ".video-frame-audio .video-subtitle-overlay" in hidden
+        assert "display: none !important" in hidden
+        assert "!audioOnly" in component()
 
     def test_the_page_gives_it_to_subtitles_and_not_to_a_transcription(self):
         source = page()
