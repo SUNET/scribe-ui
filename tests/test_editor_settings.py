@@ -134,9 +134,12 @@ class TestWhatIsInTheMenu:
             assert label in source
 
     def test_one_to_a_row(self):
-        source = page()[self.menu_start() :]
+        source = page()
+        group = source[source.index("def settings_group") :]
+        group = group[: group.index("return group")]
 
-        assert 'with ui.column().classes("items-start gap-1"):' in source
+        assert '"editor-settings-group items-start gap-1"' in group
+        assert 'with ui.column().classes("items-start gap-1"):' not in source
 
     def test_uncertain_words_still_reads_as_one_row(self):
         """
@@ -173,6 +176,67 @@ class TestWhatIsInTheMenu:
         assert source.count('"update:model-value"') >= 6
 
 
+class TestTheGroups:
+    """
+    Two groups, titled: the recording (how the editor follows it and the strip
+    that shows where its speech is) and the review tools, which is what the
+    manual calls them (Granskningsstöd in Swedish).
+    """
+
+    def after_menu(self) -> str:
+        source = page()
+
+        return source[
+            source.index('with settings_menu, ui.column().classes("editor-settings")') :
+        ]
+
+    def test_there_are_two_titled_groups(self):
+        text = self.after_menu()
+
+        assert 'with settings_group("Recording"):' in text
+        assert 'review_group = settings_group("Review tools")' in text
+        assert text.index('settings_group("Recording")') < text.index(
+            'settings_group("Review tools")'
+        )
+
+    def test_a_group_is_a_group_for_a_screen_reader_named_by_its_title(self):
+        source = page()
+        group = source[source.index("def settings_group") :]
+        group = group[: group.index("return group")]
+
+        assert "role=group aria-labelledby={title_label.html_id}" in group
+        assert 'ui.label(title).classes(\n                                    "editor-settings-title"' in group
+
+    def test_following_the_recording_and_the_timeline_are_together(self):
+        text = self.after_menu()
+        recording = text.index('settings_group("Recording")')
+        review = text.index('settings_group("Review tools")')
+
+        for label in ('"Follow audio" if following_words else "Autoscroll"', '"Timeline"'):
+            assert recording < text.index(label) < review
+
+    def test_what_is_marked_in_the_text_is_under_review_tools(self):
+        text = self.after_menu()
+        review = text.index('settings_group("Review tools")')
+
+        for label in ('"My edits"', '"Highlights"', '"Comments"', '"Uncertain words:"'):
+            assert text.index(label) > review
+
+    def test_uncertain_words_is_last_and_no_rule_is_drawn_above_it(self):
+        text = self.after_menu()
+        uncertain = text.index('"Uncertain words:"')
+
+        for label in ('"My edits"', '"Highlights"', '"Comments"'):
+            assert text.index(label) < uncertain
+        assert 'ui.separator().classes("my-1")' not in text[: text.index("review_group.set_visibility")]
+
+    def test_a_title_with_nothing_under_it_is_not_shown(self):
+        text = self.after_menu()
+
+        assert "review_group.set_visibility(" in text
+        assert "len(review_group.default_slot.children) > 1" in text
+
+
 class TestTheLook:
     def test_the_menu_content_has_room_around_it(self):
         css = stylesheet()
@@ -181,3 +245,11 @@ class TestTheLook:
 
         assert "padding: 0.75rem 1rem;" in rule
         assert "flex-direction: column" in rule
+
+    def test_a_group_title_is_small_and_quiet(self):
+        css = stylesheet()
+        rule = css[css.index("\n    .editor-settings-title {") :]
+        rule = rule[: rule.index("}")]
+
+        assert "font-size: 0.75rem;" in rule
+        assert "color: var(--color-text-secondary);" in rule

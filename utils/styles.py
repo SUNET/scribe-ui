@@ -2907,8 +2907,15 @@ theme_styles = """
     .editor-settings {
         display: flex;
         flex-direction: column;
-        gap: 0.5rem;
+        gap: 0.75rem;
         padding: 0.75rem 1rem;
+    }
+    /* What a group is called: small and quiet, over the rows it names. */
+    .editor-settings-title {
+        font-size: 0.75rem;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        color: var(--color-text-secondary);
     }
     /* ── Theme-aware text utilities ── */
     .text-theme-primary {

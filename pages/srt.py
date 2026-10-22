@@ -717,13 +717,36 @@ def create() -> None:
                         # a preview of what a viewer sees, not tied to it.
                         video.on("timeupdate", transcript.follow_video)
 
+                        def settings_group(title: str) -> ui.column:
+                            """
+                            A titled group of settings, one to a row. It is
+                            a group for a screen reader too, named by its
+                            title, so "Review tools, group" is heard before
+                            the switches in it.
+                            """
+
+                            group = ui.column().classes(
+                                "editor-settings-group items-start gap-1"
+                            )
+                            with group:
+                                title_label = ui.label(title).classes(
+                                    "editor-settings-title"
+                                )
+                            group.props(
+                                f"role=group aria-labelledby={title_label.html_id}"
+                            )
+
+                            return group
+
                         # The settings, in the menu the gear in the toolbar
-                        # opens (see settings_menu). They are grouped by what
-                        # each one affects -- following the recording, and
-                        # what the editor marks in the text -- one to a row,
-                        # with the sensitivity selector last, under a rule.
+                        # opens (see settings_menu), in two groups by what
+                        # they are about: the recording (how the editor follows
+                        # it, the strip that shows where its speech is) and
+                        # the review tools (what is marked in the text, with
+                        # the sensitivity selector last). "Review tools" is
+                        # what the manual calls them.
                         with settings_menu, ui.column().classes("editor-settings"):
-                            with ui.column().classes("items-start gap-1"):
+                            with settings_group("Recording"):
 
                                 def save_follow(event) -> None:
                                     value = bool(event.sender.value)
@@ -844,6 +867,8 @@ def create() -> None:
                                             "the video."
                                         )
 
+                            review_group = settings_group("Review tools")
+                            with review_group:
                                 # Offered wherever there are transcribed
                                 # words to compare against, with or without
                                 # confidence scores: knowing which words came
@@ -964,121 +989,124 @@ def create() -> None:
 
                                     editor.on_comments_shown = comments_shown
 
-                            # One control rather than a switch plus a level:
-                            # "off" is just the lowest setting of the same
-                            # thing, and splitting them meant two places to
-                            # look to find out whether anything was being
-                            # flagged at all. Only offered when the result
-                            # carries confidence scores; older jobs have none
-                            # to show.
-                            if editor.has_confidence:
-                                ui.separator().classes("my-1")
+                                # One control rather than a switch plus a level:
+                                # "off" is just the lowest setting of the same
+                                # thing, and splitting them meant two places to
+                                # look to find out whether anything was being
+                                # flagged at all. Only offered when the result
+                                # carries confidence scores; older jobs have none
+                                # to show.
+                                if editor.has_confidence:
+                                    with ui.row().classes("items-center gap-2"):
+                                        uncertain_label = ui.label("Uncertain words:")
+                                        uncertain_label.classes(
+                                            "text-sm text-theme-secondary"
+                                        )
 
-                                with ui.row().classes("items-center gap-2"):
-                                    uncertain_label = ui.label("Uncertain words:")
-                                    uncertain_label.classes(
-                                        "text-sm text-theme-secondary"
-                                    )
+                                        def paint_sensitivity(choice) -> None:
+                                            """
+                                            The review violet belongs to the
+                                            levels, not to "Off" -- one
+                                            toggle-color paints whichever
+                                            segment is selected, which made the
+                                            loudest thing in the panel the
+                                            setting that marks nothing at all.
+                                            """
 
-                                    def paint_sensitivity(choice) -> None:
-                                        """
-                                        The review violet belongs to the
-                                        levels, not to "Off" -- one
-                                        toggle-color paints whichever
-                                        segment is selected, which made the
-                                        loudest thing in the panel the
-                                        setting that marks nothing at all.
-                                        """
+                                            off = choice == "off"
 
-                                        off = choice == "off"
-
-                                        sensitivity.props(
-                                            remove=(
+                                            sensitivity.props(
+                                                remove=(
+                                                    "toggle-color=toggle-off "
+                                                    "toggle-text-color=toggle-off-fg"
+                                                    if not off
+                                                    else "toggle-color=review-accent "
+                                                    "toggle-text-color=review-accent-fg"
+                                                )
+                                            )
+                                            sensitivity.props(
                                                 "toggle-color=toggle-off "
                                                 "toggle-text-color=toggle-off-fg"
-                                                if not off
+                                                if off
                                                 else "toggle-color=review-accent "
                                                 "toggle-text-color=review-accent-fg"
                                             )
+
+                                        def save_sensitivity(event) -> None:
+                                            choice = event.sender.value
+
+                                            paint_sensitivity(choice)
+
+                                            # "off" is not one of the editor's own
+                                            # sensitivities -- it is the marking
+                                            # turned off, with whatever level was
+                                            # last chosen left untouched underneath
+                                            # so that coming back lands where the
+                                            # reader left it.
+                                            editor.set_show_uncertain_words(
+                                                choice != "off"
+                                            )
+                                            app.storage.user[REVIEW_SHOW_KEY] = (
+                                                choice != "off"
+                                            )
+
+                                            if choice == "off":
+                                                return
+
+                                            editor.set_review_sensitivity(choice)
+                                            # Persist what the editor accepted, so
+                                            # an unrecognised value cannot be
+                                            # stored.
+                                            app.storage.user[REVIEW_SENSITIVITY_KEY] = (
+                                                editor.review_sensitivity
+                                            )
+
+                                        sensitivity = ui.toggle(
+                                            {
+                                                "off": "Off",
+                                                "low": "Low",
+                                                "medium": "Medium",
+                                                "high": "High",
+                                            },
+                                            value=(
+                                                editor.review_sensitivity
+                                                if editor.show_uncertain_words
+                                                else "off"
+                                            ),
+                                        ).props(
+                                            "dense unelevated no-caps role=group "
+                                            f"aria-labelledby={uncertain_label.html_id}"
                                         )
-                                        sensitivity.props(
-                                            "toggle-color=toggle-off "
-                                            "toggle-text-color=toggle-off-fg"
-                                            if off
-                                            else "toggle-color=review-accent "
-                                            "toggle-text-color=review-accent-fg"
-                                        )
-
-                                    def save_sensitivity(event) -> None:
-                                        choice = event.sender.value
-
-                                        paint_sensitivity(choice)
-
-                                        # "off" is not one of the editor's own
-                                        # sensitivities -- it is the marking
-                                        # turned off, with whatever level was
-                                        # last chosen left untouched underneath
-                                        # so that coming back lands where the
-                                        # reader left it.
-                                        editor.set_show_uncertain_words(
-                                            choice != "off"
-                                        )
-                                        app.storage.user[REVIEW_SHOW_KEY] = (
-                                            choice != "off"
-                                        )
-
-                                        if choice == "off":
-                                            return
-
-                                        editor.set_review_sensitivity(choice)
-                                        # Persist what the editor accepted, so
-                                        # an unrecognised value cannot be
-                                        # stored.
-                                        app.storage.user[REVIEW_SENSITIVITY_KEY] = (
-                                            editor.review_sensitivity
-                                        )
-
-                                    sensitivity = ui.toggle(
-                                        {
-                                            "off": "Off",
-                                            "low": "Low",
-                                            "medium": "Medium",
-                                            "high": "High",
-                                        },
-                                        value=(
+                                        paint_sensitivity(
                                             editor.review_sensitivity
                                             if editor.show_uncertain_words
                                             else "off"
-                                        ),
-                                    ).props(
-                                        "dense unelevated no-caps role=group "
-                                        f"aria-labelledby={uncertain_label.html_id}"
-                                    )
-                                    paint_sensitivity(
-                                        editor.review_sensitivity
-                                        if editor.show_uncertain_words
-                                        else "off"
-                                    )
-                                    sensitivity.on(
-                                        "update:model-value", save_sensitivity
-                                    )
-                                    with sensitivity:
-                                        ui.tooltip(
-                                            "Higher levels also highlight words "
-                                            "the model is more certain about."
                                         )
+                                        sensitivity.on(
+                                            "update:model-value", save_sensitivity
+                                        )
+                                        with sensitivity:
+                                            ui.tooltip(
+                                                "Higher levels also highlight words "
+                                                "the model is more certain about."
+                                            )
 
-                                    flagged = ui.label().classes(
-                                        "text-sm text-theme-muted review-count"
-                                    )
-                                    # The count changes when the level does;
-                                    # say so without moving focus (WCAG 4.1.3).
-                                    flagged.props("role=status aria-live=polite")
-                                    editor.set_flagged_count_element(flagged)
+                                        flagged = ui.label().classes(
+                                            "text-sm text-theme-muted review-count"
+                                        )
+                                        # The count changes when the level does;
+                                        # say so without moving focus (WCAG 4.1.3).
+                                        flagged.props("role=status aria-live=polite")
+                                        editor.set_flagged_count_element(flagged)
 
-                        # Validation results (issue #138), below the settings
-                        # under the video -- "Uncertain words" last among
-                        # them: one issue at a time with Previous and Next,
+                            # A title with nothing under it is not shown (a set of
+                            # subtitles with no words has no review tools).
+                            review_group.set_visibility(
+                                len(review_group.default_slot.children) > 1
+                            )
+
+                        # Validation results (issue #138), under the video:
+                        # one issue at a time with Previous and Next,
                         # rather than a dialog over the work. Built hidden;
                         # Validate opens and refills it. Subtitles only, like
                         # Validate itself.
