@@ -25,7 +25,7 @@ import pathlib
 
 import pytest
 
-from utils.caption import SRTCaption
+from utils.caption import SRTCaption, WordComment
 from utils.srt import SRTEditor
 from utils.srt_search import utf16_offset
 
@@ -41,8 +41,7 @@ def source(path: str) -> str:
     return pathlib.Path(path).read_text()
 
 
-@pytest.fixture
-def editor(monkeypatch):
+def build_editor(monkeypatch):
     monkeypatch.setattr("utils.srt_search.ui.notify", lambda *a, **k: None)
 
     editor = SRTEditor("job-uuid", "srt", "file.srt")
@@ -62,6 +61,11 @@ def editor(monkeypatch):
     editor.on_find_marks = lambda marks, current: editor.marks.append((marks, current))
 
     return editor
+
+
+@pytest.fixture
+def editor(monkeypatch):
+    return build_editor(monkeypatch)
 
 
 def where(editor):
@@ -230,6 +234,113 @@ class TestReplacingTheCurrentMatch:
         editor.replace_all("A")
 
         assert editor.captions[0].text == "A cat sat on A mat"
+
+
+class TestReplaceIsTheSameAsEditingByHand:
+    """
+    Replacing a word is the reader changing it, exactly as typing over it is:
+    whatever a comment, a highlight or an edit mark does when the word is
+    edited in the text, it does when the word is replaced from the card.
+    """
+
+    @staticmethod
+    def marked(editor):
+        # "The cat sat on the mat": words 0..5. A comment on "cat sat", a
+        # highlight on "cat sat on", an edit mark on "cat".
+        caption = editor.captions[0]
+        caption.comments = [WordComment({1, 2}, "check this")]
+        caption.highlighted_words = {1, 2, 3}
+        caption.edited_words = {1}
+
+        return caption
+
+    @staticmethod
+    def state(caption):
+        return (
+            caption.text,
+            [(sorted(c.words), c.text) for c in caption.comments],
+            sorted(caption.highlighted_words),
+            sorted(caption.edited_words),
+        )
+
+    @pytest.mark.parametrize(
+        "replacement", ["fox", "Cat", "cat", "red fox", "big red fox", ""]
+    )
+    def test_a_marked_word_comes_out_as_when_it_is_typed_over(
+        self, monkeypatch, replacement
+    ):
+        replaced = build_editor(monkeypatch)
+        by_hand = build_editor(monkeypatch)
+
+        replaced_caption = self.marked(replaced)
+        by_hand_caption = self.marked(by_hand)
+
+        replaced.search_captions("cat")
+        replaced.current_search_index = 0
+        replaced.replace_in_current_match(replacement)
+
+        text = by_hand_caption.text.replace("cat", replacement, 1)
+        by_hand.update_caption_text(by_hand_caption, text)
+
+        assert self.state(replaced_caption) == self.state(by_hand_caption)
+
+    @pytest.mark.parametrize("term, replacement", [("The", "A big"), ("mat", "rug"), ("sat", "")])
+    def test_a_word_beside_the_marks_comes_out_the_same_too(
+        self, monkeypatch, term, replacement
+    ):
+        replaced = build_editor(monkeypatch)
+        by_hand = build_editor(monkeypatch)
+
+        replaced_caption = self.marked(replaced)
+        by_hand_caption = self.marked(by_hand)
+
+        replaced.search_captions(term)
+        replaced.current_search_index = 0
+        replaced.replace_in_current_match(replacement)
+
+        text = by_hand_caption.text.replace(term, replacement, 1)
+        by_hand.update_caption_text(by_hand_caption, text)
+
+        assert self.state(replaced_caption) == self.state(by_hand_caption)
+
+    def test_replace_all_comes_out_the_same_as_editing_each_by_hand(self, monkeypatch):
+        replaced = build_editor(monkeypatch)
+        by_hand = build_editor(monkeypatch)
+
+        replaced_caption = self.marked(replaced)
+        by_hand_caption = self.marked(by_hand)
+
+        replaced.search_captions("the")
+        replaced.replace_all("a")
+
+        by_hand.update_caption_text(by_hand_caption, "a cat sat on a mat")
+
+        assert self.state(replaced_caption) == self.state(by_hand_caption)
+
+    def test_a_comment_on_a_replaced_word_stays_with_its_replacement(self, editor):
+        caption = self.marked(editor)
+
+        editor.search_captions("cat")
+        editor.current_search_index = 0
+        editor.replace_in_current_match("fox")
+
+        # One word for one: the comment and the highlight stay on it, and
+        # it is marked as the reader's own.
+        assert [(sorted(c.words), c.text) for c in caption.comments] == [
+            ([1, 2], "check this")
+        ]
+        assert 1 in caption.highlighted_words
+        assert 1 in caption.edited_words
+
+    def test_a_comment_whose_words_are_all_replaced_by_nothing_goes(self, editor):
+        caption = editor.captions[0]
+        caption.comments = [WordComment({1}, "only the cat")]
+
+        editor.search_captions("cat")
+        editor.current_search_index = 0
+        editor.replace_in_current_match("")
+
+        assert caption.comments == []
 
 
 class TestTheMarksInTheText:
