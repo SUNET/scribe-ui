@@ -567,10 +567,29 @@ def create() -> None:
                             # show they read from the video; the one thing
                             # that needs the editor is the stretch around the
                             # caption the caret was last in.
-                            player_controls = PlayerControls(filename)
+                            player_controls = PlayerControls(
+                                filename,
+                                captions=data_format == "srt",
+                                captions_on=editor.show_subtitle_overlay,
+                            )
                             player_controls.on(
                                 "playcontext", transcript.play_with_context_here
                             )
+
+                            # The CC button: the subtitles on the picture, on
+                            # or off. It shows what a viewer sees while the
+                            # recording plays, so it belongs with the player
+                            # rather than among the editor's own markings.
+                            # Subtitles only, the same as the overlay itself.
+                            if data_format == "srt":
+
+                                def save_show_overlay(event) -> None:
+                                    value = bool(event.args)
+                                    editor.show_subtitle_overlay = value
+                                    app.storage.user[OVERLAY_SHOW_KEY] = value
+                                    transcript.set_overlay_enabled(value)
+
+                                player_controls.on("captions", save_show_overlay)
 
                         # Where speech is, under the video: drawn from the
                         # word timings rather than from the audio, so it
@@ -674,39 +693,6 @@ def create() -> None:
                                         ui.tooltip(
                                             "Follow playback and highlight the "
                                             "current word."
-                                        )
-
-                                # Subtitles only, the same as the overlay
-                                # itself. It shows what a viewer sees while
-                                # the recording plays, so it belongs here
-                                # rather than with the editor's own marking.
-                                if data_format == "srt":
-
-                                    def save_show_overlay(event) -> None:
-                                        value = bool(event.sender.value)
-                                        editor.show_subtitle_overlay = value
-                                        app.storage.user[OVERLAY_SHOW_KEY] = value
-                                        transcript.set_overlay_enabled(value)
-
-                                        # See save_follow above (F-74).
-                                        focus_element(event.sender)
-
-                                    overlay_switch = ui.switch(
-                                        "Subtitle overlay",
-                                        value=editor.show_subtitle_overlay,
-                                    ).props("dense").classes("editor-switch")
-                                    # Same reason as the Follow audio /
-                                    # Autoscroll switch above: "click" is
-                                    # mouse-only on a QToggle, and
-                                    # update:model-value fires for a
-                                    # keyboard activation too.
-                                    overlay_switch.on(
-                                        "update:model-value", save_show_overlay
-                                    )
-                                    with overlay_switch:
-                                        ui.tooltip(
-                                            "Show captions as an overlay on the "
-                                            "video."
                                         )
 
                                 # Only when there is a strip to hide: it is

@@ -1059,11 +1059,17 @@ class TestControlTooltips:
         assert "Follow playback and highlight the " in page
         assert "current word." in page
 
-    def test_the_subtitle_overlay(self):
+    def test_the_subtitle_overlay_is_not_a_switch_here_any_more(self):
+        """
+        The CC button in the player took it over (see test_player_controls.py),
+        so there is no "Subtitle overlay" switch left among these.
+        """
+
         page = self.page()
 
-        assert "Show captions as an overlay on the " in page
-        assert "video." in page
+        assert "Show captions as an overlay on the " not in page
+        assert '"Subtitle overlay"' not in page
+        assert "overlay_switch" not in page
 
 
 class TestSensitivitySelector:

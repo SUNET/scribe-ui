@@ -74,7 +74,7 @@ class TestTheNativeBarIsGone:
     def test_the_controls_are_in_the_frame_over_the_picture(self):
         source = page()
 
-        assert "PlayerControls(filename)" in source
+        assert "= PlayerControls(\n" in source
         assert (
             '"playcontext", transcript.play_with_context_here' in source
         )
@@ -82,7 +82,8 @@ class TestTheNativeBarIsGone:
         # they share its rounded corners and sit over its foot; before the
         # strip, which is under the frame.
         frame = source.index('ui.element("div").classes("video-frame')
-        controls = source.index("PlayerControls(filename)")
+        controls = source.index("= PlayerControls(\n")
+        controls = source.rindex("player_controls", 0, controls)
 
         assert controls > frame
         assert controls < source.index("timeline = None")
@@ -185,7 +186,7 @@ class TestWhatIsOnOffer:
 
         assert 'aria-keyshortcuts="Control+Shift+Space"' in script
         assert "@click=\"$emit('playcontext')\"" in script
-        assert 'emits: ["playcontext"]' in script
+        assert 'emits: ["playcontext", "captions"]' in script
 
     def test_its_tooltip_is_its_name_and_its_shortcut(self):
         """
@@ -310,6 +311,136 @@ class TestWhatIsOnOffer:
         assert 'const CONTEXT_ICON = "sym_o_auto_read_play";' in script
         # A Material Symbols name, which NiceGUI's own font already has.
         assert "playlist_play" not in script
+
+
+class TestTheSubtitlesButton:
+    """
+    The CC button: the subtitles on the picture, on or off. It took the place
+    of the "Subtitle overlay" switch among the editor's own controls, since it
+    shows what a viewer sees while the recording plays.
+    """
+
+    def button(self) -> str:
+        script = component()
+        button = script[script.index('class="player-btn player-btn-captions"') :]
+
+        return button[: button.index("</button>")]
+
+    def test_it_sits_between_play_with_context_and_the_speed(self):
+        script = component()
+        context = script.index('class="player-btn player-btn-context"')
+        captions = script.index('class="player-btn player-btn-captions"')
+        speed = script.index('class="player-speed"')
+
+        assert context < captions < speed
+
+    def test_it_is_inside_the_bar_so_ctrl_space_still_plays(self):
+        script = component()
+        group = script.index('class="player-bar"')
+
+        assert script.index("player-btn-captions") > group
+
+    def test_only_subtitles_have_it(self):
+        script = component()
+        opening = script[: script.index('class="player-btn player-btn-captions"')]
+        opening = opening[opening.rindex("<button") :]
+
+        assert 'v-if="captions"' in opening
+        assert PlayerControls("a.mp4")._props["captions"] is False
+        assert PlayerControls("a.mp4", captions=True)._props["captions"] is True
+
+    def test_the_page_gives_it_to_subtitles_and_not_to_a_transcription(self):
+        source = page()
+
+        assert 'captions=data_format == "srt"' in source
+        assert "captions_on=editor.show_subtitle_overlay" in source
+
+    def test_it_starts_as_the_setting_is(self):
+        assert PlayerControls("a.mp4", captions=True)._props["captionsOn"] is True
+        assert (
+            PlayerControls("a.mp4", captions=True, captions_on=False)._props[
+                "captionsOn"
+            ]
+            is False
+        )
+        assert "captionsState: this.captionsOn" in component()
+
+    def test_it_is_a_toggle_with_one_name_and_a_state(self):
+        """
+        "Subtitles", pressed or not, rather than a name that changes with the
+        state: a screen reader says the state itself, and a name that also
+        flipped would say it twice over.
+        """
+
+        button = self.button()
+
+        assert 'aria-label="Subtitles"' in button
+        assert ':aria-pressed="String(captionsState)"' in button
+        assert ":aria-label" not in button
+
+    def test_the_state_is_in_the_shape_and_not_only_in_a_colour(self):
+        script = component()
+
+        assert 'const CAPTIONS_ICON_ON = "sym_o_closed_caption";' in script
+        # The one with the stroke through it; `closed_caption_off` is only an
+        # empty frame.
+        assert (
+            'const CAPTIONS_ICON_OFF = "sym_o_closed_caption_disabled";' in script
+        )
+        assert '"closed_caption_off"' not in script
+        assert "captionsState ? captionsIconOn : captionsIconOff" in self.button()
+
+    def test_its_tooltip_says_what_a_press_does(self):
+        assert (
+            "{{ captionsState ? 'Hide' : 'Show' }} subtitles on the video"
+            in self.button()
+        )
+
+    def test_a_mouse_press_does_not_take_focus_from_the_text(self):
+        assert "@mousedown.prevent" in self.button()
+
+    def test_a_press_flips_it_at_once_and_tells_the_page(self):
+        script = component()
+
+        assert 'emits: ["playcontext", "captions"]' in script
+        assert '@click="toggleCaptions"' in self.button()
+        body = script[script.index("toggleCaptions() {") :]
+        body = body[: body.index("\n    },")]
+
+        assert "this.captionsState = !this.captionsState;" in body
+        assert 'this.$emit("captions", this.captionsState);' in body
+        # It is the page's setting; the button does not touch the player.
+        assert "video" not in body
+
+    def test_the_page_can_set_it_from_elsewhere(self):
+        assert "captionsOn(value) {" in component()
+        assert "this.captionsState = value;" in component()
+
+        calls = []
+        controls = PlayerControls("a.mp4", captions=True)
+        controls.update = lambda: calls.append("update")
+        controls.set_captions(False)
+
+        assert controls._props["captionsOn"] is False
+        assert calls == ["update"]
+
+    def test_the_page_keeps_the_setting_and_redraws_at_once(self):
+        source = page()
+        handler = source[source.index("def save_show_overlay(event)") :]
+        handler = handler[: handler.index('player_controls.on("captions"')]
+
+        assert "bool(event.args)" in handler
+        assert "editor.show_subtitle_overlay = value" in handler
+        assert "app.storage.user[OVERLAY_SHOW_KEY] = value" in handler
+        assert "transcript.set_overlay_enabled(value)" in handler
+        assert 'player_controls.on("captions", save_show_overlay)' in source
+
+    def test_the_switch_it_replaced_is_gone(self):
+        source = page()
+
+        assert '"Subtitle overlay"' not in source
+        assert "ui.switch(" in source  # the others are still there
+        assert source.count("save_show_overlay") == 2
 
 
 class TestRecordingsWithoutAPicture:

@@ -27,22 +27,32 @@
 // handler -- always plays and pauses.
 //
 // What it offers is what a transcriber uses: play and pause, the stretch
-// around the caption the caret is in (the button for Ctrl+Shift+Space), a
-// speed, a bar to move about the recording with the time beside it, and the
-// volume. No fullscreen, no picture-in-picture, no download: none of them is
+// around the caption the caret is in (the button for Ctrl+Shift+Space), for
+// subtitles the CC button that shows them on the picture or not, a speed, a
+// bar to move about the recording with the time beside it, and the volume. No fullscreen, no picture-in-picture, no download: none of them is
 // work on a transcript, and the page has captions to show alongside.
 //
 // Like the strip under it, it follows the video element directly rather than
 // being told anything: the position changes many times a second, and the
 // round trip to the server for each would be both late and wasteful. Only
 // "play with context" needs the server, which knows which caption the caret
-// was last in, so that one is emitted.
+// was last in, and so does the CC button, whose subtitles the server draws and
+// whose setting it keeps; those two are emitted.
 
 // What "play with context" is drawn with: a speech bubble with a play
 // triangle, "play what this caption says". Material Symbols (the sym_o_ prefix),
 // whose font NiceGUI already ships, so no font of our own. Kept in one place so
 // that is the only line to change.
 const CONTEXT_ICON = "sym_o_auto_read_play";
+
+// What the CC button is drawn with: the usual closed-captions frame, and the
+// same frame with a stroke through it once the subtitles are off, so the state
+// is in the shape and not only in a colour. (Not `closed_caption_off`, which is
+// only an empty frame with no stroke.) Material Symbols Outlined, like the
+// "play with context" icon beside it, so the two have the same line. Kept in
+// one place for the same reason.
+const CAPTIONS_ICON_ON = "sym_o_closed_caption";
+const CAPTIONS_ICON_OFF = "sym_o_closed_caption_disabled";
 
 // The speeds on offer, as playbackRate values. Quarter steps either side of
 // normal and the usual halves and doubles: for checking a boundary by ear,
@@ -111,6 +121,15 @@ export default {
             @mousedown.prevent
             @click="$emit('playcontext')"
           ><q-icon :name="contextIcon" size="22px" /><q-tooltip>Play with context (Ctrl + Shift + Space)</q-tooltip></button>
+          <button
+            v-if="captions"
+            type="button"
+            class="player-btn player-btn-captions"
+            aria-label="Subtitles"
+            :aria-pressed="String(captionsState)"
+            @mousedown.prevent
+            @click="toggleCaptions"
+          ><q-icon :name="captionsState ? captionsIconOn : captionsIconOff" size="22px" /><q-tooltip>{{ captionsState ? 'Hide' : 'Show' }} subtitles on the video</q-tooltip></button>
           <div class="player-speed" ref="speed">
             <button
               type="button"
@@ -180,8 +199,14 @@ export default {
     // The recording's file name, shown under the bar when there is no picture
     // -- the frame that would have carried it is gone then.
     label: { type: String, default: "" },
+    // Subtitles only: whether there is a CC button at all (a transcription has
+    // no subtitles to show on the picture), and whether they are showing. The
+    // setting is the page's, kept on the server; this is only told what it is
+    // and says when the reader changes it.
+    captions: { type: Boolean, default: false },
+    captionsOn: { type: Boolean, default: true },
   },
-  emits: ["playcontext"],
+  emits: ["playcontext", "captions"],
   data() {
     return {
       playing: false,
@@ -210,6 +235,11 @@ export default {
       volumeSettable: true,
       rates: RATES,
       contextIcon: CONTEXT_ICON,
+      captionsIconOn: CAPTIONS_ICON_ON,
+      captionsIconOff: CAPTIONS_ICON_OFF,
+      // The button changes the moment it is pressed rather than after the
+      // server has answered; the prop only moves it when the page sets it.
+      captionsState: this.captionsOn,
     };
   },
   computed: {
@@ -236,6 +266,9 @@ export default {
     },
   },
   watch: {
+    captionsOn(value) {
+      this.captionsState = value;
+    },
     audioOnly(value) {
       // The frame is the page's, not this component's; it is told rather than
       // changed from here. Without a picture it becomes the player's own
@@ -368,6 +401,14 @@ export default {
       this.muted = video.muted;
       this.rate = video.playbackRate;
       this.audioOnly = video.readyState >= 1 && video.videoWidth === 0;
+    },
+
+    // The subtitles on the picture, on or off. What is drawn, and the setting
+    // that is kept for next time, are the page's; this says what the reader
+    // chose.
+    toggleCaptions() {
+      this.captionsState = !this.captionsState;
+      this.$emit("captions", this.captionsState);
     },
 
     toggle() {

@@ -22,8 +22,11 @@ on a surface of their own).
 The browser's own bar is gone (see player_controls.js for why): this is what
 replaces it. Everything it shows -- position, length, volume, speed -- it reads
 from the video element itself, so the server is not asked for any of it. The
-one thing it needs the server for is "play with context", which depends on
-which caption the caret was last in, and that is the one event it emits.
+two things it needs the server for are "play with context", which depends on
+which caption the caret was last in, and the CC button of a subtitle file,
+whose overlay the server draws and whose setting it keeps. Those are the two
+events it emits ("playcontext" and "captions", the latter with the new
+setting).
 
 It has to be made inside the `.video-frame` that holds the picture: it finds
 the frame with `closest()`, lays itself over its foot, and tells it (a class)
@@ -47,8 +50,28 @@ class PlayerControls(
 
     `label` is the recording's file name. It is only shown for a recording that
     is sound alone, where there is no picture to carry it.
+
+    `captions` is for subtitle files: it gives the player a CC button, which
+    starts out showing `captions_on`. A transcription has no subtitles to put
+    over the picture, so it gets no button.
     """
 
-    def __init__(self, label: str = "") -> None:
+    def __init__(
+        self,
+        label: str = "",
+        captions: bool = False,
+        captions_on: bool = True,
+    ) -> None:
         super().__init__()
         self._props["label"] = label
+        self._props["captions"] = bool(captions)
+        self._props["captionsOn"] = bool(captions_on)
+
+    def set_captions(self, on: bool) -> None:
+        """
+        Show the CC button as on or off, for when the setting is changed from
+        somewhere other than the button.
+        """
+
+        # Setting a prop already tells the browser; no update() of its own.
+        self._props["captionsOn"] = bool(on)
