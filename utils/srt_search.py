@@ -224,6 +224,29 @@ class SearchMixin:
             self.select_caption(caption)
 
 
+    def comment_count(self) -> int:
+        """
+        How many comments there are in all, to tell the reader afterwards if a
+        replacement took any with it.
+        """
+
+        return sum(len(caption.comments) for caption in self.captions)
+
+    @staticmethod
+    def comments_lost_note(lost: int) -> str:
+        """
+        The sentence added to a Replace message when comments went with the
+        words they were on. Empty when none did.
+        """
+
+        if lost <= 0:
+            return ""
+
+        if lost == 1:
+            return " 1 comment was removed with the replaced text. Undo restores it."
+
+        return f" {lost} comments were removed with the replaced text. Undo restores them."
+
     def replace_in_current_match(self, replacement: str) -> None:
         """
         Change the current match -- that one occurrence, not the others in the
@@ -259,9 +282,11 @@ class SearchMixin:
         # every mark after it along. Worked out here rather than through
         # update_caption_text, which would take a second undo snapshot on
         # top of the one already taken above.
+        comments_before = self.comment_count()
         self.carry_marks(caption, new_text)
         caption.text = new_text
         self.update_flagged_count()
+        lost = comments_before - self.comment_count()
 
         # On to the next one: the first that starts after what was put in.
         self.search_results = []
@@ -269,7 +294,16 @@ class SearchMixin:
 
         self.refresh_display()
         self.reveal_current()
-        ui.notify("Replacement made", type="positive")
+
+        if lost > 0:
+            ui.notify(
+                "Replacement made." + self.comments_lost_note(lost),
+                type="warning",
+                timeout=None,
+                close_button="Close",
+            )
+        else:
+            ui.notify("Replacement made", type="positive")
 
 
     def replace_all(self, replacement: str) -> None:
@@ -290,6 +324,7 @@ class SearchMixin:
             self.save_state_for_undo()
 
         count = 0
+        comments_before = self.comment_count()
         for caption in self.captions:
             found = len(pattern.findall(caption.text))
 
@@ -307,7 +342,18 @@ class SearchMixin:
         if count > 0:
             self.update_flagged_count()
             self.search_captions(self.search_term)
-            ui.notify(f"Replaced {count} occurrences", type="positive")
+            lost = comments_before - self.comment_count()
+
+            if lost > 0:
+                ui.notify(
+                    f"Replaced {count} occurrences."
+                    + self.comments_lost_note(lost),
+                    type="warning",
+                    timeout=None,
+                    close_button="Close",
+                )
+            else:
+                ui.notify(f"Replaced {count} occurrences", type="positive")
         else:
             ui.notify("No matches found to replace", type="info")
 

@@ -343,6 +343,96 @@ class TestReplaceIsTheSameAsEditingByHand:
         assert caption.comments == []
 
 
+class TestSayingWhenCommentsGoWithTheWords:
+    """
+    Replacing a word with nothing (or with a different number of words, when
+    not all of what it replaced was commented) takes its comment with it, as
+    deleting the word by hand does. The reader is told afterwards, with Undo
+    as the way back, rather than asked first.
+    """
+
+    @staticmethod
+    def notes(editor, monkeypatch):
+        said = []
+        monkeypatch.setattr(
+            "utils.srt_search.ui.notify",
+            lambda message, **kwargs: said.append((message, kwargs.get("type"))),
+        )
+
+        return said
+
+    def test_a_replacement_that_keeps_the_comment_says_nothing_about_it(
+        self, editor, monkeypatch
+    ):
+        said = self.notes(editor, monkeypatch)
+        editor.captions[0].comments = [WordComment({1}, "note")]
+
+        editor.search_captions("cat")
+        editor.current_search_index = 0
+        editor.replace_in_current_match("fox")
+
+        assert said == [("Replacement made", "positive")]
+
+    def test_replacing_with_nothing_says_the_comment_went(self, editor, monkeypatch):
+        said = self.notes(editor, monkeypatch)
+        editor.captions[0].comments = [WordComment({1}, "note")]
+
+        editor.search_captions("cat")
+        editor.current_search_index = 0
+        editor.replace_in_current_match("")
+
+        assert said == [
+            (
+                "Replacement made. 1 comment was removed with the replaced text."
+                " Undo restores it.",
+                "warning",
+            )
+        ]
+
+    def test_a_comment_that_survives_on_other_words_is_not_counted(
+        self, editor, monkeypatch
+    ):
+        said = self.notes(editor, monkeypatch)
+        editor.captions[0].comments = [WordComment({1, 2}, "note")]
+
+        editor.search_captions("cat")
+        editor.current_search_index = 0
+        editor.replace_in_current_match("")
+
+        assert said == [("Replacement made", "positive")]
+
+    def test_replace_all_counts_every_comment_it_took(self, editor, monkeypatch):
+        said = self.notes(editor, monkeypatch)
+        editor.captions[0].comments = [WordComment({1}, "one")]
+        editor.captions[1].comments = [
+            WordComment({4}, "two"),
+            WordComment({0}, "kept"),
+        ]
+
+        editor.search_captions("cat")
+        editor.replace_all("")
+
+        assert said == [
+            (
+                "Replaced 4 occurrences. 2 comments were removed with the"
+                " replaced text. Undo restores them.",
+                "warning",
+            )
+        ]
+        assert [c.text for c in editor.captions[1].comments] == ["kept"]
+
+    def test_replace_all_that_loses_nothing_stays_a_plain_message(
+        self, editor, monkeypatch
+    ):
+        said = self.notes(editor, monkeypatch)
+        editor.captions[0].comments = [WordComment({1}, "one")]
+
+        editor.search_captions("cat")
+        editor.replace_all("fox")
+
+        assert said == [("Replaced 4 occurrences", "positive")]
+
+
 class TestTheMarksInTheText:
     def test_every_match_is_handed_on_with_where_it_is(self, editor):
         editor.search_captions("cat")
