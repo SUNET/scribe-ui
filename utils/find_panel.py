@@ -45,23 +45,30 @@ It behaves the way a word processor's Find does:
 
 from typing import Callable, Optional
 
-from nicegui import background_tasks, ui
+from nicegui import ui
 
 from utils.common import focus_element
 
 
-# The words selected in the text, for a Find that starts from them: nothing
-# when there is no selection, when it is not in the text, or when it is more
-# than a phrase.
-SELECTED_WORDS_JS = """
+# Puts the words selected in the text into the field, for a Find that starts
+# from them: nothing when there is no selection, when it is not in the text,
+# or when it is more than a phrase. Done in the browser, in the same breath as
+# the card opens, before the field takes focus (which moves the selection);
+# the field then reports its new value the way a typed one does.
+FILL_FROM_SELECTION_JS = """
 (() => {
   const selection = window.getSelection();
-  if (!selection || selection.isCollapsed) return "";
+  if (!selection || selection.isCollapsed) return;
   const text = selection.toString();
-  if (text.length > 100 || text.includes("\\n")) return "";
+  if (text.length > 100 || text.includes("\\n")) return;
   const node = selection.anchorNode;
   const element = node && (node.nodeType === 1 ? node : node.parentElement);
-  return element && element.closest(".transcript-text") ? text : "";
+  if (!element || !element.closest(".transcript-text")) return;
+  const field = document.getElementById("%(id)s")?.querySelector("input");
+  if (!field) return;
+  const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+  set.call(field, text);
+  field.dispatchEvent(new Event("input", { bubbles: true }));
 })()
 """
 
@@ -232,30 +239,22 @@ class FindPanel:
         """
         Show the card with the field ready -- with the words selected in the
         text in it, if there are some, as a word processor does -- and mark
-        the matches of what is in it.
+        the matches of what is in it. Nothing waits for the browser: the card
+        is there at once, and the words are put in the field by the same
+        script that gets there before the focus does.
         """
-
-        background_tasks.create(self.open_with_selection(replace))
-
-    async def open_with_selection(self, replace: bool) -> None:
-        selected = ""
-
-        try:
-            selected = await self.input.client.run_javascript(SELECTED_WORDS_JS)
-        except Exception:  # The page went away, or took too long to answer.
-            selected = ""
 
         self.container.set_visibility(True)
 
         if replace:
             self.set_replace(True)
 
-        if selected and selected != self.input.value:
-            self.input.set_value(selected)
-            self.editor.search_captions(selected)
-        else:
-            # Back with what was there: the marks went when it was closed.
-            self.editor.search_captions(self.input.value or "")
+        ui.run_javascript(FILL_FROM_SELECTION_JS % {"id": self.input.html_id})
+
+        # Back with what was there: the marks went when it was closed. (Words
+        # taken from the selection arrive as a typed value a moment later and
+        # are looked for then.)
+        self.editor.search_captions(self.input.value or "")
 
         self.focus_field()
 

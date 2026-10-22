@@ -413,10 +413,17 @@ class TestTheCard:
 
     def test_opening_marks_the_matches_of_what_is_in_the_field(self):
         panel = source("utils/find_panel.py")
-        opening = panel[panel.index("    async def open_with_selection") : panel.index("    def focus_field")]
+        opening = panel[panel.index("    def open(") : panel.index("    def focus_field")]
 
+        assert "self.container.set_visibility(True)" in opening
         assert "self.editor.search_captions(self.input.value" in opening
         assert "self.focus_field()" in opening
+
+    def test_opening_waits_for_nothing_from_the_browser(self):
+        panel = source("utils/find_panel.py")
+
+        assert "await" not in panel
+        assert "background_tasks" not in panel
 
     def test_the_selected_words_go_into_the_field_when_it_opens(self):
         panel = source("utils/find_panel.py")
@@ -424,11 +431,13 @@ class TestTheCard:
         assert "getSelection()" in panel
         assert 'closest(".transcript-text")' in panel
         assert "text.length > 100" in panel
-        assert "run_javascript(SELECTED_WORDS_JS)" in panel
+        assert "ui.run_javascript(FILL_FROM_SELECTION_JS" in panel
+        # The field reports the new value as a typed one, so the search runs.
+        assert 'new Event("input", { bubbles: true })' in panel
 
     def test_the_selection_is_read_before_the_field_takes_focus(self):
         panel = source("utils/find_panel.py")
-        opening = panel[panel.index("    async def open_with_selection") : panel.index("    def focus_field")]
+        opening = panel[panel.index("    def open(") : panel.index("    def focus_field")]
 
         assert opening.index("run_javascript") < opening.index("focus_field")
 
