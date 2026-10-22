@@ -110,8 +110,10 @@ const FAILURES = {
 // original handlers run untouched.  Pinned against the NiceGUI release in
 // tests/test_recording.py, since it reaches into nicegui.js.
 const RELOAD_EVENTS = ["connect", "connect_error", "try_reconnect", "run_javascript"];
-// What the server sends when it cannot replay a reconnect's missed messages.
+// What the server sends when it cannot replay a reconnect's missed messages:
+// the reload, since NiceGUI 3.18 behind a console.log of its own.
 const SERVER_RELOAD = "window.location.reload()";
+const SERVER_RELOAD_CODE = /^(console\.log\([^)]*\);\s*)?window\.location\.reload\(\)$/;
 
 function guardReloads(busy, onStale, onConnected) {
   const socket = window.socket;
@@ -172,7 +174,7 @@ function guardReloads(busy, onStale, onConnected) {
 
   socket.on("run_javascript", (...args) => {
     const message = args[0] || {};
-    if (busy() && typeof message.code === "string" && message.code.trim() === SERVER_RELOAD) {
+    if (busy() && typeof message.code === "string" && SERVER_RELOAD_CODE.test(message.code.trim())) {
       // Passed on emptied rather than dropped: nicegui.js's own handler is
       // what keeps count of the messages it has had.
       stale();
