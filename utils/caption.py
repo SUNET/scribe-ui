@@ -58,7 +58,6 @@ class SRTCaption:
         self.end_time = end_time
         self.text = text
         self.is_selected = False
-        self.is_highlighted = False  # For search highlighting
         self.is_valid = True  # For validation
         # Whether any issue Validate found is an error rather than a warning;
         # decides the colour the caption is marked in. Only means anything
@@ -98,7 +97,6 @@ class SRTCaption:
             self.speaker,
         )
         new_caption.is_selected = self.is_selected
-        new_caption.is_highlighted = self.is_highlighted
         new_caption.is_valid = self.is_valid
         new_caption.has_error = self.has_error
         # Copied rather than shared: the undo stack holds these snapshots, so

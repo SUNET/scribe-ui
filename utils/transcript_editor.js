@@ -86,7 +86,7 @@ export default {
             @keydown="onControlKeydown($event, block.id, 'speaker')"
           >{{ block.speaker }}</span><span v-if="!subtitleMode" class="transcript-colon">:</span></div><div
           class="transcript-cell"
-          :class="{ 'transcript-cell-active': block.id === activeId, 'transcript-cell-editing': block.id === caretId, 'transcript-cell-invalid': block.invalid, 'transcript-cell-warning': block.warning, 'transcript-cell-highlighted': block.highlighted, 'transcript-cell-reviewing': block.id === reviewId, 'transcript-cell-commenting': block.id === commentId }"
+          :class="{ 'transcript-cell-active': block.id === activeId, 'transcript-cell-editing': block.id === caretId, 'transcript-cell-invalid': block.invalid, 'transcript-cell-warning': block.warning, 'transcript-cell-reviewing': block.id === reviewId, 'transcript-cell-commenting': block.id === commentId }"
           :data-id="block.id"
         ><div
             v-if="!subtitleMode"
@@ -295,6 +295,13 @@ export default {
     // being written has a caption but no comment yet.
     commentId: { type: Number, default: -1 },
     commentIndex: { type: Number, default: -1 },
+    // What the Find card has found (utils/find_panel.py): each match as
+    // { id, s, e } -- the caption and where in its text -- and which of them
+    // is the current one, or -1. Painted over the words with the browser's
+    // highlight registry, so no element is added to the text and nothing
+    // about it has to be rebuilt for a search.
+    findMarks: { type: Array, default: () => [] },
+    findCurrent: { type: Number, default: -1 },
     reviewLabel: { type: String, default: "" },
     editLabel: { type: String, default: "" },
     showEdits: { type: Boolean, default: false },
@@ -327,6 +334,15 @@ export default {
       this.caretSync = setTimeout(() => {
         if (this.caretId === id) this.$emit("caretblock", { id });
       }, 300);
+    },
+    // An update resends every prop, and an array arrives as a new reference
+    // each time, so these fire as often as the active word moves; paintFind
+    // does nothing when what it would draw has not changed.
+    findMarks() {
+      this.$nextTick(() => this.paintFind());
+    },
+    findCurrent() {
+      this.$nextTick(() => this.paintFind());
     },
     revision() {
       // Bumped by the server only when the blocks actually change. Watching
@@ -392,6 +408,10 @@ export default {
 
       this.$nextTick(() => {
         this.indexWords();
+
+        // The text was rebuilt, so the ranges the matches were painted on are
+        // gone with it.
+        this.paintFind(true);
 
         // A fresh render is the server's own account of which words have been
         // changed, worked out by diffing the text properly rather than word by
@@ -516,6 +536,7 @@ export default {
     this.$nextTick(() => this.indexWords());
   },
   beforeUnmount() {
+    this.clearFind();
     clearTimeout(this.caretSync);
     this.video?.removeEventListener("timeupdate", this.onTime);
     this.video?.removeEventListener("seeking", this.onTime);
@@ -523,6 +544,68 @@ export default {
     document.removeEventListener("keydown", this.onEscape, true);
   },
   methods: {
+    // Paint what the Find card found over the words: every match, and the
+    // current one over it (two highlights, drawn in styles.py). The browser's
+    // highlight registry is used rather than wrapping the matches in
+    // elements: this text is a contenteditable the reader types into, and a
+    // search must not change it or take the caret anywhere. Where the
+    // registry does not exist the caption's own marking is all there is.
+    //
+    // `force` repaints even when nothing changed -- after the text was
+    // rebuilt, when the ranges point at nodes that are gone.
+    paintFind(force = false) {
+      if (!window.CSS || !CSS.highlights || typeof Highlight === "undefined") return;
+
+      const signature = JSON.stringify([this.findMarks, this.findCurrent]);
+      if (!force && signature === this.findSignature) return;
+      this.findSignature = signature;
+
+      this.clearFind();
+      if (!this.findMarks.length) return;
+
+      const found = [];
+      const current = [];
+      const nodesOf = {};
+
+      this.findMarks.forEach((mark, at) => {
+        if (!(mark.id in nodesOf)) {
+          const block = this.$refs.body?.querySelector(
+            `.transcript-text[data-id="${mark.id}"]`
+          );
+          const nodes = [];
+          if (block) {
+            const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+            let node;
+            let from = 0;
+            while ((node = walker.nextNode())) {
+              nodes.push({ node, from, to: from + node.data.length });
+              from += node.data.length;
+            }
+          }
+          nodesOf[mark.id] = nodes;
+        }
+
+        const nodes = nodesOf[mark.id];
+        const first = nodes.find((n) => mark.s >= n.from && mark.s < n.to);
+        const last = nodes.find((n) => mark.e > n.from && mark.e <= n.to);
+        if (!first || !last) return;
+
+        const range = new Range();
+        range.setStart(first.node, mark.s - first.from);
+        range.setEnd(last.node, mark.e - last.from);
+        (at === this.findCurrent ? current : found).push(range);
+      });
+
+      if (found.length) CSS.highlights.set("find-match", new Highlight(...found));
+      if (current.length) CSS.highlights.set("find-current", new Highlight(...current));
+    },
+
+    clearFind() {
+      if (!window.CSS || !CSS.highlights) return;
+      CSS.highlights.delete("find-match");
+      CSS.highlights.delete("find-current");
+    },
+
     // The block a node sits in, walking up from wherever the caret is.
     blockOf(node) {
       let el = node instanceof Element ? node : node?.parentElement;

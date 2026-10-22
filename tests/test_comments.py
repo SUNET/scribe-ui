@@ -521,7 +521,8 @@ class TestFollowingTheText:
         editor.selected_caption = first
         editor.case_sensitive = True
 
-        editor.replace_in_current_caption("ett nytt")
+        editor.rebuild_matches(after=(editor.captions[0].index, 0))
+        editor.replace_in_current_match("ett nytt")
 
         assert first.text == "ett nytt två tre"
         assert shape(first) == [([3], "c")]
@@ -917,6 +918,18 @@ def view(editor, monkeypatch):
     return view
 
 
+class Fold:
+    """
+    The card's fold, as far as the panel can tell: folded or not.
+    """
+
+    def __init__(self):
+        self.folded = False
+
+    def unfold(self):
+        self.folded = False
+
+
 @pytest.fixture
 def panel(view, editor, monkeypatch):
     from utils.comments_panel import CommentsPanel
@@ -925,6 +938,7 @@ def panel(view, editor, monkeypatch):
     built.transcript = view
     built.current = None
     built.pending = None
+    built.fold = Fold()
 
     for name in (
         "container",
@@ -1253,6 +1267,45 @@ class TestFollowingTheCaret:
 
         assert panel.text.value == "b"
         assert panel.heading.text == "Comment 2 of 2"
+
+    def test_a_folded_card_stays_folded_as_the_caret_moves_between_comments(
+        self, panel, editor
+    ):
+        first, second = self.one(editor)
+        panel.show(editor.captions[0], first)
+        panel.fold.folded = True
+
+        panel.follow(editor.captions[1], second, click=False)
+        panel.follow(editor.captions[0], first, click=True)
+
+        assert panel.fold.folded is True
+
+    def test_writing_a_comment_unfolds_the_card(self, panel, editor):
+        panel.container.visible = True
+        panel.fold.folded = True
+
+        panel.open_for(editor.captions[0], 5, 9)
+
+        assert panel.fold.folded is False
+
+    def test_opening_an_existing_comment_with_the_key_unfolds_the_card(
+        self, panel, editor
+    ):
+        editor.captions[0].comments = [comment({1, 2}, "there")]
+        panel.fold.folded = True
+
+        panel.open_for(editor.captions[0], 5, 9)
+
+        assert panel.fold.folded is False
+
+    def test_putting_the_card_away_forgets_that_it_was_folded(self, panel, editor):
+        first, second = self.one(editor)
+        panel.show(editor.captions[0], first)
+        panel.fold.folded = True
+
+        panel.hide()
+
+        assert panel.fold.folded is False
 
     def test_following_does_not_scroll_the_text_under_the_caret(self, panel, editor):
         first, second = self.one(editor)
@@ -2020,7 +2073,6 @@ class TestTheStyles:
         for earlier in (
             "    .transcript-cell-editing {",
             "    .transcript-cell-invalid {",
-            "    .transcript-cell-highlighted {",
         ):
             assert css.index(earlier) < at
 

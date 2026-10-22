@@ -99,8 +99,16 @@ class RenderMixin:
         keeps that cheap, not this distinction.
         """
 
+        # While something is being looked for, an edit can make a match or
+        # take one away: look again before drawing, so the captions are drawn
+        # with the right ones marked.
+        if self.search_term:
+            self.rebuild_matches()
+
         if self.render_override is not None:
             self.render_override()
+
+        self.mark_found()
 
         # Splits, merges and deletions all land here, and each of them can
         # change how many words are flagged.
@@ -725,7 +733,7 @@ class RenderMixin:
         # subtitles cannot keep: plain SRT has nowhere to put them. Saving a
         # comment is listed because Ctrl/⌘ + Enter is not what a reader would
         # try; Esc, which closes it, is what Esc does everywhere, and is not.
-        tools = [("Find", "Ctrl/⌘ + F")] + (
+        tools = [("Find", "Ctrl/⌘ + F"), ("Replace", "Ctrl + H")] + (
             [("Validate captions", "Ctrl + Shift + V")]
             if subtitles
             else [

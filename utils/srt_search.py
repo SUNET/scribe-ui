@@ -18,6 +18,13 @@
 
 """
 Find and replace across a transcription's captions.
+
+Every occurrence of the term is a match, in the order of the text, and one of
+them is the current one -- the way a word processor's Find has it. Enter and the
+arrows step from one to the next (and round the end), Replace changes the
+current one and moves on, Replace all changes every one. The matches are
+marked in the text while the Find card is open (their words only: a whole
+caption's tint is Validate's) and are gone when it is closed.
 """
 
 import re
@@ -27,330 +34,359 @@ from typing import Optional
 from nicegui import ui
 
 
+def utf16_offset(text: str, position: int) -> int:
+    """
+    `position` in `text`, counted the way the browser counts it. A character
+    outside the basic plane (most emoji) is one in Python and two in
+    JavaScript, and the marks are drawn there.
+    """
+
+    return len(text[:position].encode("utf-16-le")) // 2
+
 
 class SearchMixin:
     """
-    The search panel and the search state behind it.
+    The search state behind the Find card (utils/find_panel.py).
+
+    `search_results` is a list of (caption index, start, end): where each
+    occurrence is in its caption's text. `current_search_index` is the one
+    the reader is on.
     """
+
+    def find_pattern(self) -> Optional["re.Pattern"]:
+        """
+        The term as a pattern, or None when there is nothing to look for. The
+        term is taken as typed -- a space at the end is part of it -- but one
+        of nothing but spaces is not a search.
+        """
+
+        if not self.search_term or not self.search_term.strip():
+            return None
+
+        flags = 0 if self.case_sensitive else re.IGNORECASE
+
+        return re.compile(re.escape(self.search_term), flags)
+
+
+    def find_occurrences(self) -> list:
+        """
+        Every occurrence of the term, in the order of the text.
+        """
+
+        pattern = self.find_pattern()
+
+        if pattern is None:
+            return []
+
+        return [
+            (caption.index, match.start(), match.end())
+            for caption in self.captions
+            for match in pattern.finditer(caption.text)
+        ]
+
+
+    def caption_by_index(self, index: int):
+        return next((c for c in self.captions if c.index == index), None)
+
+
+    def rebuild_matches(self, after: Optional[tuple] = None) -> None:
+        """
+        Look for the term again, keep the current match where it was -- or,
+        where it is gone, at the next one. `after` is a (caption index, character) to land on or after; by
+        default where the current match is now.
+
+        Done on every redraw while a term is set: an edit can make a match
+        or take one away.
+        """
+
+        if after is None and self.search_results:
+            at = min(self.current_search_index, len(self.search_results) - 1)
+            after = self.search_results[at][:2]
+
+        self.search_results = self.find_occurrences()
+
+        self.current_search_index = 0
+
+        if after is not None:
+            for at, (caption_index, start, _end) in enumerate(self.search_results):
+                if (caption_index, start) >= after:
+                    self.current_search_index = at
+                    break
+
+
+    def search_start(self) -> tuple:
+        """
+        Where a new search begins: the caption the reader is on, so that
+        typing a term finds the next one from there rather than snapping
+        back to the top.
+        """
+
+        if self.selected_caption is not None:
+            return (self.selected_caption.index, 0)
+
+        return (0, 0)
+
 
     def search_captions(self, search_term: str) -> None:
         """
-        Search for captions containing the search term.
+        Look for a term, mark every occurrence, and go to the first one at or
+        after where the reader is.
         """
 
         self.search_term = search_term
         self.search_results = []
+        self.rebuild_matches(after=self.search_start())
 
-        # Track which captions change highlight state
-        changed_indices = set()
-
-        # Clear previous highlights
-        for caption in self.captions:
-            if caption.is_highlighted:
-                caption.is_highlighted = False
-                changed_indices.add(caption.index)
-
-        if not search_term.strip():
-            self.refresh_display(
-                specific_indices=changed_indices if changed_indices else None
-            )
-            self.update_search_info()
-            return
-
-        # Find matching captions
-        for i, caption in enumerate(self.captions):
-            if caption.matches_search(search_term, self.case_sensitive):
-                self.search_results.append(i)
-                caption.is_highlighted = True
-                changed_indices.add(caption.index)
-
-        self.current_search_index = 0
-        self.refresh_display(
-            specific_indices=changed_indices if changed_indices else None
-        )
-        self.update_search_info()
+        self.refresh_display()
 
         if self.search_results:
-            self.scroll_to_result(0)
+            self.reveal_current()
+
+
+    def clear_search(self) -> None:
+        """
+        Forget the term: nothing is marked in the text any more. What the
+        Find card shows in its own field is the card's business.
+        """
+
+        had = bool(self.search_term) or bool(self.search_results)
+
+        self.search_term = ""
+        self.search_results = []
+        self.current_search_index = 0
+
+        if had:
+            self.refresh_display()
+
+
+    def mark_found(self) -> None:
+        """
+        Tell the text which words are matches, and the card where the reader
+        is among them. Called after every redraw.
+        """
+
+        marks = []
+
+        for caption_index, start, end in self.search_results:
+            caption = self.caption_by_index(caption_index)
+
+            if caption is None:
+                continue
+
+            marks.append(
+                {
+                    "id": caption_index,
+                    "s": utf16_offset(caption.text, start),
+                    "e": utf16_offset(caption.text, end),
+                }
+            )
+
+        if self.on_find_marks is not None:
+            self.on_find_marks(marks, self.current_search_index if marks else -1)
+
+        self.update_search_info()
 
 
     def navigate_search_results(self, direction: int) -> None:
         """
-        Navigate through search results (direction:  1 for next, -1 for previous).
+        Step to the next (1) or previous (-1) match, round the end.
         """
+
         if not self.search_results:
             return
 
         self.current_search_index = (self.current_search_index + direction) % len(
             self.search_results
         )
-        self.scroll_to_result(self.current_search_index)
-        self.update_search_info()
+        self.mark_found()
+        self.reveal_current()
 
 
-    def scroll_to_result(self, result_index: int) -> None:
+    def reveal_current(self) -> None:
         """
-        Scroll to a specific search result.
+        Bring the caption of the current match into view and seek the
+        recording to it. Not select_caption(): that toggles, so a second
+        match in the same caption would have un-selected it and not scrolled.
         """
-        if not self.search_results or result_index >= len(self.search_results):
+
+        if not self.search_results:
             return
 
-        caption_index = self.search_results[result_index]
-        # Select the caption to make it visible
-        if caption_index < len(self.captions):
-            self.select_caption(self.captions[caption_index])
+        caption = self.caption_by_index(self.search_results[self.current_search_index][0])
 
-
-    def replace_in_current_caption(self, replacement: str) -> None:
-        """
-        Replace search term in currently selected caption.
-        """
-        if not self.selected_caption or not self.search_term:
-            ui.notify("No caption selected or search term empty", type="warning", timeout=None, close_button="Close")
+        if caption is None:
             return
 
-        if self.selected_caption.matches_search(self.search_term, self.case_sensitive):
-            # Save state before making changes
-            self.save_state_for_undo()
-
-            if self.case_sensitive:
-                new_text = self.selected_caption.text.replace(
-                    self.search_term, replacement
-                )
-            else:
-                # Case-insensitive replacement
-                pattern = re.compile(re.escape(self.search_term), re.IGNORECASE)
-                new_text = pattern.sub(replacement, self.selected_caption.text)
-
-            # Replacing a word is the reader changing it, exactly as typing
-            # over it is -- and a replacement of a different length shifts
-            # every mark after it along. Worked out here rather than through
-            # update_caption_text, which would take a second undo snapshot on
-            # top of the one already taken above.
-            self.carry_marks(self.selected_caption, new_text)
-            self.selected_caption.text = new_text
-            self.update_flagged_count()
-            self.refresh_display()
-            ui.notify("Replacement made", type="positive")
+        if self.selected_caption is caption:
+            if self.on_select:
+                self.on_select(caption)
         else:
-            ui.notify("Current caption doesn't contain search term", type="warning", timeout=None, close_button="Close")
+            self.select_caption(caption)
+
+
+    def comment_count(self) -> int:
+        """
+        How many comments there are in all, to tell the reader afterwards if a
+        replacement took any with it.
+        """
+
+        return sum(len(caption.comments) for caption in self.captions)
+
+    @staticmethod
+    def comments_lost_note(lost: int) -> str:
+        """
+        The sentence added to a Replace message when comments went with the
+        words they were on. Empty when none did.
+        """
+
+        if lost <= 0:
+            return ""
+
+        if lost == 1:
+            return " 1 comment was removed with the replaced text. Undo restores it."
+
+        return f" {lost} comments were removed with the replaced text. Undo restores them."
+
+    def replace_in_current_match(self, replacement: str) -> None:
+        """
+        Change the current match -- that one occurrence, not the others in the
+        same caption -- and move to the next, as a word processor's Replace
+        does.
+        """
+
+        if not self.search_results:
+            ui.notify("No match to replace", type="warning", timeout=None, close_button="Close")
+            return
+
+        # What the card shows is what is replaced: look again first, in case
+        # the text was typed into since.
+        self.rebuild_matches()
+
+        if not self.search_results:
+            ui.notify("No match to replace", type="warning", timeout=None, close_button="Close")
+            return
+
+        caption_index, start, end = self.search_results[self.current_search_index]
+        caption = self.caption_by_index(caption_index)
+
+        if caption is None:
+            return
+
+        # Save state before making changes
+        self.save_state_for_undo()
+
+        new_text = caption.text[:start] + replacement + caption.text[end:]
+
+        # Replacing a word is the reader changing it, exactly as typing
+        # over it is -- and a replacement of a different length shifts
+        # every mark after it along. Worked out here rather than through
+        # update_caption_text, which would take a second undo snapshot on
+        # top of the one already taken above.
+        comments_before = self.comment_count()
+        self.carry_marks(caption, new_text)
+        caption.text = new_text
+        self.update_flagged_count()
+        lost = comments_before - self.comment_count()
+
+        # On to the next one: the first that starts after what was put in.
+        self.search_results = []
+        self.rebuild_matches(after=(caption_index, start + len(replacement)))
+
+        self.refresh_display()
+        self.reveal_current()
+
+        if lost > 0:
+            ui.notify(
+                "Replacement made." + self.comments_lost_note(lost),
+                type="warning",
+                timeout=None,
+                close_button="Close",
+            )
+        else:
+            ui.notify("Replacement made", type="positive")
 
 
     def replace_all(self, replacement: str) -> None:
         """
         Replace search term in all matching captions.
         """
-        if not self.search_term:
+        pattern = self.find_pattern()
+
+        if pattern is None:
             ui.notify("No search term entered", type="warning", timeout=None, close_button="Close")
             return
 
         # Check if there are any matches before saving state
-        has_matches = any(
-            caption.matches_search(self.search_term, self.case_sensitive)
-            for caption in self.captions
-        )
+        has_matches = any(pattern.search(caption.text) for caption in self.captions)
 
         if has_matches:
             # Save state before making changes
             self.save_state_for_undo()
 
         count = 0
+        comments_before = self.comment_count()
         for caption in self.captions:
-            if caption.matches_search(self.search_term, self.case_sensitive):
-                if self.case_sensitive:
-                    new_text = caption.text.replace(self.search_term, replacement)
-                else:
-                    pattern = re.compile(re.escape(self.search_term), re.IGNORECASE)
-                    new_text = pattern.sub(replacement, caption.text)
+            found = len(pattern.findall(caption.text))
 
-                # See replace_in_current_caption: the replaced word is an edit
+            if found:
+                new_text = pattern.sub(lambda _match: replacement, caption.text)
+
+                # See replace_in_current_match: the replaced word is an edit
                 # of the reader's, and a replacement of a different length
                 # moves every mark after it. One undo snapshot covers the whole
                 # Replace All, so this cannot go through update_caption_text.
                 self.carry_marks(caption, new_text)
                 caption.text = new_text
-                count += 1
+                count += found
 
         if count > 0:
             self.update_flagged_count()
-            # Refresh search results
             self.search_captions(self.search_term)
-            ui.notify(f"Replaced {count} occurrences", type="positive")
+            lost = comments_before - self.comment_count()
+
+            if lost > 0:
+                ui.notify(
+                    f"Replaced {count} occurrences."
+                    + self.comments_lost_note(lost),
+                    type="warning",
+                    timeout=None,
+                    close_button="Close",
+                )
+            else:
+                ui.notify(f"Replaced {count} occurrences", type="positive")
         else:
             ui.notify("No matches found to replace", type="info")
 
 
     def update_search_info(self) -> None:
         """
-        Update search information display.
+        Tell the card where the reader is among the matches.
         """
-        if hasattr(self, "search_info_label") and self.search_info_label:
-            if self.search_results:
-                info_text = f"{self.current_search_index + 1} of {len(self.search_results)} matches"
-            else:
-                info_text = "No matches" if self.search_term else ""
-            self.search_info_label.set_text(info_text)
 
-
-    def get_highlighted_text(self, text: str) -> str:
-        """
-        Get text with search term highlighted (for display purposes).
-        """
-        if not self.search_term or not text:
-            return text
-
-        if self.case_sensitive:
-            highlighted = text.replace(
-                self.search_term,
-                f'<mark style="background-color: yellow; padding: 2px;">{self.search_term}</mark>',
-            )
-        else:
-            pattern = re.compile(f"({re.escape(self.search_term)})", re.IGNORECASE)
-            highlighted = pattern.sub(
-                r'<mark style="background-color:  yellow; padding: 2px;">\1</mark>',
-                text,
+        if self.find_panel is not None:
+            self.find_panel.show_position(
+                self.current_search_index, len(self.search_results), self.search_term
             )
 
-        return highlighted
 
-
-    def create_search_panel(self, open_window: Optional[bool] = False) -> None:
+    def create_search_panel(self) -> None:
         """
-        Create the search panel UI, once. Called again -- Ctrl+F is bound
-        straight to this, so every press used to call it -- it just reopens
-        the existing dialog instead of building a second one: a fresh
-        ui.dialog() each time left the old one in the DOM (it is never
-        removed), so a few presses meant several stacked dialogs, several
-        elements with the same id (search_info_label, action_row) and
-        several copies of the Enter-key handler.
+        The toolbar's Find button. The card itself is built with the others,
+        under the video (utils/find_panel.py), and opens from here and from
+        Ctrl/Cmd+F.
         """
 
-        existing = getattr(self, "search_container", None)
-        if existing is not None:
-            if open_window:
-                existing.open()
-            return
+        with ui.button("Find", icon="search").props(
+            "flat aria-keyshortcuts=Control+F"
+        ).classes("editor-btn editor-toolbar-btn editor-quiet") as self.find_button:
+            self.find_button.tooltip("Find (Ctrl/\u2318 + F)")
+            self.find_button.on("click", lambda: self.open_find())
 
-        with ui.dialog().props('aria-label="Find & Replace"') as self.search_container:
-            with ui.card().classes("w-1/2 max-w-full").style("padding: 16px;"):
-                # Title
-                ui.label("Find & Replace").classes("text-h6 mb-3")
 
-                # FIND SECTION
-                with ui.column().classes("w-full gap-2"):
-                    find_label = ui.label("Find").classes(
-                        "text-caption text-theme-secondary"
-                    )
+    def open_find(self, replace: bool = False) -> None:
+        """
+        Open the Find card, if the page has one.
+        """
 
-                    with ui.row().classes("w-full items-center gap-2"):
-                        search_input = (
-                            ui.input(
-                                placeholder="Search in captions…",
-                                value=self.search_term,
-                            )
-                            .classes("flex-1")
-                            .props(
-                                "outlined dense clearable "
-                                f"aria-labelledby={find_label.html_id}"
-                            )
-                        )
-
-                        ui.button(icon="search").props("flat dense round aria-label='Find in captions'").classes(
-                            "editor-btn"
-                        ).on(
-                            "click", lambda: self.search_captions(search_input.value)
-                        ).tooltip(
-                            "Find"
-                        )
-
-                    with ui.row().classes("w-full items-center justify-between mt-1"):
-                        ui.checkbox("Case sensitive").bind_value_to(
-                            self, "case_sensitive"
-                        ).on(
-                            "update:model-value",
-                            lambda: (
-                                self.search_captions(search_input.value)
-                                if self.search_term
-                                else None
-                            ),
-                        )
-
-                        # Navigation + info
-                        with ui.row().classes("items-center gap-1"):
-                            ui.button(icon="keyboard_arrow_up").props(
-                                "flat dense round aria-label='Previous search match'"
-                            ).classes("editor-btn").on(
-                                "click", lambda: self.navigate_search_results(-1)
-                            ).tooltip(
-                                "Previous match"
-                            )
-                            ui.button(icon="keyboard_arrow_down").props(
-                                "flat dense round aria-label='Next search match'"
-                            ).classes("editor-btn").on(
-                                "click", lambda: self.navigate_search_results(1)
-                            ).tooltip(
-                                "Next match"
-                            )
-
-                            self.search_info_label = ui.label("").classes(
-                                "text-caption text-theme-secondary"
-                            )
-                            # "3 of 12 matches" / "No matches" appear without
-                            # focus moving, so they have to be announced
-                            # (WCAG 4.1.3).
-                            self.search_info_label.props(
-                                "role=status aria-live=polite aria-atomic=true"
-                            )
-
-                ui.separator().classes("my-3")
-
-                # REPLACE SECTION
-                with ui.column().classes("w-full gap-2"):
-                    replace_label = ui.label("Replace").classes(
-                        "text-caption text-theme-secondary"
-                    )
-
-                    replace_input = (
-                        ui.input(
-                            placeholder="Replace with…",
-                        )
-                        .classes("w-full")
-                        .props(
-                            "outlined dense clearable "
-                            f"aria-labelledby={replace_label.html_id}"
-                        )
-                    )
-
-                    with ui.row().classes("w-full justify-end gap-2"):
-                        ui.button("Replace").props("flat dense").classes(
-                            "editor-btn"
-                        ).on(
-                            "click",
-                            lambda: self.replace_in_current_caption(
-                                replace_input.value
-                            ),
-                        )
-
-                        ui.button("Replace all").props("flat dense").classes(
-                            "editor-btn"
-                        ).on("click", lambda: self.replace_all(replace_input.value))
-
-                ui.separator().classes("my-3")
-
-                with ui.row().classes("w-full justify-end"):
-                    ui.button("Close").props("flat dense").classes("editor-btn").on(
-                        "click", self.search_container.close
-                    )
-
-                # Enter key support for search
-                search_input.on(
-                    "keydown.enter",
-                    lambda: self.search_captions(search_input.value),
-                )
-
-        if open_window:
-            self.search_container.open()
-        else:
-            ui.button("Search", icon="search").props("flat").classes(
-                "editor-btn editor-toolbar-btn editor-quiet"
-            ).on("click", lambda: self.search_container.open())
+        if self.find_panel is not None:
+            self.find_panel.open(replace=replace)
