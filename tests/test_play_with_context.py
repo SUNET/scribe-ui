@@ -15,6 +15,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
 import pathlib
 
 import pytest
@@ -341,10 +342,8 @@ class TestPlayRange:
 
         script = SRTEditor.PLAY_RANGE_SCRIPT
         begin = script[script.index("const begin = () => {"):]
-        finish = script[script.index("const finish = () => {"):script.index("video._scribeStopWatch = finish;")]
 
-        assert 'video.addEventListener("seeking", finish);' in begin
-        assert 'video.removeEventListener("seeking", finish);' in finish
+        assert 'video.addEventListener("seeking", leave);' in begin
         assert "start - 0.5" not in script
         # Registered after its own move to the start, which is not the reader's.
         assert begin.index('"seeking"') < begin.index("video.play();")
@@ -353,6 +352,28 @@ class TestPlayRange:
         )
         # The only pause is at the end, never on a move.
         assert script.count("video.pause();") == 1
+
+    def test_the_player_keeps_whether_the_stretch_is_still_current(self):
+        script = SRTEditor.PLAY_RANGE_SCRIPT
+        leave = script[script.index("const leave = () => {"):script.index("// At its end")]
+        rest = script[script.index("const rest = () => {"):script.index("video._scribeStopWatch = finish;")]
+        watch = script[script.index("const watch = () => {"):script.index("const begin = () => {")]
+
+        # Running, from the moment it is asked for.
+        assert 'video._scribeRange = "playing";' in script
+        # Gone on anything of the reader's: a move, playing on, a pause.
+        assert "video._scribeRange = null;" in leave
+        assert 'video.addEventListener("play", leave);' in rest
+        assert "return leave();" in watch
+        # Stopped at its end, by the stop or the recording running out first.
+        assert 'video._scribeRange = "stopped";' in rest
+        assert watch.index("video.ended") < watch.index("video.paused")
+        assert "return rest();" in watch
+        # A second request cleans the first one's listeners away first, so
+        # its own move to the start is not read as the reader's.
+        assert script.index("video._scribeStopWatch()") < script.index(
+            'video._scribeRange = "playing";'
+        )
 
     def test_the_script_does_not_touch_focus(self):
         assert "focus" not in SRTEditor.PLAY_RANGE_SCRIPT
@@ -477,3 +498,114 @@ class TestTheKey:
             'case " " if event.modifiers.ctrl and not event.modifiers.shift'
             in source
         )
+
+
+class TestContextRangeAt:
+    """
+    The stretch around a moment that belongs to no caption: the words about
+    it, or the plain window, and never nothing.
+    """
+
+    def test_words_five_either_side(self):
+        editor = make_editor()
+
+        # Between word 5 (5.0-5.8) and word 6 (6.0-6.8): words 1-5 before,
+        # 6-10 after.
+        assert editor.context_range_at(5.9) == (1.0, 10.8)
+
+    def test_a_word_further_than_the_cap_is_left_out(self):
+        editor = make_editor(
+            {
+                "version": 1,
+                "words": [
+                    {"t": "a", "s": 1.0, "e": 1.5},
+                    {"t": "b", "s": 20.0, "e": 20.5},
+                ],
+            }
+        )
+
+        # Neither is within 5 s of 10: the plain window, not the silence up
+        # to a word 10 s off.
+        assert editor.context_range_at(10.0) == (5.0, 15.0)
+
+    def test_with_no_word_near_it_it_is_the_plain_window(self):
+        assert make_editor().context_range_at(50.0) == (45.0, 55.0)
+
+    def test_with_no_word_timings_at_all_it_is_the_plain_window(self):
+        editor = make_editor()
+        editor.words = []
+
+        assert editor.context_range_at(20.0) == (15.0, 25.0)
+
+    def test_with_words_only_before_it_stops_at_the_moment(self):
+        editor = make_editor()
+
+        # Words 8-11 are within 5 s of 13 and word 7 is not.
+        assert editor.context_range_at(13.0) == (8.0, 13.0)
+
+    def test_with_words_only_after_it_starts_at_the_moment(self):
+        editor = make_editor(
+            {"version": 1, "words": [{"t": "a", "s": 4.0, "e": 4.5}]}
+        )
+
+        assert editor.context_range_at(1.0) == (1.0, 4.5)
+
+    def test_a_word_straddling_the_moment_is_heard_whole(self):
+        editor = make_editor(
+            {"version": 1, "words": [{"t": "a", "s": 5.0, "e": 5.8}]}
+        )
+
+        assert editor.context_range_at(5.2) == (5.0, 5.8)
+
+    @pytest.mark.parametrize("moment", [0.0, 0.5, 3.3, 5.9, 12.0, 50.0])
+    def test_the_moment_is_always_inside_it(self, moment):
+        start, end = make_editor().context_range_at(moment)
+
+        assert start <= moment <= end
+        assert end > start
+
+    def test_never_before_zero(self):
+        editor = make_editor()
+        editor.words = []
+
+        assert editor.context_range_at(2.0) == (0.0, 7.0)
+        assert editor.context_range_at(-3.0) == (0.0, 5.0)
+
+
+class TestContextState:
+    def editor(self, monkeypatch, player, answer):
+        editor = make_editor()
+        editor._video_player = player
+        scripts = []
+
+        async def run(script, **k):
+            scripts.append(script)
+            return answer
+
+        monkeypatch.setattr("utils.srt.ui.run_javascript", run)
+
+        return editor, scripts
+
+    class Player:
+        id = 7
+
+    @pytest.mark.parametrize("answer", ["playing", "stopped"])
+    def test_it_is_what_the_player_says(self, monkeypatch, answer):
+        editor, scripts = self.editor(monkeypatch, self.Player(), answer)
+
+        assert asyncio.run(editor.context_state()) == answer
+        assert "getHtmlElement(7)" in scripts[0]
+        assert "_scribeRange" in scripts[0]
+
+    @pytest.mark.parametrize("answer", [None, "", "moved", 3])
+    def test_anything_else_is_nothing(self, monkeypatch, answer):
+        editor, _ = self.editor(monkeypatch, self.Player(), answer)
+
+        assert asyncio.run(editor.context_state()) is None
+
+    def test_with_no_player_it_is_nothing_and_asks_nothing(self, monkeypatch):
+        editor, scripts = self.editor(monkeypatch, None, "playing")
+
+        assert asyncio.run(editor.context_state()) is None
+        assert scripts == []
+

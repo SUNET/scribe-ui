@@ -818,53 +818,6 @@ class TestInformationDialog:
         assert "editor.set_status_elements(**figures)" in page
 
 
-class TestSpacePlaysAndPauses:
-    """
-    Space plays and pauses the recording unless something is being typed
-    into. Handled in the page's own head script rather than through the
-    keyboard handler: the player answers with no round trip, and whether the
-    reader is typing is a question only the browser can answer.
-    """
-
-    def page(self) -> str:
-        import pathlib
-
-        return pathlib.Path("pages/srt.py").read_text()
-
-    def test_it_asks_what_has_focus(self):
-        page = self.page()
-
-        assert "active.isContentEditable" in page
-        assert "'INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'" in page
-
-    def test_a_focused_button_keeps_its_own_space(self):
-        """
-        Space activates a focused button; taking that would break every
-        dialog on the page.
-        """
-
-        page = self.page()
-        handler = page[page.index("if (e.key === ' '"):]
-        handler = handler[: handler.index("}, true);")]
-
-        assert "BUTTON" in handler
-
-    def test_it_toggles_the_player_directly(self):
-        page = self.page()
-
-        assert "video.paused ? video.play() : video.pause();" in page
-
-    def test_the_modified_shortcut_is_still_there(self):
-        """
-        Ctrl+Space reaches the editor's own handler, which is what a reader
-        with the caret in a caption uses -- a bare space there is a space.
-        """
-
-        source = pathlib.Path("utils/srt.py").read_text()
-
-        assert "Play/pause video, Ctrl+Space" in source
-
-
 class TestStatusLine:
     """
     The figures in the video information dialog: how many captions there

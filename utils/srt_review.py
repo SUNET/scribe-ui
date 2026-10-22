@@ -242,6 +242,65 @@ class ReviewMixin:
 
         return (max(0.0, start), end)
 
+    def context_range_at(
+        self,
+        moment: float,
+        words: int = CONTEXT_WORDS,
+        seconds: float = CONTEXT_SECONDS,
+    ) -> tuple:
+        """
+        The stretch to play around a moment that belongs to no caption: from
+        the start of the word `words` words before it to the end of the word
+        `words` words after it, no word further than `seconds` from it.
+
+        Unlike context_range this never comes back empty. A moment with no
+        word near it -- a pause, a stretch the recording was not marked as
+        speech in, a recording with no word timings at all -- is played as
+        the plain window of `seconds` either side. Whether anyone is speaking
+        there is not for this to decide; the reader asked to hear it.
+
+        The stretch always contains the moment itself. Near the start of the
+        recording it begins at 0; past its end the player simply stops.
+        """
+
+        moment = max(0.0, float(moment))
+        first = last = moment
+
+        if self.words:
+            # Words that began before the moment are "before" (a word
+            # straddling it is heard whole), the rest "after".
+            split = bisect.bisect_left(self._word_midpoints, moment)
+            floor = moment - seconds
+            ceiling = moment + seconds
+
+            for position in range(split - 1, max(0, split - words) - 1, -1):
+                began = self.words[position].get(
+                    "s", self._word_midpoints[position]
+                )
+
+                if began < floor:
+                    break
+
+                first = min(first, began)
+
+            for position in range(split, min(len(self.words), split + words)):
+                word = self.words[position]
+                began = word.get("s", self._word_midpoints[position])
+                ended = word.get("e", self._word_midpoints[position])
+
+                if ended > ceiling:
+                    break
+
+                if began < moment:
+                    first = min(first, max(began, floor))
+
+                last = max(last, ended)
+
+        if last <= first:
+            return (max(0.0, moment - seconds), moment + seconds)
+
+        return (first, last)
+
     def words_in_range(self, start: float, end: float) -> List[dict]:
         """
         Words spoken inside a time range, matched on their midpoint so a word

@@ -1694,11 +1694,11 @@ theme_styles = """
     .video-subtitle-overlay {
         position: absolute;
         left: 50%;
-        /* Where a viewer would see it: at the bottom of the frame. It only
-           moves up when the player's own control bar is up (see below), so
-           the rest of the time the preview is where the real thing is. */
+        /* Where a viewer would see it: at the bottom of the frame. The
+           player's controls are laid over that foot while they are up, and
+           the preview rises clear of them (see "The player's controls"
+           below). */
         bottom: 1rem;
-        transition: bottom 0.15s ease-in-out;
         transform: translateX(-50%);
         max-width: 90%;
         padding: 0.35rem 0.75rem;
@@ -1722,22 +1722,10 @@ theme_styles = """
            backstop for a line that still arrives carrying its own "\n". */
         white-space: pre-line;
         border-radius: 4px;
-        /* Belt and suspenders alongside the fixed offset above: never in
-           the way of the seek bar or a click-to-pause anywhere else on the
-           frame, even if the two ever end up overlapping regardless. */
+        /* A preview, not a control: a click anywhere on the frame goes to
+           the video underneath, as it would on a viewer's own screen. */
         pointer-events: none;
     }
-    /* Clear of the control bar while that bar is up. A fixed offset, not a
-       percentage of the frame's own height -- the bar's height is fixed too,
-       so a percentage shrinks below it on a short or wide video and the
-       overlay ends up drawn over the seek bar, hiding it rather than sitting
-       above it. The class is put on the frame by pages/srt.py, which follows
-       the same rules the browser draws the bar by: up while paused, and
-       while the pointer has moved over the frame in the last few seconds. */
-    .video-controls-visible .video-subtitle-overlay {
-        bottom: 4.25rem;
-    }
-
     .video-subtitle-line {
         /* Never break a line the editor did not break: draw_overlay gives
            each of the caption's own lines an element, and a wrap inside one
@@ -2676,12 +2664,17 @@ theme_styles = """
         min-width: 0;
     }
     .speech-timeline-wrap {
+        /* Said here rather than left to the component's own w-full class:
+           a container with inline-size containment has no width of its own
+           to offer, so in the editor's column (a flex column that aligns its
+           children to the start) a wrap that did not get that class came out
+           0 wide, and the strip and legend with it. */
+        width: 100%;
         min-width: 0;
         max-width: 100%;
         /* The legend lays itself out by how wide the strip is, not by how
            wide the window is: under the video and docked are very different
-           widths in the same window. Inline size only, so the wrap still
-           takes its width from its parent. */
+           widths in the same window. Inline size only. */
         container-type: inline-size;
     }
     .body--dark .speech-timeline {
@@ -2893,6 +2886,341 @@ theme_styles = """
         width: 2px;
         height: 0.75rem;
         background-color: var(--color-text-danger);
+    }
+
+    /* ── The player's controls (utils/player_controls.js) ── */
+    /* Laid over the foot of the picture on a dark tone, the way the browser's
+       own bar is: nothing of their own to look at, the picture is the
+       player. They are white on that tone whatever the theme, because what
+       they sit on is a video and not the page. A recording with no picture
+       has nothing to lay them over, so the frame becomes a dark surface of
+       its own and they sit on that: the same rows, the same glyphs. The
+       width they have is their own container's, not the window's -- the
+       splitter can leave the video very narrow. */
+    .player-controls {
+        --player-fg: #fff;
+        --player-track: rgba(255, 255, 255, 0.55);
+        --player-surface: #101c2e;
+        container-type: inline-size;
+        color: var(--player-fg);
+    }
+    .video-frame .player-controls {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 2;
+        /* The fade above the rows, so the tone has somewhere to come from.
+           Dense under the rows and fading out above them: the position bar's
+           unfilled track is half-white, and on a white picture it needs the
+           tone behind it to hold 3:1 (measured 4.1:1 there). */
+        padding-top: 2.75rem;
+        background: linear-gradient(
+            to top,
+            rgba(0, 0, 0, 0.85) 0,
+            rgba(0, 0, 0, 0.72) 62%,
+            rgba(0, 0, 0, 0.3) 82%,
+            rgba(0, 0, 0, 0) 100%
+        );
+        transition: opacity 0.2s ease-in-out;
+    }
+    /* While it plays and nothing is being done to them they go, as the
+       browser's do. Never from the keyboard: a control with focus is there.
+       Out of reach as well as out of sight: a tap on a touch screen that
+       brought them back must not also land on the Play button it brought
+       back (the tap that wakes them goes to the picture, the next one to
+       the control), and a pointer that moves over the frame wakes them
+       before any click. */
+    .video-frame .player-controls-asleep:not(:focus-within) {
+        opacity: 0;
+        pointer-events: none;
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .video-frame .player-controls {
+            transition: none;
+        }
+    }
+    /* The preview keeps clear of them while they are up, and goes back to the
+       foot of the picture when they are not, as it does under the browser's
+       bar. Their height is fixed: two rows, whatever the width. Only the
+       foot of the frame is theirs, so a recording with no picture (and no
+       preview) is left out. */
+    .video-frame:has(.player-controls:not(.player-controls-asleep):not(.player-controls-audio))
+        .video-subtitle-overlay,
+    .video-frame:has(.player-controls-asleep:focus-within) .video-subtitle-overlay {
+        bottom: 6.25rem;
+    }
+    .video-subtitle-overlay {
+        transition: bottom 0.2s ease-in-out;
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .video-subtitle-overlay {
+            transition: none;
+        }
+    }
+    .player-bar {
+        padding: 0 0.6rem 0.4rem;
+    }
+    .player-seekrow {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        min-width: 0;
+        padding: 0 0.25rem;
+    }
+    .player-buttons {
+        display: flex;
+        align-items: center;
+        gap: 0.15rem;
+        min-width: 0;
+    }
+    .player-spacer {
+        flex: 1;
+    }
+    .player-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex: none;
+        width: 2rem;
+        height: 2rem;
+        padding: 0;
+        border: 0;
+        border-radius: 50%;
+        background-color: transparent;
+        color: var(--player-fg);
+        cursor: pointer;
+        transition: background-color 0.12s ease-in-out;
+    }
+    .player-btn:hover,
+    .player-speed-btn:hover {
+        background-color: rgba(255, 255, 255, 0.2);
+    }
+    .player-btn-main {
+        width: 2.25rem;
+        height: 2.25rem;
+    }
+    /* The page's own type (the "Uncertain words" choices beside the video
+       are 14px at weight 500), not a thin monospace: the figures keep their
+       width through tabular numerals instead. */
+    .player-time {
+        flex: none;
+        font-family: inherit;
+        font-size: 0.875rem;
+        font-weight: 500;
+        font-variant-numeric: tabular-nums;
+        color: var(--player-fg);
+        white-space: nowrap;
+    }
+    .player-volume {
+        display: flex;
+        align-items: center;
+        flex: none;
+        gap: 0.1rem;
+    }
+    .player-volume-range {
+        flex: none;
+        width: 4.5rem;
+    }
+
+    /* The two bars are native range inputs, so the keyboard, the pointer and
+       a screen reader all get what the browser already does for a slider; only
+       the look is drawn here. The filled part is a gradient up to --fill,
+       which the component sets, in WebKit and Blink, and the engine's own
+       progress part in Firefox. The unfilled track is a clear half-white on
+       the tone, not a fainter one: it is a component's boundary and has to
+       hold 3:1 against what is behind it (1.4.11), a white picture
+       included. */
+    .player-range {
+        -webkit-appearance: none;
+        appearance: none;
+        flex: 1;
+        min-width: 3rem;
+        height: 1.5rem;
+        margin: 0;
+        padding: 0;
+        background: transparent;
+        cursor: pointer;
+    }
+    .player-range:disabled {
+        cursor: default;
+        opacity: 0.55;
+    }
+    .player-range::-webkit-slider-runnable-track {
+        height: 4px;
+        border-radius: 2px;
+        background: linear-gradient(
+            to right,
+            var(--player-fg) var(--fill, 0%),
+            var(--player-track) var(--fill, 0%)
+        );
+    }
+    .player-range::-moz-range-track {
+        height: 4px;
+        border-radius: 2px;
+        background: var(--player-track);
+    }
+    .player-range::-moz-range-progress {
+        height: 4px;
+        border-radius: 2px;
+        background: var(--player-fg);
+    }
+    .player-range::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 12px;
+        height: 12px;
+        margin-top: -4px;
+        border: 0;
+        border-radius: 50%;
+        background: var(--player-fg);
+        box-shadow: 0 0 3px rgba(0, 0, 0, 0.6);
+    }
+    .player-range::-moz-range-thumb {
+        width: 12px;
+        height: 12px;
+        border: 0;
+        border-radius: 50%;
+        background: var(--player-fg);
+        box-shadow: 0 0 3px rgba(0, 0, 0, 0.6);
+    }
+
+    .player-speed {
+        position: relative;
+        flex: none;
+    }
+    .player-speed-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 2.5rem;
+        height: 2rem;
+        margin: 0 0.1rem;
+        padding: 0 0.5rem;
+        /* Just the figure, no frame: it reads as the speed and the pointer
+           and the keyboard say it is a button (a fill on hover, the ring on
+           focus, the tooltip). */
+        border: 0;
+        border-radius: 999px;
+        background-color: transparent;
+        color: var(--player-fg);
+        font-family: inherit;
+        font-size: 0.875rem;
+        font-weight: 500;
+        font-variant-numeric: tabular-nums;
+        cursor: pointer;
+    }
+    /* Open says so with a fill. */
+    .player-speed-btn-open {
+        background-color: rgba(255, 255, 255, 0.28);
+    }
+    /* Opens upward: the controls are at the foot of the picture, and there is
+       more room over it than under. */
+    .player-menu {
+        position: absolute;
+        bottom: calc(100% + 8px);
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 10;
+        min-width: 6.2rem;
+        padding: 4px;
+        overflow-y: auto;
+        border: 1px solid rgba(255, 255, 255, 0.28);
+        border-radius: 8px;
+        background-color: rgba(16, 28, 46, 0.97);
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+    }
+    .player-menu-item {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        width: 100%;
+        height: 1.9rem;
+        padding: 0 0.6rem;
+        border: 0;
+        border-radius: 6px;
+        background-color: transparent;
+        color: var(--player-fg);
+        font-family: inherit;
+        font-size: 0.875rem;
+        font-weight: 500;
+        font-variant-numeric: tabular-nums;
+        text-align: left;
+        cursor: pointer;
+    }
+    .player-menu-item:hover {
+        background-color: rgba(255, 255, 255, 0.16);
+    }
+    .player-menu-item-on {
+        background-color: rgba(255, 255, 255, 0.22);
+        font-weight: 700;
+    }
+    .player-menu-check {
+        visibility: hidden;
+    }
+    .player-menu-item-on .player-menu-check {
+        visibility: visible;
+    }
+
+    /* The ring that says where the keyboard is. The page's own is the brand
+       colour, which is nearly the colour of the tone it would be drawn on;
+       white holds there, over a picture and on the audio surface alike. Stated
+       in the same layer, and heavily enough to win against the page's rule,
+       which is !important. */
+    @layer theme {
+        .player-controls.player-controls.player-controls .player-bar *:focus-visible {
+            outline: 3px solid #fff !important;
+            outline-offset: 1px !important;
+        }
+    }
+
+    /* A recording that is sound alone has no picture to lay the controls
+       over, so the frame that would have held one becomes the player's own
+       surface: dark, with the file name where the picture was, and the same
+       rows under it. The picture and the subtitle preview over it, which has
+       nothing to be a preview of, are gone; and the frame no longer clips,
+       so the speed menu is free to open past it. */
+    .video-frame.video-frame-audio {
+        flex: none;
+        height: auto;
+        overflow: visible;
+        background-color: var(--player-surface, #101c2e);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+    }
+    .video-frame-audio video,
+    .video-frame-audio .video-subtitle-overlay {
+        display: none !important;
+    }
+    /* Down rather than up: there is nothing above the surface to open over. */
+    .video-frame-audio .player-menu {
+        bottom: auto;
+        top: calc(100% + 8px);
+    }
+    .video-frame-audio .player-controls {
+        position: static;
+        padding-top: 0.75rem;
+        background: none;
+    }
+    .player-name {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        min-width: 0;
+        margin: 0 0.85rem 0.35rem;
+        font-size: 0.85rem;
+        color: var(--player-fg);
+    }
+    .player-name span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    /* Narrow: the slider goes and the mute button stays. */
+    @container (max-width: 20rem) {
+        .player-volume-range {
+            display: none;
+        }
     }
 
     /* ── SRT editor controls under the video ── */

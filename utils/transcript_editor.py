@@ -259,6 +259,12 @@ class TranscriptEditor:
         # The caption the caret last settled in, for Quick Jump's relative
         # times when there is no player to ask.
         self.caret_block: Optional[int] = None
+        # What "Play with context" last played, as an anchor -- ("block",
+        # index) or ("time", seconds) -- so a press while it is still the
+        # reader's current stretch plays that stretch again rather than the
+        # next one. Cleared when the caret settles in another block; the
+        # player says whether the stretch is still current (context_state).
+        self.last_context: Optional[tuple] = None
         # Built the first time it is wanted -- see open_quick_jump.
         self.quick_jump_dialog = None
         self.quick_jump_input = None
@@ -386,6 +392,8 @@ class TranscriptEditor:
             return
 
         self.caret_block = block_id
+        # The reader has moved on to something else.
+        self.last_context = None
 
         if self.on_caret is not None:
             self.on_caret(block_id)
@@ -1329,7 +1337,7 @@ class TranscriptEditor:
             int(offset) if isinstance(offset, (int, float)) else 0,
         )
 
-    def play_with_context(self, args) -> None:
+    def play_with_context(self, args) -> Optional[tuple]:
         """
         Play the block the caret is in, with a few words of speech either
         side of it, once.
@@ -1338,12 +1346,14 @@ class TranscriptEditor:
         reader is checking where a boundary falls by ear, and is about to
         carry on typing. The stretch is worked out from the block's times as
         they are now, edited or not (see context_range).
+
+        Returns the stretch played, or None if nothing was.
         """
 
         caption = self.caption(self.block_id(args))
 
         if caption is None:
-            return
+            return None
 
         stretch = self.editor.context_range(caption)
 
@@ -1354,7 +1364,7 @@ class TranscriptEditor:
                 timeout=None,
                 close_button="Close",
             )
-            return
+            return None
 
         if not self.editor.words:
             ui.notify(
@@ -1365,6 +1375,81 @@ class TranscriptEditor:
             )
 
         self.editor.play_range(*stretch)
+        self.last_context = ("block", caption.index)
+
+        return stretch
+
+    async def play_with_context_here(self) -> None:
+        """
+        Play with context from the player's own button: around where the
+        recording is now, wherever the caret is.
+
+        The playhead is what the button is about, so that is what it goes on.
+        Under it there is a caption or there is not:
+
+        - Inside a caption it is that caption with its context, exactly what
+          Ctrl+Shift+Space plays for it (context_range).
+        - Anywhere else -- a pause, a stretch not marked as speech, a
+          recording with no word timings -- it is the words around that
+          moment, or failing words the plain window of CONTEXT_SECONDS either
+          side (context_range_at). The button never has nothing to play: a
+          reader who wants to hear a part that was not identified as speech
+          is let.
+
+        Playing leaves the playhead where the stretch ends, so a second press
+        would take whatever is under *that* and the stretch would walk
+        forward a caption at a time. The same stretch is therefore played
+        again if the last one is still the reader's current one: it is
+        running, or it has stopped and the reader has since moved neither the
+        playhead nor the caret (the player knows the first, caret_moved the
+        second). Otherwise the press starts afresh from the playhead.
+
+        The caret plays no other part. Ctrl+Shift+Space is the key for "the
+        caption I am in"; this is the button for "here", and it is pressed
+        from outside the text, where the caret may long since have been left
+        behind.
+        """
+
+        anchor = None
+
+        if self.last_context is not None:
+            if await self.editor.context_state() is not None:
+                anchor = self.last_context
+
+        playhead = None
+
+        if anchor is None:
+            playhead = await self.playhead()
+            caption = self.caption_at(playhead)
+
+            if caption is None:
+                anchor = ("time", playhead)
+            else:
+                anchor = ("block", caption.index)
+
+        stretch = None
+
+        if anchor[0] == "block":
+            caption = self.caption(anchor[1])
+
+            if caption is not None and self.editor.context_range(caption):
+                stretch = self.play_with_context({"id": caption.index})
+            elif caption is not None:
+                # Timed to nothing: there is no block to play, but there is a
+                # moment, and the button does not turn the reader away.
+                anchor = ("time", caption.get_start_seconds())
+            else:
+                # The block went (an undo, a merge) since it was played.
+                if playhead is None:
+                    playhead = await self.playhead()
+
+                anchor = ("time", playhead)
+
+        if stretch is None:
+            stretch = self.editor.context_range_at(anchor[1])
+            self.editor.play_range(*stretch)
+
+        self.last_context = anchor
 
     def delete(self, args) -> None:
         """

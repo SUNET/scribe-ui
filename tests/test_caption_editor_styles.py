@@ -469,27 +469,47 @@ class TestSubtitleTextOffset:
 
 class TestVideoSubtitleOverlay:
     """
-    The overlay sits above the video's own native controls, not over them --
-    a percentage offset once put it there on a short or wide video, since
-    the control bar's own height is fixed while a percentage of the frame's
-    height is not, and shrinks below it.
+    The overlay is a preview of what a viewer sees, at the foot of the frame.
+    The player's controls (see PlayerControls) are laid over that foot while
+    they are up, and it rises clear of them for as long as they are.
     """
 
     def test_it_sits_at_the_foot_of_the_frame(self):
         """
-        Where a viewer would see it. It only moves up while the player's own
-        control bar is up, so the rest of the time the preview is where the
-        real thing is.
+        Where a viewer would see it, and where it is whenever the controls
+        are not over it.
         """
 
         assert rem(effective(".video-subtitle-overlay")["bottom"]) == 1
 
-    def test_it_clears_the_control_bar_while_that_is_up(self):
-        raised = effective(".video-controls-visible .video-subtitle-overlay")
+    def test_it_rises_clear_of_the_controls_while_they_are_up(self):
+        """
+        The controls are over the foot of the picture, where it would have
+        sat; it rises above them while they are up and comes back down when
+        they go, which they do while the recording plays and nothing is being
+        done to them. Not for a recording with no picture (no preview there).
+        """
 
-        assert rem(raised["bottom"]) > rem(
-            effective(".video-subtitle-overlay")["bottom"]
-        )
+        from utils.styles import default_styles
+
+        start = default_styles.index(".video-frame:has(.player-controls:not(")
+        rule = default_styles[start : default_styles.index("}", start)]
+
+        assert "not(.player-controls-asleep)" in rule
+        assert "not(.player-controls-audio)" in rule
+        assert "bottom: 6.25rem;" in rule
+        # Kept up by the keyboard as well, whatever the timer says.
+        assert ".player-controls-asleep:focus-within" in rule
+
+    def test_it_moves_gently_and_not_at_all_for_those_who_ask(self):
+        from utils.styles import default_styles
+
+        assert "transition: bottom 0.2s ease-in-out;" in default_styles
+        reduced = default_styles[
+            default_styles.index("@media (prefers-reduced-motion: reduce) {\n        .video-subtitle-overlay")
+        :]
+
+        assert "transition: none;" in reduced[: reduced.index("}\n    }") + 1]
 
     def test_the_offset_is_fixed_not_a_percentage(self):
         bottom = effective(".video-subtitle-overlay")["bottom"]
@@ -498,9 +518,8 @@ class TestVideoSubtitleOverlay:
 
     def test_it_never_captures_a_click(self):
         """
-        Belt and suspenders alongside the fixed offset above -- clicks (the
-        seek bar, a click-to-pause) always reach the video underneath, even
-        if the two ever end up overlapping regardless.
+        A preview, not a control: clicks anywhere on the frame go to the video
+        underneath, as they would on a viewer's own screen.
         """
 
         assert effective(".video-subtitle-overlay")["pointer-events"] == "none"
