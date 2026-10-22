@@ -178,9 +178,11 @@ class TestWhatIsInTheMenu:
 
 class TestTheGroups:
     """
-    Two groups, titled: the recording (how the editor follows it and the strip
-    that shows where its speech is) and the review tools, which is what the
-    manual calls them (Granskningsstöd in Swedish).
+    Two groups: how the editor follows the recording and the strip that shows
+    where its speech is, with no title (it is what is left when what has a name
+    of its own is taken away, and a title over a lone Autoscroll in a
+    transcription would be thin), and the review tools under their own, which
+    is what the manual calls them (Granskningsstöd in Swedish).
     """
 
     def after_menu(self) -> str:
@@ -190,14 +192,15 @@ class TestTheGroups:
             source.index('with settings_menu, ui.column().classes("editor-settings")') :
         ]
 
-    def test_there_are_two_titled_groups(self):
+    def test_there_are_two_groups_and_only_the_second_has_a_title(self):
         text = self.after_menu()
 
-        assert 'with settings_group("Recording"):' in text
+        assert "with settings_group():" in text
         assert 'review_group = settings_group("Review tools")' in text
-        assert text.index('settings_group("Recording")') < text.index(
+        assert text.index("with settings_group():") < text.index(
             'settings_group("Review tools")'
         )
+        assert '"Recording"' not in text
 
     def test_a_group_is_a_group_for_a_screen_reader_named_by_its_title(self):
         source = page()
@@ -205,11 +208,13 @@ class TestTheGroups:
         group = group[: group.index("return group")]
 
         assert "role=group aria-labelledby={title_label.html_id}" in group
-        assert 'ui.label(title).classes(\n                                    "editor-settings-title"' in group
+        assert "editor-settings-title" in group
+        # Only a group that has a title is a named group.
+        assert "if title:" in group
 
     def test_following_the_recording_and_the_timeline_are_together(self):
         text = self.after_menu()
-        recording = text.index('settings_group("Recording")')
+        recording = text.index("with settings_group():")
         review = text.index('settings_group("Review tools")')
 
         for label in ('"Follow audio" if following_words else "Autoscroll"', '"Timeline"'):

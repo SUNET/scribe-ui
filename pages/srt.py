@@ -717,36 +717,39 @@ def create() -> None:
                         # a preview of what a viewer sees, not tied to it.
                         video.on("timeupdate", transcript.follow_video)
 
-                        def settings_group(title: str) -> ui.column:
+                        def settings_group(title: str = "") -> ui.column:
                             """
-                            A titled group of settings, one to a row. It is
-                            a group for a screen reader too, named by its
-                            title, so "Review tools, group" is heard before
-                            the switches in it.
+                            A group of settings, one to a row. With a title it
+                            is a group for a screen reader too, named by it, so
+                            "Review tools, group" is heard before the switches
+                            in it. Without one it is only a column: the first
+                            group has none, being what is left when what has a
+                            name of its own is taken away.
                             """
 
                             group = ui.column().classes(
                                 "editor-settings-group items-start gap-1"
                             )
-                            with group:
-                                title_label = ui.label(title).classes(
-                                    "editor-settings-title"
+                            if title:
+                                with group:
+                                    title_label = ui.label(title).classes(
+                                        "editor-settings-title"
+                                    )
+                                group.props(
+                                    f"role=group aria-labelledby={title_label.html_id}"
                                 )
-                            group.props(
-                                f"role=group aria-labelledby={title_label.html_id}"
-                            )
 
                             return group
 
                         # The settings, in the menu the gear in the toolbar
                         # opens (see settings_menu), in two groups by what
-                        # they are about: the recording (how the editor follows
-                        # it, the strip that shows where its speech is) and
-                        # the review tools (what is marked in the text, with
-                        # the sensitivity selector last). "Review tools" is
-                        # what the manual calls them.
+                        # they are about: how the editor follows the recording
+                        # and the strip that shows where its speech is, with no
+                        # title, and the review tools (what is marked in the
+                        # text, with the sensitivity selector last) under
+                        # theirs. "Review tools" is what the manual calls them.
                         with settings_menu, ui.column().classes("editor-settings"):
-                            with settings_group("Recording"):
+                            with settings_group():
 
                                 def save_follow(event) -> None:
                                     value = bool(event.sender.value)
