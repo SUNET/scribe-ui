@@ -137,7 +137,7 @@ class TestTranscriptCellStates:
 
     def test_invalid_and_highlighted_are_distinct_colours(self):
         invalid = effective(".transcript-cell-invalid")["border-left-color"]
-        highlighted = effective(".transcript-cell-highlighted")["border-left-color"]
+        highlighted = effective(".transcript-cell-found")["border-left-color"]
         active = effective(".transcript-cell-active")["border-left-color"]
 
         assert len({invalid, highlighted, active}) == 3

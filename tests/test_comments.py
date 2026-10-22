@@ -521,7 +521,8 @@ class TestFollowingTheText:
         editor.selected_caption = first
         editor.case_sensitive = True
 
-        editor.replace_in_current_caption("ett nytt")
+        editor.rebuild_matches(after=(editor.captions[0].index, 0))
+        editor.replace_in_current_match("ett nytt")
 
         assert first.text == "ett nytt två tre"
         assert shape(first) == [([3], "c")]
@@ -2020,7 +2021,7 @@ class TestTheStyles:
         for earlier in (
             "    .transcript-cell-editing {",
             "    .transcript-cell-invalid {",
-            "    .transcript-cell-highlighted {",
+            "    .transcript-cell-found {",
         ):
             assert css.index(earlier) < at
 

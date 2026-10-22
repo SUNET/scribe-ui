@@ -1685,7 +1685,8 @@ class TestFindAndReplaceKeepsMarksStraight:
         editor = self.editor("alpha beta gamma", edited=[2])
         editor.selected_caption = editor.captions[0]
 
-        editor.replace_in_current_caption("two words")
+        editor.rebuild_matches(after=(editor.captions[0].index, 0))
+        editor.replace_in_current_match("two words")
 
         assert editor.captions[0].text == "alpha two words gamma"
         assert "gamma" in self.words(editor)
@@ -1695,7 +1696,8 @@ class TestFindAndReplaceKeepsMarksStraight:
         editor = self.editor("alpha beta gamma")
         editor.selected_caption = editor.captions[0]
 
-        editor.replace_in_current_caption("BETA")
+        editor.rebuild_matches(after=(editor.captions[0].index, 0))
+        editor.replace_in_current_match("BETA")
 
         assert self.words(editor) == ["BETA"]
 

@@ -38,6 +38,7 @@ from utils.srt import (
 )
 from utils.speech_timeline import SpeechTimeline
 from utils.comments_panel import CommentsPanel
+from utils.find_panel import FindPanel
 from utils.validation_panel import ValidationPanel
 from utils.transcript_editor import TranscriptEditor
 from utils.video import create_video_proxy
@@ -102,6 +103,12 @@ def create() -> None:
 
             // Block Ctrl + f / Cmd + f for find
             if ((e.metaKey || e.ctrlKey) && ! e.shiftKey && e.key.toLowerCase() === 'f') {
+                e.preventDefault();
+            }
+
+            // Block Ctrl + h (history in a browser): Find with Replace. Ctrl
+            // only -- Cmd + h hides the application and never gets here.
+            if (e.ctrlKey && ! e.metaKey && ! e.shiftKey && ! e.altKey && e.key.toLowerCase() === 'h') {
                 e.preventDefault();
             }
 
@@ -1075,3 +1082,11 @@ def create() -> None:
                             # first.
                             transcript.comments_panel = CommentsPanel(transcript)
                             transcript.comments_panel.open_first()
+
+                        # Find, a deck of its own under the first one -- the
+                        # validation card or the comments card, when that is
+                        # open. Shut until it is asked for; closing it takes
+                        # its marks off the text.
+                        editor.find_panel = FindPanel(
+                            editor, return_focus=lambda: editor.find_button
+                        )

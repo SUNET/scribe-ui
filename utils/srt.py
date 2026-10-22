@@ -87,7 +87,11 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin, CommentsMixi
         self.search_results = []
         self.current_search_index = 0
         self.case_sensitive = False
-        self.search_container = None
+        # The Find card and its toolbar button; set by the page. The text
+        # editor hands the matches' words to on_find_marks.
+        self.find_panel = None
+        self.find_button = None
+        self.on_find_marks: Optional[Callable] = None
         self._video_player = None
         self.autoscroll = False
 
@@ -435,9 +439,14 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin, CommentsMixi
 
             # Open find, Ctrl+F
             case "f" if event.modifiers.ctrl and not event.modifiers.shift:
-                self.create_search_panel(open_window=True)
+                self.open_find()
             case "f" if event.modifiers.meta and not event.modifiers.shift:
-                self.create_search_panel(open_window=True)
+                self.open_find()
+
+            # Find and replace, Ctrl+H, as in Word. Ctrl only: Cmd+H hides
+            # the application on a Mac and never reaches the page.
+            case "h" if event.modifiers.ctrl and not event.modifiers.shift:
+                self.open_find(replace=True)
 
             # Save file, Ctrl+S / Cmd+S
             case "s" if event.modifiers.ctrl or event.modifiers.meta:
