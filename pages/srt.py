@@ -405,6 +405,35 @@ def create() -> None:
                     "click", info_dialog.open
                 ).tooltip("Information")
 
+                # The settings that change how the editor behaves while it is
+                # worked in: what follows the recording, the timeline, what is
+                # marked in the text. They are set now and then rather than
+                # used all the time, so like Shortcuts and Info they are an
+                # icon, and what used to be a row of switches under the video
+                # is the menu it opens. The menu is filled in further down,
+                # where what the switches act on exists.
+                with ui.button(icon="settings").props(
+                    'flat aria-label="Editor settings" aria-haspopup=dialog '
+                    "aria-expanded=false"
+                ).classes("editor-btn editor-icon") as settings_button:
+                    settings_button.tooltip("Editor settings")
+
+                    # Quasar gives a menu role="menu", which promises a list
+                    # of menu items; this holds switches, so it says what it
+                    # is. It stays open until Esc or a click outside, so a
+                    # few settings cost one opening, and focus goes into it
+                    # and comes back to the button.
+                    settings_menu = ui.menu().props(
+                        'role=dialog aria-label="Editor settings"'
+                    ).classes("editor-settings-menu")
+
+                def settings_menu_toggled(event) -> None:
+                    settings_button.props(
+                        "aria-expanded=" + ("true" if event.value else "false")
+                    )
+
+                settings_menu.on_value_change(settings_menu_toggled)
+
                 ui.separator().props("vertical")
 
                 ui.button("Export", icon="download").props("flat").classes(
@@ -688,13 +717,13 @@ def create() -> None:
                         # a preview of what a viewer sees, not tied to it.
                         video.on("timeupdate", transcript.follow_video)
 
-                        # The controls under the video are grouped by what
+                        # The settings, in the menu the gear in the toolbar
+                        # opens (see settings_menu). They are grouped by what
                         # each one affects -- following the recording, and
-                        # what the editor marks in the text -- rather than
-                        # left as one undifferentiated row of switches with
-                        # the sensitivity selector orphaned below them.
-                        with ui.column().classes("editor-settings w-full"):
-                            with ui.row().classes("items-center gap-4"):
+                        # what the editor marks in the text -- one to a row,
+                        # with the sensitivity selector last, under a rule.
+                        with settings_menu, ui.column().classes("editor-settings"):
+                            with ui.column().classes("items-start gap-1"):
 
                                 def save_follow(event) -> None:
                                     value = bool(event.sender.value)

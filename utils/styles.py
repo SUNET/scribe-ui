@@ -2895,14 +2895,15 @@ theme_styles = """
         background-color: var(--color-text-danger);
     }
 
-    /* ── SRT editor controls under the video ── */
-    /* The switches on one row, what they mark under it -- grouped by what
-       each control affects, without a heading naming each group. */
+    /* ── Editor settings (the menu the gear in the toolbar opens) ── */
+    /* The switches one to a row, the sensitivity selector under them --
+       grouped by what each control affects, without a heading naming each
+       group. */
     .editor-settings {
         display: flex;
         flex-direction: column;
         gap: 0.5rem;
-        padding: 0.75rem 0 0.25rem;
+        padding: 0.75rem 1rem;
     }
     /* ── Theme-aware text utilities ── */
     .text-theme-primary {
