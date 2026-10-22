@@ -178,6 +178,14 @@ Replace (`replace_in_current_match`, `replace_all` in `utils/srt_search.py`) car
 - `select_caption()` toggles, which is why stepping does not use it for a second match in the caption already on (`reveal_current()` scrolls instead).
 - Needs a browser with the highlight registry (Chrome, Edge, Safari 17.2, Firefox 140); without it only the caption's own tint is drawn.
 
+**Every card in the deck can be folded to its header** (`utils/card_fold.py`, `CardFold`; used by `ValidationPanel`, `CommentsPanel` and `FindPanel`). There are three cards that can be open at once, and more to come, so the deck has to be able to give the transcript its room back. A chevron before the heading (a button with a fixed name, `aria-expanded` and `aria-controls` pointing at the body, like Find's Replace toggle; a click on the heading does the same, for the mouse only) folds the card to its header: heading, "3 of 12", Previous/Next and the close button stay and still work; the body goes (`display: none`, so nothing in it can be tabbed to), and so does Validate's filter row. Things to keep when changing a card:
+
+- **The state is `data-folded` on the card's wrapper (`validation-panel-wrap`), not a class on the section**: `ValidationPanel.draw()` replaces the section's classes on every redraw and would wipe it. The CSS keeps the header and every `.sr-only` child of the section, so a live region that must be heard while folded has to be a child of the section *outside* the body.
+- **Folding takes nothing away**: a comment being written keeps its text, Find keeps its matches marked, Validate keeps the issue under review. Focus goes to the chevron, since whatever had it is gone.
+- **Opening unfolds, following does not.** Validate's `show()`, Find's `open()` (Ctrl+F, Ctrl+H) and a comment opened with the key or the button (`CommentsPanel.show(focus=True)`) unfold the card. Stepping, and the comments card following the caret or a click, leave it as the reader left it. Closing (`close()`, `hide()`) unfolds, so the next opening is whole.
+- **While folded, Validate says where the reader is** ("Issue 2 of 5.") in `folded_spoken`, because its body, which is the live region for the issue, is not there. Find's and Comments' live regions were already outside their bodies.
+- Folded state is not remembered between sessions or between openings.
+
 ## Editor keyboard shortcuts
 
 Two handlers, split by what each needs to know:

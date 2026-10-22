@@ -2144,6 +2144,30 @@ theme_styles = """
         align-items: center;
         gap: 4px;
     }
+    /* Folding a card to its header (utils/card_fold.py): the chevron comes
+       first, so the header gives it the room the heading's left padding
+       gave the text. A folded card keeps its header and the visually hidden
+       live regions and loses the rest -- including, for Validate, the filter
+       row below it. */
+    .validation-panel-head:has(.validation-panel-fold) {
+        padding-left: 4px;
+    }
+    .validation-panel .validation-panel-fold {
+        min-width: 0 !important;
+        width: 2rem;
+        height: 2rem;
+        padding: 0 !important;
+    }
+    .validation-panel-heading-fold {
+        cursor: pointer;
+    }
+    .validation-panel-wrap[data-folded] .validation-panel > :not(.validation-panel-head):not(.sr-only),
+    .validation-panel-wrap[data-folded] .validation-panel-filters {
+        display: none !important;
+    }
+    .validation-panel-wrap[data-folded] .validation-panel-head {
+        border-bottom: 0;
+    }
     .validation-panel .validation-panel-step {
         min-width: 0 !important;
         width: 2rem;

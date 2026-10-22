@@ -45,6 +45,7 @@ from typing import Callable, Optional
 
 from nicegui import ui
 
+from utils.card_fold import CardFold
 from utils.settings import get_settings
 
 settings = get_settings()
@@ -189,7 +190,13 @@ class ValidationPanel:
                 'aria-labelledby="validation-panel-heading"'
             ) as self.panel:
                 with ui.element("div").classes("validation-panel-head"):
-                    self.heading = (
+                    self.fold = CardFold(
+                        self.container,
+                        "Validation",
+                        "validation-panel-body",
+                        on_change=self.folded_changed,
+                    )
+                    self.heading = self.fold.heading(
                         ui.label("")
                         .classes("validation-panel-heading")
                         .props('id=validation-panel-heading tabindex=-1')
@@ -220,8 +227,15 @@ class ValidationPanel:
                 # a screen reader hears the new issue as Next moves to it, while
                 # focus stays on Next. The position is said inside it too, since
                 # the visible "2 of 5" sits up in the header beside the arrows.
-                with ui.element("div").classes("validation-panel-body").props(
+                # While the card is folded the body is gone, and with it what is
+                # said as the issue changes; this says only where the reader
+                # is. It sits outside the body so folding does not take it.
+                self.folded_spoken = ui.label("").classes("sr-only").props(
                     "role=status aria-live=polite aria-atomic=true"
+                )
+
+                with ui.element("div").classes("validation-panel-body").props(
+                    "id=validation-panel-body role=status aria-live=polite aria-atomic=true"
                 ):
                     self.spoken_position = ui.label("").classes("sr-only")
 
@@ -304,6 +318,7 @@ class ValidationPanel:
         self.position = 0
         self.checked = checked
         self.container.set_visibility(True)
+        self.fold.unfold()
         self.draw_filters()
         self.draw()
 
@@ -312,6 +327,14 @@ class ValidationPanel:
         else:
             self.focus(self.heading)
 
+    def folded_changed(self, folded: bool) -> None:
+        """
+        What was said while folded does not outlive the fold.
+        """
+
+        if not folded:
+            self.folded_spoken.set_text("")
+
     def close(self) -> None:
         """
         Put the panel away. The captions keep their validation markings;
@@ -319,6 +342,7 @@ class ValidationPanel:
         """
 
         self.container.set_visibility(False)
+        self.fold.unfold()
         self.update_skip_link()
         self.transcript.review(None)
 
@@ -749,6 +773,7 @@ class ValidationPanel:
                     f"All {self.checked} {noun} follow the subtitle guidelines."
                 )
             self.spoken_position.set_text("")
+            self.folded_spoken.set_text("")
             self.transcript.review(None)
             self.update_skip_link()
             return
@@ -761,6 +786,11 @@ class ValidationPanel:
         self.position_label.set_text(position_text(self.position, total))
         self.spoken_position.set_text(
             f"Issue {position_text(self.position, total)}." if speak else ""
+        )
+        self.folded_spoken.set_text(
+            f"Issue {position_text(self.position, total)}."
+            if speak and self.fold.folded
+            else ""
         )
         self.kind.set_text("Error" if item["error"] else "Warning")
         self.title.set_text(item["title"])

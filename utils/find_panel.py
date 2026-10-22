@@ -48,6 +48,7 @@ from typing import Callable, Optional
 
 from nicegui import ui
 
+from utils.card_fold import CardFold
 from utils.common import focus_element
 
 
@@ -119,7 +120,10 @@ class FindPanel:
                 "validation-panel is-find w-full"
             ).props('role=search aria-labelledby="find-panel-heading"') as self.panel:
                 with ui.element("div").classes("validation-panel-head"):
-                    self.heading = (
+                    self.fold = CardFold(
+                        self.container, "Find and replace", "find-panel-body"
+                    )
+                    self.heading = self.fold.heading(
                         ui.label("Find and replace")
                         .classes("validation-panel-heading")
                         .props("id=find-panel-heading tabindex=-1")
@@ -155,7 +159,9 @@ class FindPanel:
                     "role=status aria-live=polite aria-atomic=true"
                 )
 
-                with ui.element("div").classes("validation-panel-body"):
+                with ui.element("div").classes("validation-panel-body").props(
+                    "id=find-panel-body"
+                ):
                     with ui.element("div").classes("find-panel-row"):
                         self.input = (
                             ui.input(label="Find", value=editor.search_term)
@@ -246,6 +252,7 @@ class FindPanel:
         """
 
         self.container.set_visibility(True)
+        self.fold.unfold()
 
         if replace:
             self.set_replace(True)
@@ -270,6 +277,7 @@ class FindPanel:
         """
 
         self.container.set_visibility(False)
+        self.fold.unfold()
         self.editor.clear_search()
 
         target = self.return_focus()
