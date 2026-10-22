@@ -61,7 +61,7 @@ class TestTheGear:
         text = gear()
 
         assert 'aria-label="Editor settings"' in text
-        assert 'settings_button.tooltip("Editor settings")' in text
+        assert 'ui.tooltip("Editor settings")' in text
 
     def test_it_says_it_opens_something_and_whether_it_is_open(self):
         source = page()
@@ -95,9 +95,7 @@ class TestTheGear:
 
 class TestWhatIsInTheMenu:
     def menu_start(self) -> int:
-        return page().index(
-            'with settings_menu, ui.column().classes("editor-settings")'
-        )
+        return page().index("with settings_menu, ui.column().classes(")
 
     def test_the_settings_are_built_into_the_menu(self):
         source = page()
@@ -188,9 +186,7 @@ class TestTheGroups:
     def after_menu(self) -> str:
         source = page()
 
-        return source[
-            source.index('with settings_menu, ui.column().classes("editor-settings")') :
-        ]
+        return source[source.index("with settings_menu, ui.column().classes(") :]
 
     def test_there_are_two_groups_and_only_the_second_has_a_title(self):
         text = self.after_menu()
@@ -240,6 +236,64 @@ class TestTheGroups:
 
         assert "review_group.set_visibility(" in text
         assert "len(review_group.default_slot.children) > 1" in text
+
+
+class TestHowItBehavesWithTheKeyboardAndPointer:
+    """
+    What a try in a real browser showed (Chrome, the tooltip over the first
+    row, focus on the button's own presentational span after Esc, focus lost
+    to the page behind with the menu still open after Tab past the last row).
+    """
+
+    def test_the_tooltip_is_above_the_button_and_off_while_the_menu_is_open(self):
+        source = page()
+        text = gear()
+
+        assert "anchor=\"top middle\" self=\"bottom middle\"" in text
+        toggled = source[source.index("def settings_menu_toggled") :]
+        toggled = toggled[: toggled.index("settings_menu.on_value_change")]
+
+        assert 'settings_tip.props("disable")' in toggled
+        assert 'settings_tip.props(remove="disable")' in toggled
+
+    def test_after_esc_focus_goes_to_the_button_and_not_its_span(self):
+        source = page()
+        toggled = source[source.index("def settings_menu_toggled") :]
+        toggled = toggled[: toggled.index("settings_menu.on_value_change")]
+
+        assert "ui.run_javascript(" in toggled
+        # Only from the button's own helper span: a click that closed the menu
+        # on something else is left where it landed.
+        assert "gear && here !== gear && gear.contains(here)" in toggled
+        assert "gear.focus()" in toggled
+        assert "html_id" in toggled
+
+    def test_focus_goes_to_the_first_switch_when_it_opens(self):
+        source = page()
+        follow = source[source.index("follow = ui.switch(") :]
+        follow = follow[: follow.index(".classes(")]
+
+        assert "data-autofocus" in follow
+
+    def test_tab_past_either_end_closes_the_menu_and_goes_to_the_button(self):
+        source = page()
+        handler = source[source.index("settings_content.on(") :]
+        handler = handler[: handler.index("# A title with nothing under it")]
+
+        assert '"keydown"' in handler
+        assert "settings_menu.close" in handler
+        assert "event.key !== 'Tab'" in handler
+        assert "event.shiftKey" in handler
+        assert "here === stops[0]" in handler
+        assert "here === stops[stops.length - 1]" in handler
+        assert "event.preventDefault();" in handler
+        assert "settings_button.html_id" in handler
+        assert "emit();" in handler
+
+    def test_the_content_column_is_what_the_handler_hangs_on(self):
+        source = page()
+
+        assert ") as settings_content:" in source
 
 
 class TestTheLook:

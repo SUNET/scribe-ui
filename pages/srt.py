@@ -416,7 +416,12 @@ def create() -> None:
                     'flat aria-label="Editor settings" aria-haspopup=dialog '
                     "aria-expanded=false"
                 ).classes("editor-btn editor-icon") as settings_button:
-                    settings_button.tooltip("Editor settings")
+                    # Above the button, not below it: the menu opens below,
+                    # and a tooltip there sat over its first row. And off
+                    # altogether while the menu is open.
+                    settings_tip = ui.tooltip("Editor settings").props(
+                        'anchor="top middle" self="bottom middle"'
+                    )
 
                     # Quasar gives a menu role="menu", which promises a list
                     # of menu items; this holds switches, so it says what it
@@ -430,6 +435,27 @@ def create() -> None:
                 def settings_menu_toggled(event) -> None:
                     settings_button.props(
                         "aria-expanded=" + ("true" if event.value else "false")
+                    )
+                    if event.value:
+                        settings_tip.props("disable")
+                        return
+
+                    settings_tip.props(remove="disable")
+
+                    # Esc hands focus back to the button, but Quasar gives it
+                    # to the button's own presentational span, which does not
+                    # take a Space the way the button does (F-74). Moved on
+                    # to the button itself -- and only from there, so a click
+                    # that closed the menu on something else is left alone.
+                    ui.run_javascript(
+                        "(function () {"
+                        f' const gear = document.getElementById("{settings_button.html_id}");'
+                        " const check = function () {"
+                        "  const here = document.activeElement;"
+                        "  if (gear && here !== gear && gear.contains(here)) gear.focus();"
+                        " };"
+                        " setTimeout(check, 60); setTimeout(check, 350);"
+                        "})();"
                     )
 
                 settings_menu.on_value_change(settings_menu_toggled)
@@ -748,7 +774,9 @@ def create() -> None:
                         # title, and the review tools (what is marked in the
                         # text, with the sensitivity selector last) under
                         # theirs. "Review tools" is what the manual calls them.
-                        with settings_menu, ui.column().classes("editor-settings"):
+                        with settings_menu, ui.column().classes(
+                            "editor-settings"
+                        ) as settings_content:
                             with settings_group():
 
                                 def save_follow(event) -> None:
@@ -781,7 +809,7 @@ def create() -> None:
                                 follow = ui.switch(
                                     "Follow audio" if following_words else "Autoscroll",
                                     value=editor.autoscroll,
-                                ).props("dense").classes("editor-switch")
+                                ).props("dense data-autofocus").classes("editor-switch")
                                 # Click only fires from a mouse. Quasar's
                                 # QToggle answers Enter/Space with its own
                                 # internal onClick(), which only emits
@@ -1101,6 +1129,34 @@ def create() -> None:
                                         # say so without moving focus (WCAG 4.1.3).
                                         flagged.props("role=status aria-live=polite")
                                         editor.set_flagged_count_element(flagged)
+
+                            # The menu is drawn at the end of the page, so Tab
+                            # past its last row (or Shift+Tab before its first)
+                            # would drop focus on the page behind it with the menu
+                            # still open. Leaving it that way closes it and puts
+                            # focus on the gear, which is where it came from.
+                            settings_content.on(
+                                "keydown",
+                                settings_menu.close,
+                                js_handler=(
+                                    "(event) => {"
+                                    " if (event.key !== 'Tab') return;"
+                                    " const stops = [...event.currentTarget"
+                                    ".querySelectorAll('button, [tabindex]')]"
+                                    ".filter((e) => e.tabIndex >= 0 && !e.disabled"
+                                    " && e.offsetParent !== null);"
+                                    " if (!stops.length) return;"
+                                    " const here = document.activeElement;"
+                                    " const leaving = event.shiftKey"
+                                    " ? here === stops[0]"
+                                    " : here === stops[stops.length - 1];"
+                                    " if (!leaving) return;"
+                                    " event.preventDefault();"
+                                    f" document.getElementById('{settings_button.html_id}')?.focus();"
+                                    " emit();"
+                                    "}"
+                                ),
+                            )
 
                             # A title with nothing under it is not shown (a set of
                             # subtitles with no words has no review tools).
