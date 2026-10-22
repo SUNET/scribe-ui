@@ -416,12 +416,11 @@ def create() -> None:
                     'flat aria-label="Editor settings" aria-haspopup=dialog '
                     "aria-expanded=false"
                 ).classes("editor-btn editor-icon") as settings_button:
-                    # Above the button, not below it: the menu opens below,
-                    # and a tooltip there sat over its first row. And off
-                    # altogether while the menu is open.
-                    settings_tip = ui.tooltip("Editor settings").props(
-                        'anchor="top middle" self="bottom middle"'
-                    )
+                    # Where the other icons' tooltips are (below). The menu
+                    # opens below too, and the pointer is still on the button
+                    # when it does, so the tooltip is put away when the menu
+                    # opens and kept off while it is open.
+                    settings_tip = ui.tooltip("Editor settings")
 
                     # Quasar gives a menu role="menu", which promises a list
                     # of menu items; this holds switches, so it says what it
@@ -438,6 +437,7 @@ def create() -> None:
                     )
                     if event.value:
                         settings_tip.props("disable")
+                        settings_tip.run_method("hide")
                         return
 
                     settings_tip.props(remove="disable")

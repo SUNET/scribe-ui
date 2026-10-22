@@ -245,15 +245,18 @@ class TestHowItBehavesWithTheKeyboardAndPointer:
     to the page behind with the menu still open after Tab past the last row).
     """
 
-    def test_the_tooltip_is_above_the_button_and_off_while_the_menu_is_open(self):
+    def test_the_tooltip_is_like_the_other_icons_and_off_while_the_menu_is_open(self):
         source = page()
         text = gear()
 
-        assert "anchor=\"top middle\" self=\"bottom middle\"" in text
+        # Not moved: a gear whose tooltip sat above while Shortcuts and Info
+        # sat below read as a mistake. The menu is what it must not cover.
+        assert "anchor=" not in text
         toggled = source[source.index("def settings_menu_toggled") :]
         toggled = toggled[: toggled.index("settings_menu.on_value_change")]
 
         assert 'settings_tip.props("disable")' in toggled
+        assert 'settings_tip.run_method("hide")' in toggled
         assert 'settings_tip.props(remove="disable")' in toggled
 
     def test_after_esc_focus_goes_to_the_button_and_not_its_span(self):
