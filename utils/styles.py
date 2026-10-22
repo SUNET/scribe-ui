@@ -2910,6 +2910,13 @@ theme_styles = """
         gap: 0.75rem;
         padding: 0.75rem 1rem;
     }
+    /* The flagged count's place, under the Uncertain words row. It keeps its
+       height while the marking is off (the count is hidden then), so the menu
+       is the same size either way and the count never has to find room. */
+    .editor-settings-count {
+        min-height: 1.25rem;
+        line-height: 1.25rem;
+    }
     /* What a group is called: small and quiet, over the rows it names. */
     .editor-settings-title {
         font-size: 0.75rem;

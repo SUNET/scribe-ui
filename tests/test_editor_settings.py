@@ -148,7 +148,7 @@ class TestWhatIsInTheMenu:
         source = page()[self.menu_start() :]
         row = source[source.index('uncertain_label = ui.label("Uncertain words:")') :]
 
-        assert 'with ui.row().classes("items-center gap-2"):' in source
+        assert 'with ui.row().classes("items-center gap-2 no-wrap"):' in source
         for choice in (
             '"off": "Off"',
             '"low": "Low"',
@@ -157,6 +157,31 @@ class TestWhatIsInTheMenu:
         ):
             assert choice in row
         assert "flagged = ui.label()" in row
+
+    def test_the_count_has_a_place_of_its_own_so_the_menu_keeps_its_size(self):
+        """
+        Seen in the real app: with Uncertain words on anything but Off the
+        menu came out wider (the count was a third item in the row) and
+        longer (it wrapped onto a line of its own). The count is under the
+        row, in a box that keeps its height while the count is hidden, and the
+        row does not wrap.
+        """
+
+        source = page()[self.menu_start() :]
+        row = source[source.index('uncertain_label = ui.label("Uncertain words:")') :]
+        count_box = source.index('with ui.element("div").classes("editor-settings-count"):')
+
+        assert count_box > source.index('"high": "High"')
+        assert count_box < source.index("flagged = ui.label()")
+        # Not inside the row that holds the label and the choices.
+        assert source.index("no-wrap") < source.index("uncertain_label = ")
+        assert "flagged.props(" in row
+
+        styles = pathlib.Path("utils/styles.py").read_text()
+        rule = styles[styles.index(".editor-settings-count {") :]
+        rule = rule[: rule.index("}")]
+
+        assert "min-height: 1.25rem" in rule
 
     def test_each_switch_still_refocuses_itself_after_a_change(self):
         """

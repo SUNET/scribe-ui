@@ -1028,107 +1028,116 @@ def create() -> None:
                                 # carries confidence scores; older jobs have none
                                 # to show.
                                 if editor.has_confidence:
-                                    with ui.row().classes("items-center gap-2"):
-                                        uncertain_label = ui.label("Uncertain words:")
-                                        uncertain_label.classes(
-                                            "text-sm text-theme-secondary"
-                                        )
+                                    # The count is under the row, in a place of its own, and the row does
+                                    # not wrap, so the menu is as wide and as tall with the marking off as
+                                    # with it on. (The count used to be a third item in the row, which made
+                                    # the menu wider when it showed and then wrapped it onto a line of
+                                    # its own.)
+                                    with ui.column().classes(
+                                        "editor-settings-uncertain items-start gap-1"
+                                    ):
+                                        with ui.row().classes("items-center gap-2 no-wrap"):
+                                            uncertain_label = ui.label("Uncertain words:")
+                                            uncertain_label.classes(
+                                                "text-sm text-theme-secondary"
+                                            )
 
-                                        def paint_sensitivity(choice) -> None:
-                                            """
-                                            The review violet belongs to the
-                                            levels, not to "Off" -- one
-                                            toggle-color paints whichever
-                                            segment is selected, which made the
-                                            loudest thing in the panel the
-                                            setting that marks nothing at all.
-                                            """
+                                            def paint_sensitivity(choice) -> None:
+                                                """
+                                                The review violet belongs to the
+                                                levels, not to "Off" -- one
+                                                toggle-color paints whichever
+                                                segment is selected, which made the
+                                                loudest thing in the panel the
+                                                setting that marks nothing at all.
+                                                """
 
-                                            off = choice == "off"
+                                                off = choice == "off"
 
-                                            sensitivity.props(
-                                                remove=(
+                                                sensitivity.props(
+                                                    remove=(
+                                                        "toggle-color=toggle-off "
+                                                        "toggle-text-color=toggle-off-fg"
+                                                        if not off
+                                                        else "toggle-color=review-accent "
+                                                        "toggle-text-color=review-accent-fg"
+                                                    )
+                                                )
+                                                sensitivity.props(
                                                     "toggle-color=toggle-off "
                                                     "toggle-text-color=toggle-off-fg"
-                                                    if not off
+                                                    if off
                                                     else "toggle-color=review-accent "
                                                     "toggle-text-color=review-accent-fg"
                                                 )
+
+                                            def save_sensitivity(event) -> None:
+                                                choice = event.sender.value
+
+                                                paint_sensitivity(choice)
+
+                                                # "off" is not one of the editor's own
+                                                # sensitivities -- it is the marking
+                                                # turned off, with whatever level was
+                                                # last chosen left untouched underneath
+                                                # so that coming back lands where the
+                                                # reader left it.
+                                                editor.set_show_uncertain_words(
+                                                    choice != "off"
+                                                )
+                                                app.storage.user[REVIEW_SHOW_KEY] = (
+                                                    choice != "off"
+                                                )
+
+                                                if choice == "off":
+                                                    return
+
+                                                editor.set_review_sensitivity(choice)
+                                                # Persist what the editor accepted, so
+                                                # an unrecognised value cannot be
+                                                # stored.
+                                                app.storage.user[REVIEW_SENSITIVITY_KEY] = (
+                                                    editor.review_sensitivity
+                                                )
+
+                                            sensitivity = ui.toggle(
+                                                {
+                                                    "off": "Off",
+                                                    "low": "Low",
+                                                    "medium": "Medium",
+                                                    "high": "High",
+                                                },
+                                                value=(
+                                                    editor.review_sensitivity
+                                                    if editor.show_uncertain_words
+                                                    else "off"
+                                                ),
+                                            ).props(
+                                                "dense unelevated no-caps role=group "
+                                                f"aria-labelledby={uncertain_label.html_id}"
                                             )
-                                            sensitivity.props(
-                                                "toggle-color=toggle-off "
-                                                "toggle-text-color=toggle-off-fg"
-                                                if off
-                                                else "toggle-color=review-accent "
-                                                "toggle-text-color=review-accent-fg"
-                                            )
-
-                                        def save_sensitivity(event) -> None:
-                                            choice = event.sender.value
-
-                                            paint_sensitivity(choice)
-
-                                            # "off" is not one of the editor's own
-                                            # sensitivities -- it is the marking
-                                            # turned off, with whatever level was
-                                            # last chosen left untouched underneath
-                                            # so that coming back lands where the
-                                            # reader left it.
-                                            editor.set_show_uncertain_words(
-                                                choice != "off"
-                                            )
-                                            app.storage.user[REVIEW_SHOW_KEY] = (
-                                                choice != "off"
-                                            )
-
-                                            if choice == "off":
-                                                return
-
-                                            editor.set_review_sensitivity(choice)
-                                            # Persist what the editor accepted, so
-                                            # an unrecognised value cannot be
-                                            # stored.
-                                            app.storage.user[REVIEW_SENSITIVITY_KEY] = (
-                                                editor.review_sensitivity
-                                            )
-
-                                        sensitivity = ui.toggle(
-                                            {
-                                                "off": "Off",
-                                                "low": "Low",
-                                                "medium": "Medium",
-                                                "high": "High",
-                                            },
-                                            value=(
+                                            paint_sensitivity(
                                                 editor.review_sensitivity
                                                 if editor.show_uncertain_words
                                                 else "off"
-                                            ),
-                                        ).props(
-                                            "dense unelevated no-caps role=group "
-                                            f"aria-labelledby={uncertain_label.html_id}"
-                                        )
-                                        paint_sensitivity(
-                                            editor.review_sensitivity
-                                            if editor.show_uncertain_words
-                                            else "off"
-                                        )
-                                        sensitivity.on(
-                                            "update:model-value", save_sensitivity
-                                        )
-                                        with sensitivity:
-                                            ui.tooltip(
-                                                "Higher levels also highlight words "
-                                                "the model is more certain about."
                                             )
+                                            sensitivity.on(
+                                                "update:model-value", save_sensitivity
+                                            )
+                                            with sensitivity:
+                                                ui.tooltip(
+                                                    "Higher levels also highlight words "
+                                                    "the model is more certain about."
+                                                )
 
-                                        flagged = ui.label().classes(
-                                            "text-sm text-theme-muted review-count"
-                                        )
-                                        # The count changes when the level does;
-                                        # say so without moving focus (WCAG 4.1.3).
-                                        flagged.props("role=status aria-live=polite")
-                                        editor.set_flagged_count_element(flagged)
+                                        with ui.element("div").classes("editor-settings-count"):
+                                                flagged = ui.label().classes(
+                                                    "text-sm text-theme-muted review-count"
+                                                )
+                                                # The count changes when the level does;
+                                                # say so without moving focus (WCAG 4.1.3).
+                                                flagged.props("role=status aria-live=polite")
+                                                editor.set_flagged_count_element(flagged)
 
                             # The menu is drawn at the end of the page, so Tab
                             # past its last row (or Shift+Tab before its first)
