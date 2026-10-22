@@ -717,7 +717,6 @@ class TranscriptEditor:
                 # a warning, rather than an error's red. One error among them
                 # and the caption is red -- the highest severity decides.
                 "warning": not caption.is_valid and not caption.has_error,
-                "found": caption.is_highlighted,
             }
 
             if subtitles:

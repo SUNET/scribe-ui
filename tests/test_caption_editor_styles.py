@@ -130,17 +130,16 @@ class TestSubtitleGuidelineColouring:
 
 class TestTranscriptCellStates:
     """
-    A block's left rule marks its state: invalid (failed "Validate") and
-    highlighted (a search match) each get their own colour, distinct from
-    active (currently playing).
+    A block's left rule marks its state: invalid (failed "Validate") gets its
+    own colour, distinct from active (currently playing). A search match does
+    not mark the block at all -- only its words, so Validate has the block.
     """
 
-    def test_invalid_and_highlighted_are_distinct_colours(self):
+    def test_invalid_and_active_are_distinct_colours(self):
         invalid = effective(".transcript-cell-invalid")["border-left-color"]
-        highlighted = effective(".transcript-cell-found")["border-left-color"]
         active = effective(".transcript-cell-active")["border-left-color"]
 
-        assert len({invalid, highlighted, active}) == 3
+        assert len({invalid, active}) == 2
 
     def test_warnings_are_amber_as_in_the_validation_panel(self):
         warning = effective(".transcript-cell-invalid.transcript-cell-warning")

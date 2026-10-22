@@ -2021,7 +2021,6 @@ class TestTheStyles:
         for earlier in (
             "    .transcript-cell-editing {",
             "    .transcript-cell-invalid {",
-            "    .transcript-cell-found {",
         ):
             assert css.index(earlier) < at
 

@@ -86,7 +86,7 @@ export default {
             @keydown="onControlKeydown($event, block.id, 'speaker')"
           >{{ block.speaker }}</span><span v-if="!subtitleMode" class="transcript-colon">:</span></div><div
           class="transcript-cell"
-          :class="{ 'transcript-cell-active': block.id === activeId, 'transcript-cell-editing': block.id === caretId, 'transcript-cell-invalid': block.invalid, 'transcript-cell-warning': block.warning, 'transcript-cell-found': block.found, 'transcript-cell-reviewing': block.id === reviewId, 'transcript-cell-commenting': block.id === commentId }"
+          :class="{ 'transcript-cell-active': block.id === activeId, 'transcript-cell-editing': block.id === caretId, 'transcript-cell-invalid': block.invalid, 'transcript-cell-warning': block.warning, 'transcript-cell-reviewing': block.id === reviewId, 'transcript-cell-commenting': block.id === commentId }"
           :data-id="block.id"
         ><div
             v-if="!subtitleMode"

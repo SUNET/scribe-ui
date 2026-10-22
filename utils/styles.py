@@ -138,8 +138,9 @@ theme_styles = """
         /* A comment's dotted underline: 7.5:1 on white and at least 6.3:1 on
            every wash a word can have. */
         --color-comment-line: #a1136a;
-        /* What Find marks with: the card's stripe, the words found (a heavy
-           dashed underline) and the caption they are in. A steel blue, the one
+        /* What Find marks with: the card's stripe and the words found (a heavy
+           dashed underline). Only the words: the caption's own tint belongs to
+           Validate, and the two must not fight over it. A steel blue, the one
            tone nothing else in the editor has: amber is a warning, red an
            error, violet review, teal the reader's own edits, pink comments,
            and the pale blue-grey is what is playing. 5.9:1 on white. */
@@ -1929,12 +1930,6 @@ theme_styles = """
             in srgb, var(--color-warning-border) 10%, transparent
         );
     }
-    .transcript-cell-found {
-        border-left-color: var(--color-find-line);
-        background-color: color-mix(
-            in srgb, var(--color-find-line) 12%, transparent
-        );
-    }
     /* The same mixes over a dark page land far fainter than over a light
        one -- the tint is being mixed into the page behind it, and there is
        much less of it there to lift. */
@@ -1951,11 +1946,6 @@ theme_styles = """
     .body--dark .transcript-cell-invalid.transcript-cell-warning {
         background-color: color-mix(
             in srgb, var(--color-warning-border) 18%, transparent
-        );
-    }
-    .body--dark .transcript-cell-found {
-        background-color: color-mix(
-            in srgb, var(--color-find-line) 20%, transparent
         );
     }
     /* The words Find found, painted over the text by the browser's highlight

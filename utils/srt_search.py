@@ -23,8 +23,8 @@ Every occurrence of the term is a match, in the order of the text, and one of
 them is the current one -- the way a word processor's Find has it. Enter and the
 arrows step from one to the next (and round the end), Replace changes the
 current one and moves on, Replace all changes every one. The matches are
-marked in the text while the Find card is open (its words, and the caption
-they are in) and are gone when it is closed.
+marked in the text while the Find card is open (their words only: a whole
+caption's tint is Validate's) and are gone when it is closed.
 """
 
 import re
@@ -92,8 +92,7 @@ class SearchMixin:
     def rebuild_matches(self, after: Optional[tuple] = None) -> None:
         """
         Look for the term again, keep the current match where it was -- or,
-        where it is gone, at the next one -- and mark which captions have
-        one. `after` is a (caption index, character) to land on or after; by
+        where it is gone, at the next one. `after` is a (caption index, character) to land on or after; by
         default where the current match is now.
 
         Done on every redraw while a term is set: an edit can make a match
@@ -113,11 +112,6 @@ class SearchMixin:
                 if (caption_index, start) >= after:
                     self.current_search_index = at
                     break
-
-        with_matches = {caption_index for caption_index, _s, _e in self.search_results}
-
-        for caption in self.captions:
-            caption.is_highlighted = caption.index in with_matches
 
 
     def search_start(self) -> tuple:
@@ -160,9 +154,6 @@ class SearchMixin:
         self.search_term = ""
         self.search_results = []
         self.current_search_index = 0
-
-        for caption in self.captions:
-            caption.is_highlighted = False
 
         if had:
             self.refresh_display()

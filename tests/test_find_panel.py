@@ -107,11 +107,6 @@ class TestEveryOccurrenceIsAMatch:
         editor.search_captions("   ")
         assert editor.search_results == []
 
-    def test_the_captions_with_a_match_are_flagged_for_the_text(self, editor):
-        editor.search_captions("dog")
-
-        assert [c.is_highlighted for c in editor.captions] == [False, True, False, False]
-
     def test_it_starts_from_the_caption_the_reader_is_on(self, editor):
         editor.selected_caption = editor.captions[1]
         editor.search_captions("cat")
@@ -267,7 +262,6 @@ class TestTheMarksInTheText:
         editor.captions[0].text = "The dog sat on the mat"
         editor.refresh_display()
         assert len(editor.search_results) == 4
-        assert editor.captions[0].is_highlighted is False
 
     def test_clearing_takes_every_mark_off(self, editor):
         editor.search_captions("cat")
@@ -277,7 +271,7 @@ class TestTheMarksInTheText:
 
         assert marks == [] and current == -1
         assert editor.search_term == ""
-        assert not any(c.is_highlighted for c in editor.captions)
+        assert editor.search_results == []
 
     def test_the_card_is_told_where_the_reader_is(self, editor):
         told = []
@@ -490,14 +484,20 @@ class TestTheLook:
         assert "underline dashed var(--color-find-line) 3px" in current
         assert "background-color: var(--color-find-bg)" in current
 
-    def test_the_caption_a_match_is_in_is_marked_in_the_same_blue_not_amber(self):
-        css = source("utils/styles.py")
-        rule = css[css.index("    .transcript-cell-found {") :]
-        rule = rule[: rule.index("}")]
+    def test_a_match_does_not_mark_its_caption_so_validate_has_the_block(self):
+        """
+        Validate marks whole captions (amber, red); Find marks only the words,
+        so the two do not fight over the block.
+        """
 
-        assert "var(--color-find-line)" in rule
-        assert "warning" not in rule
-        assert "transcript-cell-highlighted" not in css
+        css = source("utils/styles.py")
+        py = source("utils/transcript_editor.py")
+        js = source("utils/transcript_editor.js")
+        caption = source("utils/caption.py")
+
+        assert "transcript-cell-found" not in css + js
+        assert '"found"' not in py
+        assert "is_highlighted" not in caption + source("utils/srt_search.py")
 
 
 class TestPaintingTheWords:
@@ -540,10 +540,3 @@ class TestPaintingTheWords:
 
         assert 'self._props["findMarks"] == marks' in setter
         assert "return" in setter
-
-    def test_the_block_says_it_is_found_not_highlighted(self):
-        py = source("utils/transcript_editor.py")
-        js = source("utils/transcript_editor.js")
-
-        assert '"found": caption.is_highlighted' in py
-        assert "'transcript-cell-found': block.found" in js

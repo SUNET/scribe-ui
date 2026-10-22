@@ -28,8 +28,9 @@ card open, Find is the card under it; with neither, it is the first.
 It behaves the way a word processor's Find does:
 
 - **Live.** Matches are looked for as the term is typed, every one of them
-  is marked in the text (its words with a heavy dashed underline, the caption
-  they are in with a wash) and the current one is marked more strongly.
+  is marked in the text (its words, with a heavy dashed underline -- the
+  caption's own tint is Validate's, and the two do not share it) and the
+  current one is marked more strongly, with a wash behind the words.
 - **Enter and Shift+Enter** step to the next and the previous match, round
   the end. Previous and Next in the header do the same.
 - **Replace** changes the current match -- that one occurrence -- and moves on
