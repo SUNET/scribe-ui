@@ -239,9 +239,44 @@ function navigatorWithLocks(locks, tab) {
   return Object.assign(fakeNavigator(), { locks: locks.tab(tab) });
 }
 
-const settle = () => new Promise((resolve) => setImmediate(resolve)).then(
-  () => new Promise((resolve) => setImmediate(resolve))
-);
+// WebCrypto runs on the libuv threadpool, so how long an encrypt takes has
+// nothing to do with event-loop turns: on a busy CI runner a few turns were
+// not enough, and a test read the store while a chunk was still being
+// written. Every crypto call is counted, and settle() waits until none is
+// still in flight as well as for the turns.
+const inFlight = new Set();
+
+function trackedCrypto() {
+  const real = require("node:crypto").webcrypto;
+  const subtle = {};
+  for (const name of ["importKey", "encrypt", "decrypt"]) {
+    subtle[name] = (...args) => {
+      const done = real.subtle[name](...args);
+      inFlight.add(done);
+      done.then(
+        () => inFlight.delete(done),
+        () => inFlight.delete(done)
+      );
+      return done;
+    };
+  }
+  return {
+    subtle: subtle,
+    getRandomValues: (bytes) => real.getRandomValues(bytes),
+    randomUUID: () => real.randomUUID(),
+  };
+}
+
+const turn = () => new Promise((resolve) => setImmediate(resolve));
+
+async function settle() {
+  await turn();
+  await turn();
+  while (inFlight.size) {
+    await Promise.allSettled(Array.from(inFlight));
+    await turn();
+  }
+}
 
 async function settled(times) {
   for (let i = 0; i < (times || 10); i++) await settle();
@@ -263,7 +298,7 @@ function makeEngine(overrides) {
     navigator: nav,
     MediaRecorder: FakeMediaRecorder,
     AudioContext: null,
-    crypto: require("node:crypto").webcrypto,
+    crypto: trackedCrypto(),
     key: (overrides && overrides.key) || (async () => new Uint8Array(32).fill(7)),
     watch: false,
   });

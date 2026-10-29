@@ -166,6 +166,9 @@ class ValidationPanel:
         self.all_items: list = []
         self.items: list = []
         self.hidden: set[str] = set()
+        # Said by the next speak(): a kind of issue that came back as the
+        # panel opened (reveal_hidden).
+        self.pending_speech = ""
         self.checkboxes: dict = {}
         self.position = 0
         self.checked = 0
@@ -566,6 +569,57 @@ class ValidationPanel:
             self.transcript.editor.seek_video(start)
             self.transcript.moved_to(start)
 
+    def reveal_hidden(self, caption_index: int) -> Optional[dict]:
+        """
+        A marked caption must never refuse to open its card because of a
+        filter. When the caret comes to rest in one whose issues are all of
+        kinds that are hidden, the kind of its first issue is shown again, and
+        that issue is the one to show. (A caption with an issue of a kind
+        that is shown opens on that, and its hidden kinds stay hidden: that
+        is what the reader chose.) Speech without a caption marks no caption,
+        so it never brings a kind back.
+        """
+
+        item = next(
+            (
+                i
+                for i in self.all_items
+                if i["caption"].index == caption_index
+                and "speech" not in i
+                and i["rule"] in self.hidden
+                and self.exists(i)
+            ),
+            None,
+        )
+
+        if item is None:
+            return None
+
+        self.hidden.discard(item["rule"])
+        self.items = shown_items(self.all_items, self.hidden)
+        self.draw_filters()
+
+        return item
+
+    def say_revealed(self, item: dict, spoken: bool = True) -> None:
+        """
+        Say that a kind of issue came back because the caret went to a
+        caption that has one: on the card, and to a screen reader.
+        """
+
+        text = f"Showing \u201c{RULE_LABELS[item['rule']]}\u201d again \u2014 it was hidden."
+
+        self.note.set_text(text)
+        self.note.set_visibility(True)
+
+        if spoken:
+            self.spoken_position.set_text(
+                f"{text} Issue {position_text(self.position, len(self.items))}."
+            )
+        else:
+            # The panel has only just opened; speak() says it a moment later.
+            self.pending_speech = text
+
     def follow_caret(self, caption_index: int) -> None:
         """
         The caret has come to rest in a caption: show that caption's issue.
@@ -575,7 +629,8 @@ class ValidationPanel:
         what keeps "Caption 17", which puts the caret there itself, from
         redrawing what it was just pressed on. Closed panel, after a
         Validate: open it on that issue. A caption with no issue, or a
-        Validate not yet run, changes nothing.
+        Validate not yet run, changes nothing. A caption marked only for
+        kinds that are hidden shows one of them again (reveal_hidden).
         """
 
         current = self.current()
@@ -596,6 +651,11 @@ class ValidationPanel:
                 None,
             )
 
+        revealed = None
+
+        if target is None:
+            revealed = target = self.reveal_hidden(caption_index)
+
         if target is None:
             return
 
@@ -608,6 +668,10 @@ class ValidationPanel:
 
         if was_open:
             self.draw(scroll=False)
+
+            if revealed is not None:
+                self.say_revealed(revealed)
+
             return
 
         # A live region that appears with its text already in it is often not
@@ -615,6 +679,10 @@ class ValidationPanel:
         # first and say the issue a moment later.
         self.container.set_visibility(True)
         self.draw(scroll=False, speak=False)
+
+        if revealed is not None:
+            self.say_revealed(revealed, spoken=False)
+
         with self.container:
             ui.timer(0.2, self.speak, once=True)
 
@@ -627,7 +695,10 @@ class ValidationPanel:
         item = self.current()
 
         if item is not None:
+            said = getattr(self, "pending_speech", "")
+            self.pending_speech = ""
             self.spoken_position.set_text(
+                f"{said + ' ' if said else ''}"
                 f"Issue {position_text(self.position, len(self.items))}."
             )
 
