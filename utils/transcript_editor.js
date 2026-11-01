@@ -2303,10 +2303,9 @@ export default {
         // when asked, the way stepping between validation issues shows a
         // caption; otherwise only as far as it takes to be seen.
         const cell = center ? block.closest(".transcript-cell") || block : block;
-        cell.scrollIntoView(
-          center
-            ? { block: "center", behavior: "smooth" }
-            : { block: "nearest" }
+        this.scrollWithin(
+          cell,
+          center ? { block: "center", behavior: "smooth" } : { block: "nearest" }
         );
       });
     },
@@ -2345,8 +2344,100 @@ export default {
         const cell = this.$refs.body?.querySelector(
           `.transcript-cell[data-id="${id}"]`
         );
-        if (cell) cell.scrollIntoView({ block: "center", behavior: "smooth" });
+        if (cell) this.scrollWithin(cell, { block: "center", behavior: "smooth" });
       });
+    },
+
+    // Bring an element into view by moving the transcript's own scroller
+    // first. Element.scrollIntoView() moves every scrollable ancestor, the
+    // window included, and the window can be scrolled: with the Timeline
+    // docked along the foot the page is given room for it (about 170 px), so
+    // centring a caption slid the whole page up and took the video and its
+    // controls out of view.
+    //
+    // The part of the scroller under the docked Timeline does not count as
+    // visible, so a caption is not brought to rest behind it. The transcript
+    // ends under the Timeline, though, so its last captions cannot be scrolled
+    // clear of it from inside; for those, and only for those, the window moves,
+    // by as little as it takes.
+    //
+    // `block` is "center" or "nearest", as for scrollIntoView.
+    scrollWithin(element, { block = "nearest", behavior = "auto" } = {}) {
+      const scroller = this.scrollerOf(element);
+
+      if (!scroller) {
+        element.scrollIntoView({ block, behavior });
+        return;
+      }
+
+      const view = scroller.getBoundingClientRect();
+      const at = element.getBoundingClientRect();
+      // A Timeline that is switched off keeps its element, hidden with
+      // v-show: it has no box, and its rectangle is all zeros, which would
+      // read as a dock at the very top of the page. No box, no dock.
+      const dock = document.querySelector(".speech-timeline-docked");
+      const dockTop =
+        dock && dock.getClientRects().length ? dock.getBoundingClientRect().top : Infinity;
+      const bottom = dockTop > view.top && dockTop < view.bottom ? dockTop : view.bottom;
+
+      let delta = 0;
+
+      if (block === "center") {
+        delta = at.top + at.height / 2 - (view.top + (bottom - view.top) / 2);
+      } else if (at.top < view.top && at.bottom <= bottom) {
+        // Above the top, its foot in view. Aligned the way scrollIntoView's
+        // "nearest" does it: by the edge that takes the shorter move, which
+        // for a paragraph taller than the scroller is its foot.
+        delta = Math.max(at.top - view.top, at.bottom - bottom);
+      } else if (at.bottom > bottom && at.top >= view.top) {
+        // Its head in view, the foot below.
+        delta = Math.min(at.bottom - bottom, at.top - view.top);
+      }
+      // Inside, or spanning both edges (a long paragraph the caret is in the
+      // middle of): left where it is, as "nearest" leaves it.
+
+      // What the scroller can actually do: it stops at its ends.
+      const room = scroller.scrollHeight - scroller.clientHeight;
+      const target = Math.max(0, Math.min(room, scroller.scrollTop + delta));
+      const moved = target - scroller.scrollTop;
+
+      if (Math.abs(moved) >= 1) scroller.scrollTo({ top: target, behavior });
+
+      // Still behind the Timeline once the scroller has done what it can:
+      // the window gives way by that much. It is given back as soon as a
+      // caption no longer needs it, so going up the transcript again does
+      // not leave the page where the last captions put it. What the reader
+      // scrolled the window by is not touched: only what was moved here is
+      // given back.
+      // Something taller than what is left above the Timeline cannot be
+      // cleared of it by moving the page, so it does not move it.
+      const fits = at.height <= bottom - view.top;
+      const hidden = fits ? at.bottom - moved - dockTop : 0;
+      const pageRoom =
+        document.documentElement.scrollHeight - window.innerHeight - window.scrollY;
+      const given = this.pageGiven || 0;
+      let shift = 0;
+
+      if (hidden > 0) {
+        shift = Math.max(0, Math.min(hidden, pageRoom));
+      } else if (given > 0) {
+        shift = -Math.min(given, window.scrollY, -hidden);
+      }
+
+      if (Math.abs(shift) >= 1) {
+        window.scrollBy({ top: shift, behavior });
+        this.pageGiven = Math.max(0, given + shift);
+      }
+    },
+
+    // The nearest ancestor that scrolls by itself: the area the transcript
+    // sits in. Not the window, which is never what is meant.
+    scrollerOf(element) {
+      for (let el = element.parentElement; el && el !== document.body; el = el.parentElement) {
+        const overflow = getComputedStyle(el).overflowY;
+        if (overflow === "auto" || overflow === "scroll") return el;
+      }
+      return null;
     },
 
     attachVideo() {
