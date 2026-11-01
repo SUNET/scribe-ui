@@ -287,9 +287,24 @@ class FindPanel:
 
     # -- Looking -------------------------------------------------------------
 
-    def typed(self, event=None) -> None:
-        if self.input.value != self.editor.search_term:
-            self.editor.search_captions(self.input.value or "")
+    def typed(self, event=None) -> bool:
+        """
+        Look for what is in the field, if that is not what was looked for.
+        True when a look had to be made. Nothing when the card is shut: the
+        throttled input event can arrive a moment after Esc or the x, and
+        must not mark the text again while the card is away.
+        """
+
+        if not self.is_open:
+            return False
+
+        term = self.input.value or ""
+
+        if term == self.editor.search_term:
+            return False
+
+        self.editor.search_captions(term)
+        return True
 
     def enter(self, event) -> None:
         """
@@ -341,7 +356,25 @@ class FindPanel:
         self.replace_toggle.props(f"icon={'expand_more' if expanded else 'chevron_right'}")
 
     def replace_one(self) -> None:
+        """
+        Replace the current match. When the field was typed in less than the
+        search's wait ago, what it says has not been looked for yet, and the
+        match on screen is of the old term: look first, and stop there, so
+        nothing is replaced that the reader has not been shown -- as Enter
+        does.
+        """
+
+        if self.typed():
+            return
+
         self.editor.replace_in_current_match(self.replace_input.value or "")
 
     def replace_everywhere(self) -> None:
+        """
+        Replace every occurrence of what is in the field -- which is looked
+        for first if the wait has not run out, or the old term would be the
+        one replaced all through the text.
+        """
+
+        self.typed()
         self.editor.replace_all(self.replace_input.value or "")

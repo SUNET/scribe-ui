@@ -86,6 +86,9 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin, CommentsMixi
         self.search_term = ""
         self.search_results = []
         self.current_search_index = 0
+        # The caption the caret last settled in (the transcript reports it),
+        # which is where a new search begins when none is live.
+        self.caret_index: Optional[int] = None
         self.case_sensitive = False
         # The Find card and its toolbar button; set by the page. The text
         # editor hands the matches' words to on_find_marks.

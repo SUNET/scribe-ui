@@ -403,6 +403,7 @@ class TranscriptEditor:
             return
 
         self.caret_block = block_id
+        self.editor.caret_index = block_id
 
         if self.on_caret is not None:
             self.on_caret(block_id)
@@ -735,6 +736,10 @@ class TranscriptEditor:
             return
 
         self.body.set_blocks(self.blocks())
+        # Captions added, removed, moved or changed under Find: its matches
+        # are looked for again, so the marks are on the right captions
+        # whoever asked for the redraw.
+        self.editor.look_again()
         self.body.set_speakers(
             sorted(self.editor.speakers),
             [name for name in sorted(self.editor.speakers)
@@ -798,6 +803,10 @@ class TranscriptEditor:
 
         self.editor.update_caption_text(caption, text)
         self.changed()
+
+        # Not drawn again, so Find's count and marks are brought up to date
+        # here: what was typed can make a match or take one away.
+        self.editor.look_again()
 
         # The block being typed into is not drawn again (that would move the
         # caret), so the refresh that tells the comments card about a change

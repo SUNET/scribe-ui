@@ -81,8 +81,15 @@ def create() -> None:
             """
         <script>
         window.addEventListener('keydown', function(e) {
+            // The fields in the cards under the video (Find, Replace, a
+            // comment) keep their own undo: this listener runs first, in the
+            // capture phase, and what it cancels is cancelled for them too.
+            // The page's undo is the transcript's, and those fields do not
+            // pass their keys on to it.
+            const inCard = !!(e.target && e.target.closest && e.target.closest('.validation-panel'));
+
             // Block Cmd + z / Ctrl + z for undo
-            if ((e.metaKey || e.ctrlKey) && ! e.shiftKey && e.key.toLowerCase() === 'z') {
+            if (!inCard && (e.metaKey || e.ctrlKey) && ! e.shiftKey && e.key.toLowerCase() === 'z') {
                 e.preventDefault();
             }
 
@@ -92,12 +99,12 @@ def create() -> None:
             }
 
             // Block Cmd + y / Ctrl + y for redo
-            if ((e.metaKey || e.ctrlKey) && ! e.shiftKey && e.key.toLowerCase() === 'y') {
+            if (!inCard && (e.metaKey || e.ctrlKey) && ! e.shiftKey && e.key.toLowerCase() === 'y') {
                 e.preventDefault();
             }
 
             // Block Cmd + Shift + z / Ctrl + Shift + z for redo
-            if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'z') {
+            if (!inCard && (e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'z') {
                 e.preventDefault();
             }
 

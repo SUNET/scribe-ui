@@ -22,6 +22,8 @@ current one, closing takes the marks off.
 """
 
 import pathlib
+import shutil
+import subprocess
 
 import pytest
 
@@ -111,12 +113,52 @@ class TestEveryOccurrenceIsAMatch:
         editor.search_captions("   ")
         assert editor.search_results == []
 
-    def test_it_starts_from_the_caption_the_reader_is_on(self, editor):
-        editor.selected_caption = editor.captions[1]
+    def test_it_starts_from_the_caption_the_caret_is_in(self, editor):
+        editor.caret_index = 2
         editor.search_captions("cat")
 
         assert editor.current_search_index == 1
         assert editor.search_results[editor.current_search_index][:2] == (2, 12)
+
+    def test_the_caption_the_last_search_selected_is_not_where_the_reader_is(
+        self, editor
+    ):
+        # Find was used, stepped to the end and closed; the caret is in the
+        # first caption. The next search starts there, not where the last
+        # one happened to leave the selection.
+        editor.search_captions("cat")
+        editor.navigate_search_results(-1)
+        editor.selected_caption = editor.captions[3]
+        editor.clear_search()
+        editor.caret_index = 1
+
+        editor.search_captions("cat")
+
+        assert editor.search_results[editor.current_search_index][:2] == (1, 4)
+
+    def test_adding_a_letter_to_the_term_stays_where_the_reader_was_looking(
+        self, editor
+    ):
+        editor.caret_index = 1
+        editor.search_captions("cat")
+        editor.navigate_search_results(1)
+        editor.navigate_search_results(1)
+        assert editor.search_results[editor.current_search_index][:2] == (2, 28)
+
+        editor.search_captions("cat ")
+
+        assert editor.search_results[editor.current_search_index][0] == 2
+
+    def test_with_no_caret_and_no_search_it_starts_at_the_top(self, editor):
+        editor.search_captions("cat")
+
+        assert editor.current_search_index == 0
+
+    def test_a_caret_in_a_caption_that_is_gone_is_no_start(self, editor):
+        editor.caret_index = 99
+        editor.search_captions("cat")
+
+        assert editor.current_search_index == 0
 
 
 class TestSteppingThroughThem:
@@ -741,3 +783,203 @@ class TestPaintingTheWords:
 
         assert 'self._props["findMarks"] == marks' in setter
         assert "return" in setter
+
+
+class TestTheCountFollowsTheTyping:
+    """
+    What is typed into a caption with Find open is not drawn again (the
+    caret would move), so Find is told about it separately.
+    """
+
+    @pytest.fixture
+    def view(self, editor, monkeypatch):
+        from utils.transcript_editor import TranscriptEditor
+
+        monkeypatch.setattr("utils.transcript_editor.ui.notify", lambda *a, **k: None)
+        view = TranscriptEditor(editor)
+
+        class Body:
+            def __getattr__(self, name):
+                return lambda *a, **k: None
+
+        view.body = Body()
+        return view
+
+    def test_typing_a_match_makes_it_count(self, editor, view):
+        editor.search_captions("cat")
+        assert len(editor.search_results) == 4
+
+        view.set_text({"id": 3, "text": "Nothing to see here, said the cat"})
+
+        assert len(editor.search_results) == 5
+        marks, _current = editor.marks[-1]
+        assert 3 in [mark["id"] for mark in marks]
+
+    def test_typing_a_match_away_takes_it_off(self, editor, view):
+        editor.search_captions("cat")
+
+        view.set_text({"id": 1, "text": "The dog sat on the mat"})
+
+        assert (1, 4) not in where(editor)
+        assert len(editor.search_results) == 3
+
+    def test_the_card_is_told_the_new_count(self, editor, view):
+        told = []
+
+        class Card:
+            def show_position(self, current, total, term):
+                told.append((current, total, term))
+
+        editor.find_panel = Card()
+        editor.search_captions("cat")
+
+        view.set_text({"id": 3, "text": "cat cat cat"})
+
+        assert told[-1][1] == 7
+
+    def test_typing_with_nothing_looked_for_looks_for_nothing(self, editor, view):
+        before = len(editor.marks)
+
+        view.set_text({"id": 3, "text": "cat"})
+
+        assert editor.search_results == []
+        assert len(editor.marks) == before
+
+    def test_a_redraw_asked_for_directly_looks_again_too(self, editor, view):
+        editor.search_captions("cat")
+        editor.captions[2].text = "a cat"
+
+        view.refresh()
+
+        assert (3, 2) in where(editor)
+        marks, _current = editor.marks[-1]
+        assert 3 in [mark["id"] for mark in marks]
+
+    def test_the_caret_is_remembered_as_where_a_search_begins(self, editor, view):
+        view.caret_moved({"id": 4})
+
+        assert editor.caret_index == 4
+
+        editor.search_captions("cat")
+
+        assert editor.search_results[editor.current_search_index][:2] == (4, 15)
+
+
+class TestSteppingWithinOneCaption:
+    def test_the_recording_follows_to_the_caption_every_time(self, editor):
+        sought = []
+        editor.seek_video = sought.append
+        editor.on_select = lambda caption: None
+        editor.search_captions("cat")
+        editor.selected_caption = editor.captions[1]
+        editor.current_search_index = 1  # (2, 12)
+
+        editor.navigate_search_results(1)  # (2, 28): same caption
+
+        assert editor.search_results[editor.current_search_index][:2] == (2, 28)
+        assert sought == [editor.captions[1].get_start_seconds()]
+
+
+class FakePanel:
+    """
+    The Find card without a browser: a FindPanel built by hand, with a field,
+    a Replace field and an editor, so what its buttons do can be seen.
+    """
+
+    @staticmethod
+    def build(editor, find="", replace="", is_open=True):
+        from utils.find_panel import FindPanel
+
+        class Field:
+            def __init__(self, value):
+                self.value = value
+
+        class Container:
+            visible = is_open
+
+        panel = FindPanel.__new__(FindPanel)
+        panel.editor = editor
+        panel.input = Field(find)
+        panel.replace_input = Field(replace)
+        panel.container = Container()
+
+        return panel
+
+
+class TestWhatIsInTheFieldIsWhatIsLookedFor:
+    def test_typed_looks_when_the_field_has_changed(self, editor):
+        panel = FakePanel.build(editor, find="cat")
+
+        assert panel.typed() is True
+        assert editor.search_term == "cat"
+
+    def test_typed_does_nothing_when_nothing_has_changed(self, editor):
+        panel = FakePanel.build(editor, find="cat")
+        panel.typed()
+        before = len(editor.marks)
+
+        assert panel.typed() is False
+        assert len(editor.marks) == before
+
+    def test_a_late_input_event_after_the_card_is_shut_marks_nothing(self, editor):
+        panel = FakePanel.build(editor, find="cat", is_open=False)
+
+        assert panel.typed() is False
+        assert editor.search_term == ""
+        assert editor.search_results == []
+        assert editor.marks == []
+
+    def test_replace_all_replaces_what_is_in_the_field_not_what_was_looked_for(
+        self, editor
+    ):
+        panel = FakePanel.build(editor, find="cat", replace="fox")
+        panel.typed()
+
+        # Typed on, and Replace all pressed before the wait has run out.
+        panel.input.value = "dog"
+        panel.replace_everywhere()
+
+        assert "dog" not in " ".join(c.text for c in editor.captions)
+        assert editor.captions[1].text == "A fox and a cat and another cat"
+        assert "cat" in editor.captions[0].text
+
+    def test_replace_one_looks_first_and_replaces_nothing_unseen(self, editor):
+        panel = FakePanel.build(editor, find="cat", replace="fox")
+        panel.typed()
+        texts = [c.text for c in editor.captions]
+
+        panel.input.value = "dog"
+        panel.replace_one()
+
+        assert [c.text for c in editor.captions] == texts
+        assert editor.search_term == "dog"
+        assert where(editor) == [(2, 2)]
+
+    def test_replace_one_replaces_when_the_look_is_up_to_date(self, editor):
+        panel = FakePanel.build(editor, find="dog", replace="fox")
+        panel.typed()
+
+        panel.replace_one()
+
+        assert editor.captions[1].text == "A fox and a cat and another cat"
+
+
+class TestUndoInTheFields:
+    @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+    def test_the_page_leaves_undo_and_redo_to_the_fields_in_the_cards(self):
+        """
+        The page's capture-phase key listener cancelled the browser's own
+        undo before a field could use it, and the field then kept the key from
+        the transcript's: Ctrl+Z did nothing in Find. tests/js/page_keys.
+        test.js runs that listener on made-up key events.
+        """
+
+        result = subprocess.run(
+            ["node", "--test", "tests/js/page_keys.test.js"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            cwd=pathlib.Path(__file__).parent.parent,
+        )
+
+        assert result.returncode == 0, result.stdout + result.stderr

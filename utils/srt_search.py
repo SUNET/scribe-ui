@@ -116,13 +116,23 @@ class SearchMixin:
 
     def search_start(self) -> tuple:
         """
-        Where a new search begins: the caption the reader is on, so that
-        typing a term finds the next one from there rather than snapping
-        back to the top.
+        Where a new search begins, so that typing a term finds the next one
+        from there rather than snapping back to the top:
+
+        - while a search is live, at the match it is on, so that adding a
+          letter to the term stays where the reader was looking;
+        - otherwise at the caption the caret is in -- where the reader is
+          working, which is not the caption the last search happened to
+          select, long after it was closed;
+        - otherwise at the top.
         """
 
-        if self.selected_caption is not None:
-            return (self.selected_caption.index, 0)
+        if self.search_results:
+            at = min(self.current_search_index, len(self.search_results) - 1)
+            return (self.search_results[at][0], 0)
+
+        if self.caret_index is not None and self.caption_by_index(self.caret_index):
+            return (self.caret_index, 0)
 
         return (0, 0)
 
@@ -133,9 +143,13 @@ class SearchMixin:
         after where the reader is.
         """
 
+        # Where to start is worked out before what was found is forgotten:
+        # it may be where the last look left the reader.
+        start = self.search_start()
+
         self.search_term = search_term
         self.search_results = []
-        self.rebuild_matches(after=self.search_start())
+        self.rebuild_matches(after=start)
 
         self.refresh_display()
 
@@ -158,6 +172,21 @@ class SearchMixin:
         if had:
             self.refresh_display()
 
+
+    def look_again(self) -> None:
+        """
+        An edit has been made to the text: look again, and tell the text and
+        the card, without drawing anything. For what changes the captions
+        without going through refresh_display() -- typing in the block the
+        caret is in, which is not drawn again so that the caret stays put --
+        so that the count, the position and the marks follow it.
+        """
+
+        if not self.search_term:
+            return
+
+        self.rebuild_matches()
+        self.mark_found()
 
     def mark_found(self) -> None:
         """
@@ -218,6 +247,11 @@ class SearchMixin:
             return
 
         if self.selected_caption is caption:
+            # Already selected, so select_caption() would toggle it off. The
+            # recording is moved here as that does for any other caption: it
+            # may have played on, or the playhead been moved, since.
+            self.seek_video(caption.get_start_seconds())
+
             if self.on_select:
                 self.on_select(caption)
         else:
