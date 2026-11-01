@@ -2372,19 +2372,29 @@ export default {
 
       const view = scroller.getBoundingClientRect();
       const at = element.getBoundingClientRect();
+      // A Timeline that is switched off keeps its element, hidden with
+      // v-show: it has no box, and its rectangle is all zeros, which would
+      // read as a dock at the very top of the page. No box, no dock.
       const dock = document.querySelector(".speech-timeline-docked");
-      const dockTop = dock ? dock.getBoundingClientRect().top : Infinity;
+      const dockTop =
+        dock && dock.getClientRects().length ? dock.getBoundingClientRect().top : Infinity;
       const bottom = dockTop > view.top && dockTop < view.bottom ? dockTop : view.bottom;
 
       let delta = 0;
 
       if (block === "center") {
         delta = at.top + at.height / 2 - (view.top + (bottom - view.top) / 2);
-      } else if (at.top < view.top) {
-        delta = at.top - view.top;
-      } else if (at.bottom > bottom) {
+      } else if (at.top < view.top && at.bottom <= bottom) {
+        // Above the top, its foot in view. Aligned the way scrollIntoView's
+        // "nearest" does it: by the edge that takes the shorter move, which
+        // for a paragraph taller than the scroller is its foot.
+        delta = Math.max(at.top - view.top, at.bottom - bottom);
+      } else if (at.bottom > bottom && at.top >= view.top) {
+        // Its head in view, the foot below.
         delta = Math.min(at.bottom - bottom, at.top - view.top);
       }
+      // Inside, or spanning both edges (a long paragraph the caret is in the
+      // middle of): left where it is, as "nearest" leaves it.
 
       // What the scroller can actually do: it stops at its ends.
       const room = scroller.scrollHeight - scroller.clientHeight;
@@ -2399,7 +2409,10 @@ export default {
       // not leave the page where the last captions put it. What the reader
       // scrolled the window by is not touched: only what was moved here is
       // given back.
-      const hidden = at.bottom - moved - dockTop;
+      // Something taller than what is left above the Timeline cannot be
+      // cleared of it by moving the page, so it does not move it.
+      const fits = at.height <= bottom - view.top;
+      const hidden = fits ? at.bottom - moved - dockTop : 0;
       const pageRoom =
         document.documentElement.scrollHeight - window.innerHeight - window.scrollY;
       const given = this.pageGiven || 0;

@@ -27,10 +27,13 @@ from the component's source; the geometry was tried in Chrome.
 
 import pathlib
 import re
+import shutil
+import subprocess
 
-SOURCE = (
-    pathlib.Path(__file__).parent.parent / "utils" / "transcript_editor.js"
-).read_text()
+import pytest
+
+ROOT = pathlib.Path(__file__).parent.parent
+SOURCE = (ROOT / "utils" / "transcript_editor.js").read_text()
 
 
 def method(name: str) -> str:
@@ -94,3 +97,30 @@ class TestTheDockedTimeline:
         scroll_within = method("scrollWithin")
 
         assert "scroller.scrollHeight - scroller.clientHeight" in scroll_within
+
+
+class TestTheDockThatIsNotThere:
+    def test_a_dock_without_a_box_counts_as_none(self):
+        # A Timeline switched off is hidden with v-show: still in the page,
+        # with a rectangle of zeros that would read as a dock at the very top.
+        assert "dock.getClientRects().length" in method("scrollWithin")
+
+
+class TestTheGeometry:
+    @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+    def test_scroll_within_on_elements_that_are_rectangles(self):
+        """
+        The method itself, run in node on a made-up page (tests/js/
+        transcript_scroll.test.js): centring, nearest as scrollIntoView does
+        it, the ends of the scroller, a hidden Timeline, a caption behind a
+        docked one, and the page given back.
+        """
+
+        result = subprocess.run(
+            ["node", "--test", str(ROOT / "tests" / "js" / "transcript_scroll.test.js")],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+
+        assert result.returncode == 0, result.stdout + result.stderr
