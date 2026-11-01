@@ -697,6 +697,48 @@ class TestPlayWithContextFromTheButton:
 
         assert self.played == [view.editor.context_range(view.editor.captions[1])]
 
+    def test_the_same_caption_is_played_again_after_a_renumbering(self, view):
+        """
+        The stretch is remembered for the next press. What it remembers is the
+        caption, not its number: retiming caption 1 past the others hands the
+        numbers out again, and caption 2 becomes caption 1.
+        """
+
+        editor = view.editor
+        second = editor.captions[1]
+        third = editor.captions[2]
+
+        self.press(view, 6.0)
+        assert self.played == [editor.context_range(second)]
+
+        editor.captions[0].start_time = "00:00:07,500"
+        editor.captions[0].end_time = "00:00:07,800"
+        editor.sort_captions()
+
+        # What the old number now names is a different caption.
+        assert second.index == 1
+        assert editor.captions[1] is third
+
+        self.seconds = 99.0
+        again = self.press(view, 99.0)
+
+        assert again == editor.context_range(second)
+        assert again != editor.context_range(third)
+        assert view.last_context == ("block", second)
+
+    def test_a_caption_that_has_gone_is_not_played_again(self, view):
+        editor = view.editor
+
+        self.press(view, 6.0)
+        editor.captions.pop(1)
+        editor.renumber_captions()
+
+        # The stretch is still running, so the press is for the same one --
+        # but the caption it was about is no more: the moment is played.
+        again = self.press(view, 6.0)
+
+        assert again == editor.context_range_at(6.0)
+
     def test_the_caret_plays_no_part(self, view):
         view.caret_block = view.editor.captions[0].index
 

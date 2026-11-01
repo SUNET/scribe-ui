@@ -557,6 +557,29 @@ class TestContextRangeAt:
 
         assert editor.context_range_at(5.2) == (5.0, 5.8)
 
+    @pytest.mark.parametrize("moment", [5.0, 5.2, 5.39, 5.4, 5.41, 5.6, 5.79])
+    def test_a_word_straddling_the_moment_is_heard_whole_on_either_side_of_its_middle(
+        self, moment
+    ):
+        """
+        The word's midpoint is 5.4. Before it the word counts as "after" the
+        moment, past it as "before" -- and past it only the start used to be
+        taken in, so the word was cut off where the playhead was.
+        """
+
+        editor = make_editor(
+            {"version": 1, "words": [{"t": "a", "s": 5.0, "e": 5.8}]}
+        )
+
+        assert editor.context_range_at(moment) == (5.0, 5.8)
+
+    def test_a_straddling_word_ending_beyond_the_cap_is_cut_at_the_cap(self):
+        editor = make_editor(
+            {"version": 1, "words": [{"t": "a", "s": 5.0, "e": 20.0}]}
+        )
+
+        assert editor.context_range_at(12.0) == (7.0, 17.0)
+
     @pytest.mark.parametrize("moment", [0.0, 0.5, 3.3, 5.9, 12.0, 50.0])
     def test_the_moment_is_always_inside_it(self, moment):
         start, end = make_editor().context_range_at(moment)

@@ -757,6 +757,22 @@ class TranscriptEditor:
 
         return None
 
+    def still_there(self, caption) -> Optional[SRTCaption]:
+        """
+        The caption itself if it is still one of the editor's, else None.
+
+        For something that remembers a caption across edits. Its number will
+        not do for that -- renumber_captions hands the numbers out again by
+        position, so a number kept from before can name a different caption
+        after a retime that reorders, or a merge or delete before it.
+        """
+
+        for candidate in self.editor.captions:
+            if candidate is caption:
+                return candidate
+
+        return None
+
     @staticmethod
     def block_id(args, key: str = "id") -> Optional[int]:
         """
@@ -1375,7 +1391,9 @@ class TranscriptEditor:
             )
 
         self.editor.play_range(*stretch)
-        self.last_context = ("block", caption.index)
+        # The caption itself, not its number: a number is its place in the
+        # list and moves when a retime or a merge renumbers the others.
+        self.last_context = ("block", caption)
 
         return stretch
 
@@ -1425,12 +1443,12 @@ class TranscriptEditor:
             if caption is None:
                 anchor = ("time", playhead)
             else:
-                anchor = ("block", caption.index)
+                anchor = ("block", caption)
 
         stretch = None
 
         if anchor[0] == "block":
-            caption = self.caption(anchor[1])
+            caption = self.still_there(anchor[1])
 
             if caption is not None and self.editor.context_range(caption):
                 stretch = self.play_with_context({"id": caption.index})

@@ -283,6 +283,14 @@ class ReviewMixin:
 
                 first = min(first, began)
 
+                # A word straddling the moment has its midpoint before it, so
+                # it is "before" -- but it is heard whole, so its end counts.
+                ended = self.words[position].get(
+                    "e", self._word_midpoints[position]
+                )
+
+                last = max(last, min(ended, ceiling))
+
             for position in range(split, min(len(self.words), split + words)):
                 word = self.words[position]
                 began = word.get("s", self._word_midpoints[position])
