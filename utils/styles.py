@@ -2689,6 +2689,14 @@ theme_styles = """
            widths in the same window. Inline size only. */
         container-type: inline-size;
     }
+    /* Docked, the strip is placed by its two insets (left from the
+       component, right: 0), and they give it its width: a width of its own
+       would win over right and carry it off the right edge by as much as the
+       menu rail is wide, with the playhead and the tray off the centre of
+       what can be seen. */
+    .speech-timeline-wrap.speech-timeline-docked {
+        width: auto;
+    }
     .body--dark .speech-timeline {
         background-color: var(--color-bg-surface-alt);
     }
