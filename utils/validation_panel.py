@@ -166,9 +166,6 @@ class ValidationPanel:
         self.all_items: list = []
         self.items: list = []
         self.hidden: set[str] = set()
-        # Said by the next speak(): a kind of issue that came back as the
-        # panel opened (reveal_hidden).
-        self.pending_speech = ""
         self.checkboxes: dict = {}
         self.position = 0
         self.checked = 0
@@ -601,24 +598,22 @@ class ValidationPanel:
 
         return item
 
-    def say_revealed(self, item: dict, spoken: bool = True) -> None:
+    def say_revealed(self, item: dict) -> None:
         """
         Say that a kind of issue came back because the caret went to a
-        caption that has one: on the card, and to a screen reader.
+        caption that has one.
+
+        On the card only. The card is a live region read whole (aria-atomic),
+        so the sentence is heard with the position when that is set -- by
+        draw() on an open panel, by speak() a moment later on one just
+        opened. Said in the position's own label as well it would be heard
+        twice.
         """
 
         text = f"Showing \u201c{RULE_LABELS[item['rule']]}\u201d again \u2014 it was hidden."
 
         self.note.set_text(text)
         self.note.set_visibility(True)
-
-        if spoken:
-            self.spoken_position.set_text(
-                f"{text} Issue {position_text(self.position, len(self.items))}."
-            )
-        else:
-            # The panel has only just opened; speak() says it a moment later.
-            self.pending_speech = text
 
     def follow_caret(self, caption_index: int) -> None:
         """
@@ -634,19 +629,29 @@ class ValidationPanel:
         """
 
         current = self.current()
+        was_open = self.container.visible
 
+        # What is on screen stays, so the caret arriving from a button on it
+        # redraws nothing. A closed panel shows nothing: the position it was
+        # left on is not the reader's choice, least of all a speech card,
+        # which is not the caption's own issue (below).
         if (
             current is not None
             and current["caption"].index == caption_index
             and self.exists(current)
+            and (was_open or "speech" not in current)
         ):
             target = current
         else:
+            # The caption's own issues first: speech filed under a caption is
+            # not what marks it, so it does not stand in for them.
             target = next(
                 (
                     item
                     for item in self.items
-                    if item["caption"].index == caption_index and self.exists(item)
+                    if item["caption"].index == caption_index
+                    and "speech" not in item
+                    and self.exists(item)
                 ),
                 None,
             )
@@ -657,9 +662,18 @@ class ValidationPanel:
             revealed = target = self.reveal_hidden(caption_index)
 
         if target is None:
-            return
+            # No issue of its own, shown or hidden: the speech that follows it.
+            target = next(
+                (
+                    item
+                    for item in self.items
+                    if item["caption"].index == caption_index and self.exists(item)
+                ),
+                None,
+            )
 
-        was_open = self.container.visible
+        if target is None:
+            return
 
         if was_open and target is current:
             return
@@ -681,7 +695,7 @@ class ValidationPanel:
         self.draw(scroll=False, speak=False)
 
         if revealed is not None:
-            self.say_revealed(revealed, spoken=False)
+            self.say_revealed(revealed)
 
         with self.container:
             ui.timer(0.2, self.speak, once=True)
@@ -695,10 +709,7 @@ class ValidationPanel:
         item = self.current()
 
         if item is not None:
-            said = getattr(self, "pending_speech", "")
-            self.pending_speech = ""
             self.spoken_position.set_text(
-                f"{said + ' ' if said else ''}"
                 f"Issue {position_text(self.position, len(self.items))}."
             )
 

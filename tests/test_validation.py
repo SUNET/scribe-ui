@@ -778,7 +778,19 @@ class TestAMarkedCaptionNeverRefusesToOpen:
 
         panel.note = Label()
         panel.spoken_position = Label()
-        panel.pending_speech = ""
+
+        def draw(scroll=True, speak=True):
+            # What the real draw() does to the live region: clears the note,
+            # sets the position unless a later speak() is to.
+            panel.draws.append(
+                {"scroll": scroll} if speak else {"scroll": scroll, "speak": speak}
+            )
+            panel.note.set_visibility(False)
+            panel.spoken_position.set_text(
+                f"Issue {panel.position + 1} of {len(panel.items)}." if speak else ""
+            )
+
+        panel.draw = draw
 
         return panel
 
@@ -836,8 +848,10 @@ class TestAMarkedCaptionNeverRefusesToOpen:
         said = "Showing \u201cOverlaps\u201d again \u2014 it was hidden."
 
         assert panel.note.text == said and panel.note.shown
-        assert panel.spoken_position.text.startswith(said)
-        assert "Issue" in panel.spoken_position.text
+        # The card is one live region read whole: the position beside the
+        # sentence, not the sentence twice.
+        assert panel.spoken_position.text.startswith("Issue")
+        assert "Showing" not in panel.spoken_position.text
 
     def test_nothing_is_said_when_nothing_came_back(self, monkeypatch):
         panel = self.panel(monkeypatch)
@@ -845,7 +859,7 @@ class TestAMarkedCaptionNeverRefusesToOpen:
         panel.follow_caret(3)
 
         assert panel.note.text == ""
-        assert panel.spoken_position.text == ""
+        assert "Showing" not in panel.spoken_position.text
 
     def test_a_closed_panel_opens_and_says_it_a_moment_later(self, monkeypatch):
         panel = self.panel(monkeypatch, visible=False)
@@ -860,12 +874,91 @@ class TestAMarkedCaptionNeverRefusesToOpen:
 
         panel.speak()
 
-        assert panel.spoken_position.text.startswith("Showing")
-        assert panel.pending_speech == ""
-
-        panel.speak()
-
         assert panel.spoken_position.text.startswith("Issue")
+        assert "Showing" not in panel.spoken_position.text
+        assert panel.note.shown
+
+    def with_speech_under(self, panel, index):
+        """
+        A shown speech item filed under the caption `index`, as the check
+        files speech under the caption it follows.
+        """
+
+        from utils.validation_panel import shown_items
+
+        caption = next(c for c in panel.captions() if c.index == index)
+        speech = {
+            "caption": caption,
+            "error": False,
+            "rule": "speech",
+            "title": "Speech without a caption",
+            "detail": "",
+            "speech": {"start": 0.0, "end": 1.0, "until": None},
+        }
+        panel.all_items = panel.all_items + [speech]
+        panel.items = shown_items(panel.all_items, panel.hidden)
+
+        return speech
+
+    def test_speech_under_a_marked_caption_does_not_stand_in_for_its_issue(
+        self, monkeypatch
+    ):
+        panel = self.panel(monkeypatch, visible=False)
+        self.hide(panel, "overlap", "length")
+        speech = self.with_speech_under(panel, 3)
+
+        # Caption 3 is marked for an overlap (hidden); the speech after it is
+        # shown. The card is for the caption's own issue.
+        panel.follow_caret(3)
+
+        assert panel.hidden == {"length"}
+        assert panel.current()["rule"] == "overlap"
+        assert panel.current() is not speech
+        assert panel.container.visible is True
+        assert "Overlaps" in panel.note.text
+
+    def test_speech_under_a_caption_with_a_shown_issue_opens_on_the_issue(
+        self, monkeypatch
+    ):
+        panel = self.panel(monkeypatch)
+        self.hide(panel, "overlap")
+        speech = self.with_speech_under(panel, 2)
+
+        # Caption 2: overlap (hidden), length (shown), speech (shown).
+        panel.follow_caret(2)
+
+        assert panel.hidden == {"overlap"}
+        assert panel.current()["rule"] == "length"
+        assert panel.current() is not speech
+
+    def test_a_caption_with_nothing_but_speech_under_it_opens_on_the_speech(
+        self, monkeypatch
+    ):
+        panel = self.panel(monkeypatch)
+        panel.hidden = set()
+        panel.items = list(panel.all_items)
+        # Caption 1 has no issue of its own.
+        speech = self.with_speech_under(panel, 1)
+        panel.position = len(panel.items) - 2
+
+        panel.follow_caret(1)
+
+        assert panel.current() is speech
+        assert panel.hidden == set()
+
+    def test_a_speech_card_the_reader_is_on_stays(self, monkeypatch):
+        panel = self.panel(monkeypatch)
+        self.hide(panel, "overlap", "length")
+        speech = self.with_speech_under(panel, 3)
+        panel.position = panel.items.index(speech)
+        panel.draws.clear()
+
+        # Stepping to the speech puts the caret in the caption it follows.
+        panel.follow_caret(3)
+
+        assert panel.current() is speech
+        assert panel.hidden == {"overlap", "length"}
+        assert panel.draws == []
 
     def test_a_caption_with_no_issue_still_changes_nothing(self, monkeypatch):
         panel = self.panel(monkeypatch, visible=False)
