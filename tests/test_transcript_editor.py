@@ -3008,6 +3008,7 @@ class TestTheShortcutsDialog:
                 "Tools",
                 [
                     ("Find", "Ctrl/⌘ + F"),
+                    ("Replace", "Ctrl + H"),
                     ("Toggle highlight on selected text", "Ctrl + Shift + H"),
                     ("Add or open comment", "Ctrl + Shift + K"),
                     ("Save the comment you are writing", "Ctrl/⌘ + Enter"),
@@ -3070,6 +3071,7 @@ class TestTheShortcutsDialog:
                 "Tools",
                 [
                     ("Find", "Ctrl/⌘ + F"),
+                    ("Replace", "Ctrl + H"),
                     ("Validate captions", "Ctrl + Shift + V"),
                 ],
             ),

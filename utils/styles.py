@@ -138,6 +138,14 @@ theme_styles = """
         /* A comment's dotted underline: 7.5:1 on white and at least 6.3:1 on
            every wash a word can have. */
         --color-comment-line: #a1136a;
+        /* What Find marks with: the card's stripe and the words found (a heavy
+           dashed underline). Only the words: the caption's own tint belongs to
+           Validate, and the two must not fight over it. A steel blue, the one
+           tone nothing else in the editor has: amber is a warning, red an
+           error, violet review, teal the reader's own edits, pink comments,
+           and the pale blue-grey is what is playing. 5.9:1 on white. */
+        --color-find-line: #2f6690;
+        --color-find-bg: #cfe0ef;
 
         /* The word currently being spoken. A pale tint of the brand
            navy, so it reads as "you are here" rather than as a status. */
@@ -271,6 +279,10 @@ theme_styles = """
         --color-highlight-text: #fff6cc;
         /* 4.6:1 on the dark highlight, at least 6.4:1 on the other washes. */
         --color-comment-line: #ff9fd2;
+        /* 7.6:1 on the dark page; the wash behind the current match keeps
+           the text above 7:1. */
+        --color-find-line: #8fb8de;
+        --color-find-bg: #26425c;
 
         --color-playing-bg: #1c3252;
 
@@ -1918,12 +1930,6 @@ theme_styles = """
             in srgb, var(--color-warning-border) 10%, transparent
         );
     }
-    .transcript-cell-highlighted {
-        border-left-color: var(--color-warning-border);
-        background-color: color-mix(
-            in srgb, var(--color-warning-border) 14%, transparent
-        );
-    }
     /* The same mixes over a dark page land far fainter than over a light
        one -- the tint is being mixed into the page behind it, and there is
        much less of it there to lift. */
@@ -1942,10 +1948,16 @@ theme_styles = """
             in srgb, var(--color-warning-border) 18%, transparent
         );
     }
-    .body--dark .transcript-cell-highlighted {
-        background-color: color-mix(
-            in srgb, var(--color-warning-border) 22%, transparent
-        );
+    /* The words Find found, painted over the text by the browser's highlight
+       registry (paintFind in transcript_editor.js): a heavy dashed underline
+       in the card's colour, which is a shape and not only a colour. The
+       current match also has a wash. */
+    ::highlight(find-match) {
+        text-decoration: underline dashed var(--color-find-line) 3px;
+    }
+    ::highlight(find-current) {
+        background-color: var(--color-find-bg);
+        text-decoration: underline dashed var(--color-find-line) 3px;
     }
     /* The caption whose issue the validation panel is showing. After the
        invalid tint so it wins over it: every invalid caption is tinted,
@@ -2020,6 +2032,11 @@ theme_styles = """
     .validation-panel.is-comment {
         --vp-tone: var(--color-comment-line);
     }
+    /* Find's card, a second deck under the first: the steel blue its
+       matches are marked with. */
+    .validation-panel.is-find {
+        --vp-tone: var(--color-find-line);
+    }
     .comments-panel-words {
         max-width: 100%;
     }
@@ -2074,6 +2091,37 @@ theme_styles = """
         margin-top: 8px;
         font-size: 0.8125rem;
     }
+    /* The Find card: the field and "Aa" on a row, Replace unfolded under. */
+    .find-panel-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 6px;
+    }
+    .find-panel-input {
+        flex: 1 1 auto;
+    }
+    .find-panel-case {
+        min-width: 2.25rem;
+        margin-top: 2px;
+        font-weight: 600;
+        border: 1px solid var(--color-border-subtle);
+        color: var(--color-text-primary);
+    }
+    .find-panel-case-on {
+        background: var(--color-find-bg);
+        border-color: var(--color-find-line);
+    }
+    .find-panel-disclosure {
+        margin-top: 2px;
+        font-size: 0.8125rem;
+    }
+    .body--light .find-panel-disclosure,
+    .body--light .find-panel-disclosure .q-btn__content {
+        color: var(--color-brand-primary) !important;
+    }
+    .find-panel-replace {
+        margin-top: 4px;
+    }
     .body--dark .validation-panel {
         background: var(--color-bg-page);
     }
@@ -2095,6 +2143,30 @@ theme_styles = """
         display: flex;
         align-items: center;
         gap: 4px;
+    }
+    /* Folding a card to its header (utils/card_fold.py): the chevron comes
+       first, so the header gives it the room the heading's left padding
+       gave the text. A folded card keeps its header and the visually hidden
+       live regions and loses the rest -- including, for Validate, the filter
+       row below it. */
+    .validation-panel-head:has(.validation-panel-fold) {
+        padding-left: 4px;
+    }
+    .validation-panel .validation-panel-fold {
+        min-width: 0 !important;
+        width: 2rem;
+        height: 2rem;
+        padding: 0 !important;
+    }
+    .validation-panel-heading-fold {
+        cursor: pointer;
+    }
+    .validation-panel-wrap[data-folded] .validation-panel > :not(.validation-panel-head):not(.sr-only),
+    .validation-panel-wrap[data-folded] .validation-panel-filters {
+        display: none !important;
+    }
+    .validation-panel-wrap[data-folded] .validation-panel-head {
+        border-bottom: 0;
     }
     .validation-panel .validation-panel-step {
         min-width: 0 !important;
