@@ -127,6 +127,18 @@ theme_styles = """
         --color-edit-accent: #12796a;
         --color-edit-text: #10453d;
 
+        /* Words the reader has highlighted for themselves. The one marking
+           that is yellow, as a highlighter is. Yellow on white is barely
+           brighter than the page (1.14:1) so the colour cannot carry it
+           alone: the frame lines carry it, 4.9:1 against the page (1.4.1,
+           1.4.11), and the text on the yellow measures 13.6:1. */
+        --color-highlight-bg: #fff1a3;
+        --color-highlight-frame: #8a6d00;
+        --color-highlight-text: #2b2400;
+        /* A comment's dotted underline: 7.5:1 on white and at least 6.3:1 on
+           every wash a word can have. */
+        --color-comment-line: #a1136a;
+
         /* The word currently being spoken. A pale tint of the brand
            navy, so it reads as "you are here" rather than as a status. */
         --color-playing-bg: #dbe4f0;
@@ -251,6 +263,14 @@ theme_styles = """
         --color-edit-bg: #1d3b37;
         --color-edit-accent: #6fd3c1;
         --color-edit-text: #dff5f0;
+
+        /* Dark mode keeps the yellow as a dark gold. Text on it 8.0:1, the
+           frame 12.6:1 against the surface. */
+        --color-highlight-bg: #5a4a00;
+        --color-highlight-frame: #ffd54f;
+        --color-highlight-text: #fff6cc;
+        /* 4.6:1 on the dark highlight, at least 6.4:1 on the other washes. */
+        --color-comment-line: #ff9fd2;
 
         --color-playing-bg: #1c3252;
 
@@ -1372,6 +1392,83 @@ theme_styles = """
         box-shadow: inset 0 -2px 0 var(--color-edit-accent);
     }
 
+    /* Words the reader has highlighted. Yellow, like a highlighter, with a
+       line above and below so it does not depend on the colour: it is a
+       different shape from the other two markings, which are a wash with a
+       bar underneath. No horizontal padding, unlike them, so highlighting
+       a passage does not move the text -- and a run of highlighted words
+       with the spaces between them reads as one stretch.
+
+       On a flagged or changed word the highlight takes the wash and the text
+       colour and keeps its own frame, line above and line below, exactly as
+       on any other highlighted word; the word's own bar is drawn outside it,
+       3px below. Letting the bar take the place of the frame's lower line
+       made a flagged highlight read as a flagged word on a yellow wash, and
+       was hard to tell from a plain highlight.
+       While the word is being played the playing tint wins the wash but the
+       lines stay, so the passage can still be seen under the playback. */
+    .highlight-word {
+        padding: 1px 0;
+        color: var(--color-highlight-text);
+        background-color: var(--color-highlight-bg);
+        box-shadow:
+            inset 0 2px 0 var(--color-highlight-frame),
+            inset 0 -2px 0 var(--color-highlight-frame);
+        box-decoration-break: clone;
+        -webkit-box-decoration-break: clone;
+    }
+    .highlight-word.review-word {
+        box-shadow:
+            inset 0 2px 0 var(--color-highlight-frame),
+            inset 0 -2px 0 var(--color-highlight-frame),
+            0 3px 0 var(--color-review-accent);
+    }
+    .highlight-word.edit-word {
+        box-shadow:
+            inset 0 2px 0 var(--color-highlight-frame),
+            inset 0 -2px 0 var(--color-highlight-frame),
+            0 3px 0 var(--color-edit-accent);
+    }
+    .transcript-text .highlight-word[data-current] {
+        background-color: var(--color-playing-bg);
+        color: inherit;
+        border-radius: 0;
+        box-shadow:
+            inset 0 2px 0 var(--color-highlight-frame),
+            inset 0 -2px 0 var(--color-highlight-frame);
+    }
+    .transcript-text .highlight-word.review-word[data-current] {
+        box-shadow:
+            inset 0 2px 0 var(--color-highlight-frame),
+            inset 0 -2px 0 var(--color-highlight-frame),
+            0 3px 0 var(--color-review-accent);
+    }
+    .transcript-text .highlight-word.edit-word[data-current] {
+        box-shadow:
+            inset 0 2px 0 var(--color-highlight-frame),
+            inset 0 -2px 0 var(--color-highlight-frame),
+            0 3px 0 var(--color-edit-accent);
+    }
+
+    /* A comment. The words it is on are underlined with a dotted line: a
+       pattern rather than a colour alone (1.4.1), and a different one from
+       the solid bars of the flagged and changed words. It is 3px thick and
+       sits 4px below the text, clear of the highlight's own frame lines:
+       a thinner line closer in was lost against them on words that are
+       both highlighted and commented. It is drawn with
+       text-decoration, so it needs no room of its own, shows on any wash a
+       word can have, and leaves the box-shadows that draw the other markings
+       alone. Nothing is added to the line: a marker after the last word
+       would sit where the caret goes. */
+    .comment-word {
+        text-decoration-line: underline;
+        text-decoration-style: dotted;
+        text-decoration-thickness: 3px;
+        text-decoration-color: var(--color-comment-line);
+        text-underline-offset: 4px;
+        text-decoration-skip-ink: none;
+    }
+
     /* Shared hover message. A CSS box rather than title=, which the browser
        draws itself and stylesheets cannot reach.
 
@@ -1450,6 +1547,30 @@ theme_styles = """
     }
     .review-word[data-changed]::after {
         content: none;
+    }
+
+    /* A word typed between two highlighted words, until the next render says
+       so itself (highlightNewWord in transcript_editor.js): drawn as a
+       highlight, with an attribute because Vue owns the class. Written as
+       span[...] so it outranks .transcript-show-edits [data-changed], which
+       comes later and would otherwise paint the word as a plain edit. */
+    .transcript-text span[data-highlighted] {
+        padding: 1px 0;
+        color: var(--color-highlight-text);
+        background-color: var(--color-highlight-bg);
+        border-radius: 0;
+        box-shadow:
+            inset 0 2px 0 var(--color-highlight-frame),
+            inset 0 -2px 0 var(--color-highlight-frame);
+        box-decoration-break: clone;
+        -webkit-box-decoration-break: clone;
+    }
+    .transcript-show-edits .transcript-text span[data-highlighted][data-changed] {
+        border-radius: 3px;
+        box-shadow:
+            inset 0 2px 0 var(--color-highlight-frame),
+            inset 0 -2px 0 var(--color-highlight-frame),
+            0 3px 0 var(--color-edit-accent);
     }
     .transcript-show-edits [data-changed] {
         /* Stated here as well as on .edit-word: a word that was not flagged
@@ -1843,6 +1964,30 @@ theme_styles = """
         box-shadow: inset 0 0 0 2px var(--color-warning-border);
     }
 
+    /* The caption the comments card under the video is on, marked as the
+       validation panel marks its caption but in the comment colour: a
+       thicker rule and a full outline, so shape and not only colour say
+       which. After the editing and invalid rules, so it wins over them. */
+    .transcript-cell-commenting {
+        border-left-color: var(--color-comment-line);
+        border-left-width: 3px;
+        padding-left: calc(1rem - 2px);
+        box-shadow: inset 0 0 0 2px var(--color-comment-line);
+    }
+    /* And the words of the comment the card is showing: a tint of the comment
+       colour laid over whatever else the word has. It is a background-image,
+       which paints above background-color, so a highlight's or a flagged
+       word's own wash still shows through it and nothing is taken away. At
+       18% the text keeps at least 6.7:1 (light) and 5.9:1 (dark) on every
+       wash a word can have, and the comment line at least 4.3:1 and 3.4:1
+       against it. */
+    .comment-word[data-comment-current] {
+        background-image: linear-gradient(
+            color-mix(in srgb, var(--color-comment-line) 18%, transparent),
+            color-mix(in srgb, var(--color-comment-line) 18%, transparent)
+        );
+    }
+
     /* ── Validation panel, under the video (issue #138) ── */
     /* Design B: a stripe down the left and a tinted header in the colour
        of the issue shown -- the panel's own is-warning / is-error /
@@ -1867,6 +2012,42 @@ theme_styles = """
     }
     .validation-panel.is-muted {
         --vp-tone: var(--color-border-subtle);
+    }
+    /* The comments panel, a sibling of this one: the colour of the underline
+       on the words it is about, which is also the one colour in the editor
+       that means nothing else (blue is the playing word, and the
+       progress marks). */
+    .validation-panel.is-comment {
+        --vp-tone: var(--color-comment-line);
+    }
+    .comments-panel-words {
+        max-width: 100%;
+    }
+    .comments-panel-words .q-btn__content {
+        text-align: left;
+        white-space: normal;
+    }
+    .comments-panel-text {
+        margin-top: 8px;
+    }
+    .comments-panel-actions {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 4px;
+        margin-top: 4px;
+    }
+    .comments-panel-remove {
+        margin-right: auto;
+    }
+    /* Remove and Cancel are flat Quasar buttons, which take the primary
+       blue (#5898d4) for their text: 3.06:1 on the card's white, under the
+       4.5:1 that 14px text needs. They take the editor's own text colour
+       instead, the way the toolbar's quiet buttons do. Light mode only: in
+       dark mode the global flat-button rule already draws them white. */
+    .body--light .comments-panel-actions .q-btn--flat,
+    .body--light .comments-panel-actions .q-btn--flat .q-btn__content {
+        color: var(--color-brand-primary) !important;
     }
     /* Which kinds of issue are stepped through: a row of checkboxes under
        the panel, ticked while that kind is shown. */
@@ -2189,7 +2370,28 @@ theme_styles = """
     }
     .transcript-cell:hover .transcript-cell-actions,
     .transcript-gutter:hover + .transcript-cell .transcript-cell-actions,
-    .transcript-cell-actions:focus-within {
+    .transcript-cell-actions:focus-within,
+    /* Also where a keyboard reader is, not only where the pointer is: the
+       caret in the caption's text (the whole transcript is one
+       contenteditable, so the caret never makes the cell itself
+       :focus-within -- the editor marks the caption with
+       .transcript-cell-editing instead, and clears it when the caret
+       leaves) and focus on one of the caption's timestamps. Without this the
+       tray was a control only someone who already knew to press Tab from the
+       text would ever find.
+
+       Only while the keyboard is what is being used (the body class the
+       focus-ring rules above use, set by a Tab and cleared by a click or a
+       tap). With a pointer the tray follows the pointer, which is quicker --
+       it is under the cursor before the caption has been clicked -- and
+       showing it for the caption the caret is in as well would put two on
+       screen whenever the pointer is over another caption.
+
+       Opacity only, as before: the tray stays in the tab order and the
+       accessibility tree, and its space is reserved, so nothing moves when
+       it appears. */
+    body.scribe-user-is-tabbing .transcript-cell-editing .transcript-cell-actions,
+    body.scribe-user-is-tabbing .transcript-cell:focus-within .transcript-cell-actions {
         opacity: 1;
     }
     .transcript-action {
@@ -2373,10 +2575,11 @@ theme_styles = """
        by the page because the strip is fixed and takes no space of its own;
        the component sets the class (see markDocked). */
     body.timeline-docked .nicegui-content {
-        padding-bottom: 9rem;
+        padding-bottom: calc(9rem + 16px);
     }
 
-    /* The grip that moves it, and what it says while it is being moved. */
+    /* The grip that moves it. What letting go will do is said by the
+       placeholder, not by the strip: see .speech-timeline-ghost. */
     .speech-timeline-grip {
         cursor: grab;
         user-select: none;
@@ -2390,9 +2593,39 @@ theme_styles = """
         outline: 2px dashed var(--color-brand-primary);
         outline-offset: 4px;
     }
-    .speech-timeline-dock-hint {
+
+    /* Where it will land if it is let go now, while it is being moved
+       (SUNET/scribe-ui#127): the same dashed brand line as the strip's own,
+       over the room it will take. Never the pointer's: it has to let the
+       drop through. Along the foot it is as tall as the docked strip is; back under the video it is as tall as the
+       strip and its legend were there, and in the page's flow, so what
+       moves out of its way is what will move for the strip. */
+    .speech-timeline-ghost {
+        box-sizing: border-box;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 2px dashed var(--color-brand-primary);
+        border-radius: 6px;
+        background-color: var(--color-bg-surface-hover);
         color: var(--color-brand-primary);
+        font-size: 0.75rem;
         font-weight: 600;
+        pointer-events: none;
+    }
+    .speech-timeline-ghost-rest {
+        width: 100%;
+    }
+    .speech-timeline-ghost-foot {
+        position: fixed;
+        /* left is set by the component, as for the strip itself. */
+        right: 0;
+        bottom: 0;
+        z-index: 899;
+        /* The strip along the foot as it measures there: its padding, the
+           strip with its ruler, the legend and a line of hint. */
+        height: calc(10rem + 22px);
+        margin: 0 0.5rem 0.5rem;
     }
 
     /* Where someone is talking, under the video. The colours are stated as
@@ -2417,9 +2650,14 @@ theme_styles = """
         --timeline-label: var(--color-text-primary);
         --timeline-void: var(--color-bg-surface-hover);
         --timeline-playhead: var(--color-text-danger);
+        /* The time marks along the top edge. Secondary text, since they are
+           text (and ticks that are read with it). */
+        --timeline-ruler: var(--color-text-secondary);
         position: relative;
         width: 100%;
-        height: 4.5rem;
+        /* What the strip always was, plus the ruler's band (RULER in
+           speech_timeline.js). */
+        height: calc(4.5rem + 16px);
         margin-top: 0.5rem;
         border-radius: 6px;
         background-color: var(--color-bg-surface-alt);
@@ -2440,6 +2678,11 @@ theme_styles = """
     .speech-timeline-wrap {
         min-width: 0;
         max-width: 100%;
+        /* The legend lays itself out by how wide the strip is, not by how
+           wide the window is: under the video and docked are very different
+           widths in the same window. Inline size only, so the wrap still
+           takes its width from its parent. */
+        container-type: inline-size;
     }
     .body--dark .speech-timeline {
         background-color: var(--color-bg-surface-alt);
@@ -2478,24 +2721,135 @@ theme_styles = """
         font-size: 0.75rem;
         color: var(--color-text-secondary);
     }
+    /* The controls beside the key: dock, zoom, and adding a caption at the
+       playhead. The playhead is always in the middle of the strip -- it is
+       "now", where the reader works and where "Add caption at playhead"
+       acts -- so where there is room the tray sits under it, and where there
+       is not it follows the key, as it did before. Both come from the same
+       rule (see the container query below the hint): the legend is a grid of
+       1fr, auto, 1fr, whose middle column is the strip's own centre, and the
+       first column is never narrower than the key, which cannot wrap there.
+       The tray therefore moves between the two places continuously, never
+       jumping, and is never over the key. Narrower than 30rem the key and the
+       tray cannot share a row at all, and the legend is the wrapping row it
+       always was.
+
+       The same tray as the caption actions -- surface, hairline, fully
+       rounded, round 1.5rem buttons -- so the two read as one family; they
+       sit in the strip's own legend row, where they cost it no height, which
+       is what matters most docked along the foot of the page.
+
+       Out of the way until the strip is pointed at, or the keyboard is on it
+       or on one of the buttons (a button with focus is never hidden). The
+       keyboard rule uses the same body class as the caption actions and the
+       focus rings: a click on the strip focuses it too, and then the tray
+       should follow the pointer as before. Opacity only, as with the caption
+       actions:
+       the tray stays in the tab order and the accessibility tree, and its
+       place is reserved, so nothing moves when it appears. Where nothing can
+       point (hover: none) it is simply there, since there is no way to
+       reveal it. */
+    .speech-timeline-actions {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        margin-left: 0.5rem;
+        padding: 2px;
+        border: 1px solid var(--color-border-subtle);
+        border-radius: 999px;
+        background-color: var(--color-bg-surface);
+        opacity: 0;
+        transition: opacity 0.12s ease-in-out;
+    }
+    .speech-timeline-wrap:hover .speech-timeline-actions,
+    body.scribe-user-is-tabbing .speech-timeline-wrap:focus-within .speech-timeline-actions,
+    .speech-timeline-actions:focus-within {
+        opacity: 1;
+    }
+    @media (hover: none) {
+        .speech-timeline-actions {
+            opacity: 1;
+        }
+    }
+    .speech-timeline-actions-gap {
+        align-self: stretch;
+        width: 1px;
+        margin: 3px 2px;
+        background-color: var(--color-border-subtle);
+    }
+    .speech-timeline-action {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.5rem;
+        height: 1.5rem;
+        padding: 0;
+        border: 0;
+        border-radius: 50%;
+        background-color: transparent;
+        color: var(--color-text-muted);
+        cursor: pointer;
+        transition: color 0.12s ease-in-out, background-color 0.12s ease-in-out;
+    }
+    .speech-timeline-action:hover {
+        color: var(--color-brand-primary);
+        background-color: var(--color-bg-surface-alt);
+    }
+    /* A button that is on -- the dock while the strip is docked -- says so
+       with a ring as well as a colour, so it does not rest on colour alone. */
+    .speech-timeline-action-on {
+        color: var(--color-brand-primary);
+        background-color: var(--color-bg-surface-alt);
+        box-shadow: inset 0 0 0 1px var(--color-brand-primary);
+    }
+    /* At the end of its range, and stays focusable: see actions() in
+       speech_timeline.js. Dimmed, since an inactive control is not asked to
+       meet the contrast of an active one. */
+    .speech-timeline-action-off {
+        cursor: default;
+        opacity: 0.45;
+    }
+    .speech-timeline-action-off:hover {
+        color: var(--color-text-muted);
+        background-color: transparent;
+    }
     .speech-timeline-key {
         display: inline-flex;
         align-items: center;
         gap: 0.3rem;
     }
-    /* Reads as part of the key -- what the strip is and what can be done to
-       it -- so it stays with it on the left. */
+    /* On a row of its own below the key and the controls, so what the
+       controls cost in width never moves it. */
     .speech-timeline-hint {
+        flex-basis: 100%;
         color: var(--color-text-muted);
     }
-
-    /* Which minute of the recording is on the strip. A different question
-       from the key's, so it sits at the far end of the row rather than in
-       the queue behind it. */
-    .speech-timeline-range {
-        margin-left: auto;
-        color: var(--color-text-secondary);
-        font-variant-numeric: tabular-nums;
+    /* The grip and the four keys, as one item of the legend: the first
+       column of the wide layout. Where the legend wraps it is not a box at
+       all, so the items wrap on their own as they did. */
+    .speech-timeline-keyrow {
+        display: contents;
+    }
+    @container (min-width: 30rem) {
+        .speech-timeline-legend {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            column-gap: 0.75rem;
+            row-gap: 0.75rem;
+        }
+        .speech-timeline-keyrow {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            white-space: nowrap;
+        }
+        /* Equal on both sides, so the middle column's centre is the tray's. */
+        .speech-timeline-actions {
+            margin: 0 0.5rem;
+        }
+        .speech-timeline-hint {
+            grid-column: 1 / -1;
+        }
     }
 
     /* While a caption is being dragged the pointer owns it wherever it
@@ -3356,6 +3710,72 @@ if (!window._scribeFocusModality) {
             document.body.classList.remove('scribe-user-is-tabbing');
         }
     }, true);
+}
+
+// A toast that has focus takes it with it when it goes -- by Close, or by
+// its own timeout -- and focus falls to the document body, so the next Tab
+// starts from the top of the page (WCAG 2.4.3). Remember where it was before
+// it went to the toast and put it back there afterwards.
+if (!window._scribeToastFocus) {
+    window._scribeToastFocus = true;
+    (function () {
+
+        var toastSelector = '.q-notification';
+        var lastOutsideToast = null;
+        var focusIsInToast = false;
+        var watchedToasts = null;
+
+        document.addEventListener('focusin', function (e) {
+            var target = e.target;
+            if (!target || !target.closest) return;
+
+            focusIsInToast = !!target.closest(toastSelector);
+
+            if (!focusIsInToast && target !== document.body) {
+                lastOutsideToast = target;
+            }
+        }, true);
+
+        var returnFocusFromToast = function () {
+            if (!focusIsInToast) return;
+
+            // Still on something real -- another toast, say: nothing was lost.
+            var active = document.activeElement;
+            if (active && active !== document.body && active.isConnected) return;
+
+            focusIsInToast = false;
+
+            // Only where it can be used: the place may be gone, or hidden behind
+            // a dialog that has since closed.
+            var target = lastOutsideToast;
+            if (target && target.isConnected && target.getClientRects().length) {
+                target.focus({ preventScroll: true });
+            }
+        };
+
+        // Quasar adds its container to the body when the first toast is raised,
+        // and nothing else is worth watching: only what happens inside it.
+        var watchToasts = function () {
+            var host = document.querySelector('.q-notifications');
+            if (!host || host === watchedToasts) return;
+
+            watchedToasts = host;
+            new MutationObserver(returnFocusFromToast).observe(host, {
+                childList: true,
+                subtree: true,
+            });
+        };
+
+        var startWatchingToasts = function () {
+            new MutationObserver(watchToasts).observe(document.body, {
+                childList: true,
+            });
+            watchToasts();
+        };
+
+        if (document.body) startWatchingToasts();
+        else document.addEventListener('DOMContentLoaded', startWatchingToasts);
+    })();
 }
 </script>
 """

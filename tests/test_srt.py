@@ -771,7 +771,7 @@ class TestInformationDialog:
 
         page = self.page()
 
-        for label in ("Media file", "Language", "Reading speed"):
+        for label in ("Media file", "Media length", "Language", "Reading speed"):
             assert f'"{label}"' in page
 
         assert '"The source file for this transcription."' in page
@@ -808,12 +808,13 @@ class TestInformationDialog:
     def test_the_moving_figures_are_registered(self):
         """
         The count and the reading speed change as the reader edits; the file
-        name and the language never do.
+        name and the language never do. The media length arrives once the
+        player has read the file, so it is registered too.
         """
 
         page = self.page()
 
-        assert 'if value in ("captions", "wpm"):' in page
+        assert 'if value in ("captions", "wpm", "media"):' in page
         assert "editor.set_status_elements(**figures)" in page
 
 

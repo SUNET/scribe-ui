@@ -29,6 +29,10 @@ issue at a time, in words, and steps through them with Previous and Next.
 - **Closing keeps the markings.** The captions stay marked invalid until the
   next Validate; closing only puts the panel away, clears which caption is
   under review, and hands focus back to the Validate button.
+- **Speech without a caption can be given one from the card.** That issue
+  is filed under the caption the speech follows, and "Add caption" makes a
+  caption covering the speech (new_caption_span) and puts the caret in it,
+  the same as dragging one out on the timeline.
 - **Words first, colour second.** Every issue says what is wrong and whether
   it is an error (the file is broken) or a warning (a guideline is missed);
   the icon and its colour only repeat that.
@@ -40,6 +44,10 @@ a subtitle rule the result breaks.
 from typing import Callable, Optional
 
 from nicegui import ui
+
+from utils.settings import get_settings
+
+settings = get_settings()
 
 
 def position_text(position: int, total: int) -> str:
@@ -66,12 +74,32 @@ RULE_LABELS = {
     "order": "Ends before start",
     "duplicate": "Same timing",
     "overlap": "Overlaps",
+    "outside": "Outside media",
     "length": "Line length",
     "lines": "Too many lines",
     "speed": "Reading speed",
     "short": "Too short",
     "long": "Too long",
+    "speech": "Speech outside captions",
 }
+
+
+def new_caption_span(speech: dict) -> tuple[float, float]:
+    """
+    Where a caption added for uncaptioned speech goes: from where the
+    speech starts to where it ends -- or, when that is shorter than
+    NEW_CAPTION_SECONDS, that long, as far as the next caption allows
+    (`until`). A new caption should not open already failing "Validate"
+    for being too short when there is room to give it.
+    """
+
+    start = speech["start"]
+    end = max(speech["end"], start + settings.NEW_CAPTION_SECONDS)
+
+    if speech.get("until") is not None:
+        end = max(speech["end"], min(end, speech["until"]))
+
+    return start, end
 
 
 def rule_counts(items: list) -> list[tuple[str, int]]:
@@ -138,6 +166,9 @@ class ValidationPanel:
         self.all_items: list = []
         self.items: list = []
         self.hidden: set[str] = set()
+        # Said by the next speak(): a kind of issue that came back as the
+        # panel opened (reveal_hidden).
+        self.pending_speech = ""
         self.checkboxes: dict = {}
         self.position = 0
         self.checked = 0
@@ -224,6 +255,19 @@ class ValidationPanel:
                             )
                         )
                         self.recheck.set_visibility(revalidate is not None)
+
+                        # Speech without a caption: give it one.
+                        self.add_caption = (
+                            ui.button(
+                                "Add caption", icon="add", on_click=self.add_for_speech
+                            )
+                            .props("flat dense no-caps")
+                            .classes(
+                                "editor-btn editor-toolbar-btn editor-outlined "
+                                "validation-panel-recheck"
+                            )
+                        )
+                        self.add_caption.set_visibility(False)
 
                     self.gone = ui.label(
                         "This caption has changed since Validate ran. "
@@ -386,6 +430,10 @@ class ValidationPanel:
         self.items = shown_items(self.all_items, self.hidden)
         self.draw_filters()
 
+        if "speech" in item:
+            self.check_speech_again(item, index)
+            return
+
         remaining = [i for i in self.items if i["caption"].index == index]
 
         if remaining:
@@ -409,6 +457,76 @@ class ValidationPanel:
         # The button goes with the last issue; focus goes to the heading.
         if not self.items:
             self.focus(self.heading)
+
+    def check_speech_again(self, item: dict, index: int) -> None:
+        """
+        "Check again" on speech without a caption: the question is whether
+        that speech has a caption now, not whether the caption it was filed
+        under passes. Stays on it if not; otherwise moves on to the next
+        issue after that caption -- often the caption just added, if its
+        text is still to be typed.
+        """
+
+        start, end = item["speech"]["start"], item["speech"]["end"]
+
+        remaining = [
+            i
+            for i in self.items
+            if "speech" in i
+            and i["speech"]["start"] < end
+            and i["speech"]["end"] > start
+        ]
+
+        if remaining:
+            self.position = self.items.index(remaining[0])
+            note = "This speech still has no caption."
+        else:
+            added = item.get("added")
+            self.position = next(
+                (n for n, i in enumerate(self.items) if i["caption"] is added),
+                next(
+                    (n for n, i in enumerate(self.items) if i["caption"].index > index),
+                    max(len(self.items) - 1, 0),
+                ),
+            )
+            note = "This speech has a caption now."
+
+        self.draw()
+        self.note.set_text(note)
+        self.note.set_visibility(True)
+
+        if not self.items:
+            self.focus(self.heading)
+
+    # -- Adding a caption ---------------------------------------------------
+
+    def add_for_speech(self) -> None:
+        """
+        "Add caption" on speech without one: a new, empty caption covering
+        it (new_caption_span), made the way the timeline makes one -- the
+        recording moves to it and the caret goes into it, since its text is
+        the next thing wanted. The card stays on the issue and says what was
+        done; "Check again" moves on once the caption has its text.
+        """
+
+        item = self.current()
+        if item is None or "speech" not in item or item.get("added") is not None:
+            return
+
+        start, end = new_caption_span(item["speech"])
+        if self.transcript.editor.media_seconds is not None:
+            end = min(end, self.transcript.editor.media_seconds)
+        added = self.transcript.create_caption({"start": start, "end": end})
+
+        # Refused: a caption has been put there since Validate ran, and
+        # create_caption has said so.
+        if added is None:
+            return
+
+        item["added"] = added
+        self.add_caption.set_visibility(False)
+        self.note.set_text(f"Caption {added.index} added for this speech.")
+        self.note.set_visibility(True)
 
     # -- Stepping -----------------------------------------------------------
 
@@ -440,8 +558,67 @@ class ValidationPanel:
 
         caption = item["caption"]
         offset = min(item.get("offset", 0), len(caption.text))
+        if "speech" in item:
+            start = item["speech"]["start"]
+            self.transcript.editor.seek_video(start)
+            self.transcript.moved_to(start)
         # Centred, as stepping between issues shows a caption.
         self.transcript.focus(caption.index, offset, center=True)
+        if "speech" in item:
+            start = item["speech"]["start"]
+            self.transcript.editor.seek_video(start)
+            self.transcript.moved_to(start)
+
+    def reveal_hidden(self, caption_index: int) -> Optional[dict]:
+        """
+        A marked caption must never refuse to open its card because of a
+        filter. When the caret comes to rest in one whose issues are all of
+        kinds that are hidden, the kind of its first issue is shown again, and
+        that issue is the one to show. (A caption with an issue of a kind
+        that is shown opens on that, and its hidden kinds stay hidden: that
+        is what the reader chose.) Speech without a caption marks no caption,
+        so it never brings a kind back.
+        """
+
+        item = next(
+            (
+                i
+                for i in self.all_items
+                if i["caption"].index == caption_index
+                and "speech" not in i
+                and i["rule"] in self.hidden
+                and self.exists(i)
+            ),
+            None,
+        )
+
+        if item is None:
+            return None
+
+        self.hidden.discard(item["rule"])
+        self.items = shown_items(self.all_items, self.hidden)
+        self.draw_filters()
+
+        return item
+
+    def say_revealed(self, item: dict, spoken: bool = True) -> None:
+        """
+        Say that a kind of issue came back because the caret went to a
+        caption that has one: on the card, and to a screen reader.
+        """
+
+        text = f"Showing \u201c{RULE_LABELS[item['rule']]}\u201d again \u2014 it was hidden."
+
+        self.note.set_text(text)
+        self.note.set_visibility(True)
+
+        if spoken:
+            self.spoken_position.set_text(
+                f"{text} Issue {position_text(self.position, len(self.items))}."
+            )
+        else:
+            # The panel has only just opened; speak() says it a moment later.
+            self.pending_speech = text
 
     def follow_caret(self, caption_index: int) -> None:
         """
@@ -452,7 +629,8 @@ class ValidationPanel:
         what keeps "Caption 17", which puts the caret there itself, from
         redrawing what it was just pressed on. Closed panel, after a
         Validate: open it on that issue. A caption with no issue, or a
-        Validate not yet run, changes nothing.
+        Validate not yet run, changes nothing. A caption marked only for
+        kinds that are hidden shows one of them again (reveal_hidden).
         """
 
         current = self.current()
@@ -473,6 +651,11 @@ class ValidationPanel:
                 None,
             )
 
+        revealed = None
+
+        if target is None:
+            revealed = target = self.reveal_hidden(caption_index)
+
         if target is None:
             return
 
@@ -485,6 +668,10 @@ class ValidationPanel:
 
         if was_open:
             self.draw(scroll=False)
+
+            if revealed is not None:
+                self.say_revealed(revealed)
+
             return
 
         # A live region that appears with its text already in it is often not
@@ -492,6 +679,10 @@ class ValidationPanel:
         # first and say the issue a moment later.
         self.container.set_visibility(True)
         self.draw(scroll=False, speak=False)
+
+        if revealed is not None:
+            self.say_revealed(revealed, spoken=False)
+
         with self.container:
             ui.timer(0.2, self.speak, once=True)
 
@@ -504,7 +695,10 @@ class ValidationPanel:
         item = self.current()
 
         if item is not None:
+            said = getattr(self, "pending_speech", "")
+            self.pending_speech = ""
             self.spoken_position.set_text(
+                f"{said + ' ' if said else ''}"
                 f"Issue {position_text(self.position, len(self.items))}."
             )
 
@@ -536,6 +730,7 @@ class ValidationPanel:
         self.note.set_visibility(False)
         self.heading.set_text(heading_text(len(self.all_items)))
         self.issue.set_visibility(item is not None)
+        self.add_caption.set_visibility(False)
         self.foot.set_visibility(total > 0)
         self.all_clear.set_visibility(total == 0)
         self.gone.set_visibility(False)
@@ -586,6 +781,10 @@ class ValidationPanel:
             self.caption_button.set_enabled(False)
             self.gone.set_visibility(True)
             self.transcript.review(None)
+
+        self.add_caption.set_visibility(
+            "speech" in item and item.get("added") is None and self.exists(item)
+        )
 
         self.update_skip_link()
 

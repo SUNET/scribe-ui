@@ -18,12 +18,14 @@
 import httpx
 import json
 import re
+import time
 
 from nicegui import events, ui
 from typing import Callable, List, Optional
 from utils.caption import SRTCaption
 from utils.common import get_auth_header
 from utils.settings import get_settings
+from utils.srt_comments import CommentsMixin
 from utils.srt_export import ExportMixin
 from utils.srt_render import RenderMixin, CHARACTER_LIMIT_EXCEEDED_COLOR
 from utils.srt_review import (
@@ -66,7 +68,7 @@ __all__ = [
 settings = get_settings()
 
 
-class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
+class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin, CommentsMixin):
     def __init__(self, uuid: str, srt_format: str, filename: str):
         """
         Initialize the SRT editor with empty captions and other properties.
@@ -79,6 +81,8 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         self.srt_format = srt_format
         self.captions: List[SRTCaption] = []
         self.selected_caption: Optional[SRTCaption] = None
+        # Opens the Quick Jump prompt; set by the document view that owns it.
+        self.on_quick_jump: Optional[Callable[[], None]] = None
         self.search_term = ""
         self.search_results = []
         self.current_search_index = 0
@@ -100,6 +104,11 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         self.words_per_minute_element = None
         # The status line's own figures, by name -- see set_status_elements.
         self.status_elements: dict = {}
+        # How long the media file is, in seconds, as the player reports it.
+        # None until the player has read the file, and for a file whose
+        # length it cannot tell. Only the browser knows it -- see
+        # look_up_media_seconds.
+        self.media_seconds: Optional[float] = None
         self.speakers = set()
 
         # Seeded from what the page opened, not left as None until parsing:
@@ -118,6 +127,22 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         self.has_confidence = False
         self.show_uncertain_words = False
         self.show_my_edits = False
+        # The reader's own highlights, shown whenever an editor is opened.
+        # Hiding them draws nothing and reads out nothing, but keeps them, and
+        # is not remembered: it is a way of looking at the text for a while,
+        # and a hidden highlight forgotten for days is worse than having to
+        # switch them off again.
+        self.show_highlights = True
+        # Told when a command turns them back on, so the switch can follow.
+        self.on_highlights_shown = None
+        # The reader's own comments, shown whenever an editor is opened.
+        # Hiding them draws nothing and reads out nothing, but keeps them, and
+        # is not remembered: it is a way of looking at the text for a while,
+        # and a hidden comment forgotten for days is worse than having to
+        # switch them off again.
+        self.show_comments = True
+        # Told when a command turns them back on, so the switch can follow.
+        self.on_comments_shown = None
         # The strip under the video. On by default, the same as the overlay
         # and for the same reason: it shows what is already there rather
         # than adding anything to read.
@@ -398,6 +423,16 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
             case "y" if event.modifiers.meta and not event.modifiers.shift:
                 self.redo()
 
+            # Quick Jump, Ctrl+G / Cmd+G: "go to", as in most editors.
+            # Shift is not asked about: Ctrl+Shift+G is find-previous in a
+            # browser, which is just as much not wanted here.
+            case "g" if (
+                (event.modifiers.ctrl or event.modifiers.meta)
+                and not event.modifiers.alt
+            ):
+                if self.on_quick_jump is not None:
+                    self.on_quick_jump()
+
             # Open find, Ctrl+F
             case "f" if event.modifiers.ctrl and not event.modifiers.shift:
                 self.create_search_panel(open_window=True)
@@ -471,7 +506,52 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
                 else ""
             ),
             "wpm": f"{self.get_words_per_minute():.0f} wpm",
+            "media": (
+                self.format_duration(self.media_seconds)
+                if self.media_seconds is not None
+                else "\u2013"
+            ),
         }
+
+    def set_media_seconds(self, seconds: Optional[float]) -> None:
+        """
+        Record how long the media file is, and redraw the figures that show it.
+        """
+
+        self.media_seconds = seconds
+        self.update_status()
+
+    async def look_up_media_seconds(self, video) -> None:
+        """
+        Ask the browser how long the media file is. The length lives in the
+        player's own element, so it has to come from there: wait for the file's
+        metadata if the player has not read it yet, then answer the length --
+        or nothing, when the player cannot tell. A recording made in the
+        browser has no length in the file until it has been played to the end,
+        and the player then says Infinity, which is no length to compare
+        captions against.
+        """
+
+        try:
+            seconds = await ui.run_javascript(
+                f"""
+                const video = getHtmlElement({video.id});
+                if (!video) return null;
+                if (video.readyState < 1) {{
+                  await new Promise((resolve) => {{
+                    video.addEventListener("loadedmetadata", resolve, {{ once: true }});
+                    video.addEventListener("error", resolve, {{ once: true }});
+                  }});
+                }}
+                return Number.isFinite(video.duration) ? video.duration : null;
+                """,
+                timeout=30.0,
+            )
+        except TimeoutError:
+            return
+
+        if isinstance(seconds, (int, float)) and seconds > 0:
+            self.set_media_seconds(float(seconds))
 
     def update_status(self) -> None:
         """
@@ -545,6 +625,76 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
 
         if self._video_player:
             self._video_player.seek(seconds)
+
+    # Play a stretch of the recording and stop at its end. The stop has to
+    # be decided next to the player, a frame at a time: timeupdate comes a
+    # few times a second, which would let the recording run on into the next
+    # words, and a round trip to the server would be later still.
+    #
+    # Gives way to the reader at once: pausing, or moving the recording
+    # somewhere else -- in either direction, by the strip, Quick Jump or the
+    # player's own bar -- ends the watch rather than being undone by it, and
+    # the recording goes on playing from where the reader put it. A move is
+    # told by the player's own `seeking` event, which playing never raises;
+    # comparing positions could not tell a jump forward past the end from the
+    # recording simply reaching it. Playing does not take the keyboard focus
+    # -- nothing here touches it.
+    PLAY_RANGE_SCRIPT = """
+        const video = %(element)s;
+        if (!video) return;
+        if (video._scribeStopWatch) video._scribeStopWatch();
+        const start = %(start)s;
+        const end = %(end)s;
+        let frame = null;
+        const finish = () => {
+          if (frame !== null) cancelAnimationFrame(frame);
+          frame = null;
+          video.removeEventListener("seeking", finish);
+          video._scribeStopWatch = null;
+        };
+        video._scribeStopWatch = finish;
+        const watch = () => {
+          if (video.paused || video.ended) return finish();
+          if (video.currentTime >= end) {
+            video.pause();
+            return finish();
+          }
+          frame = requestAnimationFrame(watch);
+        };
+        const begin = () => {
+          // Any move from here on is the reader's: this one has been made.
+          video.addEventListener("seeking", finish);
+          video.play();
+          frame = requestAnimationFrame(watch);
+        };
+        if (Math.abs(video.currentTime - start) < 0.01) {
+          begin();
+        } else {
+          video.addEventListener("seeked", begin, { once: true });
+          video.currentTime = start;
+        }
+    """
+
+    def play_range(self, start: float, end: float) -> None:
+        """
+        Play from `start` to `end` once and stop, if a player is attached.
+        """
+
+        if not self._video_player or end <= start:
+            return
+
+        identifier = getattr(self._video_player, "id", None)
+        element = (
+            f"getHtmlElement({int(identifier)})"
+            if isinstance(identifier, int)
+            else 'document.querySelector("video")'
+        )
+
+        ui.run_javascript(
+            self.PLAY_RANGE_SCRIPT
+            % {"element": element, "start": float(start), "end": float(end)}
+        )
+        self._set_play_pause_state(True)
 
     def set_video_player(self, player) -> None:
         """
@@ -632,6 +782,21 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
                 restored.edited_words = {
                     position for position in marks if isinstance(position, int)
                 }
+
+            # The same for the reader's highlights.
+            highlights = segment.get("highlighted")
+
+            if isinstance(highlights, list):
+                restored.highlighted_words = {
+                    position
+                    for position in highlights
+                    if isinstance(position, int) and not isinstance(position, bool)
+                }
+
+            # And the reader's comments.
+            restored.comments = self.restore_comments(
+                segment.get("comments"), segment["text"]
+            )
 
             self.captions.append(restored)
             self.speakers.add(segment.get("speaker", ""))
@@ -759,6 +924,104 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         """
 
         return str(timestamp).replace(",", ".")
+
+    # One keypress moves a caption's start or end by this much.
+    NUDGE_MILLISECONDS = 100
+
+    # Nudges of the same edge of the same caption this close together are
+    # one undo step: holding the key, or tapping it a few times to find the
+    # spot, is one adjustment to the reader and should be one to undo.
+    NUDGE_UNDO_WINDOW = 1.5
+
+    def nudge_caption_time(
+        self, caption: SRTCaption, edge: str, direction: str
+    ) -> bool:
+        """
+        Move a caption's start or end one step earlier or later.
+
+        Only that edge moves -- the caption's other edge and the neighbours
+        stay where they are, and overlap with a neighbour is left for the
+        validation to report, as it is for a drag on the strip. An edge
+        cannot cross the other one (it stops one step short of it), the start
+        cannot go before the beginning of the recording nor the end past its
+        last moment when that is known. A step that would go further than
+        the limit goes as far as it can; when it cannot move at all the
+        reader is told why.
+
+        Returns whether anything moved.
+        """
+
+        if edge not in ("start", "end") or direction not in ("earlier", "later"):
+            return False
+
+        step = self.NUDGE_MILLISECONDS
+        delta = -step if direction == "earlier" else step
+        start = round(caption.get_start_seconds() * 1000)
+        end = round(caption.get_end_seconds() * 1000)
+
+        if edge == "start":
+            floor, ceiling = 0, end - step
+            current = start
+        else:
+            floor, ceiling = start + step, None
+            if self.media_seconds is not None:
+                ceiling = round(self.media_seconds * 1000)
+            current = end
+
+        target = current + delta
+        target = max(floor, target) if delta < 0 else target
+
+        if ceiling is not None and delta > 0:
+            target = min(ceiling, target)
+
+        # Already past the limit (a caption shorter than one step, say):
+        # never pull it back towards it by moving the other way's limit.
+        if (delta < 0 and target >= current) or (delta > 0 and target <= current):
+            reason = {
+                ("start", "earlier"): "The start is already at the beginning of the recording",
+                ("start", "later"): "The start cannot move past the end of the caption",
+                ("end", "earlier"): "The end cannot move before the start of the caption",
+                ("end", "later"): "The end is already at the end of the recording",
+            }[(edge, direction)]
+            ui.notify(reason, type="warning", timeout=None, close_button="Close")
+            return False
+
+        # One undo step for a run of nudges of the same edge: the state
+        # saved at the first is the one a single undo returns to. Anything
+        # else saved in between (an edit, another caption) ends the run.
+        #
+        # "Anything else saved" is told by the state on top of the stack
+        # being the one this run left there -- not by its depth, which
+        # stops changing once the history is full.
+        run = (id(caption), edge)
+        stack = self.undo_redo_manager.undo_stack
+        now = time.monotonic()
+        last = getattr(self, "_nudge_run", None)
+
+        if not (
+            last is not None
+            and last[0] == run
+            and stack
+            and last[1] is stack[-1]
+            and now - last[2] <= self.NUDGE_UNDO_WINDOW
+        ):
+            self.save_state_for_undo()
+
+        self._nudge_run = (run, stack[-1] if stack else None, now)
+
+        stamp = self.seconds_to_timestamp(target / 1000)
+
+        if edge == "start":
+            caption.start_time = stamp
+        else:
+            caption.end_time = stamp
+
+        # An earlier start can pass the previous caption's start; the list
+        # follows the clock, as after any retime.
+        self.sort_captions()
+        self.mark_as_changed()
+
+        return True
 
     def seconds_to_timestamp(self, seconds: float) -> str:
         """
@@ -906,9 +1169,7 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         if text is not None and text != caption.text:
             # The text area holds edits that have not been committed yet;
             # splitting must not discard them, nor the marks they earned.
-            caption.edited_words = self.retag_edits(
-                caption.text, text, caption.edited_words
-            )
+            self.carry_marks(caption, text)
             caption.text = text
             self.mark_as_changed()
 
@@ -933,10 +1194,18 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
 
         # Marks follow their words across the break.
         kept, moved = self.split_edits(caption.edited_words, len(first_part.split()))
+        kept_highlights, moved_highlights = self.split_edits(
+            caption.highlighted_words, len(first_part.split())
+        )
+        kept_comments, moved_comments = self.split_comments(
+            caption.comments, len(first_part.split())
+        )
 
         # Update first caption
         caption.text = first_part
         caption.edited_words = kept
+        caption.highlighted_words = kept_highlights
+        caption.comments = kept_comments
         caption.end_time = self.seconds_to_timestamp(mid_seconds)
 
         # Create second caption
@@ -948,6 +1217,8 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
             speaker=caption.speaker,
         )
         new_caption.edited_words = moved
+        new_caption.highlighted_words = moved_highlights
+        new_caption.comments = moved_comments
 
         # Insert new caption
         caption_index = self.captions.index(caption)
@@ -986,13 +1257,18 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
 
         return "".join(parts[:-2]).strip(), parts[-1]
 
-    def move_first_word_to_previous(self, caption: SRTCaption) -> None:
+    def move_first_word_to_previous(self, caption: SRTCaption) -> Optional[str]:
         """
         Move the first word of a block to the end of the previous one.
 
         Both blocks are re-timed from the word data: the previous block now
         ends where the moved word ends, and this one starts where its new
         first word starts.
+
+        When it is the only word, moving it would leave the block with nothing,
+        so it is a merge with the previous block instead, as it is for
+        move_text_before_cursor_to_previous. Returns "merged" when it merged, and
+        nothing otherwise.
         """
 
         if not caption:
@@ -1012,13 +1288,8 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         moved_word, remaining = self.split_off_first_word(caption.text)
 
         if not remaining:
-            ui.notify(
-                "That is the only word in the block -- merge instead",
-                type="warning",
-                timeout=None,
-                close_button="Close",
-            )
-            return
+            self.merge_with_previous(caption)
+            return "merged"
 
         # Resolve the timings before the text changes, since words are matched
         # to a block by its time range.
@@ -1029,8 +1300,28 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         self.save_state_for_undo()
 
         previous = self.captions[position - 1]
+
+        # A highlight on the word follows it across. Read before either text
+        # changes, since both positions are counted against the old words.
+        first_was_highlighted = 0 in caption.highlighted_words
+        previous_count = len(previous.text.split())
+
         previous.text = f"{previous.text.rstrip()} {moved_word}"
         caption.text = remaining
+
+        caption.highlighted_words = {
+            index - 1 for index in caption.highlighted_words if index > 0
+        }
+        if first_was_highlighted:
+            previous.highlighted_words.add(previous_count)
+
+        # A comment stays on the word it was written about: one on the moved
+        # word goes with it, and one on that word and others is on both sides
+        # (a copy with the same text), as when a block is split.
+        moved_comments, caption.comments = self.split_comments(caption.comments, 1)
+        previous.comments = self.join_comments(
+            previous.comments, moved_comments, previous_count
+        )
 
         if self.word_is_timed(moved_timing) and self.word_is_timed(next_timing):
             previous.end_time = self.seconds_to_timestamp(moved_timing["e"])
@@ -1045,13 +1336,18 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
 
         self.finish_word_move()
 
-    def move_last_word_to_next(self, caption: SRTCaption) -> None:
+    def move_last_word_to_next(self, caption: SRTCaption) -> Optional[str]:
         """
         Move the last word of a block to the start of the next one.
 
         Both blocks are re-timed from the word data: the next block now starts
         where the moved word starts, and this one ends where its new last word
         ends.
+
+        When it is the only word, moving it would leave the block with nothing,
+        so it is a merge with the next block instead, as it is for
+        move_text_after_cursor_to_next. Returns "merged" when it merged, and
+        nothing otherwise.
         """
 
         if not caption:
@@ -1071,13 +1367,8 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         remaining, moved_word = self.split_off_last_word(caption.text)
 
         if not remaining:
-            ui.notify(
-                "That is the only word in the block -- merge instead",
-                type="warning",
-                timeout=None,
-                close_button="Close",
-            )
-            return
+            self.merge_with_next(caption)
+            return "merged"
 
         aligned = self.aligned_words(caption)
         moved_timing = aligned[-1] if aligned else None
@@ -1086,8 +1377,28 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         self.save_state_for_undo()
 
         following = self.captions[position + 1]
+
+        # See move_first_word_to_previous: the highlight goes with the word.
+        last_index = len(caption.text.split()) - 1
+        last_was_highlighted = last_index in caption.highlighted_words
+
         following.text = f"{moved_word} {following.text.lstrip()}"
         caption.text = remaining
+
+        caption.highlighted_words.discard(last_index)
+        following.highlighted_words = {
+            index + 1 for index in following.highlighted_words
+        }
+        if last_was_highlighted:
+            following.highlighted_words.add(0)
+
+        # See move_first_word_to_previous: a comment stays on its word.
+        caption.comments, moved_comments = self.split_comments(
+            caption.comments, last_index
+        )
+        following.comments = self.join_comments(
+            moved_comments, following.comments, 1
+        )
 
         if self.word_is_timed(moved_timing) and self.word_is_timed(previous_timing):
             following.start_time = self.seconds_to_timestamp(moved_timing["s"])
@@ -1102,6 +1413,227 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
 
         self.finish_word_move()
 
+    @staticmethod
+    def word_spans(text: str) -> list:
+        """
+        Where each whitespace-separated word of the text starts and ends, as
+        (start, end) character offsets -- the words as the alignment and the
+        marks count them.
+        """
+
+        return [match.span() for match in re.finditer(r"\S+", text)]
+
+    def move_text_before_cursor_to_previous(
+        self, caption: SRTCaption, offset: int
+    ) -> str:
+        """
+        Move everything before the cursor to the end of the previous block.
+
+        The word the cursor is in goes too: the move divides the text between
+        words, never through one. Both blocks are re-timed from the word data,
+        as when one word is moved (move_first_word_to_previous): the previous
+        block now ends where the last moved word ends, and this one starts
+        where its new first word starts.
+
+        When that would leave this block with nothing, it is a merge with the
+        previous one instead. Returns "moved", "merged", or "" when there was
+        nothing to do.
+        """
+
+        if not caption:
+            return ""
+
+        position = self.captions.index(caption)
+
+        if position == 0:
+            ui.notify(
+                "No previous block to move the text to",
+                type="warning",
+                timeout=None,
+                close_button="Close",
+            )
+            return ""
+
+        spans = self.word_spans(caption.text)
+        offset = max(0, min(int(offset), len(caption.text)))
+
+        # Every word that starts before the cursor: the ones wholly before it,
+        # and the one it is in.
+        count = sum(1 for start, _ in spans if start < offset)
+
+        if count == 0:
+            ui.notify(
+                "There is no text before the cursor to move",
+                type="warning",
+                timeout=None,
+                close_button="Close",
+            )
+            return ""
+
+        if count == len(spans):
+            # All of it: nothing would be left. The same as joining the block
+            # to the previous one, so that is what happens (and what saves the
+            # undo state).
+            self.merge_with_previous(caption)
+            return "merged"
+
+        moved_text = caption.text[: spans[count - 1][1]].strip()
+        remaining = caption.text[spans[count][0]:].strip()
+
+        # Timings are looked up before the text changes, since words are
+        # matched to a block by its time range.
+        aligned = self.aligned_words(caption)
+        last_moved = aligned[count - 1] if len(aligned) >= count else None
+        first_left = aligned[count] if len(aligned) > count else None
+
+        self.save_state_for_undo()
+
+        previous = self.captions[position - 1]
+        previous_text = previous.text.rstrip()
+
+        # The marks of edited words are word positions, so they follow their
+        # words across.
+        carried, kept = self.split_edits(caption.edited_words, count)
+        previous.edited_words = self.joined_edits(
+            previous.edited_words, carried, len(previous_text.split())
+        )
+        caption.edited_words = kept
+
+        # So are a highlight and a comment: both are on words, counted from
+        # the first word of the block, and so go where their words go. A
+        # comment across the cursor is on both sides, as when a block is split.
+        carried, kept = self.split_edits(caption.highlighted_words, count)
+        previous.highlighted_words = self.joined_edits(
+            previous.highlighted_words, carried, len(previous_text.split())
+        )
+        caption.highlighted_words = kept
+
+        carried, kept = self.split_comments(caption.comments, count)
+        previous.comments = self.join_comments(
+            previous.comments, carried, len(previous_text.split())
+        )
+        caption.comments = kept
+
+        previous.text = " ".join(part for part in (previous_text, moved_text) if part)
+        caption.text = remaining
+
+        if self.word_is_timed(last_moved) and self.word_is_timed(first_left):
+            previous.end_time = self.seconds_to_timestamp(last_moved["e"])
+            caption.start_time = self.seconds_to_timestamp(first_left["s"])
+        else:
+            ui.notify(
+                "Text moved, but the timings could not be updated",
+                type="warning",
+                timeout=None,
+                close_button="Close",
+            )
+
+        self.finish_word_move()
+
+        return "moved"
+
+    def move_text_after_cursor_to_next(
+        self, caption: SRTCaption, offset: int
+    ) -> str:
+        """
+        Move everything after the cursor to the start of the next block.
+
+        The word the cursor is in goes too, as in
+        move_text_before_cursor_to_previous. Both blocks are re-timed from the
+        word data: the next block now starts where the first moved word
+        starts, and this one ends where its new last word ends.
+
+        When that would leave this block with nothing, it is a merge with the
+        next one instead. Returns "moved", "merged", or "" when there was
+        nothing to do.
+        """
+
+        if not caption:
+            return ""
+
+        position = self.captions.index(caption)
+
+        if position == len(self.captions) - 1:
+            ui.notify(
+                "No next block to move the text to",
+                type="warning",
+                timeout=None,
+                close_button="Close",
+            )
+            return ""
+
+        spans = self.word_spans(caption.text)
+        offset = max(0, min(int(offset), len(caption.text)))
+
+        # The first word that ends after the cursor: the one it is in, or the
+        # first one wholly after it.
+        first = next(
+            (index for index, (_, end) in enumerate(spans) if end > offset),
+            len(spans),
+        )
+
+        if first == len(spans):
+            ui.notify(
+                "There is no text after the cursor to move",
+                type="warning",
+                timeout=None,
+                close_button="Close",
+            )
+            return ""
+
+        if first == 0:
+            self.merge_with_next(caption)
+            return "merged"
+
+        remaining = caption.text[: spans[first - 1][1]].strip()
+        moved_text = caption.text[spans[first][0]:].strip()
+
+        aligned = self.aligned_words(caption)
+        first_moved = aligned[first] if len(aligned) > first else None
+        last_left = aligned[first - 1] if len(aligned) >= first else None
+
+        self.save_state_for_undo()
+
+        following = self.captions[position + 1]
+        kept, carried = self.split_edits(caption.edited_words, first)
+        following.edited_words = self.joined_edits(
+            carried, following.edited_words, len(moved_text.split())
+        )
+        caption.edited_words = kept
+
+        # And the highlights and comments, as in move_text_before_cursor_to_previous.
+        kept, carried = self.split_edits(caption.highlighted_words, first)
+        following.highlighted_words = self.joined_edits(
+            carried, following.highlighted_words, len(moved_text.split())
+        )
+        caption.highlighted_words = kept
+
+        kept, carried = self.split_comments(caption.comments, first)
+        following.comments = self.join_comments(
+            carried, following.comments, len(moved_text.split())
+        )
+        caption.comments = kept
+
+        following.text = " ".join(
+            part for part in (moved_text, following.text.lstrip()) if part
+        )
+        caption.text = remaining
+
+        if self.word_is_timed(first_moved) and self.word_is_timed(last_left):
+            following.start_time = self.seconds_to_timestamp(first_moved["s"])
+            caption.end_time = self.seconds_to_timestamp(last_left["e"])
+        else:
+            ui.notify(
+                "Text moved, but the timings could not be updated",
+                type="warning",
+                timeout=None,
+                close_button="Close",
+            )
+
+        self.finish_word_move()
+
+        return "moved"
+
     def finish_word_move(self) -> None:
         """
         Shared bookkeeping after a word has moved between blocks.
@@ -1110,6 +1642,119 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         self.mark_as_changed()
         self.update_words_per_minute()
         self.refresh_display(force_full_refresh=True)
+
+    def toggle_highlight(self, selections: list) -> str:
+        """
+        Highlight the words a selection touches, or take the highlight off.
+
+        `selections` is a list of (caption, start, end) with the offsets in the
+        caption's text, one entry per caption the selection reaches into. A
+        selection that reaches across blocks is one gesture and one undo step.
+
+        One key does both, so which it is depends on what is there: when every
+        word taken is already highlighted the highlight comes off, otherwise
+        everything taken gets one. A mixed selection therefore becomes fully
+        highlighted first -- the reader can press again to clear it.
+
+        Returns "added", "removed", "shown" (hidden highlights were only
+        shown again), or "" when nothing was selected (a notice says so).
+
+        Transcriptions only, for now. A set of subtitles is saved as plain
+        SRT, which has nowhere to keep a highlight, so it gets none: nothing
+        in the editor asks for one there, and this refuses if something does.
+        """
+
+        if self.data_format == "srt":
+            return ""
+
+        touched = []
+
+        for caption, start, end in selections:
+            positions = self.words_in_selection(caption.text, start, end)
+
+            if positions:
+                touched.append((caption, positions))
+
+        if not touched:
+            ui.notify(
+                "Select the words to highlight first",
+                type="warning",
+                timeout=None,
+                close_button="Close",
+            )
+            return ""
+
+        already = [
+            position in caption.highlighted_words
+            for caption, positions in touched
+            for position in positions
+        ]
+
+        # Hidden highlights are not something the key may take off: what
+        # cannot be seen should not be deleted. The command turns the display
+        # on instead, adds a highlight to any word taken that lacks one, and
+        # says what happened -- a second press, with them showing, is the one
+        # that removes.
+        if not self.show_highlights:
+            return self.reveal_highlights(touched, already)
+
+        remove = all(already)
+
+        self.save_state_for_undo()
+
+        for caption, positions in touched:
+            if remove:
+                caption.highlighted_words.difference_update(positions)
+            else:
+                caption.highlighted_words.update(positions)
+
+        # Kept with the transcription's own data, so it is a change to save.
+        self.mark_as_changed()
+
+        return "removed" if remove else "added"
+
+    def reveal_highlights(self, touched: list, already: list) -> str:
+        """
+        The highlight command while highlights are hidden.
+
+        Never removes anything. Words taken that have none get one; if they
+        all have one already, nothing changes and the notice says why nothing
+        seems to have happened. Returns "added" or "shown".
+        """
+
+        if all(already):
+            message = (
+                "Highlights were hidden and are shown again. "
+                "Press again to remove this highlight."
+            )
+            result = "shown"
+        else:
+            self.save_state_for_undo()
+
+            for caption, positions in touched:
+                caption.highlighted_words.update(positions)
+
+            self.mark_as_changed()
+
+            message = (
+                "Highlight added. Highlights were hidden and are shown again."
+                if not any(already)
+                else "Highlights were hidden and are shown again, and the "
+                "words without one were highlighted."
+            )
+            result = "added"
+
+        self.set_show_highlights(True)
+
+        # A toast is announced as it appears (Quasar gives it role=alert), so
+        # this is what tells a screen reader user why the key did what it did.
+        # It stays until closed, like the other notices (WCAG 2.2.1).
+        ui.notify(message, type="info", timeout=None, close_button="Close")
+
+        if self.on_highlights_shown is not None:
+            self.on_highlights_shown()
+
+        return result
 
     def add_caption_after(self, caption: SRTCaption) -> None:
         """
@@ -1220,9 +1865,7 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
             self.save_state_for_undo()
             # Worked out before the text is replaced, while there is still
             # something to compare it against.
-            caption.edited_words = self.retag_edits(
-                caption.text, new_text, caption.edited_words
-            )
+            self.carry_marks(caption, new_text)
             caption.text = new_text
             # Editing a word can take it off the count, or put one on it.
             self.update_flagged_count()
@@ -1277,14 +1920,26 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         # retag_edits does with words a change brought in.
         old_text = first.text
         old_marks = set(first.edited_words)
+        old_highlights = set(first.highlighted_words)
+        old_comments = [comment.copy() for comment in first.comments]
 
         for caption in self.captions[start + 1 : end + 1]:
             old_marks = self.joined_edits(
                 old_marks, caption.edited_words, len(old_text.split())
             )
+            old_highlights = self.joined_edits(
+                old_highlights, caption.highlighted_words, len(old_text.split())
+            )
+            old_comments = self.join_comments(
+                old_comments, caption.comments, len(old_text.split())
+            )
             old_text = "\n".join(part for part in (old_text, caption.text) if part)
 
         first.edited_words = self.retag_edits(old_text, merged, old_marks)
+        first.highlighted_words = self.carry_highlights(
+            old_text, merged, old_highlights
+        )
+        first.comments = self.carry_comments(old_text, merged, old_comments)
         first.text = merged
         first.end_time = last.end_time
 
@@ -1327,6 +1982,14 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
             caption.edited_words,
             next_caption.edited_words,
             len(caption.text.split()),
+        )
+        caption.highlighted_words = self.joined_edits(
+            caption.highlighted_words,
+            next_caption.highlighted_words,
+            len(caption.text.split()),
+        )
+        caption.comments = self.join_comments(
+            caption.comments, next_caption.comments, len(caption.text.split())
         )
         # Only actually joined with a newline when both sides have text --
         # an empty caption (freshly added, then merged straight back away
@@ -1374,6 +2037,16 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin):
         previous_caption.edited_words = self.joined_edits(
             previous_caption.edited_words,
             caption.edited_words,
+            len(previous_caption.text.split()),
+        )
+        previous_caption.highlighted_words = self.joined_edits(
+            previous_caption.highlighted_words,
+            caption.highlighted_words,
+            len(previous_caption.text.split()),
+        )
+        previous_caption.comments = self.join_comments(
+            previous_caption.comments,
+            caption.comments,
             len(previous_caption.text.split()),
         )
         # See the equivalent join in merge_with_next for why this is not

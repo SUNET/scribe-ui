@@ -213,6 +213,70 @@ class TestCaptionActions:
     def test_revealed_on_keyboard_focus(self):
         assert effective(".transcript-cell-actions:focus-within")["opacity"] == "1"
 
+    def test_revealed_where_the_caret_is_for_a_keyboard_reader(self):
+        """
+        The whole transcript is one contenteditable, so the caret in a
+        caption's text never makes that caption's cell :focus-within. The
+        editor marks the caption the caret is in instead, and the tray follows
+        the mark -- otherwise it is a control that only someone who already
+        knows to press Tab from the text will ever find.
+        """
+
+        assert effective(
+            "body.scribe-user-is-tabbing .transcript-cell-editing "
+            ".transcript-cell-actions"
+        )["opacity"] == "1"
+
+    def test_revealed_on_focus_anywhere_in_the_cell_for_a_keyboard_reader(self):
+        """
+        A timestamp is a control inside the cell, so focus on it is
+        :focus-within the cell.
+        """
+
+        assert effective(
+            "body.scribe-user-is-tabbing .transcript-cell:focus-within "
+            ".transcript-cell-actions"
+        )["opacity"] == "1"
+
+    def test_a_pointer_still_gets_only_the_caption_under_it(self):
+        """
+        With a mouse the tray follows the pointer -- quicker, since it is
+        there before the caption has been clicked -- and the caption the
+        caret is in does not get one as well, or two would be on screen
+        whenever the pointer is over another caption.
+        """
+
+        for selector in (
+            ".transcript-cell-editing .transcript-cell-actions",
+            ".transcript-cell:focus-within .transcript-cell-actions",
+        ):
+            with pytest.raises(AssertionError):
+                effective(selector)
+
+    def test_revealing_only_changes_opacity(self):
+        """
+        Hidden by opacity and nothing else: the tray stays in the tab order
+        and the accessibility tree, and its space is reserved, so showing it
+        moves nothing.
+        """
+
+        for selector in (
+            "body.scribe-user-is-tabbing .transcript-cell-editing "
+            ".transcript-cell-actions",
+            "body.scribe-user-is-tabbing .transcript-cell:focus-within "
+            ".transcript-cell-actions",
+        ):
+            assert list(effective(selector)) == ["opacity"]
+
+    def test_the_playing_caption_does_not_reveal_it(self):
+        """
+        Every caption the recording passes through would flash its tray up
+        and away again while someone is only listening.
+        """
+
+        with pytest.raises(AssertionError):
+            effective(".transcript-cell-active .transcript-cell-actions")
+
     def test_the_tray_costs_the_row_no_height(self):
         """
         The actions sit in a tray of their own, and its padding and border

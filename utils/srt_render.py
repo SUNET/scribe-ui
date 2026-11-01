@@ -142,6 +142,8 @@ class RenderMixin:
             detail: str,
             rule: str,
             offset: int = 0,
+            extra: Optional[dict] = None,
+            mark: bool = True,
         ) -> None:
             entry = issues.get(caption.index)
 
@@ -163,10 +165,16 @@ class RenderMixin:
                     "detail": detail,
                     "rule": rule,
                     "offset": offset,
+                    **(extra or {}),
                 }
             )
-            caption.is_valid = False
-            caption.has_error = caption.has_error or error
+
+            # An issue about the time around a caption rather than the
+            # caption itself (speech nothing covers) is filed under it, so
+            # the panel has somewhere to go, but leaves it unmarked.
+            if mark:
+                caption.is_valid = False
+                caption.has_error = caption.has_error or error
 
         for caption in self.captions:
             if not caption.text.strip():
@@ -248,6 +256,39 @@ class RenderMixin:
                         detail=f"On screen for {seconds:.2f}s.",
                         rule="short",
                     )
+
+                # Against how long the media file is, when that is known. In
+                # whole milliseconds, which is all a timestamp holds -- 2.4 is
+                # held as 2.39999..., and a caption ending exactly where the
+                # media does is not outside it.
+                if self.media_seconds is not None:
+                    media_ms = round(self.media_seconds * 1000)
+                    media_end = self.seconds_to_timestamp(self.media_seconds)
+
+                    if round(caption.get_start_seconds() * 1000) > media_ms:
+                        report(
+                            caption,
+                            f"Starts after the media ends ({media_end}).",
+                            error=True,
+                            title="Starts after the media ends",
+                            rule="outside",
+                            detail=(
+                                f"Starts at {caption.start_time}, "
+                                f"the media ends at {media_end}."
+                            ),
+                        )
+                    elif round(caption.get_end_seconds() * 1000) > media_ms:
+                        report(
+                            caption,
+                            f"Ends after the media ends ({media_end}).",
+                            error=True,
+                            title="Ends after the media ends",
+                            rule="outside",
+                            detail=(
+                                f"Ends at {caption.end_time}, "
+                                f"the media ends at {media_end}."
+                            ),
+                        )
 
                 if seconds > settings.MAX_CAPTION_SECONDS:
                     report(
@@ -333,7 +374,98 @@ class RenderMixin:
                     detail=f"Overlaps caption {current.index}.",
                 )
 
+        # Speech that no caption covers (SUNET/scribe-ui#142). Filed under
+        # the caption it follows -- the first one, for speech before any --
+        # so "Caption N" goes to where the missing caption belongs.
+        if self.data_format == "srt" and self.captions:
+            playing = sorted(self.captions, key=lambda c: c.get_start_seconds())
+
+            for start, end in self.uncaptioned_speech():
+                before = [c for c in playing if c.get_start_seconds() <= start]
+                after = [c for c in playing if c.get_start_seconds() >= end]
+                neighbour = before[-1] if before else playing[0]
+                shown_start = self.format_time_display(
+                    self.seconds_to_timestamp(start)
+                )
+                shown_end = self.format_time_display(self.seconds_to_timestamp(end))
+
+                report(
+                    neighbour,
+                    f"Speech from {shown_start} to {shown_end} has no caption.",
+                    error=False,
+                    title="Speech without a caption",
+                    detail=(
+                        f"Speech from {shown_start} to {shown_end} "
+                        f"({end - start:.1f}s)."
+                    ),
+                    rule="speech",
+                    # After the caption's text, where the missing one goes;
+                    # at its start when the speech comes before it.
+                    offset=len(neighbour.text) if before else 0,
+                    extra={
+                        "speech": {
+                            "start": start,
+                            "end": end,
+                            # Where the next caption starts: as far as a
+                            # caption added for this speech may run.
+                            "until": (
+                                after[0].get_start_seconds() if after else None
+                            ),
+                        }
+                    },
+                    mark=False,
+                )
+
         return [issues[index] for index in sorted(issues)]
+
+    def uncaptioned_speech(self) -> list:
+        """
+        The stretches of speech no caption covers, as (start, end) pairs in
+        seconds, longer than MAX_UNCAPTIONED_SPEECH_SECONDS.
+
+        Speech is speech_runs(), from the word timings, so a transcription
+        without them has none to report. A run is cut wherever a caption
+        covers it, and what is left over is checked piece by piece: a run
+        can be one long sentence across five captions, and a caption deleted
+        from the middle of it has to show up as the hole it leaves.
+
+        Compared at one decimal, as the panel shows it: 0.54s of speech is
+        shown as 0.5s and is not reported against a limit of 0.5s.
+        """
+
+        speech_runs = getattr(self, "speech_runs", None)
+        runs = speech_runs() if speech_runs is not None else []
+
+        covered = sorted(
+            (caption.get_start_seconds(), caption.get_end_seconds())
+            for caption in self.captions
+            if caption.get_end_seconds() > caption.get_start_seconds()
+        )
+
+        pieces = []
+
+        for start, end in runs:
+            position = start
+
+            for caption_start, caption_end in covered:
+                if caption_end <= position:
+                    continue
+                if caption_start >= end:
+                    break
+                if caption_start > position:
+                    pieces.append((position, caption_start))
+                position = max(position, caption_end)
+                if position >= end:
+                    break
+
+            if position < end:
+                pieces.append((position, end))
+
+        return [
+            (start, end)
+            for start, end in pieces
+            if round(end - start, 1) > settings.MAX_UNCAPTIONED_SPEECH_SECONDS
+        ]
 
     @staticmethod
     def validation_items(issues: list) -> list:
@@ -565,6 +697,10 @@ class RenderMixin:
                 ("New line", "Shift + Enter"),
                 ("Move first word to previous caption", "Ctrl/⌘ + ↑"),
                 ("Move last word to next caption", "Ctrl/⌘ + ↓"),
+                ("Move text before cursor to previous caption", "Ctrl/⌘ + Shift + ↑"),
+                ("Move text after cursor to next caption", "Ctrl/⌘ + Shift + ↓"),
+                ("Nudge start earlier / later (0.1 s)", "Ctrl + , / Ctrl + ."),
+                ("Nudge end earlier / later (0.1 s)", "Ctrl + Shift + , / Ctrl + Shift + ."),
                 ("Merge with next", "Ctrl + M"),
                 ("Add caption after", "Ctrl/⌘ + Shift + Enter"),
                 ("Delete caption", "Ctrl + D"),
@@ -575,24 +711,63 @@ class RenderMixin:
                 ("New line", "Shift + Enter"),
                 ("Move first word to previous paragraph", "Ctrl/⌘ + ↑"),
                 ("Move last word to next paragraph", "Ctrl/⌘ + ↓"),
+                ("Move text before cursor to previous paragraph", "Ctrl/⌘ + Shift + ↑"),
+                ("Move text after cursor to next paragraph", "Ctrl/⌘ + Shift + ↓"),
                 ("Merge with next", "Ctrl + M"),
                 ("Delete paragraph", "Ctrl + D"),
             ]
         )
 
+        # What is specific to the format, in Tools beside Find. A set of
+        # subtitles is checked against guidelines only subtitles are held to
+        # (the toolbar's Validate sits in this group too). A transcription
+        # has the selection's own highlight and its comments, which a set of
+        # subtitles cannot keep: plain SRT has nowhere to put them. Saving a
+        # comment is listed because Ctrl/⌘ + Enter is not what a reader would
+        # try; Esc, which closes it, is what Esc does everywhere, and is not.
+        tools = [("Find", "Ctrl/⌘ + F")] + (
+            [("Validate captions", "Ctrl + Shift + V")]
+            if subtitles
+            else [
+                ("Toggle highlight on selected text", "Ctrl + Shift + H"),
+                ("Add or open comment", "Ctrl + Shift + K"),
+                ("Save the comment you are writing", "Ctrl/⌘ + Enter"),
+            ]
+        )
+
+        # The Timeline's keys work while the strip itself has focus, unlike
+        # Quick jump, which works from anywhere; the first row says so and
+        # the rest follow it. They are navigation in time, apart from the
+        # zoom, which belongs with them rather than on a row of its own.
+        navigation = [
+            ("Quick jump to a time or block", "Ctrl/⌘ + G"),
+            ("Timeline, when focused: move playhead a little", "← / →"),
+            ("Timeline: move playhead a whole strip", "Page Up / Page Down"),
+            ("Timeline: playhead to start / end", "Home / End"),
+            ("Timeline: zoom in / out", "Shift + ↑ / ↓, + / −"),
+            ("Timeline: reset zoom", "0"),
+        ]
+
+        # In the order of the work, which is also the toolbar's from left to
+        # right: what is done to the text; playing it and getting around in
+        # it; then undo, the tools and, last, the file. Playback, not
+        # "transport": the term is a sound engineer's, and the reader looks
+        # for what plays the recording.
         shortcut_groups = [
             ("Editing", editing),
             (
-                "File operations",
+                "Playback",
                 [
-                    ("Save file", "Ctrl/⌘ + S"),
-                    ("Export file", "Ctrl/⌘ + E"),
-                    ("Find", "Ctrl/⌘ + F"),
-                ]
-                # Validate is a subtitle's alone: it checks the line-length
-                # and line-count guidelines only subtitles are held to.
-                + ([("Validate captions", "Ctrl + Shift + V")] if subtitles else []),
+                    ("Play/Pause", "Ctrl + Space"),
+                    (
+                        "Play caption with context"
+                        if subtitles
+                        else "Play paragraph with context",
+                        "Ctrl + Shift + Space",
+                    ),
+                ],
             ),
+            ("Navigation", navigation),
             (
                 "History",
                 [
@@ -600,10 +775,12 @@ class RenderMixin:
                     ("Redo", "Ctrl + Y / ⌘ + Shift + Z"),
                 ],
             ),
+            ("Tools", tools),
             (
-                "Transport",
+                "File operations",
                 [
-                    ("Play/Pause", "Ctrl + Space"),
+                    ("Save file", "Ctrl/⌘ + S"),
+                    ("Export file", "Ctrl/⌘ + E"),
                 ],
             ),
         ]
