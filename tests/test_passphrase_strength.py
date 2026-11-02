@@ -63,7 +63,7 @@ def code(text: str) -> str:
 def setting_dialog() -> str:
     start = MAIN.index('aria-label="Set your encryption passphrase"')
 
-    return MAIN[start : MAIN.index("else:\n        has_token", start)]
+    return MAIN[start : MAIN.index('aria-label="Enter your encryption passphrase"', start)]
 
 
 class TestNothingTypedLeaves:
@@ -134,7 +134,7 @@ class TestOnThePage:
     def test_the_first_field_is_marked_for_the_script_and_the_meter_follows_it(self):
         dialog = setting_dialog()
         field = dialog.index('"Encryption Passphrase", password=True')
-        meter = dialog.index("meter()")
+        meter = dialog.index("meter(reader_words(user_data))")
         confirm = dialog.index('"Confirm Encryption Passphrase"')
 
         assert "input-class=passphrase-field" in dialog[field:meter]
@@ -169,6 +169,164 @@ class TestOnThePage:
         assert "<script>" in head and head.rstrip().endswith("</script>")
         assert "window._scribePassphraseStrength" in head
         assert ".passphrase-strength" in head
+
+
+class TestRefusing:
+    """
+    Too easy to guess is not set. The browser judged it; the page asks for the
+    verdict, which is the reason alone, and refuses on it.
+    """
+
+    def test_the_reasons_refused_are_the_ones_the_script_refuses(self):
+        found = re.search(r"const REFUSED = \[([^\]]*)\];", SCRIPT)
+        script = re.findall(r'"([a-z]+)"', found.group(1))
+
+        assert set(script) == set(module.REFUSALS) == {"short", "guessable", "personal", "place"}
+
+    @pytest.mark.parametrize("reason", ["short", "guessable", "personal", "place"])
+    def test_each_refused_reason_has_its_own_words(self, reason):
+        said = module.refusal(reason)
+
+        assert said and said.endswith(".")
+        if reason != "short":
+            assert said.startswith("This passphrase is too easy to guess and can't be used.")
+
+    @pytest.mark.parametrize("reason", ["weak", "good", "strong", "empty", None, "", 42, "unknown"])
+    def test_anything_else_is_not_a_refusal(self, reason):
+        assert module.refusal(reason) is None
+
+    def test_the_question_asks_for_the_reason_and_not_the_text(self):
+        assert module.VERDICT_JS == (
+            "window.PassphraseStrength ? window.PassphraseStrength.verdict() : null"
+        )
+        assert ".value" not in module.VERDICT_JS
+
+    def test_the_verdict_is_what_the_browser_says(self, monkeypatch):
+        import asyncio
+
+        async def answer(code, timeout=None):
+            assert code == module.VERDICT_JS
+            return "place"
+
+        monkeypatch.setattr(module.ui, "run_javascript", answer)
+
+        assert asyncio.run(module.verdict()) == "place"
+
+    @pytest.mark.parametrize("failure", [TimeoutError(), RuntimeError("no client")])
+    def test_no_answer_is_no_verdict(self, monkeypatch, failure):
+        import asyncio
+
+        async def answer(code, timeout=None):
+            raise failure
+
+        monkeypatch.setattr(module.ui, "run_javascript", answer)
+
+        assert asyncio.run(module.verdict()) is None
+
+    @pytest.mark.parametrize("odd", [None, {"reason": "place"}, 3, ["place"]])
+    def test_an_answer_that_is_not_a_reason_is_no_verdict(self, monkeypatch, odd):
+        import asyncio
+
+        async def answer(code, timeout=None):
+            return odd
+
+        monkeypatch.setattr(module.ui, "run_javascript", answer)
+
+        assert asyncio.run(module.verdict()) is None
+
+    def test_the_page_asks_before_it_sets_and_stops_on_a_refusal(self):
+        dialog = setting_dialog()
+        handler = dialog[dialog.index("async def set_encryption_password") :]
+
+        asked = handler.index("refused = refusal(await verdict())")
+        stops = handler.index("return", asked)
+        sets = handler.index("encryption_password_set(password_input.value)")
+
+        # The length and the match first, as before; then the verdict; then set.
+        assert handler.index(">= MIN_LENGTH") < asked < stops < sets
+        refusing = handler[asked:stops]
+        assert "error_label.set_text(refused)" in refusing
+        assert "error_label.visible = True" in refusing
+        assert 'password_input.run_method("focus")' in refusing
+
+    def test_the_reason_is_said_aloud(self):
+        dialog = setting_dialog()
+        label = dialog[dialog.index("error_label = (") : dialog.index("error_label.visible = False")]
+
+        assert '.props("role=alert")' in label
+
+    def test_a_mismatch_still_says_the_mismatch(self):
+        """The label is shared: after a refusal, a mismatch must not show it."""
+
+        dialog = setting_dialog()
+        otherwise = dialog[: dialog.index('"Set Passphrase"')]
+        otherwise = otherwise[otherwise.rindex("else:") :]
+
+        assert "error_label.set_text(mismatch)" in otherwise
+
+
+class TestTheReadersOwnWords:
+    def test_parts_of_three_letters_or_more_without_accents(self):
+        assert module.personal_words(
+            "Ångström Öberg-Nilsson", "anna.andersson@lu.se", "ab1234@su.se", None, 7
+        ) == ["andersson", "angstrom", "anna", "nilsson", "oberg"]
+
+    def test_from_the_backend_and_the_sign_in_token(self, monkeypatch):
+        class Storage:
+            user = {"token": "a.b.c"}
+
+        class App:
+            storage = Storage()
+
+        class JWT:
+            def decode(self, token, do_verify=True):
+                assert do_verify is False
+                return {
+                    "given_name": "Zimtalia",
+                    "family_name": "Blefonsson",
+                    "eduPersonPrincipalName": "zbl123@example.org",
+                    "exp": 0,
+                }
+
+        monkeypatch.setattr(module, "app", App())
+        monkeypatch.setattr(module.jwt, "JWT", JWT)
+
+        words = module.reader_words({"username": "zbl123", "email": "quorp@vexl.se"})
+
+        assert words == ["blefonsson", "example", "org", "quorp", "vexl", "zbl", "zimtalia"]
+
+    def test_a_token_that_cannot_be_read_still_gives_the_backends_words(self, monkeypatch):
+        class Storage:
+            user = {"token": "garbage"}
+
+        class App:
+            storage = Storage()
+
+        class JWT:
+            def decode(self, token, do_verify=True):
+                raise ValueError("not a token")
+
+        monkeypatch.setattr(module, "app", App())
+        monkeypatch.setattr(module.jwt, "JWT", JWT)
+
+        assert module.reader_words({"username": "quorpvexl"}) == ["quorpvexl"]
+
+    def test_the_meter_carries_them_for_the_script(self, monkeypatch):
+        seen = {}
+        monkeypatch.setattr(module.ui, "html", lambda content, **kwargs: seen.update(content=content))
+
+        module.meter(["zimtalia", "blefonsson"])
+
+        assert 'data-personal="zimtalia blefonsson"' in seen["content"]
+        assert "data-personal" in SCRIPT
+
+    def test_the_meter_without_them_carries_none(self, monkeypatch):
+        seen = {}
+        monkeypatch.setattr(module.ui, "html", lambda content, **kwargs: seen.update(content=content))
+
+        module.meter()
+
+        assert 'data-personal=""' in seen["content"]
 
 
 class TestTheMeter:

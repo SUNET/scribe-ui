@@ -36,7 +36,14 @@ from utils.token import (
     get_user_status,
     get_token_is_valid,
 )
-from utils.passphrase_strength import MIN_LENGTH, head_html as passphrase_head, meter
+from utils.passphrase_strength import (
+    MIN_LENGTH,
+    head_html as passphrase_head,
+    meter,
+    reader_words,
+    refusal,
+    verdict,
+)
 from utils.helpers import (
     encryption_password_set,
     encryption_password_verify,
@@ -211,25 +218,41 @@ async def index(request: Request) -> None:
                     ).props(
                         "autocomplete=new-password input-class=passphrase-field"
                     ).style("width: 100%;")
-                    meter()
+                    meter(reader_words(user_data))
                     confirm_password_input = ui.input(
                         "Confirm Encryption Passphrase", password=True
                     ).props("autocomplete=new-password").style(
                         "width: 100%; margin-bottom: 10px;"
                     )
+                    # An alert, so a screen reader hears why nothing happened
+                    # when Set is pressed (3.3.1).
+                    mismatch = (
+                        f"Passphrases do not match or are less than {MIN_LENGTH} characters."
+                    )
                     error_label = (
-                        ui.label(
-                            f"Passphrases do not match or are less than {MIN_LENGTH} characters."
-                        )
+                        ui.label(mismatch)
                         .classes("text-negative")
                         .style("margin-bottom: 10px;")
+                        .props("role=alert")
                     )
                     error_label.visible = False
 
-                    def set_encryption_password() -> None:
+                    async def set_encryption_password() -> None:
                         if (
                             password_input.value == confirm_password_input.value
                         ) and len(password_input.value) >= MIN_LENGTH:
+                            # Too easy to guess is not set (SUNET/scribe-ui#80).
+                            # The browser judged it and is asked for its
+                            # verdict, which is the reason alone; with no
+                            # verdict nothing more is refused than before.
+                            refused = refusal(await verdict())
+
+                            if refused:
+                                error_label.set_text(refused)
+                                error_label.visible = True
+                                password_input.run_method("focus")
+                                return
+
                             try:
                                 encryption_password_set(password_input.value)
                             except Exception:
@@ -247,6 +270,7 @@ async def index(request: Request) -> None:
                             ui.navigate.to("/")
 
                         else:
+                            error_label.set_text(mismatch)
                             error_label.visible = True
 
                     ui.button(

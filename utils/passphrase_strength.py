@@ -23,15 +23,23 @@ else: this file only draws the meter that script fills in, and puts the script
 and its styles in the page. Nothing typed is sent for evaluation, so the
 server never sees a passphrase for any reason but setting it.
 
-The level is advice, not a rule. The one rule is the minimum length the page
-has always had (MIN_LENGTH, kept in step with the script by a test), and no
-character classes are asked for: a longer phrase is what is encouraged.
+The level is advice -- except where the script finds the passphrase too easy
+to guess: under the minimum length (MIN_LENGTH, kept in step with the script
+by a test), a common one or a pattern, the name of a university, a place or
+the term, or the reader's own name or user name. Those the page will not set.
+To know, it asks the browser for its verdict (verdict()), which is the reason
+alone, never the passphrase. No character classes are asked for: a longer
+phrase is what is encouraged.
 """
 
 import html
 import pathlib
+import re
+import unicodedata
+from typing import Optional
 
-from nicegui import ui
+import jwt
+from nicegui import app, ui
 
 # The shortest passphrase that is accepted. Under it the meter says "Too
 # short" and the page does not set it.
@@ -43,6 +51,28 @@ EMPTY_HINT = (
     "Let your password manager suggest one, or choose four or more words "
     "you don't normally use together. Not a quote or a song line."
 )
+
+# What the page says when it will not set a passphrase, by the reason the
+# script gave. A reason that is not here is not a refusal.
+REFUSALS = {
+    "short": f"The passphrase is too short. Use at least {MIN_LENGTH} characters.",
+    "guessable": (
+        "This passphrase is too easy to guess and can't be used. "
+        "Avoid common words and patterns."
+    ),
+    "personal": (
+        "This passphrase is too easy to guess and can't be used. "
+        "Don't use your own name or user name."
+    ),
+    "place": (
+        "This passphrase is too easy to guess and can't be used. "
+        "Avoid names of universities, places and terms."
+    ),
+}
+
+# Asked of the browser before a passphrase is set. An expression, so
+# NiceGUI's run_javascript gives back its value: the reason, or null.
+VERDICT_JS = "window.PassphraseStrength ? window.PassphraseStrength.verdict() : null"
 
 SCRIPT_PATH = pathlib.Path(__file__).with_suffix(".js")
 SCRIPT = SCRIPT_PATH.read_text(encoding="utf-8")
@@ -126,10 +156,96 @@ def head_html() -> str:
     return STYLES + "<script>" + SCRIPT + "</script>"
 
 
-def meter() -> None:
+def refusal(reason: Optional[str]) -> Optional[str]:
+    """
+    What to tell the reader when the passphrase is not to be set, or None
+    when it may be.
+    """
+
+    return REFUSALS.get(reason) if isinstance(reason, str) else None
+
+
+async def verdict(timeout: float = 3.0) -> Optional[str]:
+    """
+    The reason the script gives for the passphrase in the field, asked of the
+    browser. None when it cannot say -- the script is not there, or the page
+    did not answer -- and then nothing is refused that the page did not refuse
+    before: no one is to be locked out by a meter that did not load.
+    """
+
+    try:
+        reason = await ui.run_javascript(VERDICT_JS, timeout=timeout)
+    except Exception:
+        return None
+
+    return reason if isinstance(reason, str) else None
+
+
+def personal_words(*values) -> list:
+    """
+    The reader's own words, from their name, user name and e-mail address:
+    every part of three letters or more, lower case and without accents, as
+    the script compares them. "anna.andersson@lu.se" gives anna and andersson
+    (lu is too short; the university is on the script's own list anyway).
+    """
+
+    words = set()
+
+    for value in values:
+        if not isinstance(value, str):
+            continue
+
+        plain = unicodedata.normalize("NFD", value)
+        plain = "".join(ch for ch in plain if not unicodedata.combining(ch)).lower()
+
+        for part in re.split(r"[\W\d_]+", plain):
+            if len(part) >= 3:
+                words.add(part)
+
+    return sorted(words)
+
+
+def reader_words(user_data: Optional[dict] = None) -> list:
+    """
+    personal_words() for whoever is signed in: what the backend knows of them
+    and what their sign-in token says. Their own words, put in their own page.
+    """
+
+    values = []
+
+    if isinstance(user_data, dict):
+        values += [user_data.get(key) for key in ("username", "email")]
+
+    token = app.storage.user.get("token") if app.storage.user is not None else None
+
+    if token:
+        try:
+            claims = jwt.JWT().decode(token, do_verify=False)
+        except Exception:
+            claims = {}
+
+        values += [
+            claims.get(key)
+            for key in (
+                "name",
+                "given_name",
+                "family_name",
+                "email",
+                "eduPersonPrincipalName",
+                "preferred_username",
+                "username",
+            )
+        ]
+
+    return personal_words(*values)
+
+
+def meter(personal: Optional[list] = None) -> None:
     """
     The meter, to be put right under the passphrase field (which has to carry
     class "passphrase-field", see the page). The script fills in what it says.
+    `personal` is the reader's own words (reader_words()), which the script
+    will not accept a passphrase made of.
 
     The strength is said in words as well as drawn (a bar and a colour alone
     would not do): the label and the advice are text, joined to the field with
@@ -139,7 +255,8 @@ def meter() -> None:
 
     ui.html(
         '<div id="passphrase-strength" class="passphrase-strength"'
-        f' data-level="empty" data-empty-hint="{html.escape(EMPTY_HINT, quote=True)}">'
+        f' data-level="empty" data-empty-hint="{html.escape(EMPTY_HINT, quote=True)}"'
+        f' data-personal="{html.escape(" ".join(personal or []), quote=True)}">'
         '<div class="passphrase-strength-bar" aria-hidden="true">'
         "<span></span><span></span><span></span></div>"
         '<p id="passphrase-strength-label" class="passphrase-strength-label"></p>'

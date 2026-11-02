@@ -145,8 +145,8 @@ test("patterns are too easy to guess", () => {
 });
 
 test("saying the same thing again is not length", () => {
-  // The repeats are left out when the length is counted.
-  assert.equal(level("the cat sat on the mat"), "good"); // as "the cat sat on mat": 17
+  // The repeats are left out when the length is counted (and the little
+  // words, see below).
   assert.equal(level("hav hav hav katt hund"), "good"); // as "hav katt hund": 13
   assert.equal(level("Hav HAV hav katt hund"), "good"); // case does not make a new word
   // The whole phrase said twice is the repeated-bit pattern.
@@ -165,18 +165,137 @@ test("a quote's own repeats do not make it strong, and punctuation does not hide
   assert.equal(reason("To be, or not to be"), "guessable");
   assert.equal(reason("Pass.word"), "guessable");
   assert.equal(reason("P@ssw0rd!"), "guessable");
-  // The list knows these and nothing else of the play: more of it is just a phrase.
-  assert.equal(level("to be or not to be that is the question"), "strong");
+  // More of the play is a sentence of little words: what is left is "question".
+  assert.equal(level("to be or not to be that is the question"), "weak");
 });
 
 test("a long phrase is not made weak by containing a common word", () => {
   assert.equal(level("sommar " + phrase()), "strong");
-  assert.equal(level("my password is a long sentence"), "strong");
+  assert.equal(level("lund " + phrase()), "strong");
+  assert.equal(level("anna " + phrase()), "strong");
 });
 
-test("a common word alone is judged as one, a phrase with it is not", () => {
+test("the little words of a sentence are not length", () => {
+  assert.equal(level("the cat sat on the mat"), "weak"); // "cat sat mat": 11
+  assert.equal(level("my password is a long sentence"), "good"); // "long sentence": 13
+  assert.equal(reason("och i att det som en"), "guessable");
+  // Inside a string of mixed characters a letter is a letter.
+  assert.equal(level("Zq7%wLm3Xv9#Rt2kJpbN"), "strong");
+});
+
+test("a common word alone is judged as one, and so is one with a scrap added", () => {
   assert.equal(reason("sommar"), "short");
-  assert.equal(reason("sommarkvall"), "weak");
+  assert.equal(reason("sommarkvall"), "guessable"); // "sommar" and five letters
+});
+
+test("universities, places and the term are not to be used", () => {
+  for (const text of [
+    "Stockholms universitet 2026",
+    "Lunds universitet HT25",
+    "lunduniversitet2025",
+    "Chalmers tekniska högskola",
+    "Kungliga Tekniska högskolan",
+    "vt26 KTH examen",
+    "Umeå Uppsala Linköping",
+    "Jag heter Anna och bor i Lund",
+    "HT2025 Göteborg",
+    "Handelshögskolan i Stockholm",
+  ]) {
+    assert.equal(reason(text), "place", text);
+    assert.ok(Strength.REFUSED.includes(reason(text)), text);
+  }
+});
+
+test("a university's English name is not to be used either", () => {
+  for (const text of [
+    "Lund University",
+    "University of Gothenburg",
+    "Stockholm University 2026",
+    "KTH Royal Institute of Technology",
+    "Swedish University of Agricultural Sciences",
+    "Mid Sweden University",
+    "University West",
+    "Stockholm School of Economics",
+    "Swedish Defence University",
+    "University of Arts, Crafts and Design",
+    "Red Cross University College",
+    "Chalmers University of Technology",
+    "stockholmschoolofeconomics",
+    "Swedish School of Sport and Health Sciences",
+  ]) {
+    assert.equal(reason(text), "place", text);
+  }
+});
+
+test("days, months, numbers, names and years are too easy to guess", () => {
+  for (const text of [
+    "måndag tisdag onsdag torsdag",
+    "januari februari mars april",
+    "one two three four five six",
+    "ett två tre fyra fem sex",
+    "Anna Andersson 1980-01-01",
+    "lars johansson 1975",
+    "Forskning2026Forskning",
+    "sommaren 2024 julafton",
+    "8471 9302 5521 6603",
+  ]) {
+    assert.equal(reason(text), "guessable", text);
+  }
+});
+
+test("digits are known only when they decorate a known word", () => {
+  // A year, a term, a number on its own, or digits on a known word...
+  assert.equal(reason("examen 2025 uppsats 2026"), "guessable");
+  // ...but not digits among letters that are no word at all.
+  assert.equal(level("qzvmxk-wjtpd4-fhnbyc"), "strong");
+});
+
+test("the reader's own name and user name are not to be used", () => {
+  // Made-up: what the page would pass for a reader called Zimtalia Blefonsson
+  // with the user name zbl@example.
+  const own = ["zimtalia", "blefonsson", "zbl"];
+
+  assert.equal(evaluate("Zimtalia Blefonsson 1980", own).reason, "personal");
+  assert.equal(evaluate("zimtaliablefonsson", own).reason, "personal");
+  assert.equal(evaluate("Blefonssons hemliga fras", own).reason, "personal");
+  assert.ok(Strength.REFUSED.includes("personal"));
+
+  // Without the reader's words it is only a phrase.
+  assert.equal(evaluate("Zimtalia Blefonsson 1980").reason, "good");
+
+  // With enough else in it, the name is not all there is.
+  assert.equal(evaluate("zimtalia " + phrase(), own).level, "strong");
+
+  // Words of fewer than three letters are not the reader's own.
+  assert.equal(evaluate(phrase(), ["vexl".slice(0, 2)]).level, "strong");
+});
+
+test("what is refused, and what is only advised", () => {
+  assert.deepEqual(Strength.REFUSED, ["short", "guessable", "personal", "place"]);
+
+  // A short phrase of real words is weak but allowed.
+  assert.equal(reason("kvarnhjul"), "weak");
+  assert.ok(!Strength.REFUSED.includes("weak"));
+});
+
+test("asked whether a passphrase may be set, it says why and nothing else", () => {
+  const field = { value: "Lunds universitet HT25" };
+  const meter = { getAttribute: (name) => (name === "data-personal" ? "zimtalia blefonsson" : null) };
+  const doc = {
+    querySelector: (selector) => (selector === ".passphrase-field" ? field : null),
+    getElementById: (id) => (id === "passphrase-strength" ? meter : null),
+  };
+
+  assert.equal(Strength.verdict(doc), "place");
+
+  field.value = "Zimtalia " + phrase().split(" ")[0];
+  assert.equal(Strength.verdict(doc), "personal");
+
+  field.value = phrase();
+  assert.equal(Strength.verdict(doc), "strong");
+
+  // No field, no verdict.
+  assert.equal(Strength.verdict({ querySelector: () => null, getElementById: () => null }), null);
 });
 
 test("accents are looked through when comparing, not counted away", () => {
@@ -193,7 +312,9 @@ test("an emoji is one character, not two", () => {
 test("only the lines the design names are ever said", () => {
   assert.deepEqual(Strength.MESSAGES, {
     short: "Too short – use more words.",
-    guessable: "Too easy to guess – avoid common words and patterns.",
+    guessable: "Too easy to guess – it can't be used. Avoid common words and patterns.",
+    personal: "Too easy to guess – it can't be used. Don't use your own name or user name.",
+    place: "Too easy to guess – it can't be used. Avoid names of universities, places and terms.",
     weak: "A longer phrase is stronger than adding symbols.",
     good: "Good – make it longer to make it stronger.",
     strong: "Strong passphrase.",
