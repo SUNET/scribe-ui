@@ -36,6 +36,7 @@ from utils.token import (
     get_user_status,
     get_token_is_valid,
 )
+from utils.passphrase_strength import MIN_LENGTH, head_html as passphrase_head, meter
 from utils.helpers import (
     encryption_password_set,
     encryption_password_verify,
@@ -66,6 +67,10 @@ async def index(request: Request) -> None:
     ui.page_title(f"{settings.TAB_TITLE} - Sign in")
 
     ui.add_head_html(default_styles)
+    # The passphrase meter's script and styles. In the head, before the
+    # client connects, so they are in the page itself: a script added later,
+    # over the socket, is never run.
+    ui.add_head_html(passphrase_head())
 
     # No min-height/padding here on purpose: once the notice is
     # acknowledged, render_cookie_notice_row renders nothing and this
@@ -196,11 +201,17 @@ async def index(request: Request) -> None:
                         "This passphrase will be used to encrypt your files. It cannot be recovered if lost."
                     ).classes("text-subtitle2").style("margin-bottom: 10px;")
                     ui.label(
-                        "The passphrase must be at least 8 characters long."
+                        f"The passphrase must be at least {MIN_LENGTH} characters long."
                     ).classes("text-subtitle2").style("margin-bottom: 10px;")
+                    # input-class marks the field for the strength meter
+                    # (utils/passphrase_strength.py); the judgement is made
+                    # in the browser, so nothing here listens to the value.
                     password_input = ui.input(
                         "Encryption Passphrase", password=True
-                    ).props("autocomplete=new-password").style("width: 100%;")
+                    ).props(
+                        "autocomplete=new-password input-class=passphrase-field"
+                    ).style("width: 100%;")
+                    meter()
                     confirm_password_input = ui.input(
                         "Confirm Encryption Passphrase", password=True
                     ).props("autocomplete=new-password").style(
@@ -208,7 +219,7 @@ async def index(request: Request) -> None:
                     )
                     error_label = (
                         ui.label(
-                            "Passphrases do not match or are less than 8 characters."
+                            f"Passphrases do not match or are less than {MIN_LENGTH} characters."
                         )
                         .classes("text-negative")
                         .style("margin-bottom: 10px;")
@@ -218,7 +229,7 @@ async def index(request: Request) -> None:
                     def set_encryption_password() -> None:
                         if (
                             password_input.value == confirm_password_input.value
-                        ) and len(password_input.value) >= 8:
+                        ) and len(password_input.value) >= MIN_LENGTH:
                             try:
                                 encryption_password_set(password_input.value)
                             except Exception:

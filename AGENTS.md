@@ -306,6 +306,16 @@ Tunables belong here; wire-format constants do not. `WORDS_FORMAT_VERSION` in `u
 
 Access via `get_settings()` (cached).
 
+## Passphrase strength (`utils/passphrase_strength.py`, `.js`)
+
+The "Set your encryption passphrase" dialog in `main.py` (the only place a passphrase is created; "Reset" returns to it) shows a meter under the first field, SUNET/scribe-ui#80. **The judgement is made in the browser and nowhere else**: `passphrase_strength.js` listens to typing in a field with `input-class=passphrase-field` and fills in the meter that `meter()` draws; Python never looks at the value while it is typed (NiceGUI syncs a field's value to the server as it changes whatever is listening, and always has -- nothing here adds to that). `tests/test_passphrase_strength.py` reads the script to make sure it has no way to send, store or log anything.
+
+It is **advice, not a rule**. The one rule is the minimum, `MIN_LENGTH = 8`, the same in the script and in `main.py`. Levels follow length with the separators counted (space, hyphen and underscore are word boundaries, and a run of them is one): under 8 "Too short"; 8-11 Weak; 12-19 Good; 20 and over Strong. A passphrase in a short list of common ones (accents and look-alike characters looked through, digits at the end ignored, the service's own name included) or a pattern (few different characters, a repeated bit, short fragments, a run along the keyboard or the alphabet) is Weak and "Too easy to guess" whatever its length. Length, not word count, so a password manager's suggestion (`hobtyr-pyvwa5-vodwuz`) is Strong. No score is shown; no character classes are asked for.
+
+The lines: "Too short \u2013 use more words.", "Too easy to guess \u2013 avoid common words and patterns.", "A longer phrase is stronger than adding symbols.", "Good \u2013 make it longer to make it stronger.", "Strong passphrase." The level is in words (label "Passphrase strength: Weak/Good/Strong" and the line) as well as a three-segment bar in red, orange and green (decoration, `aria-hidden`; each colour clears 3:1 on the dialog's surfaces in both themes; filled in the system's Highlight colour in forced-colors mode). The label and line are joined to the field with `aria-describedby` (set by the script on first focus, since the field is Quasar's). **One polite live region** says the level, and only when it changes and a moment (600 ms) after the last key. The empty state says the method, never an example phrase: an example in the page is the one that gets used. The script and styles are inlined in the head of the index page (`passphrase_head()`), before the client connects.
+
+Not done, on purpose: no "suggest a passphrase" (a password manager does it better, and `autocomplete=new-password` is kept so it offers), no maximum length, nothing blocks paste.
+
 ## Admin hierarchy
 
 - **BOFH** (`bofh=True`): sees everything, manages all realms and onboarding attributes
