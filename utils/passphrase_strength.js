@@ -142,6 +142,22 @@
     return text.split(/[\s\-_]+/).filter(Boolean);
   }
 
+  // The words with each repeat taken out, so that saying the same thing again
+  // is not length: "the cat sat on the mat" is judged as "the cat sat on mat".
+  function distinct(words) {
+    const seen = new Set();
+
+    return words.filter((word) => {
+      const key = stripAccents(word).toLowerCase();
+
+      if (seen.has(key)) return false;
+
+      seen.add(key);
+
+      return true;
+    });
+  }
+
   function isCommon(joined) {
     const bases = [joined, joined.replace(/[0-9!?.,*#]+$/, "")];
 
@@ -185,15 +201,23 @@
     }
 
     const words = wordsOf(text);
-    const length = Array.from(words.join(" ")).length;
 
-    if (length < MIN_LENGTH) {
+    // Under the page's own minimum it is too short, whatever it is.
+    if (Array.from(words.join(" ")).length < MIN_LENGTH) {
       return result("weak", "short");
     }
 
+    // What is compared with the list and the patterns is the whole of what
+    // was typed, without the punctuation that is only there to dress it up
+    // (the look-alikes @ $ ! are kept for the list to see through).
     const joined = stripAccents(words.join("")).toLowerCase();
+    const plain = joined.replace(/[^\p{L}\p{N}@$!]/gu, "");
 
-    if (isPattern(words, joined) || isCommon(joined)) {
+    // From here on length is of the words with their repeats left out: saying
+    // the same thing again is not more to guess.
+    const length = Array.from(distinct(words).join(" ")).length;
+
+    if (isPattern(words, joined) || isCommon(plain) || length < MIN_LENGTH) {
       return result("weak", "guessable");
     }
 

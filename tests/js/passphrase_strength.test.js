@@ -130,6 +130,31 @@ test("patterns are too easy to guess", () => {
   }
 });
 
+test("saying the same thing again is not length", () => {
+  // The repeats are left out when the length is counted.
+  assert.equal(level("the cat sat on the mat"), "good"); // as "the cat sat on mat": 17
+  assert.equal(level("hav hav hav katt hund"), "good"); // as "hav katt hund": 13
+  assert.equal(level("Hav HAV hav katt hund"), "good"); // case does not make a new word
+  // The whole phrase said twice is the repeated-bit pattern.
+  assert.equal(reason("sommar cykel bibliotek hav sommar cykel bibliotek hav"), "guessable");
+
+  // Mostly repeats is as easy as the pattern it makes.
+  assert.equal(reason("hav hav hav kat"), "guessable");
+  assert.equal(reason("abc abc abc"), "guessable");
+
+  // A phrase that is long without them is as it was.
+  assert.equal(level("one two three four five six"), "strong");
+});
+
+test("a quote's own repeats do not make it strong, and punctuation does not hide it", () => {
+  assert.equal(reason("to be or not to be"), "guessable");
+  assert.equal(reason("To be, or not to be"), "guessable");
+  assert.equal(reason("Pass.word"), "guessable");
+  assert.equal(reason("P@ssw0rd!"), "guessable");
+  // The list knows these and nothing else of the play: more of it is just a phrase.
+  assert.equal(level("to be or not to be that is the question"), "strong");
+});
+
 test("a long phrase is not made weak by containing a common word", () => {
   assert.equal(level("sommar cykel bibliotek hav"), "strong");
   assert.equal(level("my password is a long sentence"), "strong");
