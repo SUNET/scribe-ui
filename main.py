@@ -231,7 +231,7 @@ async def index(request: Request) -> None:
                     )
                     error_label = (
                         ui.label(mismatch)
-                        .classes("text-negative")
+                        .classes("passphrase-error")
                         .style("margin-bottom: 10px;")
                         .props("role=alert")
                     )

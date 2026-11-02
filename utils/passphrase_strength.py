@@ -87,6 +87,7 @@ STYLES = """
         --strength-good: #b45309;
         --strength-strong: #2e7d32;
         --strength-colour: transparent;
+        width: 100%;
         margin: 2px 0 10px;
     }
     .body--dark .passphrase-strength {
@@ -141,6 +142,14 @@ STYLES = """
         margin: 0;
         font-size: 0.875rem;
         color: var(--color-text-secondary);
+    }
+
+    /* Why a passphrase was not set. Quasar's text-negative (#c10015) is 2.5:1
+       on the dark dialog, under 1.4.3's 4.5:1; --color-text-danger clears it in
+       both themes. Repeated to outweigh the dark dialog's own !important rule
+       for every element in it (.body--dark .q-dialog .q-card *:not(...)). */
+    .q-dialog .q-card .passphrase-error.passphrase-error.passphrase-error.passphrase-error {
+        color: var(--color-text-danger) !important;
     }
 </style>
 """
@@ -266,4 +275,4 @@ def meter(personal: Optional[list] = None) -> None:
         ' role="status" aria-live="polite" aria-atomic="true"></p>'
         "</div>",
         sanitize=False,
-    )
+    ).classes("w-full")

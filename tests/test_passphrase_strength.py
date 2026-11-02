@@ -265,6 +265,13 @@ class TestRefusing:
         assert "error_label.set_text(mismatch)" in otherwise
 
 
+class Html:
+    """What ui.html gives back, as far as meter() uses it."""
+
+    def classes(self, names):
+        return self
+
+
 class TestTheReadersOwnWords:
     def test_parts_of_three_letters_or_more_without_accents(self):
         assert module.personal_words(
@@ -313,7 +320,7 @@ class TestTheReadersOwnWords:
 
     def test_the_meter_carries_them_for_the_script(self, monkeypatch):
         seen = {}
-        monkeypatch.setattr(module.ui, "html", lambda content, **kwargs: seen.update(content=content))
+        monkeypatch.setattr(module.ui, "html", lambda content, **kwargs: seen.update(content=content) or Html())
 
         module.meter(["zimtalia", "blefonsson"])
 
@@ -322,7 +329,7 @@ class TestTheReadersOwnWords:
 
     def test_the_meter_without_them_carries_none(self, monkeypatch):
         seen = {}
-        monkeypatch.setattr(module.ui, "html", lambda content, **kwargs: seen.update(content=content))
+        monkeypatch.setattr(module.ui, "html", lambda content, **kwargs: seen.update(content=content) or Html())
 
         module.meter()
 
@@ -333,13 +340,20 @@ class TestTheMeter:
     def markup(self, monkeypatch):
         seen = {}
 
+        class Html:
+            def classes(self, names):
+                seen["classes"] = names
+                return self
+
         def html(content, **kwargs):
             seen["content"] = content
             seen["kwargs"] = kwargs
+            return Html()
 
         monkeypatch.setattr(module.ui, "html", html)
 
         module.meter()
+        self.seen = seen
 
         return seen["content"], seen["kwargs"]
 
@@ -386,6 +400,34 @@ class TestTheMeter:
         assert 'aria-atomic="true"' in status
         assert 'class="sr-only"' in status
         assert content.count("aria-live") == 1
+
+    def test_it_takes_the_whole_width_whatever_it_says(self, monkeypatch):
+        """
+        Otherwise the bar is as wide as the line under it, and grows and
+        shrinks as the advice changes.
+        """
+
+        self.markup(monkeypatch)
+
+        assert self.seen["classes"] == "w-full"
+        assert "width: 100%;" in module.STYLES[module.STYLES.index(".passphrase-strength {") :]
+
+    def test_the_refusal_is_in_a_colour_that_can_be_read_in_both_themes(self):
+        rule = module.STYLES[module.STYLES.index(".q-dialog .q-card .passphrase-error") :]
+        assert "color: var(--color-text-danger) !important;" in rule[: rule.index("}")]
+
+        styles = (ROOT / "utils" / "styles.py").read_text()
+        light, dark = re.findall(r"--color-text-danger: (#[0-9a-f]{6});", styles)[:2]
+
+        for surface in LIGHT_SURFACES:
+            assert contrast(light, surface) >= 4.5, surface
+        for surface in DARK_SURFACES:
+            assert contrast(dark, surface) >= 4.5, surface
+
+        dialog = setting_dialog()
+        label = dialog[dialog.index("error_label = (") : dialog.index("error_label.visible = False")]
+        assert '.classes("passphrase-error")' in label
+        assert "text-negative" not in label
 
     def test_it_is_plain_markup_from_this_file(self, monkeypatch):
         _, kwargs = self.markup(monkeypatch)
