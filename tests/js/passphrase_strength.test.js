@@ -30,6 +30,14 @@ const Strength = require(path.join(__dirname, "..", "..", "utils", "passphrase_s
 
 const { evaluate } = Strength;
 
+// Made-up words, for a phrase that no one would choose: a test needs a certain
+// length and a text that is in no list, not a sentence for anyone to copy.
+const MADE_UP = ["vexl", "quorp", "zimtal", "blefon"];
+
+function phrase(separator = " ") {
+  return MADE_UP.join(separator);
+}
+
 function level(text) {
   return evaluate(text).level;
 }
@@ -65,16 +73,18 @@ test("the levels follow length: 8, 12 and 20 characters", () => {
 });
 
 test("a long phrase of words is strong, and its separators count as length", () => {
-  assert.equal(level("sommar cykel bibliotek hav"), "strong");
-  assert.equal(level("sommar-cykel-bibliotek-hav"), "strong");
-  assert.equal(level("sommar_cykel_bibliotek_hav"), "strong");
+  assert.equal(level(phrase(" ")), "strong");
+  assert.equal(level(phrase("-")), "strong");
+  assert.equal(level(phrase("_")), "strong");
 });
 
 test("a password manager's suggestion is strong", () => {
-  // The shape macOS Passwords suggests: three groups, 20 characters.
-  assert.equal(level("hobtyr-pyvwa5-vodwuz"), "strong");
-  assert.equal(level("xK9$mQ2vLp7#nR4wZ8"), "good"); // 18: not yet 20
-  assert.equal(level("xK9$mQ2vLp7#nR4wZ8cT"), "strong");
+  // The shape a password manager can suggest: three groups of six joined by
+  // hyphens, 20 characters. Made-up letters.
+  assert.equal(level("qzvmxk-wjtpd4-fhnbyc"), "strong");
+  // And a run of mixed characters: 18 is not yet 20.
+  assert.equal(level("Zq7%wLm3Xv9#Rt2kJp"), "good");
+  assert.equal(level("Zq7%wLm3Xv9#Rt2kJpbN"), "strong");
 });
 
 test("a hyphen is a separator like a space, and a run of them is one", () => {
@@ -102,6 +112,10 @@ test("the common ones are too easy to guess, in any dress", () => {
     "sunetscribe",
     "Sunet Scribe 2026",
     "Sommar2024",
+    // The example the feature request itself gave: written down in public, so
+    // it is on the list.
+    "sommar cykel bibliotek hav",
+    "sommar-cykel-bibliotek-hav",
     "Lösenord",
     "Lösenord1!",
     "losenord",
@@ -136,14 +150,14 @@ test("saying the same thing again is not length", () => {
   assert.equal(level("hav hav hav katt hund"), "good"); // as "hav katt hund": 13
   assert.equal(level("Hav HAV hav katt hund"), "good"); // case does not make a new word
   // The whole phrase said twice is the repeated-bit pattern.
-  assert.equal(reason("sommar cykel bibliotek hav sommar cykel bibliotek hav"), "guessable");
+  assert.equal(reason(phrase() + " " + phrase()), "guessable");
 
   // Mostly repeats is as easy as the pattern it makes.
   assert.equal(reason("hav hav hav kat"), "guessable");
   assert.equal(reason("abc abc abc"), "guessable");
 
   // A phrase that is long without them is as it was.
-  assert.equal(level("one two three four five six"), "strong");
+  assert.equal(level(phrase()), "strong");
 });
 
 test("a quote's own repeats do not make it strong, and punctuation does not hide it", () => {
@@ -156,7 +170,7 @@ test("a quote's own repeats do not make it strong, and punctuation does not hide
 });
 
 test("a long phrase is not made weak by containing a common word", () => {
-  assert.equal(level("sommar cykel bibliotek hav"), "strong");
+  assert.equal(level("sommar " + phrase()), "strong");
   assert.equal(level("my password is a long sentence"), "strong");
 });
 
@@ -186,7 +200,7 @@ test("only the lines the design names are ever said", () => {
   });
   assert.deepEqual(Strength.LABELS, { weak: "Weak", good: "Good", strong: "Strong" });
 
-  for (const text of ["abc", "kvarnhjul", "sommar-cykel-bibliotek-hav", "password"]) {
+  for (const text of ["abc", "kvarnhjul", phrase("-"), "password"]) {
     const judged = evaluate(text);
 
     assert.deepEqual(Object.keys(judged).sort(), ["label", "level", "message", "reason"]);
@@ -308,7 +322,7 @@ test("typing fills the meter in: level, label and advice", () => {
   assert.equal(p.label.textContent, "Passphrase strength: Good");
   assert.equal(p.text.textContent, Strength.MESSAGES.good);
 
-  p.type(p.field, "sommar cykel bibliotek hav");
+  p.type(p.field, phrase());
   assert.equal(p.meter.getAttribute("data-level"), "strong");
   assert.equal(p.label.textContent, "Passphrase strength: Strong");
   assert.equal(p.text.textContent, "Strong passphrase.");

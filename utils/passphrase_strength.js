@@ -104,7 +104,10 @@
       "sverige svenska sommar vinter varen hosten januari februari mars maj juni juli " +
       "augusti oktober fotboll alskling alskar karlek mamma pappa familjen universitet " +
       "studenten larare " +
-      "correcthorsebatterystaple tobeornottobe"
+      "correcthorsebatterystaple tobeornottobe " +
+      // The example in the feature request that asked for the meter (#80),
+      // which is public: anyone can copy it from there.
+      "sommarcykelbibliotekhav"
     ).split(" ")
   );
 
