@@ -341,7 +341,7 @@ class TestTheGroupStatisticsPage:
         stats = GROUPS[GROUPS.index("async def statistics") :]
         stats = stats[: stats.index("\ndef create(")]
 
-        assert 'ui.element("ul").classes("stats-tiles")' in stats
+        assert 'ui.element("ul").classes("stats-tiles").props(\'role="list"\')' in stats
         assert 'ui.element("li")' in stats
         assert 'ui.card().props("flat bordered").classes("stats-tile")' in stats
         assert "Number of users" not in stats and "Transcribed files in" not in stats

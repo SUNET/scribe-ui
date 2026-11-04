@@ -435,7 +435,9 @@ async def statistics(group_id: str) -> None:
         )
 
         with ui.element("div").classes("stats-card stats-summary w-full"):
-            with ui.element("ul").classes("stats-tiles"):
+            # role="list": Safari leaves a list without its markers out of
+            # the accessibility tree as a list unless it is told.
+            with ui.element("ul").classes("stats-tiles").props('role="list"'):
                 for title, lines in tiles:
                     with ui.element("li"):
                         with ui.card().props("flat bordered").classes("stats-tile"):
