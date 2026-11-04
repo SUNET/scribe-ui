@@ -304,6 +304,16 @@ class TestTheDaysToCome:
     def test_today_itself_is_not_to_come(self):
         assert self.chart(future_after="2026-11-05").count("is-future") == 0
 
+    def test_a_day_with_minutes_is_never_to_come(self):
+        """The backend may be a day ahead of this server around midnight."""
+
+        chart = bar_chart(days(3, "2026-12"), [{"name": "x", "values": [4, None, None]}], future_after="2026-11-30")
+        slots = chart.split('<div class="bar-chart-slot')[1:]
+
+        assert "is-future" not in slots[0]
+        assert "is-first-future" in slots[1]
+        assert chart.count("is-future") == 2
+
     def test_a_whole_month_has_none(self):
         assert "is-future" not in self.chart()
 

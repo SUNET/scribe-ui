@@ -371,7 +371,8 @@ def bar_chart(
     `highest` puts the scale at least that high, so two charts read alike;
     `decimals` is how the tooltips show the figures (decimals_for()).
     `future_after` is today, as "2026-11-04": the days after it are toned,
-    with an edge where they begin (labels compared as ISO dates).
+    with an edge where they begin (labels compared as ISO dates); never a
+    day with a value above nought.
     """
 
     values = [value or 0 for one in series for value in one["values"]]
@@ -407,7 +408,11 @@ def bar_chart(
         )
         future = ""
 
-        if future_after and str(label) > future_after:
+        # A day with minutes has come, whatever the clock says (the server
+        # that counts the days may be in another time zone than this one).
+        has_come = any(value and value > 0 for _, value in shown)
+
+        if future_after and str(label) > future_after and not has_come:
             future = " is-future" + (" is-first-future" if first_future else "")
             first_future = False
 
