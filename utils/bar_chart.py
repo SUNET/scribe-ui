@@ -37,6 +37,7 @@ import calendar
 import html
 import math
 from datetime import date
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Iterable, Optional, Sequence
 
 MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
@@ -195,12 +196,13 @@ def day_label(day: str) -> str:
     return f"{moment.day} {MONTHS[moment.month - 1]}"
 
 
-def nice_ticks(highest: float, count: int = 4) -> list:
+def nice_ticks(highest: float, count: int = 4, whole: bool = False) -> list:
     """
     Round numbers for the scale, from 0 to the first at or above `highest`:
     steps of 1, 2, 2.5 or 5 times a power of ten, no more than `count` of
     them, and the top as close above the highest value as they allow (more
-    steps where two come out the same).
+    steps where two come out the same). `whole` keeps to whole steps of at
+    least 1, for a scale with no decimals in it.
     """
 
     if not highest or highest <= 0:
@@ -210,6 +212,13 @@ def nice_ticks(highest: float, count: int = 4) -> list:
     candidates = [
         n * 10.0**p for p in (power - 1, power, power + 1) for n in (1, 2, 2.5, 5)
     ]
+    if whole:
+        power = max(power, 0)
+        candidates = [
+            n * 10.0**p for p in (power - 1, power, power + 1) for n in (1, 2, 2.5, 5)
+        ]
+        candidates = [step for step in candidates if step >= 1 and float(step).is_integer()]
+
     fitting = [step for step in candidates if math.ceil(highest / step - 1e-9) <= count]
     step = min(
         fitting,
@@ -218,6 +227,45 @@ def nice_ticks(highest: float, count: int = 4) -> list:
     steps = math.ceil(highest / step - 1e-9)
 
     return [round(step * n, 10) for n in range(steps + 1)]
+
+
+def whole(value) -> str:
+    """
+    A figure as it is shown: whole from 10 up, with one decimal under it,
+    where a whole number would say too little (7 and 7.4 are not far
+    apart, 0 and 0.4 are); rounded half up, and a decimal of nought left
+    off ("7", not "7.0"). The sums are made of the figures as they are;
+    only what is shown is rounded. Above nought but under 0.05 is "<0.1",
+    so a day with a bar never says 0.
+    """
+
+    value = Decimal(str(float(value or 0)))
+
+    if value <= 0:
+        return "0"
+
+    tenths = value.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+
+    if tenths < 10:
+        if tenths == 0:
+            return "<0.1"
+
+        return f"{tenths:f}".removesuffix(".0")
+
+    return f"{value.quantize(Decimal('1'), rounding=ROUND_HALF_UP):f}"
+
+
+def amount(value, unit: str = "Minutes") -> str:
+    """ "12 minutes", "7.4 minutes", "1 minute", "under 0.1 minute", "0 minutes". """
+
+    shown = whole(value)
+    word = unit.lower()
+    one = word[:-1] if word.endswith("s") else word
+
+    if shown == "<0.1":
+        return f"under 0.1 {one}"
+
+    return f"{shown} {one if shown == '1' else word}"
 
 
 def figure(value: float) -> str:
@@ -268,7 +316,7 @@ def bar_chart(
     """
 
     values = [value or 0 for one in series for value in one["values"]]
-    ticks = nice_ticks(max(values + [highest or 0]))
+    ticks = nice_ticks(max(values + [highest or 0]), whole=True)
     top = ticks[-1] or 1
     every = label_every or max(1, math.ceil(len(labels) / MAX_LABELS))
 
@@ -289,7 +337,7 @@ def bar_chart(
         ]
         tip = "; ".join(
             (f"{one['name']}: " if len(series) > 1 else "")
-            + f"{figure(value or 0)} {unit.lower()}"
+            + amount(value, unit)
             for one, value in shown
         )
         title = (

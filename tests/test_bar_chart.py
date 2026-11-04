@@ -26,6 +26,7 @@ from utils.bar_chart import (
     BAR_CHART_STYLES,
     bar_chart,
     day_label,
+    amount,
     figure,
     month_days,
     nice_ticks,
@@ -49,6 +50,19 @@ class TestTheScale:
     )
     def test_round_steps_from_nought_to_just_above(self, highest, ticks):
         assert nice_ticks(highest) == ticks
+
+    @pytest.mark.parametrize(
+        "highest, ticks",
+        [(1.33, [0, 1, 2]), (0.2, [0, 1]), (9, [0, 5, 10]), (85.4, [0, 25, 50, 75, 100])],
+    )
+    def test_whole_steps_only_where_asked(self, highest, ticks):
+        assert nice_ticks(highest, whole=True) == ticks
+
+    def test_the_chart_has_no_decimals_on_its_scale(self):
+        chart = bar_chart(days(1), [{"name": "x", "values": [1.33]}])
+        scale = chart.split('<div class="bar-chart-ticks">')[1].split("</div>")[0]
+
+        assert re.findall(r">([^<]+)</span>", scale) == ["0", "1", "2"]
 
     @pytest.mark.parametrize("highest", [0, None, -3])
     def test_nothing_is_nought_to_one(self, highest):
@@ -111,7 +125,7 @@ class TestTheBars:
         assert chart.count('class="bar-chart-bar"') == 1
 
     def test_heights_against_the_top_of_the_scale(self):
-        chart = bar_chart(days(2), [{"name": "x", "values": [0.75, 1.5]}])
+        chart = bar_chart(days(2), [{"name": "x", "values": [10, 20]}])
 
         assert 'style="height: 50.0%"' in chart
         assert 'style="height: 100.0%"' in chart
@@ -151,7 +165,7 @@ class TestTheBars:
             legend=True,
         )
 
-        assert 'title="1: November: 2 minutes; October: 1 minutes"' in chart
+        assert 'title="1: November: 2 minutes; October: 1 minute"' in chart
         assert chart.count("bar-chart-bar is-previous") == 2
         assert '<div class="bar-chart-legend">' in chart
         assert '<i class="is-previous"></i>October' in chart
@@ -212,3 +226,33 @@ class TestAWholeMonth:
             return re.findall(r"<span(?: class=\"is-minor\")?>(\d+) ", labels)
 
         assert shown(30, "2026-11") == shown(31, "2026-10")
+
+
+class TestWholeMinutes:
+    """Whole from 10, one decimal under it; the figures underneath are not rounded."""
+
+    @pytest.mark.parametrize(
+        "value, shown",
+        [
+            (0, "0 minutes"),
+            (None, "0 minutes"),
+            (0.04, "under 0.1 minute"),
+            (0.25, "0.3 minutes"),  # half up, not to the even 0.2
+            (1, "1 minute"),
+            (1.04, "1 minute"),
+            (1.33, "1.3 minutes"),
+            (7.0, "7 minutes"),
+            (9.94, "9.9 minutes"),
+            (9.96, "10 minutes"),
+            (12.5, "13 minutes"),  # half up, not to the even 12
+            (100.8, "101 minutes"),
+        ],
+    )
+    def test_amounts(self, value, shown):
+        assert amount(value) == shown
+
+    def test_a_day_with_a_bar_never_says_nought(self):
+        chart = bar_chart(days(1), [{"name": "x", "values": [0.02]}])
+
+        assert 'class="bar-chart-bar"' in chart
+        assert 'title="1 Oct: under 0.1 minute"' in chart

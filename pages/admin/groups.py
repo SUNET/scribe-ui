@@ -27,7 +27,7 @@ import httpx
 from nicegui import ui
 from utils.common import add_timezone_to_timestamp, page_init, reload_on_theme_change
 from utils.styles import default_styles
-from utils.bar_chart import bar_chart, month_days
+from utils.bar_chart import amount, bar_chart, month_days, whole
 from utils.chart_tables import chart_section, head_html as chart_head, minutes_summary
 from utils.helpers import (
     groups_get,
@@ -384,6 +384,12 @@ async def statistics(group_id: str) -> None:
     for job in job_queue:
         job["created_at"] = add_timezone_to_timestamp(job["created_at"])
 
+    def files(count) -> str:
+        return f"{count} file" if count == 1 else f"{count} files"
+
+    # Minutes are shown whole from 10 and with one decimal under it
+    # (utils/bar_chart.py, whole() and amount());
+    # the figures underneath, and every sum of them, stay as they are.
     ui.label("Group statistics").classes("text-3xl font-bold mb-4").props("role=heading aria-level=1")
 
     with ui.element("div").classes("stats-container w-full"):
@@ -392,16 +398,16 @@ async def statistics(group_id: str) -> None:
                 "text-lg text-theme-secondary"
             )
             ui.label(
-                f"Transcribed files this month: {result.get('transcribed_files', 0)} files"
+                f"Transcribed files this month: {files(result.get('transcribed_files', 0))}"
             ).classes("text-lg text-theme-secondary")
             ui.label(
-                f"Transcribed files last month: {result.get('transcribed_files_last_month', 0)} files"
+                f"Transcribed files last month: {files(result.get('transcribed_files_last_month', 0))}"
             ).classes("text-lg text-theme-secondary")
             ui.label(
-                f"Transcribed minutes this month: {result.get('total_transcribed_minutes', 0):.0f} minutes"
+                f"Transcribed minutes this month: {amount(result.get('total_transcribed_minutes', 0))}"
             ).classes("text-lg text-theme-secondary")
             ui.label(
-                f"Transcribed minutes last month: {result.get('total_transcribed_minutes_last_month', 0):.0f} minutes"
+                f"Transcribed minutes last month: {amount(result.get('total_transcribed_minutes_last_month', 0))}"
             ).classes("text-lg text-theme-secondary")
 
         # Each chart is a heading, a sentence, the chart as a picture and
@@ -440,7 +446,7 @@ async def statistics(group_id: str) -> None:
                     table_summary=f"Show the minutes per day for {month} as a table",
                     caption=heading,
                     headers=("Date", "Minutes"),
-                    rows=[(day, f"{value:.1f}") for day, value in minutes.items()],
+                    rows=[(day, whole(value)) for day, value in minutes.items()],
                     numeric=(1,),
                     empty=not any(value and value > 0 for value in minutes.values()),
                 )
@@ -451,7 +457,7 @@ async def statistics(group_id: str) -> None:
                     "text-xl font-semibold text-theme-primary"
                 ).props("role=heading aria-level=2")
                 user_rows = [
-                    {"username": username, "minutes": f"{minutes:.1f}"}
+                    {"username": username, "minutes": whole(minutes), "exact": minutes or 0}
                     for username, minutes in per_user.items()
                 ]
 
@@ -469,7 +475,8 @@ async def statistics(group_id: str) -> None:
                         "field": "minutes",
                         "align": "left",
                         "sortable": True,
-                        ":sort": "(a, b, rowA, rowB) => a - b",
+                        # By the figure as it is: "<1" is not a number.
+                        ":sort": "(a, b, rowA, rowB) => rowA.exact - rowB.exact",
                     },
                 ]
 

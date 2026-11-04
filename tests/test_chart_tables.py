@@ -110,19 +110,19 @@ class TestTheSentence:
             {"2026-10-01": 12.0, "2026-10-02": 0, "2026-10-03": 85.4}
         )
 
-        assert said == "97.4 minutes in all, on 2 days. The most on 3 Oct: 85.4 minutes."
+        assert said == "97 minutes in all, on 2 days. The most on 3 Oct: 85 minutes."
 
     def test_one_day(self):
-        assert module.minutes_summary({"2026-10-05": 7}) == (
-            "7.0 minutes in all, on 1 day. The most on 5 Oct: 7.0 minutes."
+        assert module.minutes_summary({"2026-10-05": 1.33}) == (
+            "1.3 minutes in all, on 1 day. The most on 5 Oct: 1.3 minutes."
         )
 
-    def test_the_total_in_the_same_figures_as_the_day(self):
-        """Not "1 minutes in all" beside "1.3 minutes" for the same day."""
+    def test_the_total_is_the_sum_of_the_days_as_they_are(self):
+        """Of 24.4 and 0.4 and 0.4: 25 in all, not 24 + 0.4 + 0.4 rounded."""
 
-        said = module.minutes_summary({"2026-10-15": 1.33})
+        said = module.minutes_summary({"2026-10-01": 24.4, "2026-10-02": 0.4, "2026-10-03": 0.4})
 
-        assert said.startswith("1.3 minutes in all")
+        assert said == "25 minutes in all, on 3 days. The most on 1 Oct: 24 minutes."
 
     @pytest.mark.parametrize("per_day", [{}, {"2026-10-01": 0}, {"2026-10-01": None}])
     def test_nothing(self, per_day):

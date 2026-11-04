@@ -39,7 +39,7 @@ from typing import Iterable, Sequence
 
 from nicegui import ui
 
-from utils.bar_chart import BAR_CHART_STYLES, day_label
+from utils.bar_chart import BAR_CHART_STYLES, amount, day_label
 
 CHART_STYLES = """
 <style>
@@ -189,11 +189,11 @@ def minutes_summary(per_day: dict) -> str:
     busiest = max(days, key=lambda day: days[day])
     noun = "day" if len(days) == 1 else "days"
 
-    # The total in the same figures as the day, or "1 minutes" stood next
-    # to "1.3 minutes" for the same one day.
+    # Minutes as everywhere on the page (whole from 10, a decimal under);
+    # the total is the sum of the days as they are, not of what is shown.
     return (
-        f"{total:.1f} minutes in all, on {len(days)} {noun}. "
-        f"The most on {day_label(busiest)}: {days[busiest]:.1f} minutes."
+        f"{amount(total)} in all, on {len(days)} {noun}. "
+        f"The most on {day_label(busiest)}: {amount(days[busiest])}."
     )
 
 
