@@ -49,29 +49,132 @@ from utils.styles import default_styles
 RTF_COMMENT_AUTHOR = "Scribe"
 RTF_COMMENT_INITIALS = "SC"
 
-# The languages a recording can be transcribed in (settings.WHISPER_LANGUAGES)
-# as the Windows language ids RTF marks text with, so a word processor checks
-# the spelling in the right language whatever its own is set to, and a screen
-# reader reads it with the right voice. The list only names a language, so the
-# variant is a choice: British English, Norwegian Bokmål, the European
-# Portuguese and Spanish, and Northern Sámi as written in Sweden. A language
-# not here is left unmarked.
+# The languages a recording can be transcribed in, as the Windows language ids
+# RTF marks text with, so a word processor checks the spelling in the right
+# language whatever its own is set to, and a screen reader reads it with the
+# right voice. Every language Whisper names (its LANGUAGES, and the other
+# names it takes for some of them, TO_LANGUAGE_CODE) and the Sámi languages of
+# Sweden, so that opening a language in settings.WHISPER_LANGUAGES needs no
+# change here. The names are what a job's language is called, lower case and
+# without accents or a "(...)" after it (rtf_language).
+#
+# A name only names a language, so where it has variants one is chosen: the
+# language as written where it is mostly spoken or in Europe -- British
+# English, Norwegian Bokmål (Nynorsk is a name of its own), European Spanish
+# and Portuguese, Mainland Chinese for Chinese and Mandarin and Hong Kong for
+# Cantonese, Serbian, Bosnian, Azerbaijani, Uzbek and Hausa in the Latin
+# script, and the Sámi languages as written in Sweden. Six languages Whisper
+# knows have no Windows id -- Shona, Haitian Creole, Malagasy, Lingala,
+# Javanese and Sundanese -- and are left unmarked, like any name not here.
 RTF_LANGUAGES = {
-    "swedish": 1053,
-    "english": 2057,
-    "norwegian": 1044,
-    "finnish": 1035,
-    "danish": 1030,
-    "french": 1036,
-    "spanish": 3082,
-    "portuguese": 2070,
-    "german": 1031,
-    "italian": 1040,
-    "dutch": 1043,
-    "russian": 1049,
-    "ukrainian": 1058,
-    "icelandic": 1039,
-    "northern sami": 2107,
+    "afrikaans": 1078,  # af-ZA
+    "albanian": 1052,  # sq-AL
+    "amharic": 1118,  # am-ET
+    "arabic": 1025,  # ar-SA
+    "armenian": 1067,  # hy-AM
+    "assamese": 1101,  # as-IN
+    "azerbaijani": 1068,  # az-Latn-AZ
+    "bashkir": 1133,  # ba-RU
+    "basque": 1069,  # eu-ES
+    "belarusian": 1059,  # be-BY
+    "bengali": 2117,  # bn-BD
+    "bosnian": 5146,  # bs-Latn-BA
+    "breton": 1150,  # br-FR
+    "bulgarian": 1026,  # bg-BG
+    "burmese": 1109,  # my-MM
+    "cantonese": 3076,  # zh-HK
+    "castilian": 3082,  # es-ES
+    "catalan": 1027,  # ca-ES
+    "chinese": 2052,  # zh-CN
+    "croatian": 1050,  # hr-HR
+    "czech": 1029,  # cs-CZ
+    "danish": 1030,  # da-DK
+    "dutch": 1043,  # nl-NL
+    "english": 2057,  # en-GB
+    "estonian": 1061,  # et-EE
+    "faroese": 1080,  # fo-FO
+    "finnish": 1035,  # fi-FI
+    "flemish": 1043,  # nl-NL
+    "french": 1036,  # fr-FR
+    "galician": 1110,  # gl-ES
+    "georgian": 1079,  # ka-GE
+    "german": 1031,  # de-DE
+    "greek": 1032,  # el-GR
+    "gujarati": 1095,  # gu-IN
+    "hausa": 1128,  # ha-Latn-NG
+    "hawaiian": 1141,  # haw-US
+    "hebrew": 1037,  # he-IL
+    "hindi": 1081,  # hi-IN
+    "hungarian": 1038,  # hu-HU
+    "icelandic": 1039,  # is-IS
+    "indonesian": 1057,  # id-ID
+    "italian": 1040,  # it-IT
+    "japanese": 1041,  # ja-JP
+    "kannada": 1099,  # kn-IN
+    "kazakh": 1087,  # kk-KZ
+    "khmer": 1107,  # km-KH
+    "korean": 1042,  # ko-KR
+    "lao": 1108,  # lo-LA
+    "latin": 1142,  # la-VA
+    "latvian": 1062,  # lv-LV
+    "letzeburgesch": 1134,  # lb-LU
+    "lithuanian": 1063,  # lt-LT
+    "lule sami": 5179,  # smj-SE
+    "luxembourgish": 1134,  # lb-LU
+    "macedonian": 1071,  # mk-MK
+    "malay": 1086,  # ms-MY
+    "malayalam": 1100,  # ml-IN
+    "maltese": 1082,  # mt-MT
+    "mandarin": 2052,  # zh-CN
+    "maori": 1153,  # mi-NZ
+    "marathi": 1102,  # mr-IN
+    "moldavian": 1048,  # ro-RO
+    "moldovan": 1048,  # ro-RO
+    "mongolian": 1104,  # mn-MN
+    "myanmar": 1109,  # my-MM
+    "nepali": 1121,  # ne-NP
+    "northern sami": 2107,  # se-SE
+    "norwegian": 1044,  # nb-NO
+    "nynorsk": 2068,  # nn-NO
+    "occitan": 1154,  # oc-FR
+    "panjabi": 1094,  # pa-IN
+    "pashto": 1123,  # ps-AF
+    "persian": 1065,  # fa-IR
+    "polish": 1045,  # pl-PL
+    "portuguese": 2070,  # pt-PT
+    "punjabi": 1094,  # pa-IN
+    "pushto": 1123,  # ps-AF
+    "romanian": 1048,  # ro-RO
+    "russian": 1049,  # ru-RU
+    "sanskrit": 1103,  # sa-IN
+    "serbian": 9242,  # sr-Latn-RS
+    "sindhi": 2137,  # sd-Arab-PK
+    "sinhala": 1115,  # si-LK
+    "sinhalese": 1115,  # si-LK
+    "slovak": 1051,  # sk-SK
+    "slovenian": 1060,  # sl-SI
+    "somali": 1143,  # so-SO
+    "southern sami": 7227,  # sma-SE
+    "spanish": 3082,  # es-ES
+    "swahili": 1089,  # sw-KE
+    "swedish": 1053,  # sv-SE
+    "tagalog": 1124,  # fil-PH
+    "tajik": 1064,  # tg-Cyrl-TJ
+    "tamil": 1097,  # ta-IN
+    "tatar": 1092,  # tt-RU
+    "telugu": 1098,  # te-IN
+    "thai": 1054,  # th-TH
+    "tibetan": 1105,  # bo-CN
+    "turkish": 1055,  # tr-TR
+    "turkmen": 1090,  # tk-TM
+    "ukrainian": 1058,  # uk-UA
+    "urdu": 1056,  # ur-PK
+    "uzbek": 1091,  # uz-Latn-UZ
+    "valencian": 2051,  # ca-ES-valencia
+    "vietnamese": 1066,  # vi-VN
+    "welsh": 1106,  # cy-GB
+    "yiddish": 1085,  # yi
+    "yoruba": 1130,  # yo-NG
 }
 
 # British English, for what Scribe itself writes into an export: the key to

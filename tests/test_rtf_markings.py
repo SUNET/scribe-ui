@@ -42,6 +42,24 @@ from utils.srt_export import (
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
+# Whisper's own names for the languages it transcribes (whisper/tokenizer.py,
+# LANGUAGES, openai-whisper 20250625), and the six of them Windows has no
+# language id for.
+WHISPER_NAMES = (
+    "english chinese german spanish russian korean french japanese portuguese "
+    "turkish polish catalan dutch arabic swedish italian indonesian hindi finnish "
+    "vietnamese hebrew ukrainian greek malay czech romanian danish hungarian tamil "
+    "norwegian thai urdu croatian bulgarian lithuanian latin maori malayalam welsh "
+    "slovak telugu persian latvian bengali serbian azerbaijani slovenian kannada "
+    "estonian macedonian breton basque icelandic armenian nepali mongolian bosnian "
+    "kazakh albanian swahili galician marathi punjabi sinhala khmer shona yoruba "
+    "somali afrikaans occitan georgian belarusian tajik sindhi gujarati amharic "
+    "yiddish lao uzbek faroese haitian_creole pashto turkmen nynorsk maltese "
+    "sanskrit luxembourgish myanmar tibetan tagalog malagasy assamese tatar "
+    "hawaiian lingala hausa bashkir javanese sundanese cantonese"
+)
+NO_WINDOWS_ID = {"shona", "haitian creole", "malagasy", "lingala", "javanese", "sundanese"}
+
 # Scores 0.1 to 0.9 on the six words: low flags under 0.25, medium under 0.5,
 # high under 0.75 (settings.REVIEW_SENSITIVITY_*).
 WORDS = {
@@ -313,6 +331,36 @@ class TestTheLanguage:
     def test_every_language_a_recording_can_be_transcribed_in_has_one(self):
         for name in get_settings().WHISPER_LANGUAGES:
             assert rtf_language(name) in RTF_LANGUAGES.values(), name
+
+    def test_every_language_whisper_knows_has_one_where_windows_does(self):
+        names = [name.replace("_", " ") for name in WHISPER_NAMES.split(" ")]
+
+        assert len(names) == 100
+
+        for name in names:
+            if name in NO_WINDOWS_ID:
+                assert rtf_language(name) is None, name
+            else:
+                assert rtf_language(name) is not None, name
+
+    def test_every_id_is_one_windows_has(self):
+        import locale
+
+        known = {lcid & 0xFFFF for lcid in locale.windows_locale}
+
+        for name, lcid in RTF_LANGUAGES.items():
+            assert lcid in known, name
+
+    def test_the_variants_chosen(self):
+        assert rtf_language("English") == 2057  # en-GB
+        assert rtf_language("Norwegian") == 1044  # nb-NO
+        assert rtf_language("Nynorsk") == 2068  # nn-NO
+        assert rtf_language("Spanish") == rtf_language("Castilian") == 3082  # es-ES
+        assert rtf_language("Portuguese") == 2070  # pt-PT
+        assert rtf_language("Chinese") == rtf_language("Mandarin") == 2052  # zh-CN
+        assert rtf_language("Cantonese") == 3076  # zh-HK
+        assert rtf_language("Catalan") == 1027 and rtf_language("Valencian") == 2051
+        assert rtf_language("Lule Sámi") == 5179 and rtf_language("Southern Sámi") == 7227
 
     def test_as_the_job_names_it(self):
         assert rtf_language("Swedish") == 1053
