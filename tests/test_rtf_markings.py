@@ -247,7 +247,7 @@ class TestTheKey:
         [
             ({"highlights": True}, ["Yellow highlight"], ["Teal", "Violet", "Comments", "character style can"]),
             ({"edits": True}, ["Teal, underlined", "Scribe: My edit", "character style can"], ["Yellow", "Violet", "Comments"]),
-            ({"uncertain": "medium"}, ["Violet, dotted underline", "sensitivity Medium", "Scribe: Uncertain word", "not marked"], ["Yellow", "Teal", "Comments"]),
+            ({"uncertain": "medium"}, ["Violet, dotted underline", "sensitivity Medium", "Scribe: Uncertain word"], ["Yellow", "Teal", "Comments"]),
             ({"comments": True}, ["Comments in the margin"], ["Yellow", "Teal", "Violet", "character style can"]),
         ],
     )
@@ -264,6 +264,20 @@ class TestTheKey:
             assert phrase in text, phrase
         for phrase in says_not:
             assert phrase not in text, phrase
+
+    def test_it_says_no_more_than_it_needs_to(self, editor):
+        from utils.caption import WordComment
+
+        editor.captions[0].highlighted_words = {0}
+        editor.captions[0].edited_words = {2}
+        editor.captions[1].comments = [WordComment({0}, "c")]
+
+        text = key(export(editor, highlights=True, edits=True, comments=True, uncertain="high"))
+
+        assert r"Yellow highlight} \u8211? your highlights.\line " in text
+        assert r"Comments in the margin \u8211? your comments.\line " in text
+        for said_too_much in ("highlighter", "not marked", "by "):
+            assert said_too_much not in text, said_too_much
 
     def test_the_samples_are_drawn_without_the_styles(self, editor):
         """Finding every word in a style must find the transcript's, not the key's."""

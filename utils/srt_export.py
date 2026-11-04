@@ -172,7 +172,7 @@ def rtf_key(found: dict, sensitivity: Optional[str]) -> str:
     if found["highlight"]:
         lines.append(
             "{" + RTF_HIGHLIGHT + " Yellow highlight}"
-            + rtf_text(" \u2013 your highlights, made with the highlighter.")
+            + rtf_text(" \u2013 your highlights.")
         )
 
     if found["edit"]:
@@ -190,16 +190,13 @@ def rtf_key(found: dict, sensitivity: Optional[str]) -> str:
             + rtf_text(
                 " \u2013 words the speech recognition was less sure of, at "
                 f"sensitivity {level} (character style \u201cScribe: Uncertain "
-                "word\u201d). Words you changed are not marked."
+                "word\u201d)."
             )
         )
 
     if found["comment"]:
         lines.append(
-            rtf_text(
-                "Comments in the margin \u2013 your comments, by "
-                f"\u201c{RTF_COMMENT_AUTHOR}\u201d."
-            )
+            rtf_text("Comments in the margin \u2013 your comments.")
         )
 
     if found["edit"] or found["uncertain"]:
