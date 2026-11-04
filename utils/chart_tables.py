@@ -185,7 +185,7 @@ def minutes_summary(per_day: dict, decimals: int = 0, so_far: bool = False) -> s
     days = {day: minutes for day, minutes in per_day.items() if minutes and minutes > 0}
 
     if not days:
-        return "No minutes have been transcribed so far." if so_far else "No minutes were transcribed."
+        return "Nothing has been transcribed so far." if so_far else "Nothing was transcribed."
 
     total = sum(days.values())
     busiest = max(days, key=lambda day: days[day])

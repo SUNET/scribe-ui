@@ -141,7 +141,7 @@ class TestTheSentence:
         said = module.minutes_summary({"2026-11-01": 20, "2026-11-03": 37.2}, so_far=True)
 
         assert said == "57 minutes so far. Busiest day: 3 Nov, 37 minutes."
-        assert module.minutes_summary({}, so_far=True) == "No minutes have been transcribed so far."
+        assert module.minutes_summary({}, so_far=True) == "Nothing has been transcribed so far."
 
     def test_the_page_says_so_far_for_this_month_only(self):
         assert "(per_day, this_month, this_name, True)" in GROUPS
@@ -151,7 +151,7 @@ class TestTheSentence:
 
     @pytest.mark.parametrize("per_day", [{}, {"2026-10-01": 0}, {"2026-10-01": None}])
     def test_nothing(self, per_day):
-        assert module.minutes_summary(per_day) == "No minutes were transcribed."
+        assert module.minutes_summary(per_day) == "Nothing was transcribed."
 
 
 class TestTheDisclosureLooksLikeOne:
@@ -244,7 +244,7 @@ class TestAnEmptyChart:
         monkeypatch.setattr(module, "ui", UI)
 
         module.chart_section(
-            "Minutes", "No minutes were transcribed.", {"data": [], "layout": {}},
+            "Minutes", "Nothing was transcribed.", {"data": [], "layout": {}},
             table_summary="x", caption="x", headers=("Date", "Minutes"), rows=[], empty=True,
         )
 
