@@ -298,9 +298,10 @@ def rounded(value, decimals: int = 0) -> str:
 
 
 def amount(value, unit: str = "Minutes", decimals: int = 0) -> str:
-    """ "12 minutes", "1 minute", "7.4 minutes", "under 1 minute", "0 minutes". """
+    """ "12 minutes", "1 minute", "7.4 minutes", "under 1 minute", "0 minutes" (never "0.0"). """
 
-    shown = rounded(value, decimals)
+    # Nought is "0 minutes", whatever the precision: ".0" is for a column.
+    shown = rounded(value, decimals) if float(value or 0) > 0 else "0"
     word = unit.lower()
     one = word[:-1] if word.endswith("s") else word
 

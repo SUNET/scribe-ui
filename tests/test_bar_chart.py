@@ -136,7 +136,7 @@ class TestTheBars:
     def test_each_slot_says_its_day_and_value_under_a_pointer(self):
         chart = bar_chart(days(2), [{"name": "x", "values": [0, 1.33]}], decimals=1)
 
-        assert 'title="1\u00a0Oct: 0.0\u00a0minutes"' in chart
+        assert 'title="1\u00a0Oct: 0\u00a0minutes"' in chart
         assert 'title="2\u00a0Oct: 1.3\u00a0minutes"' in chart
 
     def test_a_day_still_to_come_has_no_tooltip_but_a_nought_says_so(self):
@@ -261,7 +261,7 @@ class TestHowMinutesAreShown:
             (1.33, 0, "1\u00a0minute"),
             (12.5, 0, "13\u00a0minutes"),  # half up, not to the even 12
             (100.8, 0, "101\u00a0minutes"),
-            (0, 1, "0.0\u00a0minutes"),
+            (0, 1, "0\u00a0minutes"),  # nought without ".0" outside a column
             (0.04, 1, "under 0.1\u00a0minute"),
             (0.25, 1, "0.3\u00a0minutes"),  # half up, not to the even 0.2
             (1.33, 1, "1.3\u00a0minutes"),

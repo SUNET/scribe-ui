@@ -290,19 +290,29 @@ class TestTheGroupStatisticsPage:
         for old in ('"Transcribed minutes per day, this month"', "Transcribed files this month",
                     "Transcribed minutes last month", "per user this month"):
             assert old not in stats, old
-        for label in ("files in {this_name}", "files in {previous_name}",
-                      "minutes in {this_name}", "minutes in {previous_name}",
+        for label in ('("Users", ', "this_name,\n", "previous_name,\n",
                       "minutes per user, {this_name}", "for {name} as a table"):
             assert label in stats, label
 
     def test_headings_sentences_and_the_cards_lines_break_in_balance(self):
-        assert ".chart-heading,\n    .chart-summary,\n    .stats-line {\n        text-wrap: balance;" in module.CHART_STYLES
+        assert ".chart-heading,\n    .chart-summary {\n        text-wrap: balance;" in module.CHART_STYLES
         assert 'ui.label(heading).classes("chart-heading ' in (ROOT / "utils" / "chart_tables.py").read_text()
         assert 'ui.label(summary).classes("chart-summary ' in (ROOT / "utils" / "chart_tables.py").read_text()
         stats = GROUPS[GROUPS.index("async def statistics") :]
         stats = stats[: stats.index("\ndef create(")]
-        assert stats.count("stats-line text-lg") == 5
         assert 'f"{count}{NBSP}files"' in stats
+
+    def test_the_summary_is_a_list_of_cards_like_on_home(self):
+        stats = GROUPS[GROUPS.index("async def statistics") :]
+        stats = stats[: stats.index("\ndef create(")]
+
+        assert 'ui.element("ul").classes("stats-tiles")' in stats
+        assert 'ui.element("li")' in stats
+        assert 'ui.card().props("flat bordered").classes("stats-tile")' in stats
+        assert "Number of users" not in stats and "Transcribed files in" not in stats
+        assert "list-style: none;" in module.CHART_STYLES
+        assert "grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));" in module.CHART_STYLES
+        assert "color: var(--color-text-muted);" in module.CHART_STYLES
 
     def test_one_precision_for_the_page(self):
         stats = GROUPS[GROUPS.index("async def statistics") :]

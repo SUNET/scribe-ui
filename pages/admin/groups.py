@@ -414,22 +414,35 @@ async def statistics(group_id: str) -> None:
     ui.label("Group statistics").classes("text-3xl font-bold mb-4").props("role=heading aria-level=1")
 
     with ui.element("div").classes("stats-container w-full"):
-        with ui.element("div").classes("stats-card w-full"):
-            ui.label(f"Number of users: {total_users}").classes(
-                "stats-line text-lg text-theme-secondary"
-            )
-            ui.label(
-                f"Transcribed files in {this_name}: {files(result.get('transcribed_files', 0))}"
-            ).classes("stats-line text-lg text-theme-secondary")
-            ui.label(
-                f"Transcribed files in {previous_name}: {files(result.get('transcribed_files_last_month', 0))}"
-            ).classes("stats-line text-lg text-theme-secondary")
-            ui.label(
-                f"Transcribed minutes in {this_name}: {minutes_of(result.get('total_transcribed_minutes', 0))}"
-            ).classes("stats-line text-lg text-theme-secondary")
-            ui.label(
-                f"Transcribed minutes in {previous_name}: {minutes_of(result.get('total_transcribed_minutes_last_month', 0))}"
-            ).classes("stats-line text-lg text-theme-secondary")
+        # The summary as cards, like the files on /home: a name, and a line
+        # or two under it. A list, so it is read as three of a kind.
+        tiles = (
+            ("Users", [f"{total_users}{NBSP}user in the group" if total_users == 1 else f"{total_users}{NBSP}users in the group"]),
+            (
+                this_name,
+                [
+                    f"{files(result.get('transcribed_files', 0))} transcribed",
+                    minutes_of(result.get("total_transcribed_minutes", 0)),
+                ],
+            ),
+            (
+                previous_name,
+                [
+                    f"{files(result.get('transcribed_files_last_month', 0))} transcribed",
+                    minutes_of(result.get("total_transcribed_minutes_last_month", 0)),
+                ],
+            ),
+        )
+
+        with ui.element("div").classes("stats-card stats-summary w-full"):
+            with ui.element("ul").classes("stats-tiles"):
+                for title, lines in tiles:
+                    with ui.element("li"):
+                        with ui.card().props("flat bordered").classes("stats-tile"):
+                            ui.label(title).classes("stats-tile-name")
+
+                            for line in lines:
+                                ui.label(line).classes("stats-tile-meta")
 
         # Each chart is a heading, a sentence, the chart as a picture and
         # the same numbers as a table (utils/chart_tables.py): a chart alone

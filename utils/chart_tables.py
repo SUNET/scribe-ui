@@ -46,9 +46,41 @@ CHART_STYLES = """
     /* Lines of about the same length when a heading or a sentence has to
        break in a narrow card, not one word left on its own. */
     .chart-heading,
-    .chart-summary,
-    .stats-line {
+    .chart-summary {
         text-wrap: balance;
+    }
+    /* The summary as cards, as the files are on /home on a phone (the
+       jobs-card look): side by side as far as they fit, else one above
+       the other. */
+    .stats-tiles {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+        gap: 0.75rem;
+        text-align: left;
+    }
+    .stats-tile {
+        width: 100%;
+        height: 100%;
+        padding: 0.75rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+    .stats-tile-name {
+        font-weight: 600;
+    }
+    .stats-tile-meta {
+        font-size: 0.8rem;
+        color: var(--color-text-muted);
+    }
+    /* Less room round the cards on a phone, where it is width they lack. */
+    @media (max-width: 600px) {
+        .stats-card.stats-summary {
+            padding: 1rem;
+        }
     }
     .chart-data {
         width: 100%;
