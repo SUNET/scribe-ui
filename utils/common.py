@@ -2204,6 +2204,7 @@ def table_bulk_export(table: ui.table) -> None:
                 data = response.json()
 
                 editor = SRTEditor(uuid, data_format, filename)
+                editor.language = row.get("language")
                 if data_format == "srt":
                     editor.parse_srt(data["result"])
                 else:
