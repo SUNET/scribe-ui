@@ -27,6 +27,7 @@ import httpx
 from nicegui import app, ui
 from utils.common import add_timezone_to_timestamp, page_init, reload_on_theme_change
 from utils.styles import default_styles, chart_colors
+from utils.chart_tables import chart_section, head_html as chart_head, minutes_summary
 from utils.helpers import (
     groups_get,
     save_group,
@@ -361,6 +362,7 @@ async def statistics(group_id: str) -> None:
         return
 
     ui.add_head_html(default_styles)
+    ui.add_head_html(chart_head())
 
     # Detect resolved dark mode (handles auto mode with OS preference)
     dark_pref = app.storage.user.get("dark_mode", None)
@@ -419,63 +421,58 @@ async def statistics(group_id: str) -> None:
                 f"Transcribed minutes last month: {result.get('total_transcribed_minutes_last_month', 0):.0f} minutes"
             ).classes("text-lg text-theme-secondary")
 
-        if per_day:
-            dates = list(per_day.keys())
-            values = list(per_day.values())
+        # Each chart is a heading, a sentence, the chart as a picture and
+        # the same numbers as a table (utils/chart_tables.py): a chart alone
+        # cannot be read without seeing it, nor its details without a mouse.
+        for minutes, colour, heading, month in (
+            (per_day, cc["bar_current"], "Transcribed minutes per day, this month", "this month"),
+            (
+                per_day_previous_month,
+                cc["bar_previous"],
+                "Transcribed minutes per day, previous month",
+                "the previous month",
+            ),
+        ):
+            if not minutes:
+                continue
 
             fig = go.Figure(
                 data=[
                     go.Bar(
-                        x=dates,
-                        y=values,
-                        marker=dict(color=cc["bar_current"], line=dict(width=0)),
-                        hovertemplate="%{x} - %{y:.1f} minutes<extra></extra>",
+                        x=list(minutes.keys()),
+                        y=list(minutes.values()),
+                        marker=dict(color=colour, line=dict(width=0)),
                     )
                 ]
             )
             fig.update_layout(
-                title="Transcribed minutes per day (current month)",
                 xaxis_title="Date",
                 yaxis_title="Minutes",
+                # One label per day, as the table has them: read as dates,
+                # the axis was marked in hours ("12:00 Oct 31").
+                xaxis=dict(type="category"),
                 template="plotly_dark" if is_dark else "plotly_white",
-                margin=dict(l=40, r=20, t=60, b=40),
-                height=400,
+                margin=dict(l=40, r=20, t=20, b=40),
+                height=360,
             )
 
             with ui.element("div").classes("chart-container"):
-                ui.plotly(fig).classes("w-full")
-
-        if per_day_previous_month:
-            dates_prev = list(per_day_previous_month.keys())
-            values_prev = list(per_day_previous_month.values())
-
-            fig_prev = go.Figure(
-                data=[
-                    go.Bar(
-                        x=dates_prev,
-                        y=values_prev,
-                        marker=dict(color=cc["bar_previous"], line=dict(width=0)),
-                        hovertemplate="%{x} - %{y:.1f} minutes<extra></extra>",
-                    )
-                ]
-            )
-            fig_prev.update_layout(
-                title="Transcribed minutes per day (previous month)",
-                xaxis_title="Date",
-                yaxis_title="Minutes",
-                template="plotly_dark" if is_dark else "plotly_white",
-                margin=dict(l=40, r=20, t=60, b=40),
-                height=400,
-            )
-
-            with ui.element("div").classes("chart-container"):
-                ui.plotly(fig_prev).classes("w-full")
+                chart_section(
+                    heading,
+                    minutes_summary(minutes),
+                    fig,
+                    table_summary=f"Show the minutes per day for {month} as a table",
+                    caption=heading,
+                    headers=("Date", "Minutes"),
+                    rows=[(day, f"{value:.1f}") for day, value in minutes.items()],
+                    numeric=(1,),
+                )
 
         if per_user:
             with ui.element("div").classes("table-container"):
                 ui.label("Transcribed minutes per user this month").classes(
-                    "text-theme-primary"
-                )
+                    "text-xl font-semibold text-theme-primary"
+                ).props("role=heading aria-level=2")
                 user_rows = [
                     {"username": username, "minutes": f"{minutes:.1f}"}
                     for username, minutes in per_user.items()
@@ -517,7 +514,7 @@ async def statistics(group_id: str) -> None:
             with ui.element("div").classes("table-container"):
                 ui.label("Job queue for group").classes(
                     "text-2xl font-bold mb-4 text-theme-primary"
-                )
+                ).props("role=heading aria-level=2")
                 queue_columns = [
                     {
                         "name": "job_id",

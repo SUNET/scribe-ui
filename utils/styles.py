@@ -4068,7 +4068,8 @@ default_styles = theme_styles + drive_styles
 chart_colors = {
     "light": {
         "bar_current": "#4F46E5",
-        "bar_previous": "#10B981",
+        # #10B981 was 2.5:1 on the white card, under 1.4.11's 3:1.
+        "bar_previous": "#059669",
         "bar_primary": "#082954",
         "bar_secondary": "#4caf50",
         "line_cpu": "#3b82f6",

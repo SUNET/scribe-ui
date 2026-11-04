@@ -306,6 +306,12 @@ Tunables belong here; wire-format constants do not. `WORDS_FORMAT_VERSION` in `u
 
 Access via `get_settings()` (cached).
 
+## Charts (`utils/chart_tables.py`)
+
+A Plotly chart is a picture: its numbers are not there for a screen reader (1.1.1, 1.3.1), its details come up only under a pointer (2.1.1), its toolbar's buttons have no usable names (4.1.2). So a chart is shown with `chart_section()`, **numbers first**: a heading of its own (`role=heading aria-level=2`, not Plotly's title, which is SVG text), one sentence saying what it shows (`minutes_summary()` for minutes per day), the chart as a still picture inside an `aria-hidden` wrapper (`static_chart()`: `staticPlot`, no toolbar, so nothing in it can take focus), and the same numbers as a real table (`data_table()`: caption, `th scope=col`, the first column `th scope=row`, figures right-aligned in tabular numbers, everything escaped) behind a native `<details>` disclosure named for what it holds ("Show the minutes per day for this month as a table"). The page's reset takes the browser's triangle away, so the summary draws its own (`content: "\25B8" / ""` -- the empty alternative keeps it out of the accessible name) and is underlined. Days on a date axis are `xaxis type="category"`: read as dates Plotly marked the axis in hours.
+
+**Used on the group statistics page** (`pages/admin/groups.py`, which local administrators see too): both "minutes per day" charts. The two tables under them have `h2` headings. `bar_previous` (light) is `#059669`, 3.8:1 on the card (`#10B981` was 2.5:1). **Not yet used** on the activity overview (`pages/admin/analytics.py`, seven charts including the day/hour heatmap) or the health page (two charts); those still draw `ui.plotly` directly. Tests: `tests/test_chart_tables.py`.
+
 ## Admin hierarchy
 
 - **BOFH** (`bofh=True`): sees everything, manages all realms and onboarding attributes
