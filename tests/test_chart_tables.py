@@ -110,12 +110,19 @@ class TestTheSentence:
             {"2026-10-01": 12.0, "2026-10-02": 0, "2026-10-03": 85.4}
         )
 
-        assert said == "97 minutes in all, on 2 days. The most on 2026-10-03: 85.4 minutes."
+        assert said == "97.4 minutes in all, on 2 days. The most on 2026-10-03: 85.4 minutes."
 
     def test_one_day(self):
         assert module.minutes_summary({"2026-10-05": 7}) == (
-            "7 minutes in all, on 1 day. The most on 2026-10-05: 7.0 minutes."
+            "7.0 minutes in all, on 1 day. The most on 2026-10-05: 7.0 minutes."
         )
+
+    def test_the_total_in_the_same_figures_as_the_day(self):
+        """Not "1 minutes in all" beside "1.3 minutes" for the same day."""
+
+        said = module.minutes_summary({"2026-10-15": 1.33})
+
+        assert said.startswith("1.3 minutes in all")
 
     @pytest.mark.parametrize("per_day", [{}, {"2026-10-01": 0}, {"2026-10-01": None}])
     def test_nothing(self, per_day):
@@ -187,6 +194,40 @@ class TestTheSection:
         assert chart.args[0]["config"]["staticPlot"] is True
         assert table.kwargs == {"sanitize": False}
         assert "<caption>Minutes per day</caption>" in table.args[0]
+
+
+class TestAnEmptyChart:
+    def test_only_the_heading_and_the_sentence(self, monkeypatch):
+        made = []
+
+        class Element:
+            def __init__(self, kind, *args, **kwargs):
+                made.append(kind)
+
+            def classes(self, value):
+                return self
+
+            def props(self, value):
+                return self
+
+        class UI:
+            label = staticmethod(lambda *a, **k: Element("label", *a, **k))
+            element = staticmethod(lambda *a, **k: Element("element", *a, **k))
+            plotly = staticmethod(lambda *a, **k: Element("plotly", *a, **k))
+            html = staticmethod(lambda *a, **k: Element("html", *a, **k))
+
+        monkeypatch.setattr(module, "ui", UI)
+
+        module.chart_section(
+            "Minutes", "No minutes were transcribed.", {"data": [], "layout": {}},
+            table_summary="x", caption="x", headers=("Date", "Minutes"), rows=[], empty=True,
+        )
+
+        assert made == ["label", "label"]
+
+    def test_the_page_says_when_a_month_is_empty(self):
+        assert "empty=not any(value and value > 0 for value in minutes.values())" in GROUPS
+        assert 'yaxis=dict(rangemode="nonnegative")' in GROUPS
 
 
 class TestTheGroupStatisticsPage:

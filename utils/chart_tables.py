@@ -187,8 +187,10 @@ def minutes_summary(per_day: dict) -> str:
     busiest = max(days, key=lambda day: days[day])
     noun = "day" if len(days) == 1 else "days"
 
+    # The total in the same figures as the day, or "1 minutes" stood next
+    # to "1.3 minutes" for the same one day.
     return (
-        f"{total:.0f} minutes in all, on {len(days)} {noun}. "
+        f"{total:.1f} minutes in all, on {len(days)} {noun}. "
         f"The most on {busiest}: {days[busiest]:.1f} minutes."
     )
 
@@ -203,16 +205,24 @@ def chart_section(
     rows: Iterable[Sequence],
     numeric: Sequence[int] = (),
     level: int = 2,
+    empty: bool = False,
 ) -> None:
     """
     A chart that can be read without seeing it: heading, sentence, the
     chart as a picture to skip, and the numbers as a table.
+
+    `empty` is a chart of nothing (every value 0): the heading and the
+    sentence say so, and neither an empty picture nor a table of noughts
+    is drawn under them.
     """
 
     ui.label(heading).classes("text-xl font-semibold text-theme-primary").props(
         f"role=heading aria-level={level}"
     )
     ui.label(summary).classes("text-body1 text-theme-secondary")
+
+    if empty:
+        return
 
     with ui.element("div").classes("w-full").props('aria-hidden="true"'):
         ui.plotly(static_chart(figure)).classes("w-full")

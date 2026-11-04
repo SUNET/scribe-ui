@@ -451,6 +451,9 @@ async def statistics(group_id: str) -> None:
                 # One label per day, as the table has them: read as dates,
                 # the axis was marked in hours ("12:00 Oct 31").
                 xaxis=dict(type="category"),
+                # Minutes are never below nothing; a month of noughts was
+                # drawn from -1 to 1.
+                yaxis=dict(rangemode="nonnegative"),
                 template="plotly_dark" if is_dark else "plotly_white",
                 margin=dict(l=40, r=20, t=20, b=40),
                 height=360,
@@ -466,6 +469,7 @@ async def statistics(group_id: str) -> None:
                     headers=("Date", "Minutes"),
                     rows=[(day, f"{value:.1f}") for day, value in minutes.items()],
                     numeric=(1,),
+                    empty=not any(value and value > 0 for value in minutes.values()),
                 )
 
         if per_user:
