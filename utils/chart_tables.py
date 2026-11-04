@@ -174,7 +174,7 @@ def data_table(
     )
 
 
-def minutes_summary(per_day: dict) -> str:
+def minutes_summary(per_day: dict, decimals: int = 0) -> str:
     """
     One sentence about minutes per day: the total, on how many days, and
     the busiest day. What a glance at the chart would tell.
@@ -189,11 +189,11 @@ def minutes_summary(per_day: dict) -> str:
     busiest = max(days, key=lambda day: days[day])
     noun = "day" if len(days) == 1 else "days"
 
-    # Minutes as everywhere on the page (whole from 10, a decimal under);
-    # the total is the sum of the days as they are, not of what is shown.
+    # Minutes as everywhere on the page (`decimals`, decimals_for()); the
+    # total is the sum of the days as they are, not of what is shown.
     return (
-        f"{amount(total)} in all, on {len(days)} {noun}. "
-        f"The most on {day_label(busiest)}: {amount(days[busiest])}."
+        f"{amount(total, decimals=decimals)} in all, on {len(days)} {noun}. "
+        f"The most on {day_label(busiest)}: {amount(days[busiest], decimals=decimals)}."
     )
 
 

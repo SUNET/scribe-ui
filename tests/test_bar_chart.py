@@ -27,8 +27,11 @@ from utils.bar_chart import (
     bar_chart,
     day_label,
     amount,
+    decimals_for,
     figure,
     month_days,
+    month_name,
+    rounded,
     nice_ticks,
 )
 
@@ -131,9 +134,9 @@ class TestTheBars:
         assert 'style="height: 100.0%"' in chart
 
     def test_each_slot_says_its_day_and_value_under_a_pointer(self):
-        chart = bar_chart(days(2), [{"name": "x", "values": [0, 1.33]}])
+        chart = bar_chart(days(2), [{"name": "x", "values": [0, 1.33]}], decimals=1)
 
-        assert 'title="1 Oct: 0 minutes"' in chart
+        assert 'title="1 Oct: 0.0 minutes"' in chart
         assert 'title="2 Oct: 1.3 minutes"' in chart
 
     def test_a_day_still_to_come_has_no_tooltip_but_a_nought_says_so(self):
@@ -228,31 +231,57 @@ class TestAWholeMonth:
         assert shown(30, "2026-11") == shown(31, "2026-10")
 
 
-class TestWholeMinutes:
-    """Whole from 10, one decimal under it; the figures underneath are not rounded."""
+class TestHowMinutesAreShown:
+    """One precision for a page; the figures underneath are not rounded."""
 
     @pytest.mark.parametrize(
-        "value, shown",
+        "values, decimals",
         [
-            (0, "0 minutes"),
-            (None, "0 minutes"),
-            (0.04, "under 0.1 minute"),
-            (0.25, "0.3 minutes"),  # half up, not to the even 0.2
-            (1, "1 minute"),
-            (1.04, "1 minute"),
-            (1.33, "1.3 minutes"),
-            (7.0, "7 minutes"),
-            (9.94, "9.9 minutes"),
-            (9.96, "10 minutes"),
-            (12.5, "13 minutes"),  # half up, not to the even 12
-            (100.8, "101 minutes"),
+            ([85.4, 1.3], 0),
+            ([10, 0.4], 0),
+            ([9.96], 0),  # shown as 10.0, so whole
+            ([9.94, 1.3], 1),
+            ([1.33], 1),
+            ([], 1),
+            ([None, 0], 1),
         ],
     )
-    def test_amounts(self, value, shown):
-        assert amount(value) == shown
+    def test_a_decimal_for_the_page_only_when_its_largest_figure_is_under_10(
+        self, values, decimals
+    ):
+        assert decimals_for(values) == decimals
+
+    @pytest.mark.parametrize(
+        "value, decimals, shown",
+        [
+            (0, 0, "0 minutes"),
+            (None, 0, "0 minutes"),
+            (0.4, 0, "under 1 minute"),
+            (0.5, 0, "1 minute"),
+            (1.33, 0, "1 minute"),
+            (12.5, 0, "13 minutes"),  # half up, not to the even 12
+            (100.8, 0, "101 minutes"),
+            (0, 1, "0.0 minutes"),
+            (0.04, 1, "under 0.1 minute"),
+            (0.25, 1, "0.3 minutes"),  # half up, not to the even 0.2
+            (1.33, 1, "1.3 minutes"),
+            (7, 1, "7.0 minutes"),  # so a column lines up
+        ],
+    )
+    def test_amounts(self, value, decimals, shown):
+        assert amount(value, decimals=decimals) == shown
+
+    def test_a_column_of_figures_lines_up(self):
+        assert [rounded(value, 1) for value in (7, 0, 1.33)] == ["7.0", "0.0", "1.3"]
+        assert [rounded(value) for value in (85.4, 0, 0.2)] == ["85", "0", "<1"]
 
     def test_a_day_with_a_bar_never_says_nought(self):
-        chart = bar_chart(days(1), [{"name": "x", "values": [0.02]}])
+        chart = bar_chart(days(1), [{"name": "x", "values": [0.02]}], decimals=1)
 
         assert 'class="bar-chart-bar"' in chart
         assert 'title="1 Oct: under 0.1 minute"' in chart
+
+    def test_the_month_by_name_in_english_whatever_the_locale(self):
+        assert month_name("2026-11-03") == "November 2026"
+        assert month_name("2027-01-01") == "January 2027"
+        assert month_name("next") == "next"

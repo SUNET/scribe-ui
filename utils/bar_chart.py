@@ -42,6 +42,13 @@ from typing import Iterable, Optional, Sequence
 
 MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
+# Written out, not calendar.month_name: that follows the server's locale,
+# and the page is in English.
+MONTH_NAMES = (
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+)
+
 # At most this many labels under the bars; the rest are left out, evenly.
 MAX_LABELS = 8
 
@@ -229,43 +236,63 @@ def nice_ticks(highest: float, count: int = 4, whole: bool = False) -> list:
     return [round(step * n, 10) for n in range(steps + 1)]
 
 
-def whole(value) -> str:
+def decimals_for(values: Iterable) -> int:
     """
-    A figure as it is shown: whole from 10 up, with one decimal under it,
-    where a whole number would say too little (7 and 7.4 are not far
-    apart, 0 and 0.4 are); rounded half up, and a decimal of nought left
-    off ("7", not "7.0"). The sums are made of the figures as they are;
-    only what is shown is rounded. Above nought but under 0.05 is "<0.1",
-    so a day with a bar never says 0.
+    How many decimals a page shows its minutes with: one when its largest
+    figure is under 10 (where 7 and 7.4 are not far apart, but 0 and 0.4
+    are), none otherwise. One precision for the whole page, so that a
+    column of figures lines up and two months read alike.
+    """
+
+    highest = max((float(value or 0) for value in values), default=0)
+
+    return 1 if highest < 9.95 else 0
+
+
+def rounded(value, decimals: int = 0) -> str:
+    """
+    A figure as it is shown: to `decimals` places, half up ("7.0" when
+    there is one, so a column lines up). The sums are made of the figures
+    as they are; only what is shown is rounded. Above nought but too small
+    to show is "<1" or "<0.1", so a day with a bar never says 0.
     """
 
     value = Decimal(str(float(value or 0)))
+    step = Decimal(1).scaleb(-decimals)
 
     if value <= 0:
-        return "0"
+        return f"{Decimal(0).quantize(step):f}"
 
-    tenths = value.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+    shown = value.quantize(step, rounding=ROUND_HALF_UP)
 
-    if tenths < 10:
-        if tenths == 0:
-            return "<0.1"
+    if shown == 0:
+        return f"<{step:f}"
 
-        return f"{tenths:f}".removesuffix(".0")
-
-    return f"{value.quantize(Decimal('1'), rounding=ROUND_HALF_UP):f}"
+    return f"{shown:f}"
 
 
-def amount(value, unit: str = "Minutes") -> str:
-    """ "12 minutes", "7.4 minutes", "1 minute", "under 0.1 minute", "0 minutes". """
+def amount(value, unit: str = "Minutes", decimals: int = 0) -> str:
+    """ "12 minutes", "1 minute", "7.4 minutes", "under 1 minute", "0 minutes". """
 
-    shown = whole(value)
+    shown = rounded(value, decimals)
     word = unit.lower()
     one = word[:-1] if word.endswith("s") else word
 
-    if shown == "<0.1":
-        return f"under 0.1 {one}"
+    if shown.startswith("<"):
+        return f"under {shown[1:]} {one}"
 
     return f"{shown} {one if shown == '1' else word}"
+
+
+def month_name(day: str) -> str:
+    """ "2026-11-03" as "November 2026"; anything else as it is. """
+
+    try:
+        moment = date.fromisoformat(str(day))
+    except ValueError:
+        return str(day)
+
+    return f"{MONTH_NAMES[moment.month - 1]} {moment.year}"
 
 
 def figure(value: float) -> str:
@@ -305,6 +332,7 @@ def bar_chart(
     legend: bool = False,
     label_every: Optional[int] = None,
     highest: Optional[float] = None,
+    decimals: int = 0,
 ) -> str:
     """
     A bar chart as HTML. `labels` are the slots along the bottom (dates are
@@ -312,7 +340,8 @@ def bar_chart(
     ("current" or "previous"), drawn side by side in each slot. A value of
     nothing (None) draws no bar and no tooltip -- a day still to come; a
     nought draws no bar but says so. Each slot's tooltip gives its values.
-    `highest` puts the scale at least that high, so two charts read alike.
+    `highest` puts the scale at least that high, so two charts read alike;
+    `decimals` is how the tooltips show the figures (decimals_for()).
     """
 
     values = [value or 0 for one in series for value in one["values"]]
@@ -337,7 +366,7 @@ def bar_chart(
         ]
         tip = "; ".join(
             (f"{one['name']}: " if len(series) > 1 else "")
-            + amount(value, unit)
+            + amount(value, unit, decimals)
             for one, value in shown
         )
         title = (

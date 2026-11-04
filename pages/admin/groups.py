@@ -27,7 +27,7 @@ import httpx
 from nicegui import ui
 from utils.common import add_timezone_to_timestamp, page_init, reload_on_theme_change
 from utils.styles import default_styles
-from utils.bar_chart import amount, bar_chart, month_days, whole
+from utils.bar_chart import amount, bar_chart, decimals_for, month_days, month_name, rounded
 from utils.chart_tables import chart_section, head_html as chart_head, minutes_summary
 from utils.helpers import (
     groups_get,
@@ -387,9 +387,30 @@ async def statistics(group_id: str) -> None:
     def files(count) -> str:
         return f"{count} file" if count == 1 else f"{count} files"
 
-    # Minutes are shown whole from 10 and with one decimal under it
-    # (utils/bar_chart.py, whole() and amount());
-    # the figures underneath, and every sum of them, stay as they are.
+    # The months by name, from the days the figures are for (or today):
+    # "this month" says less in a list of headings, and nothing once the
+    # page has been left open past the turn of a month.
+    def first_day(days: list, fallback: date) -> date:
+        try:
+            return date.fromisoformat(days[0])
+        except (IndexError, ValueError):
+            return fallback
+
+    today = date.today()
+    this_month = month_days(per_day.keys(), today)
+    this_first = first_day(this_month, today.replace(day=1))
+    previous_month = month_days(per_day_previous_month.keys(), this_first - timedelta(days=1))
+    this_name = month_name(this_first.isoformat())
+    previous_name = month_name(first_day(previous_month, this_first - timedelta(days=1)).isoformat())
+
+    # One precision for the page (utils/bar_chart.py, decimals_for()): a
+    # decimal when its largest day is under 10 minutes, none otherwise.
+    # Only what is shown is rounded; every sum is of the figures as they are.
+    decimals = decimals_for(list(per_day.values()) + list(per_day_previous_month.values()))
+
+    def minutes_of(value) -> str:
+        return amount(value, decimals=decimals)
+
     ui.label("Group statistics").classes("text-3xl font-bold mb-4").props("role=heading aria-level=1")
 
     with ui.element("div").classes("stats-container w-full"):
@@ -398,16 +419,16 @@ async def statistics(group_id: str) -> None:
                 "text-lg text-theme-secondary"
             )
             ui.label(
-                f"Transcribed files this month: {files(result.get('transcribed_files', 0))}"
+                f"Transcribed files in {this_name}: {files(result.get('transcribed_files', 0))}"
             ).classes("text-lg text-theme-secondary")
             ui.label(
-                f"Transcribed files last month: {files(result.get('transcribed_files_last_month', 0))}"
+                f"Transcribed files in {previous_name}: {files(result.get('transcribed_files_last_month', 0))}"
             ).classes("text-lg text-theme-secondary")
             ui.label(
-                f"Transcribed minutes this month: {amount(result.get('total_transcribed_minutes', 0))}"
+                f"Transcribed minutes in {this_name}: {minutes_of(result.get('total_transcribed_minutes', 0))}"
             ).classes("text-lg text-theme-secondary")
             ui.label(
-                f"Transcribed minutes last month: {amount(result.get('total_transcribed_minutes_last_month', 0))}"
+                f"Transcribed minutes in {previous_name}: {minutes_of(result.get('total_transcribed_minutes_last_month', 0))}"
             ).classes("text-lg text-theme-secondary")
 
         # Each chart is a heading, a sentence, the chart as a picture and
@@ -417,47 +438,42 @@ async def statistics(group_id: str) -> None:
         # Both months whole, on one scale: two charts of different widths
         # and ranges read as if the months were. Days still to come this
         # month are empty slots; the table has the days there are.
-        today = date.today()
         highest = max(
             (value or 0 for days in (per_day, per_day_previous_month) for value in days.values()),
             default=0,
         )
 
-        for minutes, heading, month, fallback in (
-            (per_day, "Transcribed minutes per day, this month", "this month", today),
-            (
-                per_day_previous_month,
-                "Transcribed minutes per day, previous month",
-                "the previous month",
-                today.replace(day=1) - timedelta(days=1),
-            ),
+        for minutes, days, name in (
+            (per_day, this_month, this_name),
+            (per_day_previous_month, previous_month, previous_name),
         ):
-            days = month_days(minutes.keys(), fallback)
+            heading = f"Transcribed minutes per day, {name}"
 
             with ui.element("div").classes("chart-container"):
                 chart_section(
                     heading,
-                    minutes_summary(minutes),
+                    minutes_summary(minutes, decimals),
                     bar_chart(
                         days,
                         [{"name": heading, "values": [minutes.get(day) for day in days]}],
                         highest=highest,
+                        decimals=decimals,
                     ),
-                    table_summary=f"Show the minutes per day for {month} as a table",
+                    table_summary=f"Show the minutes per day for {name} as a table",
                     caption=heading,
                     headers=("Date", "Minutes"),
-                    rows=[(day, whole(value)) for day, value in minutes.items()],
+                    rows=[(day, rounded(value, decimals)) for day, value in minutes.items()],
                     numeric=(1,),
                     empty=not any(value and value > 0 for value in minutes.values()),
                 )
 
         if per_user:
             with ui.element("div").classes("table-container"):
-                ui.label("Transcribed minutes per user this month").classes(
+                ui.label(f"Transcribed minutes per user, {this_name}").classes(
                     "text-xl font-semibold text-theme-primary"
                 ).props("role=heading aria-level=2")
                 user_rows = [
-                    {"username": username, "minutes": whole(minutes), "exact": minutes or 0}
+                    {"username": username, "minutes": rounded(minutes, decimals), "exact": minutes or 0}
                     for username, minutes in per_user.items()
                 ]
 

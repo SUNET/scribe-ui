@@ -114,6 +114,9 @@ class TestTheSentence:
 
     def test_one_day(self):
         assert module.minutes_summary({"2026-10-05": 1.33}) == (
+            "1 minute in all, on 1 day. The most on 5 Oct: 1 minute."
+        )
+        assert module.minutes_summary({"2026-10-05": 1.33}, decimals=1) == (
             "1.3 minutes in all, on 1 day. The most on 5 Oct: 1.3 minutes."
         )
 
@@ -232,8 +235,9 @@ class TestAnEmptyChart:
 class TestTheGroupStatisticsPage:
     def test_both_charts_are_sections(self):
         assert "chart_section(" in GROUPS
-        assert '"Transcribed minutes per day, this month"' in GROUPS
-        assert '"Transcribed minutes per day, previous month"' in GROUPS
+        assert 'heading = f"Transcribed minutes per day, {name}"' in GROUPS
+        assert "(per_day, this_month, this_name)" in GROUPS
+        assert "(per_day_previous_month, previous_month, previous_name)" in GROUPS
         assert "ui.plotly(" not in GROUPS
         assert "ui.add_head_html(chart_head())" in GROUPS
 
@@ -249,7 +253,7 @@ class TestTheGroupStatisticsPage:
         stats = GROUPS[GROUPS.index("async def statistics") :]
         stats = stats[: stats.index("\ndef create(")]
 
-        assert stats.count("month_days(") == 1 and "highest=highest" in stats
+        assert stats.count("month_days(") == 2 and "highest=highest" in stats
         assert "per_day_previous_month" in stats[stats.index("highest = max(") :][:200]
         # An empty month is still shown, as its heading and a sentence.
         assert "if not minutes:" not in stats
@@ -257,13 +261,33 @@ class TestTheGroupStatisticsPage:
     def test_nothing_on_the_page_exports_user_names_for_now(self):
         assert "ui.download(" not in GROUPS and "csv" not in GROUPS.lower()
 
+    def test_the_months_by_name_not_this_and_previous(self):
+        stats = GROUPS[GROUPS.index("async def statistics") :]
+        stats = stats[: stats.index("\ndef create(")]
+
+        for old in ('"Transcribed minutes per day, this month"', "Transcribed files this month",
+                    "Transcribed minutes last month", "per user this month"):
+            assert old not in stats, old
+        for label in ("files in {this_name}", "files in {previous_name}",
+                      "minutes in {this_name}", "minutes in {previous_name}",
+                      "minutes per user, {this_name}", "for {name} as a table"):
+            assert label in stats, label
+
+    def test_one_precision_for_the_page(self):
+        stats = GROUPS[GROUPS.index("async def statistics") :]
+        stats = stats[: stats.index("\ndef create(")]
+
+        assert "decimals = decimals_for(" in stats
+        assert ":.0f" not in stats and ":.1f" not in stats
+        assert stats.count("decimals=decimals") >= 2
+
     def test_no_hover_text_and_no_title_inside_the_picture(self):
         assert "hovertemplate" not in GROUPS
         assert "title=\"Transcribed" not in GROUPS
 
     def test_the_tables_under_them_have_headings_too(self):
-        for name in ("Transcribed minutes per user this month", "Job queue for group"):
-            at = GROUPS.index(f'ui.label("{name}")')
+        for name in ('f"Transcribed minutes per user, {this_name}"', '"Job queue for group"'):
+            at = GROUPS.index(f"ui.label({name})")
             assert 'props("role=heading aria-level=2")' in GROUPS[at : at + 200], name
 
 
