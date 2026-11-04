@@ -87,8 +87,8 @@ class TestTheScale:
 
 class TestTheLabels:
     def test_a_date_reads_as_a_day(self):
-        assert day_label("2026-10-15") == "15 Oct"
-        assert day_label("2026-01-01") == "1 Jan"
+        assert day_label("2026-10-15") == "15\u00a0Oct"
+        assert day_label("2026-01-01") == "1\u00a0Jan"
         assert day_label("not a date") == "not a date"
 
     def test_at_most_eight_shown(self):
@@ -97,12 +97,12 @@ class TestTheLabels:
         shown = [label for label in re.findall(r"<span[^>]*>(.*?)</span>", labels) if label]
 
         assert len(re.findall(r"<span", labels)) == 31
-        assert shown == ["1 Oct", "5 Oct", "9 Oct", "13 Oct", "17 Oct", "21 Oct", "25 Oct", "29 Oct"]
+        assert shown == ["1\u00a0Oct", "5\u00a0Oct", "9\u00a0Oct", "13\u00a0Oct", "17\u00a0Oct", "21\u00a0Oct", "25\u00a0Oct", "29\u00a0Oct"]
 
     def test_all_of_a_short_month(self):
         chart = bar_chart(days(4), [{"name": "x", "values": [1] * 4}])
 
-        assert chart.count(">4 Oct</span>") == 1
+        assert chart.count(">4\u00a0Oct</span>") == 1
 
     def test_a_few_labels_all_stay(self):
         chart = bar_chart(days(4), [{"name": "x", "values": [1] * 4}])
@@ -112,9 +112,9 @@ class TestTheLabels:
     def test_every_other_one_goes_in_a_narrow_chart(self):
         chart = bar_chart(days(31), [{"name": "x", "values": [1] * 31}])
 
-        assert '<span>1 Oct</span>' in chart
-        assert '<span class="is-minor">5 Oct</span>' in chart
-        assert '<span>9 Oct</span>' in chart
+        assert '<span>1\u00a0Oct</span>' in chart
+        assert '<span class="is-minor">5\u00a0Oct</span>' in chart
+        assert '<span>9\u00a0Oct</span>' in chart
         assert "@container (max-width: 34rem)" in BAR_CHART_STYLES
         assert "container-type: inline-size;" in BAR_CHART_STYLES
         assert "grid-template-columns: auto minmax(0, 1fr);" in BAR_CHART_STYLES
@@ -136,15 +136,15 @@ class TestTheBars:
     def test_each_slot_says_its_day_and_value_under_a_pointer(self):
         chart = bar_chart(days(2), [{"name": "x", "values": [0, 1.33]}], decimals=1)
 
-        assert 'title="1 Oct: 0.0 minutes"' in chart
-        assert 'title="2 Oct: 1.3 minutes"' in chart
+        assert 'title="1\u00a0Oct: 0.0\u00a0minutes"' in chart
+        assert 'title="2\u00a0Oct: 1.3\u00a0minutes"' in chart
 
     def test_a_day_still_to_come_has_no_tooltip_but_a_nought_says_so(self):
         chart = bar_chart(days(3), [{"name": "x", "values": [0, 2, None]}])
 
-        assert 'title="1 Oct: 0 minutes"' in chart
-        assert 'title="2 Oct: 2 minutes"' in chart
-        assert "3 Oct:" not in chart
+        assert 'title="1\u00a0Oct: 0\u00a0minutes"' in chart
+        assert 'title="2\u00a0Oct: 2\u00a0minutes"' in chart
+        assert "3\u00a0Oct:" not in chart
         assert chart.count('<div class="bar-chart-slot">') == 1
 
     def test_two_charts_on_one_scale(self):
@@ -168,7 +168,7 @@ class TestTheBars:
             legend=True,
         )
 
-        assert 'title="1: November: 2 minutes; October: 1 minute"' in chart
+        assert 'title="1: November: 2\u00a0minutes; October: 1\u00a0minute"' in chart
         assert chart.count("bar-chart-bar is-previous") == 2
         assert '<div class="bar-chart-legend">' in chart
         assert '<i class="is-previous"></i>October' in chart
@@ -226,9 +226,9 @@ class TestAWholeMonth:
             chart = bar_chart(days(n, month), [{"name": "x", "values": [1] * n}])
             labels = chart.split('<div class="bar-chart-labels">')[1]
 
-            return re.findall(r"<span(?: class=\"is-minor\")?>(\d+) ", labels)
+            return re.findall(r"<span(?: class=\"is-minor\")?>(\d+)\u00a0", labels)
 
-        assert shown(30, "2026-11") == shown(31, "2026-10")
+        assert shown(30, "2026-11") == shown(31, "2026-10") != []
 
 
 class TestHowMinutesAreShown:
@@ -254,18 +254,18 @@ class TestHowMinutesAreShown:
     @pytest.mark.parametrize(
         "value, decimals, shown",
         [
-            (0, 0, "0 minutes"),
-            (None, 0, "0 minutes"),
-            (0.4, 0, "under 1 minute"),
-            (0.5, 0, "1 minute"),
-            (1.33, 0, "1 minute"),
-            (12.5, 0, "13 minutes"),  # half up, not to the even 12
-            (100.8, 0, "101 minutes"),
-            (0, 1, "0.0 minutes"),
-            (0.04, 1, "under 0.1 minute"),
-            (0.25, 1, "0.3 minutes"),  # half up, not to the even 0.2
-            (1.33, 1, "1.3 minutes"),
-            (7, 1, "7.0 minutes"),  # so a column lines up
+            (0, 0, "0\u00a0minutes"),
+            (None, 0, "0\u00a0minutes"),
+            (0.4, 0, "under 1\u00a0minute"),
+            (0.5, 0, "1\u00a0minute"),
+            (1.33, 0, "1\u00a0minute"),
+            (12.5, 0, "13\u00a0minutes"),  # half up, not to the even 12
+            (100.8, 0, "101\u00a0minutes"),
+            (0, 1, "0.0\u00a0minutes"),
+            (0.04, 1, "under 0.1\u00a0minute"),
+            (0.25, 1, "0.3\u00a0minutes"),  # half up, not to the even 0.2
+            (1.33, 1, "1.3\u00a0minutes"),
+            (7, 1, "7.0\u00a0minutes"),  # so a column lines up
         ],
     )
     def test_amounts(self, value, decimals, shown):
@@ -279,11 +279,11 @@ class TestHowMinutesAreShown:
         chart = bar_chart(days(1), [{"name": "x", "values": [0.02]}], decimals=1)
 
         assert 'class="bar-chart-bar"' in chart
-        assert 'title="1 Oct: under 0.1 minute"' in chart
+        assert 'title="1\u00a0Oct: under 0.1\u00a0minute"' in chart
 
     def test_the_month_by_name_in_english_whatever_the_locale(self):
-        assert month_name("2026-11-03") == "November 2026"
-        assert month_name("2027-01-01") == "January 2027"
+        assert month_name("2026-11-03") == "November\u00a02026"
+        assert month_name("2027-01-01") == "January\u00a02027"
         assert month_name("next") == "next"
 
 
@@ -315,3 +315,15 @@ class TestTheDaysToCome:
         assert "--chart-future: rgba(255, 255, 255, 0.065);" in dark
         assert "border-left: 1px dashed var(--chart-future-edge);" in BAR_CHART_STYLES
         assert "--chart-future-edge: var(--color-text-secondary);" in BAR_CHART_STYLES
+
+
+class TestTheLinesBreakWell:
+    """In a narrow card a line breaks between words, not inside a figure."""
+
+    def test_a_figure_and_its_unit_stay_together(self):
+        assert amount(1.33, decimals=1) == "1.3\u00a0minutes"
+        assert amount(0.2) == "under 1\u00a0minute"
+
+    def test_a_day_and_its_month_and_a_month_and_its_year(self):
+        assert day_label("2026-10-15") == "15\u00a0Oct"
+        assert month_name("2026-11-03") == "November\u00a02026"

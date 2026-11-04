@@ -110,14 +110,14 @@ class TestTheSentence:
             {"2026-10-01": 12.0, "2026-10-02": 0, "2026-10-03": 85.4}
         )
 
-        assert said == "97 minutes in all. Busiest day: 3 Oct, 85 minutes."
+        assert said == "97\u00a0minutes in all. Busiest day: 3\u00a0Oct, 85\u00a0minutes."
 
     def test_one_day(self):
         assert module.minutes_summary({"2026-10-05": 1.33}) == (
-            "1 minute in all. Busiest day: 5 Oct, 1 minute."
+            "1\u00a0minute in all. Busiest day: 5\u00a0Oct, 1\u00a0minute."
         )
         assert module.minutes_summary({"2026-10-05": 1.33}, decimals=1) == (
-            "1.3 minutes in all. Busiest day: 5 Oct, 1.3 minutes."
+            "1.3\u00a0minutes in all. Busiest day: 5\u00a0Oct, 1.3\u00a0minutes."
         )
 
     def test_the_total_is_the_sum_of_the_days_as_they_are(self):
@@ -125,7 +125,7 @@ class TestTheSentence:
 
         said = module.minutes_summary({"2026-10-01": 24.4, "2026-10-02": 0.4, "2026-10-03": 0.4})
 
-        assert said == "25 minutes in all. Busiest day: 1 Oct, 24 minutes."
+        assert said == "25\u00a0minutes in all. Busiest day: 1\u00a0Oct, 24\u00a0minutes."
 
     def test_not_how_many_days(self):
         said = module.minutes_summary({"2026-10-01": 5, "2026-10-02": 6})
@@ -135,12 +135,12 @@ class TestTheSentence:
     def test_on_a_tie_the_first_day(self):
         said = module.minutes_summary({"2026-10-01": 5, "2026-10-02": 9, "2026-10-03": 9})
 
-        assert said.endswith("Busiest day: 2 Oct, 9 minutes.")
+        assert said.endswith("Busiest day: 2\u00a0Oct, 9\u00a0minutes.")
 
     def test_a_month_under_way_is_so_far(self):
         said = module.minutes_summary({"2026-11-01": 20, "2026-11-03": 37.2}, so_far=True)
 
-        assert said == "57 minutes so far. Busiest day: 3 Nov, 37 minutes."
+        assert said == "57\u00a0minutes so far. Busiest day: 3\u00a0Nov, 37\u00a0minutes."
         assert module.minutes_summary({}, so_far=True) == "Nothing has been transcribed so far."
 
     def test_the_page_says_so_far_for_this_month_only(self):
@@ -201,7 +201,7 @@ class TestTheSection:
 
         module.chart_section(
             "Minutes per day",
-            "97 minutes in all.",
+            "97\u00a0minutes in all.",
             go.Figure(data=[go.Bar(x=["a"], y=[1])]),
             table_summary="Show as a table",
             caption="Minutes per day",
@@ -214,7 +214,7 @@ class TestTheSection:
         heading, sentence, wrapper, chart, table = made
         assert heading.args == ("Minutes per day",)
         assert heading.given["props"] == "role=heading aria-level=2"
-        assert sentence.args == ("97 minutes in all.",)
+        assert sentence.args == ("97\u00a0minutes in all.",)
         assert wrapper.given["props"] == 'aria-hidden="true"'
         assert chart.args[0]["config"]["staticPlot"] is True
         assert table.kwargs == {"sanitize": False}
@@ -294,6 +294,15 @@ class TestTheGroupStatisticsPage:
                       "minutes in {this_name}", "minutes in {previous_name}",
                       "minutes per user, {this_name}", "for {name} as a table"):
             assert label in stats, label
+
+    def test_headings_sentences_and_the_cards_lines_break_in_balance(self):
+        assert ".chart-heading,\n    .chart-summary,\n    .stats-line {\n        text-wrap: balance;" in module.CHART_STYLES
+        assert 'ui.label(heading).classes("chart-heading ' in (ROOT / "utils" / "chart_tables.py").read_text()
+        assert 'ui.label(summary).classes("chart-summary ' in (ROOT / "utils" / "chart_tables.py").read_text()
+        stats = GROUPS[GROUPS.index("async def statistics") :]
+        stats = stats[: stats.index("\ndef create(")]
+        assert stats.count("stats-line text-lg") == 5
+        assert 'f"{count}{NBSP}files"' in stats
 
     def test_one_precision_for_the_page(self):
         stats = GROUPS[GROUPS.index("async def statistics") :]

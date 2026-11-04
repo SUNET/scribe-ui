@@ -43,6 +43,13 @@ from utils.bar_chart import BAR_CHART_STYLES, amount, day_label
 
 CHART_STYLES = """
 <style>
+    /* Lines of about the same length when a heading or a sentence has to
+       break in a narrow card, not one word left on its own. */
+    .chart-heading,
+    .chart-summary,
+    .stats-line {
+        text-wrap: balance;
+    }
     .chart-data {
         width: 100%;
         margin-top: 0.75rem;
@@ -220,10 +227,10 @@ def chart_section(
     is drawn under them.
     """
 
-    ui.label(heading).classes("text-xl font-semibold text-theme-primary").props(
+    ui.label(heading).classes("chart-heading text-xl font-semibold text-theme-primary").props(
         f"role=heading aria-level={level}"
     )
-    ui.label(summary).classes("text-body1 text-theme-secondary")
+    ui.label(summary).classes("chart-summary text-body1 text-theme-secondary")
 
     if empty:
         return

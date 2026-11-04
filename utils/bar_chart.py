@@ -49,6 +49,10 @@ MONTH_NAMES = (
     "July", "August", "September", "October", "November", "December",
 )
 
+# Between a figure and its unit, a day and its month, a month and its year:
+# a narrow card breaks the line elsewhere, not into "1.3 / minutes".
+NBSP = "\u00a0"
+
 # At most this many labels under the bars; the rest are left out, evenly.
 MAX_LABELS = 8
 
@@ -222,7 +226,7 @@ def day_label(day: str) -> str:
     except (TypeError, ValueError):
         return str(day)
 
-    return f"{moment.day} {MONTHS[moment.month - 1]}"
+    return f"{moment.day}{NBSP}{MONTHS[moment.month - 1]}"
 
 
 def nice_ticks(highest: float, count: int = 4, whole: bool = False) -> list:
@@ -301,9 +305,9 @@ def amount(value, unit: str = "Minutes", decimals: int = 0) -> str:
     one = word[:-1] if word.endswith("s") else word
 
     if shown.startswith("<"):
-        return f"under {shown[1:]} {one}"
+        return f"under {shown[1:]}{NBSP}{one}"
 
-    return f"{shown} {one if shown == '1' else word}"
+    return f"{shown}{NBSP}{one if shown == '1' else word}"
 
 
 def month_name(day: str) -> str:
@@ -314,7 +318,7 @@ def month_name(day: str) -> str:
     except ValueError:
         return str(day)
 
-    return f"{MONTH_NAMES[moment.month - 1]} {moment.year}"
+    return f"{MONTH_NAMES[moment.month - 1]}{NBSP}{moment.year}"
 
 
 def figure(value: float) -> str:

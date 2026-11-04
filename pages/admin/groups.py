@@ -27,7 +27,7 @@ import httpx
 from nicegui import ui
 from utils.common import add_timezone_to_timestamp, page_init, reload_on_theme_change
 from utils.styles import default_styles
-from utils.bar_chart import amount, bar_chart, decimals_for, month_days, month_name, rounded
+from utils.bar_chart import NBSP, amount, bar_chart, decimals_for, month_days, month_name, rounded
 from utils.chart_tables import chart_section, head_html as chart_head, minutes_summary
 from utils.helpers import (
     groups_get,
@@ -385,7 +385,7 @@ async def statistics(group_id: str) -> None:
         job["created_at"] = add_timezone_to_timestamp(job["created_at"])
 
     def files(count) -> str:
-        return f"{count} file" if count == 1 else f"{count} files"
+        return f"{count}{NBSP}file" if count == 1 else f"{count}{NBSP}files"
 
     # The months by name, from the days the figures are for (or today):
     # "this month" says less in a list of headings, and nothing once the
@@ -416,20 +416,20 @@ async def statistics(group_id: str) -> None:
     with ui.element("div").classes("stats-container w-full"):
         with ui.element("div").classes("stats-card w-full"):
             ui.label(f"Number of users: {total_users}").classes(
-                "text-lg text-theme-secondary"
+                "stats-line text-lg text-theme-secondary"
             )
             ui.label(
                 f"Transcribed files in {this_name}: {files(result.get('transcribed_files', 0))}"
-            ).classes("text-lg text-theme-secondary")
+            ).classes("stats-line text-lg text-theme-secondary")
             ui.label(
                 f"Transcribed files in {previous_name}: {files(result.get('transcribed_files_last_month', 0))}"
-            ).classes("text-lg text-theme-secondary")
+            ).classes("stats-line text-lg text-theme-secondary")
             ui.label(
                 f"Transcribed minutes in {this_name}: {minutes_of(result.get('total_transcribed_minutes', 0))}"
-            ).classes("text-lg text-theme-secondary")
+            ).classes("stats-line text-lg text-theme-secondary")
             ui.label(
                 f"Transcribed minutes in {previous_name}: {minutes_of(result.get('total_transcribed_minutes_last_month', 0))}"
-            ).classes("text-lg text-theme-secondary")
+            ).classes("stats-line text-lg text-theme-secondary")
 
         # Each chart is a heading, a sentence, the chart as a picture and
         # the same numbers as a table (utils/chart_tables.py): a chart alone
