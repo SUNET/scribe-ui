@@ -35,19 +35,34 @@ tested without a page.
 """
 
 import html
+import re
 from typing import Iterable, Sequence
 
 from nicegui import ui
 
-from utils.bar_chart import BAR_CHART_STYLES, amount, day_label
+from utils.bar_chart import BAR_CHART_STYLES, NBSP, amount, day_label
 
 CHART_STYLES = """
 <style>
-    /* Lines of about the same length when a heading or a sentence has to
-       break in a narrow card, not one word left on its own. */
-    .chart-heading,
-    .chart-summary {
-        text-wrap: balance;
+    /* A heading or a sentence that has to break in a narrow card breaks
+       between its phrases ("Transcribed minutes per day," / "November
+       2026"), the same way in every card; a phrase too long for the line
+       breaks inside itself. */
+    .chart-phrase {
+        display: inline-block;
+    }
+    /* On a phone the same breaks every time: "Transcribed minutes per
+       day," / "November 2026", and "1.3 minutes in all." / "Busiest day:
+       ...", fitting or not; the heading a step smaller, so its first
+       phrase is one line at 360px. */
+    @media (max-width: 600px) {
+        .chart-heading {
+            font-size: 1.125rem;
+        }
+        .chart-heading .chart-phrase,
+        .chart-summary .chart-sentence {
+            display: block;
+        }
     }
     /* The summary as cards, as the files are on /home on a phone (the
        jobs-card look): side by side as far as they fit, else one above
@@ -69,16 +84,23 @@ CHART_STYLES = """
         flex-direction: column;
         gap: 0.25rem;
     }
+    /* The figures are what the card is for, so in the page's body size
+       (the size of the sentences under the charts), not the small print
+       of a file's details. */
     .stats-tile-name {
+        font-size: 1.125rem;
         font-weight: 600;
+        color: var(--color-text-primary);
     }
     .stats-tile-meta {
-        font-size: 0.8rem;
-        color: var(--color-text-muted);
+        font-size: 1rem;
+        color: var(--color-text-secondary);
     }
-    /* Less room round the cards on a phone, where it is width they lack. */
+    /* Less room round the cards on a phone, where it is width they lack:
+       enough for "Transcribed minutes per day," on one line at 360px. */
     @media (max-width: 600px) {
-        .stats-card.stats-summary {
+        .stats-card.stats-summary,
+        .chart-container {
             padding: 1rem;
         }
     }
@@ -213,6 +235,29 @@ def data_table(
     )
 
 
+def phrased(text: str) -> str:
+    """
+    `text` as HTML, in sentences (split after a full stop and a space) of
+    phrases (split after a comma and a space), each phrase kept whole on a
+    line where it fits. On a phone each sentence of a chart's sentence, and
+    each phrase of its heading, has a line of its own (CHART_STYLES).
+    Escaped; read out as the words with spaces between.
+    """
+
+    def sentence(part: str) -> str:
+        return " ".join(
+            f'<span class="chart-phrase">{html.escape(phrase)}</span>'
+            for phrase in re.split(r"(?<=,)\s+", part)
+            if phrase
+        )
+
+    return " ".join(
+        f'<span class="chart-sentence">{sentence(part)}</span>'
+        for part in re.split(r"(?<=\.)\s+", text.strip())
+        if part
+    )
+
+
 def minutes_summary(per_day: dict, decimals: int = 0, so_far: bool = False) -> str:
     """
     Two short sentences about minutes per day: the total and the busiest
@@ -224,7 +269,8 @@ def minutes_summary(per_day: dict, decimals: int = 0, so_far: bool = False) -> s
     days = {day: minutes for day, minutes in per_day.items() if minutes and minutes > 0}
 
     if not days:
-        return "Nothing has been transcribed so far." if so_far else "Nothing was transcribed."
+        # "so far" kept together, or a narrow card leaves "far." on its own.
+        return "Nothing has been transcribed so\u00a0far." if so_far else "Nothing was transcribed."
 
     total = sum(days.values())
     busiest = max(days, key=lambda day: days[day])
@@ -233,7 +279,7 @@ def minutes_summary(per_day: dict, decimals: int = 0, so_far: bool = False) -> s
     # total is the sum of the days as they are, not of what is shown. On a
     # tie, the first of the days.
     return (
-        f"{amount(total, decimals=decimals)} {'so far' if so_far else 'in all'}. "
+        f"{amount(total, decimals=decimals)} {'so' + NBSP + 'far' if so_far else 'in' + NBSP + 'all'}. "
         f"Busiest day: {day_label(busiest)}, {amount(days[busiest], decimals=decimals)}."
     )
 
@@ -259,10 +305,10 @@ def chart_section(
     is drawn under them.
     """
 
-    ui.label(heading).classes("chart-heading text-xl font-semibold text-theme-primary").props(
-        f"role=heading aria-level={level}"
-    )
-    ui.label(summary).classes("chart-summary text-body1 text-theme-secondary")
+    ui.html(phrased(heading), sanitize=False).classes(
+        "chart-heading text-xl font-semibold text-theme-primary"
+    ).props(f"role=heading aria-level={level}")
+    ui.html(phrased(summary), sanitize=False).classes("chart-summary text-body1 text-theme-secondary")
 
     if empty:
         return

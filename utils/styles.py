@@ -1234,7 +1234,9 @@ theme_styles = """
         flex-direction: column;
         align-items: center;
         gap: 2rem;
-        padding: 2rem 1rem;
+        /* No room above: the title's own margin and the page's gap make
+           the same 2rem to the first card as between the cards. */
+        padding: 0 1rem 2rem;
     }
     .stats-card {
         width: 100%;

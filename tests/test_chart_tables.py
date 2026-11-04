@@ -110,14 +110,14 @@ class TestTheSentence:
             {"2026-10-01": 12.0, "2026-10-02": 0, "2026-10-03": 85.4}
         )
 
-        assert said == "97\u00a0minutes in all. Busiest day: 3\u00a0Oct, 85\u00a0minutes."
+        assert said == "97\u00a0minutes in\u00a0all. Busiest day: 3\u00a0Oct, 85\u00a0minutes."
 
     def test_one_day(self):
         assert module.minutes_summary({"2026-10-05": 1.33}) == (
-            "1\u00a0minute in all. Busiest day: 5\u00a0Oct, 1\u00a0minute."
+            "1\u00a0minute in\u00a0all. Busiest day: 5\u00a0Oct, 1\u00a0minute."
         )
         assert module.minutes_summary({"2026-10-05": 1.33}, decimals=1) == (
-            "1.3\u00a0minutes in all. Busiest day: 5\u00a0Oct, 1.3\u00a0minutes."
+            "1.3\u00a0minutes in\u00a0all. Busiest day: 5\u00a0Oct, 1.3\u00a0minutes."
         )
 
     def test_the_total_is_the_sum_of_the_days_as_they_are(self):
@@ -125,7 +125,7 @@ class TestTheSentence:
 
         said = module.minutes_summary({"2026-10-01": 24.4, "2026-10-02": 0.4, "2026-10-03": 0.4})
 
-        assert said == "25\u00a0minutes in all. Busiest day: 1\u00a0Oct, 24\u00a0minutes."
+        assert said == "25\u00a0minutes in\u00a0all. Busiest day: 1\u00a0Oct, 24\u00a0minutes."
 
     def test_not_how_many_days(self):
         said = module.minutes_summary({"2026-10-01": 5, "2026-10-02": 6})
@@ -140,8 +140,8 @@ class TestTheSentence:
     def test_a_month_under_way_is_so_far(self):
         said = module.minutes_summary({"2026-11-01": 20, "2026-11-03": 37.2}, so_far=True)
 
-        assert said == "57\u00a0minutes so far. Busiest day: 3\u00a0Nov, 37\u00a0minutes."
-        assert module.minutes_summary({}, so_far=True) == "Nothing has been transcribed so far."
+        assert said == "57\u00a0minutes so\u00a0far. Busiest day: 3\u00a0Nov, 37\u00a0minutes."
+        assert module.minutes_summary({}, so_far=True) == "Nothing has been transcribed so\u00a0far."
 
     def test_the_page_says_so_far_for_this_month_only(self):
         assert "(per_day, this_month, this_name, True)" in GROUPS
@@ -201,7 +201,7 @@ class TestTheSection:
 
         module.chart_section(
             "Minutes per day",
-            "97\u00a0minutes in all.",
+            "97\u00a0minutes in\u00a0all.",
             go.Figure(data=[go.Bar(x=["a"], y=[1])]),
             table_summary="Show as a table",
             caption="Minutes per day",
@@ -210,15 +210,49 @@ class TestTheSection:
             numeric=(1,),
         )
 
-        assert [e.kind for e in made] == ["label", "label", "element", "plotly", "html"]
+        assert [e.kind for e in made] == ["html", "html", "element", "plotly", "html"]
         heading, sentence, wrapper, chart, table = made
-        assert heading.args == ("Minutes per day",)
+        assert heading.args == ('<span class="chart-sentence"><span class="chart-phrase">Minutes per day</span></span>',)
         assert heading.given["props"] == "role=heading aria-level=2"
-        assert sentence.args == ("97\u00a0minutes in all.",)
+        assert sentence.args == (
+            '<span class="chart-sentence"><span class="chart-phrase">97\u00a0minutes in\u00a0all.</span></span>',
+        )
+        assert heading.kwargs == sentence.kwargs == {"sanitize": False}
         assert wrapper.given["props"] == 'aria-hidden="true"'
         assert chart.args[0]["config"]["staticPlot"] is True
         assert table.kwargs == {"sanitize": False}
         assert "<caption>Minutes per day</caption>" in table.args[0]
+
+
+class TestPhrases:
+    """A heading or a sentence breaks between its phrases in a narrow card."""
+
+    def test_sentences_of_phrases(self):
+        assert module.phrased("Transcribed minutes per day, November\u00a02026") == (
+            '<span class="chart-sentence">'
+            '<span class="chart-phrase">Transcribed minutes per day,</span> '
+            '<span class="chart-phrase">November\u00a02026</span>'
+            "</span>"
+        )
+        said = module.phrased("1.3\u00a0minutes in\u00a0all. Busiest day: 15\u00a0Oct, 1.3\u00a0minutes.")
+        assert said.count("chart-sentence") == 2
+        assert said.count("chart-phrase") == 3
+
+    def test_not_inside_a_figure(self):
+        assert module.phrased("1.3 minutes").count("chart-phrase") == 1
+
+    def test_escaped(self):
+        assert "<b>" not in module.phrased("<b>, x")
+
+    def test_read_out_as_the_words_with_spaces_between(self):
+        assert re.sub(r"<[^>]+>", "", module.phrased("a, b. c")) == "a, b. c"
+
+    def test_on_a_phone_the_same_breaks_every_time(self):
+        rule = module.CHART_STYLES[module.CHART_STYLES.index("@media (max-width: 600px)") :]
+        rule = rule[: rule.index("</style>")]
+
+        assert ".chart-heading .chart-phrase,\n        .chart-summary .chart-sentence {\n            display: block;" in rule
+        assert ".chart-heading {\n            font-size: 1.125rem;" in rule
 
 
 class TestAnEmptyChart:
@@ -248,7 +282,7 @@ class TestAnEmptyChart:
             table_summary="x", caption="x", headers=("Date", "Minutes"), rows=[], empty=True,
         )
 
-        assert made == ["label", "label"]
+        assert made == ["html", "html"]
 
     def test_the_page_says_when_a_month_is_empty(self):
         assert "empty=not any(value and value > 0 for value in minutes.values())" in GROUPS
@@ -295,9 +329,10 @@ class TestTheGroupStatisticsPage:
             assert label in stats, label
 
     def test_headings_sentences_and_the_cards_lines_break_in_balance(self):
-        assert ".chart-heading,\n    .chart-summary {\n        text-wrap: balance;" in module.CHART_STYLES
-        assert 'ui.label(heading).classes("chart-heading ' in (ROOT / "utils" / "chart_tables.py").read_text()
-        assert 'ui.label(summary).classes("chart-summary ' in (ROOT / "utils" / "chart_tables.py").read_text()
+        assert ".chart-phrase {\n        display: inline-block;" in module.CHART_STYLES
+        source = (ROOT / "utils" / "chart_tables.py").read_text()
+        assert 'ui.html(phrased(heading), sanitize=False).classes(\n        "chart-heading ' in source
+        assert 'ui.html(phrased(summary), sanitize=False).classes("chart-summary ' in source
         stats = GROUPS[GROUPS.index("async def statistics") :]
         stats = stats[: stats.index("\ndef create(")]
         assert 'f"{count}{NBSP}files"' in stats
@@ -312,7 +347,21 @@ class TestTheGroupStatisticsPage:
         assert "Number of users" not in stats and "Transcribed files in" not in stats
         assert "list-style: none;" in module.CHART_STYLES
         assert "grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));" in module.CHART_STYLES
-        assert "color: var(--color-text-muted);" in module.CHART_STYLES
+        # The figures in the body size, the name a step above it.
+        assert ".stats-tile-name {\n        font-size: 1.125rem;" in module.CHART_STYLES
+        assert ".stats-tile-meta {\n        font-size: 1rem;" in module.CHART_STYLES
+
+    def test_less_room_round_the_cards_on_a_phone(self):
+        rule = module.CHART_STYLES[module.CHART_STYLES.index("@media (max-width: 600px)") :]
+
+        assert ".stats-card.stats-summary,\n        .chart-container {\n            padding: 1rem;" in rule
+
+    def test_the_same_room_under_the_title_as_between_the_cards(self):
+        styles = (ROOT / "utils" / "styles.py").read_text()
+        rule = styles[styles.index("    .stats-container {") :]
+        rule = rule[: rule.index("}")]
+
+        assert "gap: 2rem;" in rule and "padding: 0 1rem 2rem;" in rule
 
     def test_one_precision_for_the_page(self):
         stats = GROUPS[GROUPS.index("async def statistics") :]
