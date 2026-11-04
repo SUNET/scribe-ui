@@ -27,7 +27,7 @@ import plotly.graph_objects as go
 import pytest
 
 import utils.chart_tables as module
-from utils.styles import chart_colors
+from utils.bar_chart import BAR_CHART_STYLES
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 GROUPS = (ROOT / "pages" / "admin" / "groups.py").read_text()
@@ -54,9 +54,9 @@ class TestTheChartIsAPicture:
         section = source[source.index("def chart_section") :]
 
         wrapper = section.index('.props(\'aria-hidden="true"\')')
-        chart = section.index("ui.plotly(static_chart(figure))")
 
-        assert wrapper < chart
+        assert wrapper < section.index("ui.plotly(static_chart(figure))")
+        assert wrapper < section.index("ui.html(figure, sanitize=False)")
 
 
 class TestTheNumbersAreATable:
@@ -110,11 +110,11 @@ class TestTheSentence:
             {"2026-10-01": 12.0, "2026-10-02": 0, "2026-10-03": 85.4}
         )
 
-        assert said == "97.4 minutes in all, on 2 days. The most on 2026-10-03: 85.4 minutes."
+        assert said == "97.4 minutes in all, on 2 days. The most on 3 Oct: 85.4 minutes."
 
     def test_one_day(self):
         assert module.minutes_summary({"2026-10-05": 7}) == (
-            "7.0 minutes in all, on 1 day. The most on 2026-10-05: 7.0 minutes."
+            "7.0 minutes in all, on 1 day. The most on 5 Oct: 7.0 minutes."
         )
 
     def test_the_total_in_the_same_figures_as_the_day(self):
@@ -227,7 +227,6 @@ class TestAnEmptyChart:
 
     def test_the_page_says_when_a_month_is_empty(self):
         assert "empty=not any(value and value > 0 for value in minutes.values())" in GROUPS
-        assert 'yaxis=dict(rangemode="nonnegative")' in GROUPS
 
 
 class TestTheGroupStatisticsPage:
@@ -238,8 +237,13 @@ class TestTheGroupStatisticsPage:
         assert "ui.plotly(" not in GROUPS
         assert "ui.add_head_html(chart_head())" in GROUPS
 
-    def test_the_days_are_labels_not_hours(self):
-        assert 'xaxis=dict(type="category")' in GROUPS
+    def test_the_charts_are_drawn_by_the_page_not_plotly(self):
+        assert "bar_chart(" in GROUPS
+        assert "import plotly" not in GROUPS and "ui.plotly(" not in GROUPS
+        # In the theme's own colours, so no reload on a change of theme.
+        stats = GROUPS[GROUPS.index("async def statistics") :]
+        stats = stats[: stats.index("\ndef create(")]
+        assert "reload_on_theme_change()" not in stats
 
     def test_no_hover_text_and_no_title_inside_the_picture(self):
         assert "hovertemplate" not in GROUPS
@@ -269,13 +273,29 @@ def contrast(first: str, second: str) -> float:
 
 
 class TestTheBarsCanBeSeen:
-    """1.4.11: the bars against the card they are drawn on."""
+    """1.4.11: the bars against the card they are drawn on, in both themes."""
 
-    @pytest.mark.parametrize("bar", ["bar_current", "bar_previous"])
-    def test_light(self, bar):
-        assert contrast(chart_colors["light"][bar], "#ffffff") >= 3
+    def token(self, name, dark=False):
+        styles = (ROOT / "utils" / "styles.py").read_text()
+        values = re.findall(rf"{name}: (#[0-9a-f]{{6}});", styles)
 
-    @pytest.mark.parametrize("bar", ["bar_current", "bar_previous"])
-    def test_dark(self, bar):
-        for surface in ("#16181d", "#000000"):
-            assert contrast(chart_colors["dark"][bar], surface) >= 3
+        return values[1] if dark else values[0]
+
+    def own(self, name, dark=False):
+        rule = BAR_CHART_STYLES.split(".body--dark .bar-chart {")[1 if dark else 0]
+
+        return re.search(rf"{name}: (#[0-9a-f]{{6}});", rule).group(1)
+
+    def test_this_months_bars(self):
+        assert "--chart-bar: var(--color-brand-primary);" in BAR_CHART_STYLES
+        assert contrast(self.token("--color-brand-primary"), "#ffffff") >= 3
+        assert contrast(self.token("--color-brand-primary", dark=True), "#16181d") >= 3
+
+    def test_the_second_series(self):
+        assert contrast(self.own("--chart-bar-previous"), "#ffffff") >= 3
+        assert contrast(self.own("--chart-bar-previous", dark=True), "#16181d") >= 3
+
+    def test_the_labels(self):
+        assert "color: var(--color-text-tertiary);" in BAR_CHART_STYLES
+        assert contrast(self.token("--color-text-tertiary"), "#ffffff") >= 4.5
+        assert contrast(self.token("--color-text-tertiary", dark=True), "#16181d") >= 4.5

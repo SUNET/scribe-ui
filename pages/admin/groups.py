@@ -20,14 +20,15 @@
 Groups: the admin landing page, group editing and per-group statistics.
 """
 
-import plotly.graph_objects as go
 import httpx
 
 
-from nicegui import app, ui
+from nicegui import ui
 from utils.common import add_timezone_to_timestamp, page_init, reload_on_theme_change
-from utils.styles import default_styles, chart_colors
+from utils.styles import default_styles
+from utils.bar_chart import bar_chart
 from utils.chart_tables import chart_section, head_html as chart_head, minutes_summary
+from utils.statistics_export import statistics_csv, statistics_filename
 from utils.helpers import (
     groups_get,
     save_group,
@@ -352,10 +353,8 @@ async def statistics(group_id: str) -> None:
     Page to show statistics of a group with improved layout and design.
     """
     user_data = await page_init(use_drawer=True, title="Group statistics")
-    # Plotly draws its charts in one theme's colours server-side and
-    # cannot restyle itself, so this page reloads when the OS theme
-    # changes. Only pages with charts do -- see reload_on_theme_change.
-    reload_on_theme_change()
+    # The charts are drawn by the page in the theme's own custom properties
+    # (utils/bar_chart.py), so a change of theme needs no reload here.
 
     if not (user_data or {}).get("admin"):
         ui.navigate.to("/home")
@@ -363,22 +362,6 @@ async def statistics(group_id: str) -> None:
 
     ui.add_head_html(default_styles)
     ui.add_head_html(chart_head())
-
-    # Detect resolved dark mode (handles auto mode with OS preference)
-    dark_pref = app.storage.user.get("dark_mode", None)
-    if dark_pref is None:
-        try:
-            await ui.context.client.connected()
-            prefers_dark = await ui.run_javascript(
-                "window.matchMedia('(prefers-color-scheme: dark)').matches",
-                timeout=5.0,
-            )
-            app.storage.user["_resolved_dark"] = bool(prefers_dark)
-        except (TimeoutError, Exception):
-            pass
-
-    is_dark = app.storage.user.get("_resolved_dark", False)
-    cc = chart_colors["dark" if is_dark else "light"]
 
     stats = user_statistics_get(group_id=group_id)
 
@@ -421,14 +404,34 @@ async def statistics(group_id: str) -> None:
                 f"Transcribed minutes last month: {result.get('total_transcribed_minutes_last_month', 0):.0f} minutes"
             ).classes("text-lg text-theme-secondary")
 
+            # One CSV of what the page shows. Minutes per user are personal
+            # data and only go in when asked for: unticked every time.
+            with ui.row().classes("items-center justify-center gap-4 mt-4 flex-wrap"):
+                include_users = ui.checkbox(
+                    "Include minutes per user (user names)", value=False
+                ).props("dense")
+                include_users.set_visibility(bool(per_user))
+
+                def export_statistics() -> None:
+                    ui.download(
+                        statistics_csv(
+                            result, include_users=bool(include_users.value)
+                        ).encode("utf-8"),
+                        filename=statistics_filename(group_id),
+                        media_type="text/csv",
+                    )
+
+                ui.button(
+                    "Export as CSV", icon="download", on_click=export_statistics
+                ).props("flat color=white").classes("button-default-style")
+
         # Each chart is a heading, a sentence, the chart as a picture and
         # the same numbers as a table (utils/chart_tables.py): a chart alone
         # cannot be read without seeing it, nor its details without a mouse.
-        for minutes, colour, heading, month in (
-            (per_day, cc["bar_current"], "Transcribed minutes per day, this month", "this month"),
+        for minutes, heading, month in (
+            (per_day, "Transcribed minutes per day, this month", "this month"),
             (
                 per_day_previous_month,
-                cc["bar_previous"],
                 "Transcribed minutes per day, previous month",
                 "the previous month",
             ),
@@ -436,34 +439,14 @@ async def statistics(group_id: str) -> None:
             if not minutes:
                 continue
 
-            fig = go.Figure(
-                data=[
-                    go.Bar(
-                        x=list(minutes.keys()),
-                        y=list(minutes.values()),
-                        marker=dict(color=colour, line=dict(width=0)),
-                    )
-                ]
-            )
-            fig.update_layout(
-                xaxis_title="Date",
-                yaxis_title="Minutes",
-                # One label per day, as the table has them: read as dates,
-                # the axis was marked in hours ("12:00 Oct 31").
-                xaxis=dict(type="category"),
-                # Minutes are never below nothing; a month of noughts was
-                # drawn from -1 to 1.
-                yaxis=dict(rangemode="nonnegative"),
-                template="plotly_dark" if is_dark else "plotly_white",
-                margin=dict(l=40, r=20, t=20, b=40),
-                height=360,
-            )
-
             with ui.element("div").classes("chart-container"):
                 chart_section(
                     heading,
                     minutes_summary(minutes),
-                    fig,
+                    bar_chart(
+                        list(minutes.keys()),
+                        [{"name": heading, "values": list(minutes.values())}],
+                    ),
                     table_summary=f"Show the minutes per day for {month} as a table",
                     caption=heading,
                     headers=("Date", "Minutes"),

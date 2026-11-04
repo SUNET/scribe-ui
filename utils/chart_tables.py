@@ -39,6 +39,8 @@ from typing import Iterable, Sequence
 
 from nicegui import ui
 
+from utils.bar_chart import BAR_CHART_STYLES, day_label
+
 CHART_STYLES = """
 <style>
     .chart-data {
@@ -191,7 +193,7 @@ def minutes_summary(per_day: dict) -> str:
     # to "1.3 minutes" for the same one day.
     return (
         f"{total:.1f} minutes in all, on {len(days)} {noun}. "
-        f"The most on {busiest}: {days[busiest]:.1f} minutes."
+        f"The most on {day_label(busiest)}: {days[busiest]:.1f} minutes."
     )
 
 
@@ -224,8 +226,12 @@ def chart_section(
     if empty:
         return
 
+    # A chart drawn by the page (utils/bar_chart.py, HTML) or a Plotly figure.
     with ui.element("div").classes("w-full").props('aria-hidden="true"'):
-        ui.plotly(static_chart(figure)).classes("w-full")
+        if isinstance(figure, str):
+            ui.html(figure, sanitize=False).classes("w-full")
+        else:
+            ui.plotly(static_chart(figure)).classes("w-full")
 
     ui.html(
         data_table(table_summary, caption, headers, rows, numeric), sanitize=False
@@ -235,4 +241,4 @@ def chart_section(
 def head_html() -> str:
     """The styles, for the head of a page with chart sections."""
 
-    return CHART_STYLES
+    return CHART_STYLES + BAR_CHART_STYLES
