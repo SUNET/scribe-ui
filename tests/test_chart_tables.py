@@ -245,6 +245,18 @@ class TestTheGroupStatisticsPage:
         stats = stats[: stats.index("\ndef create(")]
         assert "reload_on_theme_change()" not in stats
 
+    def test_both_months_whole_and_on_one_scale(self):
+        stats = GROUPS[GROUPS.index("async def statistics") :]
+        stats = stats[: stats.index("\ndef create(")]
+
+        assert stats.count("month_days(") == 1 and "highest=highest" in stats
+        assert "per_day_previous_month" in stats[stats.index("highest = max(") :][:200]
+        # An empty month is still shown, as its heading and a sentence.
+        assert "if not minutes:" not in stats
+
+    def test_nothing_on_the_page_exports_user_names_for_now(self):
+        assert "ui.download(" not in GROUPS and "csv" not in GROUPS.lower()
+
     def test_no_hover_text_and_no_title_inside_the_picture(self):
         assert "hovertemplate" not in GROUPS
         assert "title=\"Transcribed" not in GROUPS

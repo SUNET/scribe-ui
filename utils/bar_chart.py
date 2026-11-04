@@ -33,10 +33,11 @@ value in a title attribute, which the browser shows as its own tooltip under a
 pointer: a convenience, the same figures as the table.
 """
 
+import calendar
 import html
 import math
 from datetime import date
-from typing import Optional, Sequence
+from typing import Iterable, Optional, Sequence
 
 MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
@@ -225,22 +226,49 @@ def figure(value: float) -> str:
     return f"{value:.0f}" if float(value).is_integer() else f"{value:.1f}"
 
 
+def month_days(days: Iterable[str], fallback: date) -> list:
+    """
+    Every day of the month that `days` are in ("2026-11-01" to "2026-11-30"),
+    or of `fallback`'s month when there are none: a chart of a month is the
+    whole month, so two months are drawn to the same width and a day so far
+    this month is where it will be at the end of it. Days that are not dates
+    are given back as they are.
+    """
+
+    days = list(days)
+    parsed = []
+
+    for day in days:
+        try:
+            parsed.append(date.fromisoformat(str(day)))
+        except ValueError:
+            return days
+
+    first = (parsed[0] if parsed else fallback).replace(day=1)
+    length = calendar.monthrange(first.year, first.month)[1]
+
+    return [first.replace(day=n).isoformat() for n in range(1, length + 1)]
+
+
 def bar_chart(
     labels: Sequence[str],
     series: Sequence[dict],
     unit: str = "Minutes",
     legend: bool = False,
     label_every: Optional[int] = None,
+    highest: Optional[float] = None,
 ) -> str:
     """
     A bar chart as HTML. `labels` are the slots along the bottom (dates are
     shown as "15 Oct"); `series` is one or more {"name", "values", "tone"}
     ("current" or "previous"), drawn side by side in each slot. A value of
-    nothing draws no bar. Each slot's tooltip gives its values.
+    nothing (None) draws no bar and no tooltip -- a day still to come; a
+    nought draws no bar but says so. Each slot's tooltip gives its values.
+    `highest` puts the scale at least that high, so two charts read alike.
     """
 
     values = [value or 0 for one in series for value in one["values"]]
-    ticks = nice_ticks(max(values, default=0))
+    ticks = nice_ticks(max(values + [highest or 0]))
     top = ticks[-1] or 1
     every = label_every or max(1, math.ceil(len(labels) / MAX_LABELS))
 
@@ -264,8 +292,13 @@ def bar_chart(
             + f"{figure(value or 0)} {unit.lower()}"
             for one, value in shown
         )
+        title = (
+            ""
+            if all(value is None for _, value in shown)
+            else f' title="{html.escape(day_label(label) + ": " + tip, quote=True)}"'
+        )
         slots.append(
-            f'<div class="bar-chart-slot" title="{html.escape(day_label(label) + ": " + tip, quote=True)}">'
+            f'<div class="bar-chart-slot"{title}>'
             + "".join(bar(value, one.get("tone", "current")) for one, value in shown)
             + "</div>"
         )

@@ -20,15 +20,15 @@
 Groups: the admin landing page, group editing and per-group statistics.
 """
 
-import httpx
+from datetime import date, timedelta
 
+import httpx
 
 from nicegui import ui
 from utils.common import add_timezone_to_timestamp, page_init, reload_on_theme_change
 from utils.styles import default_styles
-from utils.bar_chart import bar_chart
+from utils.bar_chart import bar_chart, month_days
 from utils.chart_tables import chart_section, head_html as chart_head, minutes_summary
-from utils.statistics_export import statistics_csv, statistics_filename
 from utils.helpers import (
     groups_get,
     save_group,
@@ -404,48 +404,38 @@ async def statistics(group_id: str) -> None:
                 f"Transcribed minutes last month: {result.get('total_transcribed_minutes_last_month', 0):.0f} minutes"
             ).classes("text-lg text-theme-secondary")
 
-            # One CSV of what the page shows. Minutes per user are personal
-            # data and only go in when asked for: unticked every time.
-            with ui.row().classes("items-center justify-center gap-4 mt-4 flex-wrap"):
-                include_users = ui.checkbox(
-                    "Include minutes per user (user names)", value=False
-                ).props("dense")
-                include_users.set_visibility(bool(per_user))
-
-                def export_statistics() -> None:
-                    ui.download(
-                        statistics_csv(
-                            result, include_users=bool(include_users.value)
-                        ).encode("utf-8"),
-                        filename=statistics_filename(group_id),
-                        media_type="text/csv",
-                    )
-
-                ui.button(
-                    "Export as CSV", icon="download", on_click=export_statistics
-                ).props("flat color=white").classes("button-default-style")
-
         # Each chart is a heading, a sentence, the chart as a picture and
         # the same numbers as a table (utils/chart_tables.py): a chart alone
         # cannot be read without seeing it, nor its details without a mouse.
-        for minutes, heading, month in (
-            (per_day, "Transcribed minutes per day, this month", "this month"),
+        #
+        # Both months whole, on one scale: two charts of different widths
+        # and ranges read as if the months were. Days still to come this
+        # month are empty slots; the table has the days there are.
+        today = date.today()
+        highest = max(
+            (value or 0 for days in (per_day, per_day_previous_month) for value in days.values()),
+            default=0,
+        )
+
+        for minutes, heading, month, fallback in (
+            (per_day, "Transcribed minutes per day, this month", "this month", today),
             (
                 per_day_previous_month,
                 "Transcribed minutes per day, previous month",
                 "the previous month",
+                today.replace(day=1) - timedelta(days=1),
             ),
         ):
-            if not minutes:
-                continue
+            days = month_days(minutes.keys(), fallback)
 
             with ui.element("div").classes("chart-container"):
                 chart_section(
                     heading,
                     minutes_summary(minutes),
                     bar_chart(
-                        list(minutes.keys()),
-                        [{"name": heading, "values": list(minutes.values())}],
+                        days,
+                        [{"name": heading, "values": [minutes.get(day) for day in days]}],
+                        highest=highest,
                     ),
                     table_summary=f"Show the minutes per day for {month} as a table",
                     caption=heading,

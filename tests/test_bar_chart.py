@@ -18,10 +18,18 @@
 """The page's own bar chart (utils/bar_chart.py)."""
 
 import re
+from datetime import date
 
 import pytest
 
-from utils.bar_chart import BAR_CHART_STYLES, bar_chart, day_label, figure, nice_ticks
+from utils.bar_chart import (
+    BAR_CHART_STYLES,
+    bar_chart,
+    day_label,
+    figure,
+    month_days,
+    nice_ticks,
+)
 
 
 def days(n, month="2026-10"):
@@ -114,6 +122,25 @@ class TestTheBars:
         assert 'title="1 Oct: 0 minutes"' in chart
         assert 'title="2 Oct: 1.3 minutes"' in chart
 
+    def test_a_day_still_to_come_has_no_tooltip_but_a_nought_says_so(self):
+        chart = bar_chart(days(3), [{"name": "x", "values": [0, 2, None]}])
+
+        assert 'title="1 Oct: 0 minutes"' in chart
+        assert 'title="2 Oct: 2 minutes"' in chart
+        assert "3 Oct:" not in chart
+        assert chart.count('<div class="bar-chart-slot">') == 1
+
+    def test_two_charts_on_one_scale(self):
+        small = bar_chart(days(2), [{"name": "x", "values": [10, 20]}], highest=75)
+
+        assert 'style="height: 26.667%"' in small  # 20 of 75
+        assert ">75</span>" in small
+
+    def test_the_scale_still_fits_a_value_above_highest(self):
+        chart = bar_chart(days(1), [{"name": "x", "values": [90]}], highest=10)
+
+        assert ">100</span>" in chart
+
     def test_two_series_side_by_side_named_in_the_tooltip(self):
         chart = bar_chart(
             ["1", "2"],
@@ -154,3 +181,34 @@ class TestTheLook:
 
         assert "forced-color-adjust: none;" in block
         assert "background: CanvasText;" in block
+
+
+class TestAWholeMonth:
+    """Both charts show their whole month, so they are drawn alike."""
+
+    def test_the_month_of_the_days_given(self):
+        whole = month_days(["2026-11-03", "2026-11-04"], date(2026, 1, 1))
+
+        assert whole[0] == "2026-11-01" and whole[-1] == "2026-11-30"
+        assert len(whole) == 30
+
+    def test_february_and_a_leap_year(self):
+        assert len(month_days(["2026-02-10"], date(2026, 1, 1))) == 28
+        assert len(month_days(["2028-02-10"], date(2026, 1, 1))) == 29
+
+    def test_no_days_is_the_fallbacks_month(self):
+        whole = month_days([], date(2026, 10, 9))
+
+        assert len(whole) == 31 and whole[0] == "2026-10-01"
+
+    def test_days_that_are_not_dates_are_left_as_they_are(self):
+        assert month_days(["week 1", "week 2"], date(2026, 1, 1)) == ["week 1", "week 2"]
+
+    def test_the_labels_of_a_30_and_a_31_day_month_fall_on_the_same_days(self):
+        def shown(n, month):
+            chart = bar_chart(days(n, month), [{"name": "x", "values": [1] * n}])
+            labels = chart.split('<div class="bar-chart-labels">')[1]
+
+            return re.findall(r"<span(?: class=\"is-minor\")?>(\d+) ", labels)
+
+        assert shown(30, "2026-11") == shown(31, "2026-10")
