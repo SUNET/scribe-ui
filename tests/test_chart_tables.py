@@ -127,6 +127,18 @@ class TestTheSentence:
 
         assert said == "25 minutes in all, on 3 days. The most on 1 Oct: 24 minutes."
 
+    def test_a_month_under_way_is_so_far(self):
+        said = module.minutes_summary({"2026-11-01": 20, "2026-11-03": 37.2}, so_far=True)
+
+        assert said == "57 minutes so far, on 2 days. The most on 3 Nov: 37 minutes."
+        assert module.minutes_summary({}, so_far=True) == "No minutes have been transcribed so far."
+
+    def test_the_page_says_so_far_for_this_month_only(self):
+        assert "(per_day, this_month, this_name, True)" in GROUPS
+        assert "(per_day_previous_month, previous_month, previous_name, False)" in GROUPS
+        assert "minutes_summary(minutes, decimals, so_far=under_way)" in GROUPS
+        assert "future_after=today.isoformat() if under_way else None" in GROUPS
+
     @pytest.mark.parametrize("per_day", [{}, {"2026-10-01": 0}, {"2026-10-01": None}])
     def test_nothing(self, per_day):
         assert module.minutes_summary(per_day) == "No minutes were transcribed."
@@ -236,8 +248,8 @@ class TestTheGroupStatisticsPage:
     def test_both_charts_are_sections(self):
         assert "chart_section(" in GROUPS
         assert 'heading = f"Transcribed minutes per day, {name}"' in GROUPS
-        assert "(per_day, this_month, this_name)" in GROUPS
-        assert "(per_day_previous_month, previous_month, previous_name)" in GROUPS
+        assert "(per_day, this_month, this_name, True)" in GROUPS
+        assert "(per_day_previous_month, previous_month, previous_name, False)" in GROUPS
         assert "ui.plotly(" not in GROUPS
         assert "ui.add_head_html(chart_head())" in GROUPS
 

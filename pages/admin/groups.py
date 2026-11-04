@@ -437,27 +437,30 @@ async def statistics(group_id: str) -> None:
         #
         # Both months whole, on one scale: two charts of different widths
         # and ranges read as if the months were. Days still to come this
-        # month are empty slots; the table has the days there are.
+        # month are toned, with an edge where they begin; the table has the
+        # days there are.
         highest = max(
             (value or 0 for days in (per_day, per_day_previous_month) for value in days.values()),
             default=0,
         )
 
-        for minutes, days, name in (
-            (per_day, this_month, this_name),
-            (per_day_previous_month, previous_month, previous_name),
+        for minutes, days, name, under_way in (
+            (per_day, this_month, this_name, True),
+            (per_day_previous_month, previous_month, previous_name, False),
         ):
             heading = f"Transcribed minutes per day, {name}"
 
             with ui.element("div").classes("chart-container"):
                 chart_section(
                     heading,
-                    minutes_summary(minutes, decimals),
+                    minutes_summary(minutes, decimals, so_far=under_way),
                     bar_chart(
                         days,
                         [{"name": heading, "values": [minutes.get(day) for day in days]}],
                         highest=highest,
                         decimals=decimals,
+                        # The days still to come, toned, this month only.
+                        future_after=today.isoformat() if under_way else None,
                     ),
                     table_summary=f"Show the minutes per day for {name} as a table",
                     caption=heading,

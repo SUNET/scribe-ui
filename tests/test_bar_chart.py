@@ -285,3 +285,33 @@ class TestHowMinutesAreShown:
         assert month_name("2026-11-03") == "November 2026"
         assert month_name("2027-01-01") == "January 2027"
         assert month_name("next") == "next"
+
+
+class TestTheDaysToCome:
+    """This month's days after today are toned, with an edge where they begin."""
+
+    def chart(self, **kwargs):
+        return bar_chart(days(5, "2026-11"), [{"name": "x", "values": [3, 4, 5, None, None]}], **kwargs)
+
+    def test_after_today_only(self):
+        chart = self.chart(future_after="2026-11-03")
+
+        assert chart.count("is-future") == 2
+        assert chart.count("is-first-future") == 1
+        slots = chart.split('<div class="bar-chart-slot')[1:]
+        assert "is-first-future" in slots[3] and "is-future" not in slots[2]
+
+    def test_today_itself_is_not_to_come(self):
+        assert self.chart(future_after="2026-11-05").count("is-future") == 0
+
+    def test_a_whole_month_has_none(self):
+        assert "is-future" not in self.chart()
+
+    def test_the_tone_and_the_edge_in_both_themes(self):
+        light = BAR_CHART_STYLES.split(".body--dark .bar-chart {")[0]
+        dark = BAR_CHART_STYLES.split(".body--dark .bar-chart {")[1].split("}")[0]
+
+        assert "--chart-future: rgba(15, 23, 42, 0.065);" in light
+        assert "--chart-future: rgba(255, 255, 255, 0.065);" in dark
+        assert "border-left: 1px dashed var(--chart-future-edge);" in BAR_CHART_STYLES
+        assert "--chart-future-edge: var(--color-text-secondary);" in BAR_CHART_STYLES

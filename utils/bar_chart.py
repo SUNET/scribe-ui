@@ -58,6 +58,11 @@ BAR_CHART_STYLES = """
         --chart-bar: var(--color-brand-primary);
         --chart-bar-previous: #6d8fb8;
         --chart-grid: #e5e7eb;
+        /* The days still to come: a tone over them, and an edge where they
+           begin. The tone is a help only (it is under 3:1); the sentence
+           says "so far" for a month under way. */
+        --chart-future: rgba(15, 23, 42, 0.065);
+        --chart-future-edge: var(--color-text-secondary);
         --chart-height: 13rem;
         font-family: var(--font-sans);
         font-size: 0.8125rem;
@@ -75,6 +80,7 @@ BAR_CHART_STYLES = """
     .body--dark .bar-chart {
         --chart-bar-previous: #c7ccd3;
         --chart-grid: #2c313a;
+        --chart-future: rgba(255, 255, 255, 0.065);
     }
     .bar-chart-unit {
         grid-column: 1 / 3;
@@ -128,6 +134,22 @@ BAR_CHART_STYLES = """
     }
     .bar-chart-slot:hover .bar-chart-bar {
         filter: brightness(1.2);
+    }
+    /* Over the gaps between the slots too, so the tone is one piece. */
+    .bar-chart-slot.is-future {
+        background: var(--chart-future);
+        box-shadow: -1px 0 0 var(--chart-future), 1px 0 0 var(--chart-future);
+    }
+    .bar-chart-slot.is-future.is-first-future {
+        box-shadow: 1px 0 0 var(--chart-future);
+    }
+    .bar-chart-slot.is-first-future::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: -1px;
+        border-left: 1px dashed var(--chart-future-edge);
     }
     /* Two series side by side are told apart by more than colour (1.4.1):
        the second is striped. */
@@ -333,6 +355,7 @@ def bar_chart(
     label_every: Optional[int] = None,
     highest: Optional[float] = None,
     decimals: int = 0,
+    future_after: Optional[str] = None,
 ) -> str:
     """
     A bar chart as HTML. `labels` are the slots along the bottom (dates are
@@ -342,6 +365,8 @@ def bar_chart(
     nought draws no bar but says so. Each slot's tooltip gives its values.
     `highest` puts the scale at least that high, so two charts read alike;
     `decimals` is how the tooltips show the figures (decimals_for()).
+    `future_after` is today, as "2026-11-04": the days after it are toned,
+    with an edge where they begin (labels compared as ISO dates).
     """
 
     values = [value or 0 for one in series for value in one["values"]]
@@ -359,6 +384,7 @@ def bar_chart(
         return f'<span class="bar-chart-bar{previous}" style="height: {height}%"></span>'
 
     slots = []
+    first_future = True
 
     for at, label in enumerate(labels):
         shown = [
@@ -374,8 +400,14 @@ def bar_chart(
             if all(value is None for _, value in shown)
             else f' title="{html.escape(day_label(label) + ": " + tip, quote=True)}"'
         )
+        future = ""
+
+        if future_after and str(label) > future_after:
+            future = " is-future" + (" is-first-future" if first_future else "")
+            first_future = False
+
         slots.append(
-            f'<div class="bar-chart-slot"{title}>'
+            f'<div class="bar-chart-slot{future}"{title}>'
             + "".join(bar(value, one.get("tone", "current")) for one, value in shown)
             + "</div>"
         )
