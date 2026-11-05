@@ -15,9 +15,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from datetime import date, timedelta
+
 import httpx
 
 from nicegui import ui
+from utils.bar_chart import NBSP, amount, month_name
+from utils.chart_tables import summary_cards
+from utils.helpers import MINUTES_PER_BLOCK
 from utils.settings import get_settings
 from utils.token import get_auth_header
 
@@ -69,126 +74,214 @@ class Customer:
     def edit_customer(self) -> None:
         ui.navigate.to(f"/admin/customers/edit/{self.customer_id}")
 
-    def create_card(self):
-        with ui.card().classes("my-2 admin-card").style(
-            "width: 100%; box-shadow: none; border: 1px solid var(--color-border-subtle); padding: 16px;"
-        ):
-            with ui.row().style(
-                "justify-content: space-between; align-items: center; width: 100%;"
-            ):
-                with ui.column().style("flex: 0 0 auto; min-width: 25%;"):
-                    customer_name = f"{self.name}"
+    # Over this many characters the notes are cut to three lines on the
+    # card, with a button to show them whole.
+    LONG_NOTES = 120
 
-                    if self.customer_abbr:
-                        customer_name += f" ({self.customer_abbr})"
+    def create_card(self) -> None:
+        """
+        The customer as a card, in the Groups page's layout (utils/styles.py,
+        .group-card): the name as a heading, the plan and the short facts in
+        one line, the longer ones (contact, realms, Drive, Kaltura) as a list,
+        the notes cut when long; this month and the one before as summary
+        cards, months by name; and Edit / Delete in a column of their own,
+        each named for its customer. Realm admins, who see their own account
+        only, get no actions, and the card does without their column.
+        """
 
-                    ui.label(customer_name).classes("text-h5 font-bold")
+        today = date.today()
+        this_first = today.replace(day=1)
+        previous_first = (this_first - timedelta(days=1)).replace(day=1)
+        kaltura = self.partner_id not in ("N/A", "")
+        fixed = self.priceplan == "fixed"
+        users = self.stats.get("total_users", 0)
 
-                    if self.partner_id != "N/A" and self.partner_id != "":
-                        ui.label(f"Kaltura Partner ID: {self.partner_id}").classes(
-                            "text-md"
-                        )
-                    if self.drive_enabled:
-                        drive = self.drive_display_name or "Sunet Drive"
-                        where = self.drive_url or "no instance set, so not offered"
-                        ui.label(f"{drive}: {where}").classes("text-md")
-                    ui.label(f"Plan: {self.priceplan.capitalize()}").classes(
-                        "text-sm text-theme-muted"
-                    )
-                    if self.priceplan == "fixed":
-                        ui.label(
-                            f"Blocks: {self.blocks_purchased} ({self.blocks_purchased * 4000} minutes)"
-                        ).classes("text-sm text-theme-muted")
-                    ui.label(f"Base fee: {self.base_fee}").classes(
-                        "text-sm text-theme-muted"
-                    )
-                    if self.contact_email:
-                        ui.label(f"Contact: {self.contact_email}").classes(
-                            "text-sm text-theme-muted"
-                        )
-                    ui.label(f"Realms: {self.realms}").classes("text-sm text-theme-muted")
-                    ui.label(
-                        f"Total users: {self.stats.get('total_users', 0)}"
-                    ).classes("text-sm text-theme-muted")
+        def files(count) -> str:
+            return f"{count}{NBSP}file" if count == 1 else f"{count}{NBSP}files"
 
-                    ui.label(f"Created {self.created_at}").classes(
-                        "text-sm text-theme-muted"
-                    )
+        def month(files_key: str, minutes_key: str, scribe_key: str, play_key: str) -> list:
+            lines = [
+                f"{files(self.stats.get(files_key, 0))} transcribed",
+                amount(self.stats.get(minutes_key, 0)),
+            ]
+
+            if kaltura:
+                lines.append(
+                    f"{amount(self.stats.get(scribe_key, 0))} via Scribe, "
+                    f"{amount(self.stats.get(play_key, 0))} via Play"
+                )
+
+            return lines
+
+        this_month = month(
+            "transcribed_files", "total_transcribed_minutes",
+            "transcribed_minutes", "transcribed_minutes_external",
+        )
+
+        if fixed and self.blocks_purchased > 0:
+            this_month.append(self.blocks_used)
+
+        last_month = month(
+            "transcribed_files_last_month", "total_transcribed_minutes_last_month",
+            "transcribed_minutes_last_month", "transcribed_minutes_external_last_month",
+        )
+
+        with ui.card().classes("group-card admin-card my-2"):
+            with ui.element("div").classes("group-layout"):
+                with ui.element("div").classes("group-info"):
+                    name = self.name + (f" ({self.customer_abbr})" if self.customer_abbr else "")
+                    ui.label(name).classes("group-name").props("role=heading aria-level=2")
+
+                    # The same three lines for every customer: the plan
+                    # (and its blocks), the fee and the users, the date. A
+                    # line wraps between its items on a narrow card, with
+                    # no dot at the start (utils/styles.py, .customer-meta).
+                    blocks = "block" if self.blocks_purchased == 1 else "blocks"
+                    users_text = f"{users}{NBSP}user" if users == 1 else f"{users}{NBSP}users"
+
+                    with ui.element("div").classes("group-meta-wrap customer-meta"):
+                        for items in (
+                            [f"Plan: {self.priceplan.capitalize()}"]
+                            + (
+                                [f"{self.blocks_purchased}{NBSP}{blocks} ({amount(self.blocks_purchased * MINUTES_PER_BLOCK)})"]
+                                if fixed
+                                else []
+                            ),
+                            [f"Base fee: {self.base_fee}", users_text],
+                            [f"Created {self.created_at}"],
+                        ):
+                            with ui.element("div").classes("group-meta-line"):
+                                for item in items:
+                                    ui.label(item).classes("group-meta")
+
+                    facts = []
+
+                    # Every customer should have a contact; one without it
+                    # says so, rather than leaving the line out.
+                    facts.append(("Contact", self.contact_email or None))
+
+                    if self.realms:
+                        facts.append(("Realms", ", ".join(r.strip() for r in self.realms.split(",") if r.strip())))
+
+                    # Only what the customer has: no Drive line without a
+                    # Drive instance, no Kaltura line without Play.
+                    if self.drive_enabled and self.drive_url:
+                        facts.append((self.drive_display_name or "Sunet Drive", self.drive_url))
+
+                    if kaltura:
+                        facts.append(("Kaltura Partner ID", self.partner_id))
+
+                    if facts:
+                        with ui.element("dl").classes("customer-facts"):
+                            for term, value in facts:
+                                with ui.element("dt"):
+                                    ui.label(term)
+                                with ui.element("dd"):
+                                    if value is None:
+                                        ui.label("No contact address").classes("customer-missing")
+                                    else:
+                                        ui.label(value)
+
                     if self.notes:
-                        ui.label(f"Notes: {self.notes}").classes(
-                            "text-sm text-theme-muted"
-                        )
+                        self.notes_text()
 
-                with ui.column().style("flex: 1;"):
-                    ui.label("Statistics").classes("text-h6 font-bold")
+                summary_cards(
+                    (
+                        (month_name(this_first.isoformat()), this_month),
+                        (month_name(previous_first.isoformat()), last_month),
+                    )
+                )
 
-                    with ui.row().classes("w-full gap-8"):
-                        with ui.column().style("min-width: 30%;"):
-                            ui.label("This month").classes("font-semibold")
-                            ui.label(
-                                f"Total transcribed files: {self.stats.get('transcribed_files', 0)}"
-                            ).classes("text-sm")
-                            ui.label(
-                                f"Total transcribed minutes: {self.stats.get('total_transcribed_minutes', 0):.0f}"
-                            ).classes("text-sm")
+                if not self.is_bofh:
+                    return
 
-                            if self.partner_id != "N/A" and self.partner_id != "":
-                                ui.label(
-                                    f"Transcribed minutes via Sunet Scribe: {self.stats.get('transcribed_minutes', 0):.0f}"
-                                )
-                                ui.label(
-                                    f"Transcribed minutes via Sunet Play: {self.stats.get('transcribed_minutes_external', 0):.0f}"
-                                ).classes("text-sm")
+                with ui.element("div").classes("group-actions"):
+                    for text, look, props, action in (
+                        ("Edit", "button-edit", "color=white flat", lambda: self.edit_customer()),
+                        ("Delete", "button-close", "color=black flat", lambda: self.delete_customer_dialog()),
+                    ):
+                        control = ui.button(text).classes(look).props(props)
+                        # Set directly, not through props(): a name may hold
+                        # a quote, which the props string would take apart.
+                        control._props["aria-label"] = f"{text} {self.name}"
+                        control.on("click", action)
 
-                            # Show block usage for fixed plan
-                            if self.priceplan == "fixed" and self.blocks_purchased > 0:
-                                ui.label(
-                                    f"Blocks consumed: {self.stats.get('blocks_consumed', 0):.2f}"
-                                ).classes("text-sm font-semibold text-blue-600")
+    def blocks_used(self) -> None:
+        """
+        This month's blocks, in the month's summary card: how many of them
+        are used, a bar to see it at a glance, and what is left or over in
+        a tinted label -- green while there are minutes left, amber once
+        they are used up and the month runs into overage, which is billed,
+        not an error; the bar is then green for the blocks and amber for the
+        overage after them. The bar is a picture of the sentence above it, so it
+        is hidden from assistive technology; the words say it all, and the
+        tint is never all there is (1.4.1).
+        """
 
-                                overage = self.stats.get("overage_minutes", 0)
-                                if overage > 0:
-                                    ui.label(
-                                        f"⚠️ Overage minutes: {overage:.0f} min"
-                                    ).classes("text-sm font-semibold").style("color: var(--color-text-danger);")
-                                else:
-                                    ui.label(
-                                        f"Remaining minutes: {self.stats.get('remaining_minutes', 0):.0f}"
-                                    ).classes("text-sm font-semibold").style("color: var(--color-status-ok-border);")
+        bought = self.blocks_purchased
+        # The backend counts up to the blocks bought and no further; what
+        # goes beyond them is overage.
+        used = min(float(self.stats.get("blocks_consumed", 0) or 0), bought)
+        overage = float(self.stats.get("overage_minutes", 0) or 0)
+        blocks = "block" if bought == 1 else "blocks"
 
-                        with ui.column():
-                            ui.label("Last month").classes("font-semibold")
-                            ui.label(
-                                f"Transcribed files: {self.stats.get('transcribed_files_last_month', 0)}"
-                            ).classes("text-sm")
-                            ui.label(
-                                f"Total transcribed minutes: {self.stats.get('total_transcribed_minutes_last_month', 0):.0f}"
-                            ).classes("text-sm")
-                            if self.partner_id != "N/A" and self.partner_id != "":
-                                ui.label(
-                                    f"Transcribed minutes via Sunet Scribe: {self.stats.get('transcribed_minutes_last_month', 0):.0f}"
-                                ).classes("text-sm")
-                                ui.label(
-                                    f"Transcribed minutes via Sunet Play: {self.stats.get('transcribed_minutes_external_last_month', 0):.0f}"
-                                ).classes("text-sm")
+        with ui.element("div").classes("customer-blocks"):
+            # Once they are all used, say so: "2.00 of 2" reads as a sum to
+            # check. How many there are is in the card's plan line.
+            ui.label(
+                "All blocks used" if used >= bought else f"{used:.2f} of {bought}{NBSP}{blocks} used"
+            ).classes("customer-blocks-used")
 
-                with ui.column().style("flex: 0 0 auto;"):
-                    if self.is_bofh:
-                        edit = (
-                            ui.button("Edit")
-                            .classes("button-edit")
-                            .props("color=white flat")
-                            .style("width: 100%")
-                        )
-                        delete = (
-                            ui.button("Delete")
-                            .classes("button-close")
-                            .props("color=black flat")
-                            .style("width: 100%")
-                        )
+            # The bar is the month's minutes: while within the blocks, the
+            # blocks' minutes, filled as far as they are used; once over,
+            # the blocks and the overage together, the blocks in full in
+            # green and the overage after them in amber -- so the more
+            # overage, the further left the blocks' end moves.
+            with ui.element("div").classes("customer-meter").props("aria-hidden=true"):
+                if overage > 0:
+                    within = bought * MINUTES_PER_BLOCK
+                    share = 100 * within / (within + overage)
+                    ui.element("div").classes("customer-meter-fill").style(f"width: {share:.1f}%")
+                    ui.element("div").classes("customer-meter-over").style(f"width: {100 - share:.1f}%")
+                else:
+                    ui.element("div").classes("customer-meter-fill").style(f"width: {100 * used / bought:.1f}%")
 
-                        edit.on("click", lambda e: self.edit_customer())
-                        delete.on("click", lambda e: self.delete_customer_dialog())
+            if overage > 0:
+                ui.label(f"{amount(overage)} over").classes("customer-blocks-state is-over")
+            else:
+                ui.label(
+                    f"{amount(self.stats.get('remaining_minutes', 0))} left"
+                ).classes("customer-blocks-state is-left")
+
+    def notes_text(self) -> None:
+        """
+        The notes, cut to three lines when long, with "Show more" / "Show
+        less" (aria-expanded, aria-controls) -- the Groups page's toggle,
+        shown only where the text is actually cut (utils/group.py,
+        TOGGLE_SCRIPT). The whole text is in the page either way.
+        """
+
+        notes = ui.label(self.notes).classes("group-description customer-notes")
+
+        if len(self.notes) <= self.LONG_NOTES:
+            return
+
+        notes_id = f"customer-notes-{self.customer_id}"
+        notes.classes("is-clamped")
+        notes._props["id"] = notes_id
+
+        toggle = ui.button("Show more", color=None).classes("group-description-toggle").props("flat dense no-caps")
+        toggle._props["aria-expanded"] = "false"
+        toggle._props["aria-controls"] = notes_id
+
+        def flip() -> None:
+            opened = toggle._props.get("aria-expanded") == "false"
+            notes.classes(remove="is-clamped") if opened else notes.classes(add="is-clamped")
+            toggle.text = "Show less" if opened else "Show more"
+            toggle._props["aria-expanded"] = "true" if opened else "false"
+            toggle.update()
+
+        toggle.on("click", flip)
 
     def delete_customer_dialog(self) -> None:
         with ui.dialog().props('aria-label="Delete customer"') as delete_customer_dialog:

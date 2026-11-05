@@ -296,7 +296,8 @@ def chart_section(
 def summary_cards(cards: Sequence) -> None:
     """
     A summary as cards, in the look of the files on /home: each a name and
-    a line or two under it ((name, [line, ...]) pairs). A list, so it is
+    a line or two under it ((name, [line, ...]) pairs; a line may be a
+    function that draws it). A list, so it is
     read as so many of a kind; role="list" because Safari leaves a list
     without its markers out of the accessibility tree as a list unless it
     is told. The styles are the page's own (utils/styles.py, .stats-tiles).
@@ -309,7 +310,8 @@ def summary_cards(cards: Sequence) -> None:
                     ui.label(name).classes("stats-tile-name")
 
                     for line in lines:
-                        ui.label(line).classes("stats-tile-meta")
+                        # A line that draws itself, for more than a sentence.
+                        line() if callable(line) else ui.label(line).classes("stats-tile-meta")
 
 
 def head_html() -> str:

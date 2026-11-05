@@ -37,6 +37,7 @@ from utils.token import (
     get_auth_header,
 )
 from utils.customer import Customer
+from utils.group import TOGGLE_SCRIPT
 from pages.admin.shared import _get_valid_realms
 
 settings = get_settings()
@@ -481,19 +482,18 @@ async def customers() -> None:
 
     ui.add_head_html(default_styles)
 
-    with ui.row().style(
-        "justify-content: space-between; align-items: center; width: 100%;"
-    ):
-        with ui.element("div").style("display: flex; gap: 0px;"):
-            if (user_data or {}).get("bofh"):
-                ui.label("Customers").classes("text-3xl font-bold").props("role=heading aria-level=1")
-            elif (user_data or {}).get("admin"):
-                ui.label("Account information").classes("text-3xl font-bold").props("role=heading aria-level=1")
-            else:
-                pass
+    is_bofh = bool((user_data or {}).get("bofh"))
 
-        with ui.element("div").style("display: flex; gap: 10px;"):
-            if (user_data or {}).get("bofh"):
+    # The title on the left, the actions on the right; on a phone the
+    # actions go under the title and share its width (utils/styles.py,
+    # .customers-header).
+    with ui.element("div").classes("customers-header"):
+        ui.label("Customers" if is_bofh else "Account information").classes(
+            "text-3xl font-bold"
+        ).props("role=heading aria-level=1")
+
+        with ui.element("div").classes("customers-actions"):
+            if is_bofh:
                 create = (
                     ui.button("Create new customer")
                     .classes("default-style")
@@ -501,27 +501,24 @@ async def customers() -> None:
                 )
                 create.on("click", lambda: create_customer_dialog(page=customers))
 
-            if (user_data or {}).get("bofh"):
                 # Billing covers every customer, so it is BOFH only. With two
                 # exports to choose from they go behind one menu rather than
-                # spreading buttons along the header.
+                # spreading buttons along the header. What each holds is said
+                # in the menu itself, not in a tooltip (1.4.13).
                 with (
                     ui.dropdown_button("Export", auto_close=True)
                     .classes("button-edit")
                     .props("color=white flat")
                 ):
-                    ui.item(
-                        "Customers (CSV)",
-                        on_click=lambda: export_customers_csv(),
-                    )
-                    with ui.item(
-                        "Billing (CSV)",
-                        on_click=lambda: export_billing_data(),
-                    ):
-                        ui.tooltip(
-                            "Base fee, blocks and overage minutes per "
-                            "customer, for the last full month"
-                        )
+                    ui.item("Customers (CSV)", on_click=lambda: export_customers_csv())
+
+                    with ui.item(on_click=lambda: export_billing_data()):
+                        with ui.item_section():
+                            ui.item_label("Billing (CSV)")
+                            ui.item_label(
+                                "Base fee, blocks and overage minutes per "
+                                "customer, for the last full month"
+                            ).props("caption")
             else:
                 # Realm admins see their own account information only, so the
                 # plain customer export is all there is to offer.
@@ -540,9 +537,10 @@ async def customers() -> None:
         )
         return
 
-    with ui.scroll_area().style(
-        "height: calc(100vh - 160px - var(--banner-offset, 0px)); width: 100%;"
-    ):
+    # No height of its own: the page scrolls, as any other page does.
+    ui.add_head_html(TOGGLE_SCRIPT)
+
+    with ui.element("div").classes("customers-list"):
         customers_list = sorted(
             customers_data["result"], key=lambda x: x["name"].lower()
         )
@@ -564,6 +562,6 @@ async def customers() -> None:
                 drive_enabled=bool(customer.get("drive_enabled")),
                 drive_url=customer.get("drive_url"),
                 drive_display_name=customer.get("drive_display_name"),
-                is_bofh=bool((user_data or {}).get("bofh")),
+                is_bofh=is_bofh,
             )
             c.create_card()
