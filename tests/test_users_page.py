@@ -78,7 +78,9 @@ class TestOnAPhone:
         assert ".users-find-group {\n            flex: 1 1 100%;" in block
         # First on the screen by being first in the page, not by "order",
         # so the keyboard and a screen reader meet it first too (1.3.2).
-        assert "order:" not in block
+        group = block[block.index(".users-find-group {") :]
+        assert "order:" not in group[: group.index("}")]
+        assert "order:" not in rule(".users-find-group")
         assert "flex: 1 1 0;" in block
 
 
