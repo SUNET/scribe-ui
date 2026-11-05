@@ -305,7 +305,13 @@ async def edit_customer(customer_id: str) -> None:
         ]
 
     except httpx.HTTPError as e:
-        ui.label(f"Error fetching customer: {e}").classes("text-lg").style("color: var(--color-text-danger);")
+        # Same reasoning as the users page: print the detail, show a generic
+        # message, and announce it, since it replaces the page body
+        # (WCAG 4.1.3).
+        print(f"Error fetching customer: {e}")
+        ui.label("Failed to load customer. Please try again later.").classes(
+            "text-lg"
+        ).style("color: var(--color-text-danger);").props("role=alert")
         return
 
     # The title and the actions, as on Edit group: wrapping on a phone,

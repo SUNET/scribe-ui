@@ -222,7 +222,13 @@ async def edit_group(group_id: str) -> None:
             user["active"] = "Enabled" if user.get("active", True) else "Disabled"
 
     except httpx.HTTPError as e:
-        ui.label(f"Error fetching group: {e}").classes("text-lg").style("color: var(--color-text-danger);")
+        # Same reasoning as the users page: print the detail, show a generic
+        # message, and announce it, since it replaces the page body
+        # (WCAG 4.1.3).
+        print(f"Error fetching group: {e}")
+        ui.label("Failed to load group. Please try again later.").classes(
+            "text-lg"
+        ).style("color: var(--color-text-danger);").props("role=alert")
         return
 
     # The title and the actions, wrapping on a phone; the fields in a card
@@ -377,10 +383,11 @@ async def statistics(group_id: str) -> None:
     stats = user_statistics_get(group_id=group_id)
 
     if not stats or "result" not in stats:
+        # role=alert for the same reason as the fetch error above
+        # (WCAG 4.1.3). The text was already generic.
         ui.label("Error fetching statistics.").classes(
             "text-lg text-center mt-6"
-        ).style("color: var(--color-text-danger);"
-        )
+        ).style("color: var(--color-text-danger);").props("role=alert")
         return
 
     result = stats["result"]
