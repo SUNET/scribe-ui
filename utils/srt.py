@@ -125,6 +125,10 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin, CommentsMixi
         self.words: List[dict] = []
         self._word_midpoints: List[float] = []
         self.has_confidence = False
+        # The language the recording was transcribed in, as the job names it
+        # ("Swedish"), when the page knows it. The RTF export marks the text
+        # with it (rtf_language()).
+        self.language: Optional[str] = None
         self.show_uncertain_words = False
         self.show_my_edits = False
         # The reader's own highlights, shown whenever an editor is opened.
