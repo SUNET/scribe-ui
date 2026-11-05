@@ -306,6 +306,10 @@ Tunables belong here; wire-format constants do not. `WORDS_FORMAT_VERSION` in `u
 
 Access via `get_settings()` (cached).
 
+## User settings (`pages/user.py`)
+
+Four cards (`card()`, `.settings-card`, each with an `h2`): **Account** (who is signed in, in a box of its own with an "Administrator" label for admins -- no initials, the user name is often all there is; User ID, transcribed time and time zone as a `dl`; the API token behind its own "Show token" button), **Email notifications** (the address with "Send test and save", then "Your files" and, for admins, "Administration" as groups named by their `h3`; each checkbox has what it is for on the page, as its `aria-describedby`, not in a tooltip; saved on change, by keyboard too), **Theme** (three tiles that are real radio buttons of one name, so arrow keys move between them; the chosen tile framed through `:has(input:checked)`, focus through `:has(input:focus-visible)`), and **Sunet Drive** (named for the service, from the organisation's setting, since it is the only one so far -- with a second, the card becomes "Connected services" with a row each; the state in a `role=status` label, "Log out from …" when signed in; the whole card only where the organisation offers Drive). One column on a phone, two from 52rem (`.settings-grid`, a container query): Account, Theme and Sunet Drive left, Email notifications right; two real columns (`.settings-column`), the left one first, so the page, the keyboard and a phone all go Account, Theme, Sunet Drive, Email notifications. Words: "limit" is hard, "quota" soft (may be exceeded), so quota alerts say "monthly limit or quota".
+
 ## Admin hierarchy
 
 - **BOFH** (`bofh=True`): sees everything, manages all realms and onboarding attributes

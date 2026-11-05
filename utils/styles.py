@@ -520,23 +520,6 @@ theme_styles = """
         min-width: 150px;
     }
 
-    /* ── Username "view API token" control ── */
-    /* Was a plain underlined ui.label; is now a ui.button so it is
-       reachable and activatable from the keyboard (see pages/user.py). A
-       flat QBtn carries its own padding and minimum height, and in dark
-       mode -- from the global override just below -- its own border too.
-       Reset here so the control still looks like the underlined username
-       it replaces rather than a boxed button. */
-    .user-token-btn {
-        padding: 0 !important;
-        min-height: 0 !important;
-        font-weight: normal !important;
-        text-decoration: underline;
-    }
-    .body--dark .q-btn--flat.user-token-btn {
-        border: none !important;
-    }
-
     /* ── Upload dropzone ── */
     .dropzone-area {
         background-color: var(--color-bg-surface-alt);
@@ -1224,6 +1207,284 @@ theme_styles = """
     /* ── Admin: group/customer cards ── */
     .body--dark .admin-card {
         background-color: var(--color-bg-surface-alt) !important;
+    }
+
+    /* ── User settings (pages/user.py) ── */
+    /* Cards: one column on a phone, two from 52rem -- Account, Theme and
+       Sunet Drive on the left, Email notifications on the right. Two
+       real columns, each read top to bottom, so the page, the keyboard
+       and a phone all go Account, Theme, Sunet Drive, Email
+       notifications. */
+    .settings {
+        width: 100%;
+        max-width: 72rem;
+        container-type: inline-size;
+    }
+    .settings-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 1.5rem;
+        align-items: start;
+    }
+    .settings-column {
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+        min-width: 0;
+    }
+    @container (min-width: 52rem) {
+        .settings-grid {
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        }
+    }
+    .settings-card {
+        width: 100%;
+        min-width: 0;
+        background: var(--color-bg-surface);
+        border-radius: 1rem;
+        box-shadow: 0 2px 10px var(--color-shadow-light);
+        border: 1px solid color-mix(in srgb, var(--color-border-subtle) 35%, transparent);
+        padding: 1.25rem 1.5rem;
+        container-type: inline-size;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+    .settings-card-head {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.75rem;
+    }
+    .settings-card-head > .q-icon {
+        font-size: 1.5rem;
+        color: var(--color-brand-primary);
+        margin-top: 0.125rem;
+    }
+    .settings-card-title {
+        font-size: 1.25rem;
+        font-weight: 600;
+        line-height: 1.3;
+        color: var(--color-text-primary);
+    }
+    .settings-card-summary,
+    .settings-row-summary,
+    .settings-group-summary,
+    .settings-option-summary,
+    .settings-hint {
+        font-size: 0.9375rem;
+        color: var(--color-text-secondary);
+    }
+    /* Who: a box of its own, the name large, the role beside it. */
+    .settings-identity {
+        display: flex;
+        flex-direction: column;
+        gap: 0.125rem;
+        padding: 0.875rem 1rem;
+        border-radius: 0.75rem;
+        background: var(--color-bg-surface-alt);
+        border-left: 4px solid var(--color-brand-primary);
+    }
+    .settings-identity-summary {
+        font-size: 0.875rem;
+        color: var(--color-text-secondary);
+    }
+    .settings-identity-line {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.25rem 0.625rem;
+    }
+    .settings-identity-name {
+        font-size: 1.125rem;
+        font-weight: 600;
+        overflow-wrap: anywhere;
+    }
+    .settings-role {
+        font-size: 0.8125rem;
+        font-weight: 600;
+        padding: 0.0625rem 0.5rem;
+        border-radius: 999px;
+        border: 1px solid var(--color-brand-primary);
+        color: var(--color-brand-primary);
+    }
+    /* Name and value side by side; the value under its name on a narrow card. */
+    .settings-list {
+        display: grid;
+        grid-template-columns: max-content minmax(0, 1fr);
+        gap: 0.625rem 1.5rem;
+        margin: 0;
+    }
+    .settings-list dt {
+        color: var(--color-text-secondary);
+    }
+    .settings-list dd {
+        margin: 0;
+        color: var(--color-text-primary);
+        overflow-wrap: anywhere;
+        min-width: 0;
+    }
+    .settings-mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.875rem;
+    }
+    @container (max-width: 26rem) {
+        .settings-list {
+            grid-template-columns: minmax(0, 1fr);
+            gap: 0.125rem;
+        }
+        .settings-list dd {
+            margin-bottom: 0.5rem;
+        }
+    }
+    /* A line of its own: what it is, and its button beside it or under it. */
+    .settings-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid color-mix(in srgb, var(--color-border-subtle) 35%, transparent);
+    }
+    .settings-row-first {
+        padding-top: 0;
+        border-top: none;
+    }
+    .settings-row-text {
+        flex: 1 1 14rem;
+        min-width: 0;
+    }
+    .settings-row-title {
+        font-weight: 600;
+    }
+    .settings-button {
+        min-height: 44px;
+    }
+    /* Signed in or not, above what logging out does. */
+    .settings-status {
+        margin-bottom: 0.375rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.375rem;
+        font-size: 0.875rem;
+        padding: 0.125rem 0.625rem;
+        border-radius: 999px;
+        background: var(--color-bg-surface-alt);
+        color: var(--color-text-secondary);
+    }
+    .settings-status::before {
+        content: "";
+        width: 0.5rem;
+        height: 0.5rem;
+        border-radius: 50%;
+        background: currentColor;
+    }
+    .settings-status.is-on {
+        color: #166534;
+        background: #dcfce7;
+    }
+    .body--dark .settings-status.is-on {
+        color: #86efac;
+        background: #14532d;
+    }
+    /* The address and its button side by side; the button under it on a
+       narrow card. */
+    .settings-email {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 0.5rem 0.75rem;
+        align-items: start;
+    }
+    @container (max-width: 26rem) {
+        .settings-email {
+            grid-template-columns: minmax(0, 1fr);
+        }
+        .settings-email .q-btn {
+            justify-self: start;
+        }
+    }
+    .settings-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        padding-top: 1rem;
+        border-top: 1px solid color-mix(in srgb, var(--color-border-subtle) 35%, transparent);
+    }
+    .settings-group-title {
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--color-text-primary);
+    }
+    .settings-group-summary {
+        margin-bottom: 0.25rem;
+    }
+    /* A checkbox with its name, and what it is for under the name. */
+    .settings-option {
+        display: flex;
+        flex-direction: column;
+        padding: 0.125rem 0;
+    }
+    .settings-option-box {
+        margin-left: -0.5rem;
+        font-weight: 500;
+    }
+    .settings-option-summary {
+        margin-left: 2rem;
+        margin-top: -0.375rem;
+    }
+    /* The theme: three tiles, each a real radio button kept for the keyboard
+       and screen readers but drawn as the tile; the chosen tile framed. */
+    .settings-theme {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.5rem;
+    }
+    .settings-theme-choice {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.375rem;
+        padding: 0.75rem 0.5rem;
+        min-height: 44px;
+        border-radius: 0.75rem;
+        border: 1px solid color-mix(in srgb, var(--color-border-subtle) 60%, transparent);
+        text-align: center;
+        cursor: pointer;
+    }
+    .settings-theme-choice input {
+        position: absolute;
+        opacity: 0;
+        width: 1px;
+        height: 1px;
+        margin: 0;
+    }
+    .settings-theme-choice .q-icon {
+        font-size: 1.5rem;
+    }
+    .settings-theme-choice:has(input:checked) {
+        border: 2px solid var(--color-brand-primary);
+        background: color-mix(in srgb, var(--color-brand-primary) 8%, transparent);
+        font-weight: 600;
+    }
+    .settings-theme-choice:has(input:focus-visible) {
+        outline: 2px solid var(--color-brand-primary);
+        outline-offset: 2px;
+    }
+    .settings-saved {
+        display: flex;
+        align-items: center;
+        gap: 0.375rem;
+        font-size: 0.875rem;
+        color: var(--color-text-secondary);
+    }
+    .settings-saved .q-icon {
+        font-size: 1rem;
+    }
+    .user-token-card {
+        width: min(32rem, 100%);
+        max-width: 100%;
     }
 
     /* ── Admin: stats page ── */
