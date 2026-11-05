@@ -503,6 +503,22 @@ def _anonymous_header(header_text: str, cycle_dark_mode: Callable) -> None:
                 ui.tooltip("Help")
 
 
+def hidden_page_heading(text: str) -> None:
+    """
+    The page's h1, for a page that shows no title of its own: read by a
+    screen reader, invisible to everyone else, and the same words as the
+    document title so the two agree. A person who sees the page knows from
+    its look which one they are on; a person who does not has only this.
+    WCAG 1.3.1, 2.4.6.
+
+    .sr-only takes the label out of the flow, so it adds no room and
+    changes nothing on the page. role=heading on a label is how the other
+    pages already make their visible title an h1.
+    """
+
+    ui.label(text).classes("sr-only").props("role=heading aria-level=1")
+
+
 async def page_init(
     header_text: Optional[str] = "",
     use_drawer: bool = False,
