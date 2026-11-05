@@ -1226,6 +1226,246 @@ theme_styles = """
         background-color: var(--color-bg-surface-alt) !important;
     }
 
+    /* ── Summary cards (group statistics, Groups) ── */
+    /* The summary as cards, as the files are on /home on a phone (the
+       jobs-card look): side by side as far as they fit, else one above
+       the other. */
+    .stats-tiles {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        /* Never wider than the card: 13rem is more than a phone has at
+           a larger text size. */
+        grid-template-columns: repeat(auto-fit, minmax(min(13rem, 100%), 1fr));
+        gap: 0.75rem;
+        text-align: left;
+    }
+    .stats-tile {
+        width: 100%;
+        height: 100%;
+        padding: 0.75rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+    /* The figures are what the card is for, so in the page's body size
+       (the size of the sentences under the charts), not the small print
+       of a file's details. */
+    .stats-tile-name {
+        font-size: 1.125rem;
+        font-weight: 600;
+        color: var(--color-text-primary);
+    }
+    .stats-tile-meta {
+        font-size: 1rem;
+        color: var(--color-text-secondary);
+    }
+
+    /* ── Admin: group cards (Groups page) ── */
+    /* Name, details and actions, and the months as summary cards: three
+       columns on a wide card, one above the other on a narrow one -- the
+       card's own width decides (a container query), so an open menu on a
+       middling screen counts too. */
+    .group-card {
+        width: 100%;
+        box-shadow: none;
+        border: 1px solid var(--color-border-subtle);
+        padding: 1rem;
+        container-type: inline-size;
+        /* The customer's expansion around the cards is text-bold. */
+        font-weight: 400;
+    }
+    .group-layout {
+        display: grid;
+        gap: 1rem;
+        width: 100%;
+    }
+    .group-info {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        min-width: 0;
+    }
+    .group-name {
+        font-size: 1.375rem;
+        font-weight: 700;
+        line-height: 1.3;
+        color: var(--color-text-primary);
+        overflow-wrap: anywhere;
+    }
+    .group-description {
+        color: var(--color-text-secondary);
+        overflow-wrap: anywhere;
+    }
+    /* A long name cut to two lines and a long description to three;
+       "Show more" opens them. */
+    .group-name.is-clamped,
+    .group-description.is-clamped {
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 3;
+        line-clamp: 3;
+        overflow: hidden;
+    }
+    .group-name.is-clamped {
+        -webkit-line-clamp: 2;
+        line-clamp: 2;
+    }
+    .group-description-toggle {
+        align-self: flex-start;
+        padding: 0 0.25rem;
+        margin-left: -0.25rem;
+        min-height: 44px;
+        color: var(--color-brand-primary);
+        text-decoration: underline;
+    }
+    .group-meta {
+        font-size: 0.875rem;
+        color: var(--color-text-muted);
+    }
+    /* Members, limit and date: one to a line on a narrow card; on a wider
+       one in a line with a dot between, wrapping where it must. Each dot
+       sits in front of its item, and the line is pulled left by a dot's
+       width inside a wrapper that clips, so the dot that would begin a
+       line is out of sight. The dot is drawn, not read out. */
+    .group-meta-wrap {
+        overflow: hidden;
+    }
+    .group-meta-line {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+    @container (min-width: 36rem) {
+        .group-meta-line {
+            flex-direction: row;
+            flex-wrap: wrap;
+            gap: 0.25rem 0;
+            margin-left: -1.25rem;
+        }
+        .group-meta-line > .group-meta {
+            white-space: nowrap;
+        }
+        .group-meta-line > .group-meta::before {
+            content: "\\00B7";
+            content: "\\00B7" / "";
+            display: inline-block;
+            width: 1.25rem;
+            text-align: center;
+        }
+    }
+    /* The two months share their column, the same in every card. */
+    .group-card .stats-tiles {
+        grid-template-columns: repeat(auto-fit, minmax(min(13rem, 100%), 1fr));
+    }
+    /* One above the other, all the same width: the card's full width on a
+       narrow card, a column of its own on the right on a wide one. */
+    .group-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    .group-actions .q-btn {
+        width: 100%;
+        min-width: 0;
+        min-height: 44px;
+    }
+    /* A middling card: the actions already on the right, the details and
+       the months above one another beside them. */
+    @container (min-width: 36rem) {
+        .group-layout {
+            grid-template-columns: minmax(0, 1fr) 10rem;
+            align-items: start;
+        }
+        .group-layout > .group-actions {
+            grid-column: 2;
+            grid-row: 1 / span 2;
+        }
+    }
+    @container (min-width: 52rem) {
+        .group-layout {
+            grid-template-columns: minmax(16rem, 1fr) minmax(0, 1fr) 10rem;
+        }
+        .group-layout > .group-actions {
+            grid-column: 3;
+            grid-row: 1;
+        }
+    }
+
+    /* ── Admin: edit group ── */
+    .edit-group-header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        width: 100%;
+    }
+    .edit-group-title {
+        overflow-wrap: anywhere;
+    }
+    .edit-group-actions {
+        display: flex;
+        gap: 0.5rem;
+    }
+    .edit-group-actions .q-btn {
+        min-width: 9rem;
+        min-height: 44px;
+    }
+    /* On a phone the two actions share the width, side by side. */
+    @media (max-width: 600px) {
+        .edit-group-actions {
+            width: 100%;
+        }
+        .edit-group-actions .q-btn {
+            flex: 1 1 0;
+            min-width: 0;
+        }
+    }
+    .edit-group-card {
+        width: 100%;
+        box-shadow: none;
+        border: 1px solid var(--color-border-subtle);
+        padding: 1rem;
+        container-type: inline-size;
+        gap: 0.5rem;
+    }
+    /* One field under another on a narrow card; on a wide one the name and
+       the limit side by side, the description under them, full width. */
+    .edit-group-fields {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 1rem;
+        width: 100%;
+    }
+    @container (min-width: 40rem) {
+        .edit-group-fields {
+            grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+        }
+        .edit-group-description {
+            grid-column: 1 / -1;
+        }
+    }
+    .edit-group-members {
+        width: 100%;
+    }
+    /* On a narrow card the members' table fits instead of scrolling
+       sideways: closer cells, and a long user name wraps. */
+    @container (max-width: 36rem) {
+        .edit-group-members .q-table th,
+        .edit-group-members .q-table td {
+            padding: 0.5rem 0.375rem;
+            white-space: normal;
+            overflow-wrap: anywhere;
+        }
+        .edit-group-members .q-table th:first-child,
+        .edit-group-members .q-table td:first-child {
+            padding-left: 0;
+            width: 2.5rem;
+        }
+    }
+
     /* ── Admin: stats page ── */
     .stats-container {
         max-width: 1500px;

@@ -64,40 +64,6 @@ CHART_STYLES = """
             display: block;
         }
     }
-    /* The summary as cards, as the files are on /home on a phone (the
-       jobs-card look): side by side as far as they fit, else one above
-       the other. */
-    .stats-tiles {
-        list-style: none;
-        margin: 0;
-        padding: 0;
-        display: grid;
-        /* Never wider than the card: 13rem is more than a phone has at
-           a larger text size. */
-        grid-template-columns: repeat(auto-fit, minmax(min(13rem, 100%), 1fr));
-        gap: 0.75rem;
-        text-align: left;
-    }
-    .stats-tile {
-        width: 100%;
-        height: 100%;
-        padding: 0.75rem;
-        display: flex;
-        flex-direction: column;
-        gap: 0.25rem;
-    }
-    /* The figures are what the card is for, so in the page's body size
-       (the size of the sentences under the charts), not the small print
-       of a file's details. */
-    .stats-tile-name {
-        font-size: 1.125rem;
-        font-weight: 600;
-        color: var(--color-text-primary);
-    }
-    .stats-tile-meta {
-        font-size: 1rem;
-        color: var(--color-text-secondary);
-    }
     /* Less room round the cards on a phone, where it is width they lack:
        enough for "Transcribed minutes per day," on one line at 360px. */
     @media (max-width: 600px) {
@@ -356,6 +322,28 @@ def chart_section(
     ui.html(
         data_table(table_summary, caption, headers, rows, numeric), sanitize=False
     ).classes("w-full")
+
+
+def summary_cards(cards: Sequence) -> None:
+    """
+    A summary as cards, in the look of the files on /home: each a name and
+    a line or two under it ((name, [line, ...]) pairs). A list, so it is
+    read as so many of a kind; role="list" because Safari leaves a list
+    without its markers out of the accessibility tree as a list unless it
+    is told. The styles are the page's own (utils/styles.py, .stats-tiles).
+    """
+
+    with ui.element("ul").classes("stats-tiles").props('role="list"'):
+        for name, lines in cards:
+            with ui.element("li"):
+                with ui.card().props("flat bordered").classes("stats-tile"):
+                    # A plain space: "November 2026" may break in a card,
+                    # which at a larger text size on a phone is narrower
+                    # than the name.
+                    ui.label(name.replace(NBSP, " ")).classes("stats-tile-name")
+
+                    for line in lines:
+                        ui.label(line).classes("stats-tile-meta")
 
 
 def head_html() -> str:
