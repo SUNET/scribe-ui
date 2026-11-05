@@ -319,11 +319,6 @@ async def users() -> None:
                             on_click=confirm_remove_user,
                         )
 
-            with ui.input(
-                placeholder="Search", on_change=lambda e: ask("q", e.value or "")
-            ).props('type=search aria-label="Search users"').classes("users-search").add_slot("append"):
-                ui.icon("search")
-
             # Filters, each with a visible label; "All" is no filter.
             realms = sorted({user.get("realm") for user in users if user.get("realm")})
             filters = [
@@ -335,15 +330,65 @@ async def users() -> None:
             if len(realms) > 1:
                 filters.append(("realm", "Realm", {"": "All", **{realm: realm for realm in realms}}))
 
-            with ui.element("div").classes("users-filters"):
-                for key, label, options in filters:
-                    ui.select(
-                        options,
-                        value="",
-                        label=label,
-                        on_change=lambda e, key=key: ask(key, e.value or ""),
-                    ).props("outlined dense options-dense").classes("users-filter")
+            # The search, and beside it a filter button that opens the
+            # filters under the bar (a disclosure: aria-expanded, and the
+            # number of filters in use on the button and in its name).
+            with ui.element("div").classes("users-find"):
+                with ui.input(
+                    placeholder="Search", on_change=lambda e: ask("q", e.value or "")
+                ).props('type=search aria-label="Search users"').classes("users-search").add_slot("append"):
+                    ui.icon("search")
 
-            # How many are shown, said when it changes (4.1.3). Filled in by
-            # FILTER_METHOD in the browser.
+                # color=None: the theme's text colour (utils/styles.py), not
+                # black on a dark page or Quasar's 3:1 primary.
+                toggle = ui.button(icon="filter_alt", color=None).classes("users-filter-toggle").props(
+                    "flat round"
+                )
+                toggle._props["aria-label"] = "Filters"
+                toggle._props["aria-expanded"] = "false"
+
+                with toggle:
+                    badge = ui.badge("", color="red").props("floating").classes("users-filter-badge")
+                    badge.set_visibility(False)
+
+            panel = ui.element("div").classes("users-filters")
+            panel.set_visibility(False)
+            selects = []
+
+            with panel:
+                for key, label, options in filters:
+                    selects.append(
+                        ui.select(
+                            options,
+                            value="",
+                            label=label,
+                            on_change=lambda e, key=key: (ask(key, e.value or ""), show_in_use()),
+                        ).props("outlined dense options-dense").classes("users-filter")
+                    )
+
+                def clear_filters() -> None:
+                    for select in selects:
+                        select.value = ""
+
+                ui.button("Clear filters", on_click=clear_filters, color=None).props("flat no-caps").classes(
+                    "users-filter-clear"
+                )
+
+            def show_in_use() -> None:
+                in_use = sum(1 for select in selects if select.value)
+                badge.text = str(in_use)
+                badge.set_visibility(in_use > 0)
+                toggle._props["aria-label"] = (
+                    "Filters" if not in_use else f"Filters, {in_use} in use"
+                )
+                toggle.update()
+
+            def flip_filters() -> None:
+                opened = not panel.visible
+                panel.set_visibility(opened)
+                toggle._props["aria-expanded"] = "true" if opened else "false"
+                toggle.update()
+
+            toggle.on("click", flip_filters)
+
             ui.label("").classes("users-count text-theme-secondary").props('role=status aria-live=polite')

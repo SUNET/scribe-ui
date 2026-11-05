@@ -71,6 +71,7 @@ class TestOnAPhone:
         block = phone()
         assert "height: auto;" in block
         assert "order: -2;" in block and "flex: 1 1 100%;" in block
+        assert ".users-find {\n            order: -2;" in block
         assert "flex: 1 1 0;" in block
 
 
@@ -121,6 +122,23 @@ class TestFilters:
         assert "ui.label(\"\").classes(\"users-count text-theme-secondary\").props('role=status aria-live=polite')" in PAGE
         method = PAGE[PAGE.index('FILTER_METHOD = """') :]
         assert '"Showing " + shown.length + " of " + all' in method
+
+    def test_behind_a_filter_button(self):
+        assert 'ui.button(icon="filter_alt", color=None)' in PAGE
+        assert "color: var(--color-text-primary);" in rule(".users-filter-toggle")
+        assert '.users-filter-toggle[aria-expanded="true"]' in STYLES
+        assert 'toggle._props["aria-label"] = "Filters"' in PAGE
+        assert 'toggle._props["aria-expanded"] = "true" if opened else "false"' in PAGE
+        assert "panel.set_visibility(False)" in PAGE
+        assert "min-height: 44px;" in rule(".users-filter-toggle")
+
+    def test_the_button_says_how_many_filters_are_in_use(self):
+        assert 'f"Filters, {in_use} in use"' in PAGE
+        assert "badge.set_visibility(in_use > 0)" in PAGE
+
+    def test_filters_can_be_cleared(self):
+        assert 'ui.button("Clear filters", on_click=clear_filters, color=None)' in PAGE
+        assert "color: var(--color-brand-primary);" in rule(".users-filter-clear")
 
     def test_two_filters_to_a_line_on_a_phone(self):
         assert "flex: 1 1 calc(50% - 0.25rem);" in phone()
