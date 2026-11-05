@@ -341,10 +341,10 @@ def rtf_stylesheet(found: dict, language: Optional[int]) -> str:
 # the reader's username: the editor could get that (utils/token.get_user_info),
 # but it would put a personal identifier into every exported file, and the
 # document is only ever the reader's own, so there is no one to tell apart.
-RTF_COMMENT_AUTHOR = "Scribe"
-RTF_COMMENT_INITIALS = "SC"
-
 settings = get_settings()
+
+RTF_COMMENT_AUTHOR = settings.SERVICE_NAME
+RTF_COMMENT_INITIALS = settings.SERVICE_INITIALS
 
 
 
@@ -716,7 +716,10 @@ class ExportMixin:
                             rtf_data += (
                                 r"{\*\atrfend %d}" % numbers[note]
                                 + "{\\*\\atnid %s}{\\*\\atnauthor %s}\\chatn"
-                                % (RTF_COMMENT_INITIALS, RTF_COMMENT_AUTHOR)
+                                # Escaped like the text: a setting may
+                                # hold "å" or a brace, which unescaped
+                                # would garble the name or open a group.
+                                % (to_rtf_unicode(RTF_COMMENT_INITIALS), to_rtf_unicode(RTF_COMMENT_AUTHOR))
                                 + r"{\*\annotation{\*\atnref %d}{\*\atndate %d}"
                                 % (numbers[note], stamp)
                                 + r"\pard\plain\f0\fs20 "

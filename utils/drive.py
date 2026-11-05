@@ -21,7 +21,7 @@ import httpx
 from nicegui import app
 
 from utils.helpers import storage_decrypt
-from utils.settings import get_settings
+from utils.settings import get_settings, short_service_name
 from utils.token import get_auth_header
 
 settings = get_settings()
@@ -73,7 +73,7 @@ async def _call(method: str, path: str, timeout=TIMEOUT, **kwargs) -> DriveResul
             )
     except httpx.HTTPError:
         return DriveResult(
-            False, error="Scribe could not be reached. Try again.", reason="unavailable"
+            False, error=f"{short_service_name()} could not be reached. Try again.", reason="unavailable"
         )
 
     return _answer(response)
