@@ -954,21 +954,22 @@ async def rules_page() -> None:
 
     ui.add_head_html(default_styles)
 
-    with ui.row().style(
-        "justify-content: space-between; align-items: center; width: 100%;"
-    ):
-        with ui.row().classes("items-center gap-2"):
+    # The title (with its help) on the left and the actions on the right;
+    # on a phone the actions go under the title and share its width
+    # (utils/styles.py, .rules-header).
+    with ui.element("div").classes("rules-header"):
+        with ui.row().classes("items-center gap-2 no-wrap"):
             ui.label("User provisioning").classes("text-3xl font-bold").props("role=heading aria-level=1")
             ui.button(icon="help_outline").props("flat round dense color=grey-7 aria-label='Show provisioning rules help'").on(
                 "click", lambda: _show_rules_help()
             )
-        with ui.element("div").style("display: flex; gap: 10px;"):
+        with ui.element("div").classes("rules-actions"):
             ui.button("Simulate provisioning").classes("button-close").props(
                 "color=black flat bordered"
-            ).style("width: 200px;").on("click", lambda: test_all_rules_dialog())
+            ).on("click", lambda: test_all_rules_dialog())
             ui.button("Add rule").classes("default-style").props(
                 "color=black flat"
-            ).style("min-width: 160px;").on(
+            ).on(
                 "click",
                 lambda: create_rule_dialog(page=rules_page, user_data=user_data),
             )
@@ -1010,27 +1011,20 @@ async def rules_page() -> None:
                         "field": "name",
                         "align": "left",
                         "sortable": True,
+                        # Long names and values wrap, so Test and Delete
+                        # stay inside the table rather than past its edge.
+                        "classes": "rules-col-wrap",
                     },
+                    # What the rule matches, as words ("affiliation equals
+                    # "employee@gu.se""), in one column rather than three:
+                    # eight columns did not fit beside Test and Delete.
                     {
-                        "name": "attribute_name",
-                        "label": "Attribute",
+                        "name": "match",
+                        "label": "Matches",
                         "field": "attribute_name",
                         "align": "left",
                         "sortable": True,
-                    },
-                    {
-                        "name": "condition_label",
-                        "label": "Condition",
-                        "field": "condition_label",
-                        "align": "left",
-                        "sortable": True,
-                    },
-                    {
-                        "name": "attribute_value",
-                        "label": "Value",
-                        "field": "attribute_value",
-                        "align": "left",
-                        "sortable": True,
+                        "classes": "rules-col-wrap rules-col-match",
                     },
                     {
                         "name": "actions_summary",
@@ -1065,7 +1059,58 @@ async def rules_page() -> None:
                 pagination=20,
             )
             .style("width: 100%; box-shadow: none; font-size: 18px;")
-            .classes("table-style")
+            .classes("table-style rules-table")
+        )
+
+        # On a phone eight columns cannot be read; Quasar's grid mode draws
+        # each rule as a card instead, as on the Users page: its name (to
+        # edit it), what it matches in words, its actions and realm, the
+        # switch, and Test / Delete named for the rule.
+        # The table needs about 840px, so the cards are used up to 900.
+        rules_table.props(':grid="window.innerWidth < 900"')
+        rules_table.add_slot(
+            "item",
+            r"""
+            <div class="q-pa-xs col-12">
+                <q-card flat bordered class="jobs-card rule-card">
+                    <div class="row items-start no-wrap q-gutter-x-sm">
+                        <div class="col">
+                            <a
+                                class="cursor-pointer jobs-card-name rule-name-link"
+                                tabindex="0"
+                                role="button"
+                                @click="$parent.$emit('edit_rule', props.row)"
+                                @keydown.enter="$parent.$emit('edit_rule', props.row)"
+                                @keydown.space.prevent="$parent.$emit('edit_rule', props.row)"
+                            >{{ props.row.name }}</a>
+                            <div class="rule-card-match">
+                                {{ props.row.attribute_name }} {{ (props.row.condition_label || '').toLowerCase() }}
+                                <span class="rule-card-value">"{{ props.row.attribute_value }}"</span>
+                            </div>
+                            <div class="jobs-card-meta">Actions: {{ props.row.actions_summary }}</div>
+                            <div class="jobs-card-meta">Realm: {{ props.row.realm }}</div>
+                        </div>
+                        <q-toggle
+                            :model-value="props.row.enabled"
+                            label="Enabled"
+                            left-label
+                            :aria-label="'Enabled: ' + props.row.name"
+                            @update:model-value="val => $parent.$emit('toggle_enabled', {id: props.row.id, enabled: val})"
+                            color="positive"
+                            :dark="$q.dark.isActive"
+                        />
+                    </div>
+                    <div class="rule-card-actions">
+                        <q-btn flat no-caps icon="science" label="Test"
+                            :aria-label="'Test ' + props.row.name"
+                            @click="$parent.$emit('test_rule', props.row)" />
+                        <q-btn flat no-caps icon="delete" label="Delete"
+                            :aria-label="'Delete ' + props.row.name"
+                            @click="$parent.$emit('delete_rule', props.row)" />
+                    </div>
+                </q-card>
+            </div>
+            """,
         )
 
         with rules_table.add_slot("top-right"):
@@ -1073,6 +1118,16 @@ async def rules_page() -> None:
                 rules_table, "filter"
             ).add_slot("append"):
                 ui.icon("search")
+
+        rules_table.add_slot(
+            "body-cell-match",
+            r"""
+            <q-td :props="props">
+                {{ props.row.attribute_name }} {{ (props.row.condition_label || '').toLowerCase() }}
+                <span class="rule-card-value">"{{ props.row.attribute_value }}"</span>
+            </q-td>
+            """,
+        )
 
         rules_table.add_slot(
             "body-cell-enabled_label",
@@ -1122,13 +1177,12 @@ async def rules_page() -> None:
             r"""
             <q-td :props="props">
                 <a
-                    class="cursor-pointer text-primary"
+                    class="cursor-pointer rule-name-link"
                     tabindex="0"
                     role="button"
                     @click="$parent.$emit('edit_rule', props.row)"
                     @keydown.enter="$parent.$emit('edit_rule', props.row)"
                     @keydown.space.prevent="$parent.$emit('edit_rule', props.row)"
-                    style="text-decoration: underline;"
                 >
                     {{ props.row.name }}
                 </a>
@@ -1148,12 +1202,14 @@ async def rules_page() -> None:
                 <q-btn flat dense icon="science" size="sm"
                     style="width: 80px;"
                     label="Test"
+                    :aria-label="'Test ' + props.row.name"
                     @click="$parent.$emit('test_rule', props.row)"
                 >
                 </q-btn>
                 <q-btn flat dense icon="delete" size="sm"
                     style="width: 80px;"
                     label="Delete"
+                    :aria-label="'Delete ' + props.row.name"
                     @click="$parent.$emit('delete_rule', props.row)"
                 >
                 </q-btn>
@@ -1172,13 +1228,12 @@ async def rules_page() -> None:
 
     if (user_data or {}).get("bofh"):
         ui.separator().classes("mt-6 mb-4")
-        with ui.row().style(
-            "justify-content: space-between; align-items: center; width: 100%;"
-        ):
-            ui.label("Attributes (BOFH)").classes("text-2xl font-bold")
-            ui.button("Add attribute").classes("default-style").props(
-                "color=black flat"
-            ).style("min-width: 160px;").on("click", lambda: add_attribute_dialog())
+        with ui.element("div").classes("rules-header"):
+            ui.label("Attributes (BOFH)").classes("text-2xl font-bold").props("role=heading aria-level=2")
+            with ui.element("div").classes("rules-actions"):
+                ui.button("Add attribute").classes("default-style").props(
+                    "color=black flat"
+                ).on("click", lambda: add_attribute_dialog())
 
         ui.label(
             "These are the known attribute names available when creating rules."
@@ -1221,6 +1276,26 @@ async def rules_page() -> None:
                 row_key="id",
                 pagination=20,
             ).style("width: 100%; box-shadow: none; font-size: 18px;")
+
+            # A card for each attribute on a phone, as for the rules.
+            attrs_table.props(':grid="window.innerWidth < 700"')
+            attrs_table.add_slot(
+                "item",
+                r"""
+                <div class="q-pa-xs col-12">
+                    <q-card flat bordered class="jobs-card rule-card">
+                        <div class="jobs-card-name rule-card-claim">{{ props.row.name }}</div>
+                        <div v-if="props.row.description">{{ props.row.description }}</div>
+                        <div v-if="props.row.example" class="jobs-card-meta">Example: {{ props.row.example }}</div>
+                        <div class="rule-card-actions">
+                            <q-btn flat no-caps icon="delete" label="Delete"
+                                :aria-label="'Delete attribute ' + props.row.name"
+                                @click="$parent.$emit('delete_attr', props.row)" />
+                        </div>
+                    </q-card>
+                </div>
+                """,
+            )
 
             attrs_table.add_slot(
                 "body-cell-attr_actions",
