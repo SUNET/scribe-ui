@@ -104,9 +104,16 @@ async def analytics() -> None:
         def trend_line(kind: str):
             now_count = activity.total(kinds, days, kind)
             before = activity.total(kinds, before_days, kind) if whole_before else None
-            icon, figure_text, words = activity.trend(now_count, before)
+            compared = activity.trend(now_count, before)
 
             def draw() -> None:
+                # No comparison where the log does not reach back over the
+                # 30 days before: nothing is shown rather than a guess.
+                if compared is None:
+                    return
+
+                icon, figure_text, words = compared
+
                 with ui.element("div").classes("stats-trend"):
                     ui.icon(icon).props("aria-hidden=true")
                     ui.html(
@@ -174,6 +181,8 @@ async def analytics() -> None:
                 table_summary="Show the actions per day as a table",
                 caption=heading_text,
                 headers=("Date", *[name for _, name in shown_kinds], "All", "7-day average"),
+                # The days counted only: a day before the statistics began
+                # is not a day with nothing done.
                 rows=[
                     (
                         day,
@@ -181,10 +190,8 @@ async def analytics() -> None:
                         all_days[at],
                         "–" if averages[at] is None else figure(round(averages[at])),
                     )
-                    if not (counted and day < counted)
-                    # A day before the statistics began has no figures.
-                    else (day, *["–"] * (len(shown_kinds) + 2))
                     for at, day in enumerate(days)
+                    if not (counted and day < counted)
                 ],
                 numeric=tuple(range(1, len(shown_kinds) + 3)),
                 empty=not everything,
@@ -220,7 +227,13 @@ async def analytics() -> None:
         # ── By type: the last 30 days, the 30 before, and all time ──
         with ui.element("div").classes("chart-container"):
             heading("Actions by type")
-            sentence("The last 30 days, the 30 days before, and since the statistics began.")
+            sentence(
+                "The last 30 days, the 30 days before, and since the statistics began."
+                if whole_before
+                else "The last 30 days, and since the statistics began."
+            )
+            # The 30 days before, only where the log covers them.
+            headers = ("Action", "Last 30 days", "30 days before", "All time") if whole_before else ("Action", "Last 30 days", "All time")
             all_time = {row["path"]: int(row.get("total_views") or 0) for row in summary if activity.action(row.get("path", ""))}
             known = sorted(
                 set(all_time) | {path for day in paths.values() for path in day},
@@ -245,25 +258,21 @@ async def analytics() -> None:
                         ui.html(
                             shown_table(
                                 title,
-                                ("Action", "Last 30 days", "30 days before", "All time"),
+                                headers,
                                 [
                                     (
                                         activity.action(path)[0],
                                         number(count(path, days)),
-                                        number(count(path, before_days)) if whole_before else "–",
+                                        *([number(count(path, before_days))] if whole_before else []),
                                         number(all_time.get(path, 0)),
                                     )
                                     for path in chosen
                                 ],
-                                numeric=(1, 2, 3),
+                                numeric=tuple(range(1, len(headers))),
                             ),
                             sanitize=False,
                         ).classes("w-full")
 
-            if not whole_before:
-                ui.label(
-                    "–: the statistics do not reach back over the whole of the 30 days before."
-                ).classes("chart-note")
 
         # ── The latest actions ──
         with ui.element("div").classes("chart-container"):

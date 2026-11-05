@@ -37,6 +37,7 @@ KINDS = (
     ("uploads", "Uploads"),
     ("transcriptions", "Transcriptions"),
     ("exports", "Exports"),
+    ("deletions", "Deletions"),
     ("admin", "Administrative actions"),
 )
 OTHER = ("other", "Other actions")
@@ -48,6 +49,7 @@ ACTIONS = {
     "/action/bulk_transcription": ("Bulk transcriptions", "user", "transcriptions"),
     "/action/export": ("Exports", "user", "exports"),
     "/action/bulk_export": ("Bulk exports", "user", "exports"),
+    "/action/delete_job": ("Files deleted", "user", "deletions"),
     "/action/create_group": ("Groups created", "admin", "admin"),
     "/action/edit_group": ("Groups edited", "admin", "admin"),
     "/action/delete_group": ("Groups deleted", "admin", "admin"),
@@ -183,16 +185,18 @@ def rolling_average(kinds: dict, days: list, counted: Optional[str], width: int 
     return out
 
 
-def trend(now: int, before: Optional[int]) -> tuple:
+def trend(now: int, before: Optional[int]) -> Optional[tuple]:
     """
     (icon, figure, words) for a card: how this period compares with the one
     before. Within 5% either way it is "about the same", so a small swing
     does not read as a trend. In words, not in colour: more or fewer is
-    neither good nor bad here.
+    neither good nor bad here. None when the log does not cover the period
+    before: then there is no comparison to show, and none is shown. (A
+    nought it does cover is a nought.)
     """
 
     if before is None:
-        return ("remove", "", "No figures for the 30 days before")
+        return None
 
     difference = now - before
     sign = "+" if difference >= 0 else "−"

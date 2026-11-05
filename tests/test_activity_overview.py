@@ -46,7 +46,9 @@ class TestWhatIsCounted:
         assert activity.action("/home") is None
 
     def test_the_kinds_and_their_names(self):
-        assert [name for _, name in activity.KINDS] == ["Uploads", "Transcriptions", "Exports", "Administrative actions"]
+        assert [name for _, name in activity.KINDS] == ["Uploads", "Transcriptions", "Exports", "Deletions", "Administrative actions"]
+        # A deleted file is the user's own action.
+        assert activity.action("/action/delete_job") == ("Files deleted", "user", "deletions")
 
     def test_two_periods_of_30_days_and_a_week_more_fetched(self):
         now, before = activity.periods(date(2026, 11, 5))
@@ -91,9 +93,11 @@ class TestTheTrend:
         assert (icon, figure) == ("trending_flat", "−9")
         assert "about the same" in words
 
-    def test_said_when_there_is_nothing_to_compare_with(self):
-        assert activity.trend(3, None) == ("remove", "", "No figures for the 30 days before")
+    def test_no_comparison_where_the_log_does_not_reach_back(self):
+        # Not shown at all, rather than a guess; a nought it covers is a nought.
+        assert activity.trend(3, None) is None
         assert "when there were none" in activity.trend(5, 0)[2]
+        assert "if compared is None:\n                    return" in PAGE
 
 
 class TestWhenAndWhat:
@@ -127,7 +131,8 @@ class TestTheStackedChart:
         assert 'title="2 Nov: 1 action; 7-day average 2"' in self.CHART.replace(NBSP, " ")
 
     def test_days_before_the_statistics_are_toned_not_drawn_as_noughts(self):
-        assert 'class="bar-chart-slot is-uncounted" title="1 Nov: no figures"' in self.CHART.replace(NBSP, " ")
+        assert 'class="bar-chart-slot is-uncounted" title="1 Nov: before the statistics began"' in self.CHART.replace(NBSP, " ")
+        assert "--chart-s6: #008300;" in BAR_CHART_STYLES
 
     def test_the_average_a_grey_dashed_line_over_a_ring_skipping_what_it_cannot_say(self):
         assert self.CHART.count("<polyline") == 2
@@ -185,6 +190,10 @@ class TestThePage:
     def test_the_trend_arrow_is_not_read_out(self):
         assert 'ui.icon(icon).props("aria-hidden=true")' in PAGE
 
-    def test_the_comparison_says_when_the_figures_are_missing(self):
-        assert "the statistics do not reach back over the whole of the 30 days before" in PAGE
+    def test_without_the_30_days_before_their_column_is_left_out(self):
+        assert '("Action", "Last 30 days", "30 days before", "All time") if whole_before else ("Action", "Last 30 days", "All time")' in PAGE
+        assert "do not reach back" not in PAGE
         assert "The statistics begin on" in PAGE
+
+    def test_the_days_table_has_the_days_counted_only(self):
+        assert "if not (counted and day < counted)" in PAGE

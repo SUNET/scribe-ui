@@ -205,13 +205,14 @@ BAR_CHART_STYLES = """
     /* Stacked: each slot one column of segments, a 2px gap of the card
        between them so neighbours read apart by more than their hue; the
        kinds in a fixed order of colours (validated for colour blindness
-       against the cards in both themes: data-viz palette, slots 1-5). */
+       against the cards in both themes: data-viz palette, slots 1-6). */
     .bar-chart {
         --chart-s1: #2a78d6;
         --chart-s2: #eb6834;
         --chart-s3: #1baf7a;
         --chart-s4: #eda100;
         --chart-s5: #e87ba4;
+        --chart-s6: #008300;
         --chart-line: #6b7280;
     }
     .body--dark .bar-chart {
@@ -220,6 +221,7 @@ BAR_CHART_STYLES = """
         --chart-s3: #199e70;
         --chart-s4: #c98500;
         --chart-s5: #d55181;
+        --chart-s6: #008300;
         --chart-line: #9ca3af;
     }
     .bar-chart-stack {
@@ -240,7 +242,7 @@ BAR_CHART_STYLES = """
         filter: brightness(1.1);
     }
     /* Days before the statistics began: the tone of the days still to
-       come on the group statistics, for the same reason -- no figures, not
+       come on the group statistics, for the same reason: not counted, not
        noughts. */
     .bar-chart-slot.is-uncounted {
         background: var(--chart-future);
@@ -554,13 +556,13 @@ def stacked_chart(
     """
     A stacked bar chart as HTML: one column a slot, each series a segment of
     it in its colour slot (`series` are {"name", "values"}, in the order of
-    the colours, at most five), and `line` ({"name", "values"}, None for a
+    the colours, at most six), and `line` ({"name", "values"}, None for a
     point not to draw) as a dashed line over the bars, an average. The
     tooltip is the slot's: its total, each series and the line, in words. A
     legend names every series and the line. The figures are for a table
     beside it; this is the picture. Days before `counted_from` (ISO dates
-    compared as text) are toned, as days with no figures rather than days
-    with none: the log began after them.
+    compared as text) are toned, as days that were not counted rather than
+    days with nothing done: the log began after them.
     """
 
     totals = [sum((one["values"][at] or 0) for one in series) for at in range(len(labels))]
@@ -588,7 +590,7 @@ def stacked_chart(
         )
         if counted_from and str(label) < counted_from:
             slots.append(
-                f'<div class="bar-chart-slot is-uncounted" title="{html.escape(day_label(label) + ": no figures", quote=True)}"></div>'
+                f'<div class="bar-chart-slot is-uncounted" title="{html.escape(day_label(label) + ": before the statistics began", quote=True)}"></div>'
             )
             continue
 
