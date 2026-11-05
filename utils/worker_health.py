@@ -170,6 +170,14 @@ def workers_of(result, now: float) -> list:
     out = []
 
     for worker_id, samples in result.items():
+        heard = [t for t in (number(s.get("seen")) for s in (samples or []) if isinstance(s, dict)) if t is not None]
+
+        if heard and now - max(heard) >= PUT_AWAY_AFTER:
+            # Put away: only when it was last heard from is shown, so its
+            # readings are not read at all.
+            out.append(Worker(str(worker_id), [], False, max(heard)))
+            continue
+
         readings = sorted(
             (r for r in (reading_of(s) for s in (samples or [])) if r is not None),
             key=lambda r: r.seen,
@@ -182,6 +190,22 @@ def workers_of(result, now: float) -> list:
         out.append(Worker(str(worker_id), readings, now - last < OFFLINE_AFTER, last))
 
     return out
+
+
+def drawn_at(worker: Worker, now: float) -> float:
+    """
+    The time a worker's card is drawn at. An online worker's is now; an
+    offline worker's moves on a minute at a time from when it went offline,
+    so its card, which changes only as its flat line grows, is sent again
+    once a minute instead of at every update.
+    """
+
+    if worker.online:
+        return now
+
+    went = worker.last_seen + OFFLINE_AFTER
+
+    return went + 60 * max(0, (now - went) // 60)
 
 
 def arranged(workers: list, now: float) -> tuple:

@@ -276,6 +276,8 @@ class WorkerCard:
             "" if worker.online else
             f"Last heard from {when(worker.last_seen, now, zone)}, {wh.ago(now - worker.last_seen)}.",
         )
+        # From here on, an offline worker's card a minute at a time.
+        now = wh.drawn_at(worker, now)
         self.set(self.tiles, tiles(worker, now, zone))
         self.set(self.sentence, phrased(summary_sentence(worker, now, zone)))
         self.now_showing = (worker, now, zone)

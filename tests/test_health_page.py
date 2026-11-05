@@ -92,6 +92,19 @@ class TestOnlineAndOffline:
         assert [w.worker_id for w in shown] == ["z-offline", "a-online", "b-online"]
         assert [w.worker_id for w in away] == ["old", "older"]
 
+    def test_the_put_away_not_read_beyond_when_last_heard(self):
+        (worker,) = wh.workers_of({"old": [sample(NOW - 3 * 86400 - 10), sample(NOW - 3 * 86400), "x"]}, NOW)
+
+        assert worker.readings == [] and worker.last_seen == NOW - 3 * 86400 and not worker.online
+
+    def test_an_offline_card_drawn_a_minute_at_a_time(self):
+        on, off = wh.Worker("a", [], True, NOW), wh.Worker("b", [], False, NOW - 100)
+        went = NOW - 100 + wh.OFFLINE_AFTER
+
+        assert wh.drawn_at(on, NOW) == NOW
+        assert wh.drawn_at(off, went) == went and wh.drawn_at(off, went + 59) == went
+        assert wh.drawn_at(off, went + 60) == went + 60 and wh.drawn_at(off, went + 130) == went + 120
+
     def test_the_count_line(self):
         on, off = wh.Worker("a", [], True, NOW), wh.Worker("b", [], False, NOW)
 
@@ -202,6 +215,10 @@ class TestThePage:
         assert "opened: dict = {}" in PAGE and "if opened.get(worker_id):" in PAGE
         assert 'TOLD = "(event) => emit(event.target.open)"' in PAGE
         assert "app.storage" not in PAGE[PAGE.index("opened: dict = {}") - 200 : PAGE.index("opened: dict = {}")]
+
+    def test_an_offline_card_drawn_a_minute_at_a_time(self):
+        assert "now = wh.drawn_at(worker, now)" in PAGE
+        assert PAGE.index("now = wh.drawn_at(worker, now)") > PAGE.index("Last heard from {when(worker.last_seen, now, zone)}")
 
     def test_the_charts_and_the_table_built_only_while_open(self):
         # Shut, they would be sent again with every update; the table alone
