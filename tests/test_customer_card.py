@@ -167,7 +167,8 @@ class TestThePage:
 
 class TestTheMonthsWidth:
     def test_wide_enough_for_five_figures_and_the_service_on_one_line(self):
-        assert "minmax(17.5rem, 1fr)" in rule(".customer-card .stats-tiles")
+        # Never wider than the card, whatever the text size (#179).
+        assert "minmax(min(17.5rem, 100%), 1fr)" in rule(".customer-card .stats-tiles")
         assert '.classes("group-card customer-card admin-card my-2")' in CARD
 
     def test_three_columns_only_where_the_months_fit(self):
