@@ -1226,6 +1226,479 @@ theme_styles = """
         background-color: var(--color-bg-surface-alt) !important;
     }
 
+    /* ── Summary cards (group statistics, Groups) ── */
+    /* The summary as cards, as the files are on /home on a phone (the
+       jobs-card look): side by side as far as they fit, else one above
+       the other. */
+    .stats-tiles {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        /* Never wider than the card: 13rem is more than a phone has at
+           a larger text size. */
+        grid-template-columns: repeat(auto-fit, minmax(min(13rem, 100%), 1fr));
+        gap: 0.75rem;
+        text-align: left;
+    }
+    .stats-tile {
+        width: 100%;
+        height: 100%;
+        padding: 0.75rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+    /* The figures are what the card is for, so in the page's body size
+       (the size of the sentences under the charts), not the small print
+       of a file's details. */
+    .stats-tile-name {
+        font-size: 1.125rem;
+        font-weight: 600;
+        color: var(--color-text-primary);
+    }
+    .stats-tile-meta {
+        font-size: 1rem;
+        color: var(--color-text-secondary);
+    }
+
+    /* ── Admin: group cards (Groups page) ── */
+    /* Name, details and actions, and the months as summary cards: three
+       columns on a wide card, one above the other on a narrow one -- the
+       card's own width decides (a container query), so an open menu on a
+       middling screen counts too. */
+    .group-card {
+        width: 100%;
+        box-shadow: none;
+        border: 1px solid var(--color-border-subtle);
+        padding: 1rem;
+        container-type: inline-size;
+        /* The customer's expansion around the cards is text-bold. */
+        font-weight: 400;
+    }
+    .group-layout {
+        display: grid;
+        gap: 1rem;
+        width: 100%;
+    }
+    .group-info {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        min-width: 0;
+    }
+    .group-name {
+        font-size: 1.375rem;
+        font-weight: 700;
+        line-height: 1.3;
+        color: var(--color-text-primary);
+        overflow-wrap: anywhere;
+    }
+    .group-description {
+        color: var(--color-text-secondary);
+        overflow-wrap: anywhere;
+    }
+    /* A long name cut to two lines and a long description to three;
+       "Show more" opens them. */
+    .group-name.is-clamped,
+    .group-description.is-clamped {
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 3;
+        line-clamp: 3;
+        overflow: hidden;
+    }
+    .group-name.is-clamped {
+        -webkit-line-clamp: 2;
+        line-clamp: 2;
+    }
+    .group-description-toggle {
+        align-self: flex-start;
+        padding: 0 0.25rem;
+        margin-left: -0.25rem;
+        min-height: 44px;
+        color: var(--color-brand-primary);
+        text-decoration: underline;
+    }
+    .group-meta {
+        font-size: 0.875rem;
+        color: var(--color-text-muted);
+    }
+    /* Members, limit and date: one to a line on a narrow card; on a wider
+       one in a line with a dot between, wrapping where it must. Each dot
+       sits in front of its item, and the line is pulled left by a dot's
+       width inside a wrapper that clips, so the dot that would begin a
+       line is out of sight. The dot is drawn, not read out. */
+    .group-meta-wrap {
+        overflow: hidden;
+    }
+    .group-meta-line {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+    @container (min-width: 36rem) {
+        .group-meta-line {
+            flex-direction: row;
+            flex-wrap: wrap;
+            gap: 0.25rem 0;
+            margin-left: -1.25rem;
+        }
+        .group-meta-line > .group-meta {
+            white-space: nowrap;
+        }
+        .group-meta-line > .group-meta::before {
+            content: "\\00B7";
+            content: "\\00B7" / "";
+            display: inline-block;
+            width: 1.25rem;
+            text-align: center;
+        }
+    }
+    /* The two months share their column, the same in every card. */
+    .group-card .stats-tiles {
+        grid-template-columns: repeat(auto-fit, minmax(min(13rem, 100%), 1fr));
+    }
+    /* One above the other, all the same width: the card's full width on a
+       narrow card, a column of its own on the right on a wide one. */
+    .group-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    .group-actions .q-btn {
+        width: 100%;
+        min-width: 0;
+        min-height: 44px;
+    }
+    /* A middling card: the actions already on the right, the details and
+       the months above one another beside them. */
+    @container (min-width: 36rem) {
+        .group-layout {
+            grid-template-columns: minmax(0, 1fr) 10rem;
+            align-items: start;
+        }
+        .group-layout > .group-actions {
+            grid-column: 2;
+            grid-row: 1 / span 2;
+        }
+    }
+    @container (min-width: 52rem) {
+        .group-layout {
+            grid-template-columns: minmax(16rem, 1fr) minmax(0, 1fr) 10rem;
+        }
+        .group-layout > .group-actions {
+            grid-column: 3;
+            grid-row: 1;
+        }
+    }
+
+    /* ── Admin: customer cards (Customers page, utils/customer.py) ── */
+    /* The group cards' layout (above); a realm admin's card has no
+       actions, and then no column for them. */
+    .group-layout:not(:has(> .group-actions)) {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    @container (min-width: 52rem) {
+        .group-layout:not(:has(> .group-actions)) {
+            grid-template-columns: minmax(16rem, 1fr) minmax(0, 1fr);
+        }
+    }
+    /* The customer's three lines -- plan and blocks, fee and users, date
+       -- are lines on any card: on a narrow one too they wrap between
+       their items rather than going one to a line, so every customer has
+       the same lines. The dot that would begin a line is clipped, as
+       above. */
+    .customer-meta {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+    .customer-meta .group-meta-line {
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 0.25rem 0;
+        margin-left: -1.25rem;
+    }
+    .customer-meta .group-meta-line > .group-meta::before {
+        content: "\\00B7";
+        content: "\\00B7" / "";
+        display: inline-block;
+        width: 1.25rem;
+        text-align: center;
+    }
+    /* The month cards wide enough for "73845 minutes via" and the service's
+       name (SERVICE_NAME, by default two words) on one line, so the
+       customer's card takes its three columns only from 64rem; under that
+       the details and the months share the left column, the months side by
+       side where two fit. */
+    .customer-card .stats-tiles {
+        grid-template-columns: repeat(auto-fit, minmax(min(17.5rem, 100%), 1fr));
+    }
+    @container (min-width: 52rem) {
+        .customer-card .group-layout {
+            grid-template-columns: minmax(0, 1fr) 10rem;
+        }
+        .customer-card .group-layout > .group-actions {
+            grid-column: 2;
+            grid-row: 1 / span 2;
+        }
+        .customer-card .group-layout:not(:has(> .group-actions)) {
+            grid-template-columns: minmax(0, 1fr);
+        }
+    }
+    @container (min-width: 64rem) {
+        .customer-card .group-layout {
+            grid-template-columns: minmax(16rem, 1fr) minmax(35.75rem, 1.4fr) 10rem;
+        }
+        .customer-card .group-layout > .group-actions {
+            grid-column: 3;
+            grid-row: 1;
+        }
+        .customer-card .group-layout:not(:has(> .group-actions)) {
+            grid-template-columns: minmax(16rem, 1fr) minmax(35.75rem, 1.4fr);
+        }
+    }
+    /* Contact, realms, Drive and Kaltura: a name and its value side by
+       side, the value under its name on a narrow card. */
+    .customer-facts {
+        display: grid;
+        /* One width for the names on every card, so the values line up
+           from card to card whichever facts a customer has. */
+        grid-template-columns: 8.5rem minmax(0, 1fr);
+        gap: 0.25rem 1rem;
+        margin: 0.5rem 0 0;
+        font-size: 0.875rem;
+    }
+    .customer-facts dt {
+        color: var(--color-text-muted);
+    }
+    .customer-facts dd {
+        margin: 0;
+        color: var(--color-text-primary);
+        overflow-wrap: anywhere;
+        min-width: 0;
+    }
+    @container (max-width: 26rem) {
+        .customer-facts {
+            grid-template-columns: minmax(0, 1fr);
+            gap: 0;
+        }
+        .customer-facts dd {
+            margin-bottom: 0.375rem;
+        }
+    }
+    /* This month's blocks: used of bought, a bar, and what is left (green)
+       or over (amber: overage is billed, not an error). */
+    .customer-blocks {
+        align-self: stretch;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.375rem;
+        margin-top: 0.5rem;
+        padding-top: 0.625rem;
+        border-top: 1px solid color-mix(in srgb, var(--color-border-subtle) 35%, transparent);
+    }
+    .customer-blocks-used {
+        font-weight: 600;
+        color: var(--color-text-primary);
+    }
+    .customer-meter {
+        display: flex;
+        gap: 2px;
+        width: 100%;
+        height: 0.5rem;
+        border-radius: 999px;
+        background: var(--color-bg-surface-alt);
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-border-subtle) 60%, transparent);
+        overflow: hidden;
+    }
+    .customer-meter-fill {
+        height: 100%;
+        border-radius: 999px;
+        background: #16a34a;
+    }
+    /* The overage after the blocks, in amber: the blocks stay green as far
+       as they go, so the bar is in two colours once the month is over,
+       both of them used minutes. The 2px gap is where the blocks end. */
+    .customer-meter-over {
+        height: 100%;
+        border-radius: 999px;
+        background: #d97706;
+    }
+    .customer-missing {
+        color: var(--color-text-secondary);
+        font-style: italic;
+    }
+    .customer-blocks-state {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.375rem;
+        font-weight: 600;
+        padding: 0.125rem 0.625rem;
+        border-radius: 999px;
+    }
+    .customer-blocks-state::before {
+        content: "";
+        width: 0.5rem;
+        height: 0.5rem;
+        border-radius: 50%;
+        background: currentColor;
+    }
+    .customer-blocks-state.is-left {
+        color: #166534;
+        background: #dcfce7;
+    }
+    .customer-blocks-state.is-over {
+        color: #92400e;
+        background: #fef3c7;
+    }
+    .body--dark .customer-blocks-state.is-left {
+        color: #86efac;
+        background: #14532d;
+    }
+    .body--dark .customer-blocks-state.is-over {
+        color: #fcd34d;
+        background: #78350f;
+    }
+    @media (forced-colors: active) {
+        .customer-meter-fill {
+            background: CanvasText;
+        }
+        .customer-meter-over {
+            background: Highlight;
+        }
+    }
+    .customer-notes {
+        margin-top: 0.5rem;
+        white-space: pre-line;
+    }
+    /* The title on the left, the actions on the right; under it on a
+       phone, sharing its width. */
+    .customers-header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        width: 100%;
+    }
+    .customers-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+    .customers-actions .q-btn {
+        min-height: 44px;
+    }
+    @media (max-width: 600px) {
+        .customers-actions {
+            width: 100%;
+        }
+        .customers-actions .q-btn {
+            flex: 1 1 auto;
+        }
+    }
+    .customers-list {
+        width: 100%;
+    }
+
+    /* ── Admin: edit group ── */
+    .edit-group-header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        width: 100%;
+    }
+    .edit-group-title {
+        overflow-wrap: anywhere;
+    }
+    .edit-group-actions {
+        display: flex;
+        gap: 0.5rem;
+    }
+    .edit-group-actions .q-btn {
+        min-width: 9rem;
+        min-height: 44px;
+    }
+    /* On a phone the two actions share the width, side by side. */
+    @media (max-width: 600px) {
+        .edit-group-actions {
+            width: 100%;
+        }
+        .edit-group-actions .q-btn {
+            flex: 1 1 0;
+            min-width: 0;
+        }
+    }
+    .edit-group-card {
+        width: 100%;
+        box-shadow: none;
+        border: 1px solid var(--color-border-subtle);
+        padding: 1rem;
+        container-type: inline-size;
+        gap: 0.5rem;
+    }
+    /* One field under another on a narrow card; on a wide one the name and
+       the limit side by side, the description under them, full width. */
+    .edit-group-fields {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 1rem;
+        width: 100%;
+    }
+    @container (min-width: 40rem) {
+        .edit-group-fields {
+            grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+        }
+        .edit-group-description {
+            grid-column: 1 / -1;
+        }
+    }
+    .edit-group-members {
+        width: 100%;
+    }
+    /* On a narrow card the members' table fits instead of scrolling
+       sideways: closer cells, and a long user name wraps. */
+    @container (max-width: 36rem) {
+        .edit-group-members .q-table th,
+        .edit-group-members .q-table td {
+            padding: 0.5rem 0.375rem;
+            white-space: normal;
+            overflow-wrap: anywhere;
+        }
+        .edit-group-members .q-table th:first-child,
+        .edit-group-members .q-table td:first-child {
+            padding-left: 0;
+            width: 2.5rem;
+        }
+    }
+
+    /* ── Admin: edit customer ── */
+    /* Sections with headings in Edit group's card; in each, the fields
+       two to a line from 40rem of card and one to a line under it, with
+       realms and notes full width. */
+    .edit-customer-heading:not(:first-child) {
+        margin-top: 1.25rem;
+    }
+    .edit-customer-fields {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 1rem;
+        width: 100%;
+    }
+    @container (min-width: 40rem) {
+        .edit-customer-fields {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .edit-customer-wide {
+            grid-column: 1 / -1;
+        }
+    }
+
     /* ── Admin: stats page ── */
     .stats-container {
         max-width: 1500px;
@@ -1234,7 +1707,9 @@ theme_styles = """
         flex-direction: column;
         align-items: center;
         gap: 2rem;
-        padding: 2rem 1rem;
+        /* No room above: the title's own margin and the page's gap make
+           the same 2rem to the first card as between the cards. */
+        padding: 0 1rem 2rem;
     }
     .stats-card {
         width: 100%;
@@ -4068,7 +4543,8 @@ default_styles = theme_styles + drive_styles
 chart_colors = {
     "light": {
         "bar_current": "#4F46E5",
-        "bar_previous": "#10B981",
+        # #10B981 was 2.5:1 on the white card, under 1.4.11's 3:1.
+        "bar_previous": "#059669",
         "bar_primary": "#082954",
         "bar_secondary": "#4caf50",
         "line_cpu": "#3b82f6",

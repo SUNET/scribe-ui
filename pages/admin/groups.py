@@ -20,13 +20,21 @@
 Groups: the admin landing page, group editing and per-group statistics.
 """
 
-import plotly.graph_objects as go
+from datetime import date, timedelta
+
 import httpx
 
-
-from nicegui import app, ui
-from utils.common import add_timezone_to_timestamp, page_init, reload_on_theme_change
-from utils.styles import default_styles, chart_colors
+from nicegui import ui
+from utils.common import add_timezone_to_timestamp, page_init
+from utils.styles import default_styles
+from utils.bar_chart import NBSP, amount, bar_chart, decimals_for, month_days, month_name, rounded
+from utils.chart_tables import (
+    chart_section,
+    days_so_far,
+    head_html as chart_head,
+    minutes_summary,
+    summary_cards,
+)
 from utils.helpers import (
     groups_get,
     save_group,
@@ -38,7 +46,7 @@ from utils.settings import get_settings
 from utils.token import (
     get_auth_header,
 )
-from utils.group import Group
+from utils.group import TOGGLE_SCRIPT as GROUP_TOGGLE_SCRIPT, Group
 
 settings = get_settings()
 
@@ -57,7 +65,7 @@ def create_group_dialog(page: callable) -> None:
             )
             quota = (
                 ui.input(
-                    "Monthly transcription limit (minutes, 0 = unlimited)", value=0
+                    "Monthly limit in minutes (0 = unlimited)", value=0
                 )
                 .classes("w-full")
                 .props("outlined type=number min=0")
@@ -73,7 +81,7 @@ def create_group_dialog(page: callable) -> None:
                     quota_seconds = int(quota.value) * 60 if quota.value else 0
                 except ValueError:
                     quota.props(
-                        'error error-message="Monthly transcription limit '
+                        'error error-message="Monthly limit '
                         'must be a whole number of minutes."'
                     )
                     quota.run_method("focus")
@@ -191,10 +199,6 @@ async def edit_group(group_id: str) -> None:
     Page to edit a group.
     """
     user_data = await page_init(use_drawer=True, title="Edit group")
-    # Plotly draws its charts in one theme's colours server-side and
-    # cannot restyle itself, so this page reloads when the OS theme
-    # changes. Only pages with charts do -- see reload_on_theme_change.
-    reload_on_theme_change()
 
     if not (user_data or {}).get("admin"):
         ui.navigate.to("/home")
@@ -220,11 +224,14 @@ async def edit_group(group_id: str) -> None:
         ui.label(f"Error fetching group: {e}").classes("text-lg").style("color: var(--color-text-danger);")
         return
 
-    with ui.row().style(
-        "justify-content: space-between; align-items: center; width: 100%;"
-    ):
-        ui.label(f"Edit group: {group['name']}").classes("text-3xl font-bold").props("role=heading aria-level=1")
-        with ui.element("div").style("display: flex; gap: 8px;"):
+    # The title and the actions, wrapping on a phone; the fields in a card
+    # whose own width lays them out (utils/styles.py, .edit-group-*).
+    with ui.element("div").classes("edit-group-header"):
+        ui.label(f"Edit group: {group['name']}").classes("text-3xl font-bold edit-group-title").props(
+            "role=heading aria-level=1"
+        )
+
+        with ui.element("div").classes("edit-group-actions"):
             def do_save() -> None:
                 # save_group's own int(quota_seconds) has the same unshown
                 # ValueError as create_group_dialog's copy above -- see its
@@ -236,7 +243,7 @@ async def edit_group(group_id: str) -> None:
                     int(quota.value) if quota.value else 0
                 except ValueError:
                     quota.props(
-                        'error error-message="Monthly transcription limit '
+                        'error error-message="Monthly limit '
                         'must be a whole number of minutes."'
                     )
                     quota.run_method("focus")
@@ -253,35 +260,38 @@ async def edit_group(group_id: str) -> None:
 
             ui.button("Save group").classes("default-style").props(
                 "color=black flat"
-            ).style("width: 150px").on("click", do_save)
+            ).on("click", do_save)
             ui.button("Cancel").classes("delete-style").props("color=black flat").on(
                 "click", lambda: ui.navigate.to("/admin")
             )
 
-    with ui.card().style("width: 100%; box-shadow: none; align-self: center;"):
-        with ui.row().classes("gap-4 w-full"):
+    with ui.card().classes("edit-group-card admin-card"):
+        ui.label("Group details").classes("text-xl font-semibold").props("role=heading aria-level=2")
+
+        with ui.element("div").classes("edit-group-fields"):
             name_input = (
                 ui.input("Group name", value=group["name"])
                 .props("outlined")
-                .classes("w-1/3")
-            )
-            description_input = (
-                ui.input("Group description", value=group["description"])
-                .props("outlined")
-                .classes("w-1/2")
+                .classes("edit-group-name")
             )
             quota = (
                 ui.input(
-                    "Monthly transcription limit (minutes, 0 = unlimited)",
+                    "Monthly limit in minutes (0 = unlimited)",
                     value=group["quota_seconds"] // 60,
                 )
                 .props("outlined type=number min=0")
-                .classes("w-1/2")
+                .classes("edit-group-quota")
+            )
+            # A textarea that grows: a description can be long, and a
+            # one-line field showed a few words of it.
+            description_input = (
+                ui.textarea("Group description", value=group["description"])
+                .props("outlined autogrow")
+                .classes("edit-group-description")
             )
 
-        ui.label("Select users to be included in group:").classes(
-            "text-xl font-semibold mt-4 mb-2"
-        )
+        ui.label("Members").classes("text-xl font-semibold mt-4").props("role=heading aria-level=2")
+        ui.label("Select the users who are in this group.").classes("text-theme-secondary")
 
         users_table = ui.table(
             columns=[
@@ -311,8 +321,10 @@ async def edit_group(group_id: str) -> None:
             selection="multiple",
             pagination=20,
             on_select=lambda e: None,
-        ).style(
-            "width: 100%; box-shadow: none; font-size: 18px; height: calc(100vh - 550px - var(--banner-offset, 0px));"
+        ).classes("edit-group-members").style(
+            # No height of its own: one worked out from the window left most
+            # of a phone empty below two rows.
+            "width: 100%; box-shadow: none;"
         )
 
         # Quasar generates selection checkboxes from selection="multiple"
@@ -351,32 +363,15 @@ async def statistics(group_id: str) -> None:
     Page to show statistics of a group with improved layout and design.
     """
     user_data = await page_init(use_drawer=True, title="Group statistics")
-    # Plotly draws its charts in one theme's colours server-side and
-    # cannot restyle itself, so this page reloads when the OS theme
-    # changes. Only pages with charts do -- see reload_on_theme_change.
-    reload_on_theme_change()
+    # The charts are drawn by the page in the theme's own custom properties
+    # (utils/bar_chart.py), so a change of theme needs no reload here.
 
     if not (user_data or {}).get("admin"):
         ui.navigate.to("/home")
         return
 
     ui.add_head_html(default_styles)
-
-    # Detect resolved dark mode (handles auto mode with OS preference)
-    dark_pref = app.storage.user.get("dark_mode", None)
-    if dark_pref is None:
-        try:
-            await ui.context.client.connected()
-            prefers_dark = await ui.run_javascript(
-                "window.matchMedia('(prefers-color-scheme: dark)').matches",
-                timeout=5.0,
-            )
-            app.storage.user["_resolved_dark"] = bool(prefers_dark)
-        except (TimeoutError, Exception):
-            pass
-
-    is_dark = app.storage.user.get("_resolved_dark", False)
-    cc = chart_colors["dark" if is_dark else "light"]
+    ui.add_head_html(chart_head())
 
     stats = user_statistics_get(group_id=group_id)
 
@@ -399,85 +394,108 @@ async def statistics(group_id: str) -> None:
     for job in job_queue:
         job["created_at"] = add_timezone_to_timestamp(job["created_at"])
 
+    def files(count) -> str:
+        return f"{count}{NBSP}file" if count == 1 else f"{count}{NBSP}files"
+
+    # The months by name, from the days the figures are for (or today):
+    # "this month" says less in a list of headings, and nothing once the
+    # page has been left open past the turn of a month.
+    def first_day(days: list, fallback: date) -> date:
+        try:
+            return date.fromisoformat(days[0])
+        except (IndexError, ValueError):
+            return fallback
+
+    today = date.today()
+    this_month = month_days(per_day.keys(), today)
+    this_first = first_day(this_month, today.replace(day=1))
+    previous_month = month_days(per_day_previous_month.keys(), this_first - timedelta(days=1))
+    this_name = month_name(this_first.isoformat())
+    previous_name = month_name(first_day(previous_month, this_first - timedelta(days=1)).isoformat())
+
+    # One precision for the page (utils/bar_chart.py, decimals_for()): a
+    # decimal when its largest day is under 10 minutes, none otherwise.
+    # Only what is shown is rounded; every sum is of the figures as they are.
+    decimals = decimals_for(list(per_day.values()) + list(per_day_previous_month.values()))
+
+    def minutes_of(value) -> str:
+        return amount(value, decimals=decimals)
+
     ui.label("Group statistics").classes("text-3xl font-bold mb-4").props("role=heading aria-level=1")
 
     with ui.element("div").classes("stats-container w-full"):
-        with ui.element("div").classes("stats-card w-full"):
-            ui.label(f"Number of users: {total_users}").classes(
-                "text-lg text-theme-secondary"
-            )
-            ui.label(
-                f"Transcribed files this month: {result.get('transcribed_files', 0)} files"
-            ).classes("text-lg text-theme-secondary")
-            ui.label(
-                f"Transcribed files last month: {result.get('transcribed_files_last_month', 0)} files"
-            ).classes("text-lg text-theme-secondary")
-            ui.label(
-                f"Transcribed minutes this month: {result.get('total_transcribed_minutes', 0):.0f} minutes"
-            ).classes("text-lg text-theme-secondary")
-            ui.label(
-                f"Transcribed minutes last month: {result.get('total_transcribed_minutes_last_month', 0):.0f} minutes"
-            ).classes("text-lg text-theme-secondary")
+        # The summary as cards, like the files on /home: a name, and a line
+        # or two under it. A list, so it is read as three of a kind.
+        tiles = (
+            ("Users", [f"{total_users}{NBSP}user in the group" if total_users == 1 else f"{total_users}{NBSP}users in the group"]),
+            (
+                this_name,
+                [
+                    f"{files(result.get('transcribed_files', 0))} transcribed",
+                    minutes_of(result.get("total_transcribed_minutes", 0)),
+                ],
+            ),
+            (
+                previous_name,
+                [
+                    f"{files(result.get('transcribed_files_last_month', 0))} transcribed",
+                    minutes_of(result.get("total_transcribed_minutes_last_month", 0)),
+                ],
+            ),
+        )
 
-        if per_day:
-            dates = list(per_day.keys())
-            values = list(per_day.values())
+        with ui.element("div").classes("stats-card stats-summary w-full"):
+            summary_cards(tiles)
 
-            fig = go.Figure(
-                data=[
-                    go.Bar(
-                        x=dates,
-                        y=values,
-                        marker=dict(color=cc["bar_current"], line=dict(width=0)),
-                        hovertemplate="%{x} - %{y:.1f} minutes<extra></extra>",
-                    )
-                ]
-            )
-            fig.update_layout(
-                title="Transcribed minutes per day (current month)",
-                xaxis_title="Date",
-                yaxis_title="Minutes",
-                template="plotly_dark" if is_dark else "plotly_white",
-                margin=dict(l=40, r=20, t=60, b=40),
-                height=400,
-            )
+        # Each chart is a heading, a sentence, the chart as a picture and
+        # the same numbers as a table (utils/chart_tables.py): a chart alone
+        # cannot be read without seeing it, nor its details without a mouse.
+        #
+        # Both months whole, on one scale: two charts of different widths
+        # and ranges read as if the months were. Days still to come this
+        # month are toned, with an edge where they begin; the table has the
+        # days there are.
+        highest = max(
+            (value or 0 for days in (per_day, per_day_previous_month) for value in days.values()),
+            default=0,
+        )
 
-            with ui.element("div").classes("chart-container"):
-                ui.plotly(fig).classes("w-full")
-
-        if per_day_previous_month:
-            dates_prev = list(per_day_previous_month.keys())
-            values_prev = list(per_day_previous_month.values())
-
-            fig_prev = go.Figure(
-                data=[
-                    go.Bar(
-                        x=dates_prev,
-                        y=values_prev,
-                        marker=dict(color=cc["bar_previous"], line=dict(width=0)),
-                        hovertemplate="%{x} - %{y:.1f} minutes<extra></extra>",
-                    )
-                ]
-            )
-            fig_prev.update_layout(
-                title="Transcribed minutes per day (previous month)",
-                xaxis_title="Date",
-                yaxis_title="Minutes",
-                template="plotly_dark" if is_dark else "plotly_white",
-                margin=dict(l=40, r=20, t=60, b=40),
-                height=400,
-            )
+        for minutes, days, name, under_way in (
+            (per_day, this_month, this_name, True),
+            (per_day_previous_month, previous_month, previous_name, False),
+        ):
+            heading = f"Transcribed minutes per day, {name}"
+            # This month: the days that have come; the backend's noughts for
+            # the days to come are not figures (utils/chart_tables.py).
+            shown = days_so_far(minutes, today.isoformat()) if under_way else minutes
 
             with ui.element("div").classes("chart-container"):
-                ui.plotly(fig_prev).classes("w-full")
+                chart_section(
+                    heading,
+                    minutes_summary(minutes, decimals, so_far=under_way),
+                    bar_chart(
+                        days,
+                        [{"name": heading, "values": [shown.get(day) for day in days]}],
+                        highest=highest,
+                        decimals=decimals,
+                        # The days still to come, toned, this month only.
+                        future_after=today.isoformat() if under_way else None,
+                    ),
+                    table_summary=f"Show the minutes per day for {name} as a table",
+                    caption=heading,
+                    headers=("Date", "Minutes"),
+                    rows=[(day, rounded(value, decimals)) for day, value in shown.items()],
+                    numeric=(1,),
+                    empty=not any(value and value > 0 for value in minutes.values()),
+                )
 
         if per_user:
             with ui.element("div").classes("table-container"):
-                ui.label("Transcribed minutes per user this month").classes(
-                    "text-theme-primary"
-                )
+                ui.label(f"Transcribed minutes per user, {this_name}").classes(
+                    "text-xl font-semibold text-theme-primary"
+                ).props("role=heading aria-level=2")
                 user_rows = [
-                    {"username": username, "minutes": f"{minutes:.1f}"}
+                    {"username": username, "minutes": rounded(minutes, decimals), "exact": minutes or 0}
                     for username, minutes in per_user.items()
                 ]
 
@@ -495,7 +513,8 @@ async def statistics(group_id: str) -> None:
                         "field": "minutes",
                         "align": "left",
                         "sortable": True,
-                        ":sort": "(a, b, rowA, rowB) => a - b",
+                        # By the figure as it is: "<1" is not a number.
+                        ":sort": "(a, b, rowA, rowB) => rowA.exact - rowB.exact",
                     },
                 ]
 
@@ -517,7 +536,7 @@ async def statistics(group_id: str) -> None:
             with ui.element("div").classes("table-container"):
                 ui.label("Job queue for group").classes(
                     "text-2xl font-bold mb-4 text-theme-primary"
-                )
+                ).props("role=heading aria-level=2")
                 queue_columns = [
                     {
                         "name": "job_id",
@@ -572,16 +591,13 @@ def create() -> None:
         Main page of the application.
         """
         user_data = await page_init(use_drawer=True, title="Groups")
-        # Plotly draws its charts in one theme's colours server-side and
-        # cannot restyle itself, so this page reloads when the OS theme
-        # changes. Only pages with charts do -- see reload_on_theme_change.
-        reload_on_theme_change()
 
         if not (user_data or {}).get("admin"):
             ui.navigate.to("/home")
             return
 
         ui.add_head_html(default_styles)
+        ui.add_head_html(GROUP_TOGGLE_SCRIPT)
 
         with ui.row().style(
             "justify-content: space-between; align-items: center; width: 100%;"
