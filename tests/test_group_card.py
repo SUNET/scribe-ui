@@ -96,6 +96,17 @@ class TestALongNameOrDescription:
         assert "-webkit-line-clamp: 3;" in clamp and "overflow: hidden;" in clamp
         assert "-webkit-line-clamp: 2;" in rule(".group-name.is-clamped")
 
+    def test_shown_only_where_something_is_cut(self):
+        from utils.group import TOGGLE_SCRIPT
+
+        assert "element.scrollHeight > element.clientHeight + 1" in TOGGLE_SCRIPT
+        assert "new ResizeObserver(checkAll)" in TOGGLE_SCRIPT
+        assert 'button.getAttribute("aria-expanded") === "true"' in TOGGLE_SCRIPT
+        assert ".group-description-toggle[hidden]" in TOGGLE_SCRIPT
+        assert "ui.add_head_html(GROUP_TOGGLE_SCRIPT)" in GROUPS
+        # The split on white space reaches the browser as \\s+.
+        assert ".split(/\\s+/)" in TOGGLE_SCRIPT
+
     def test_the_toggle_is_big_enough_to_hit(self):
         assert "min-height: 44px;" in rule(".group-description-toggle")
 

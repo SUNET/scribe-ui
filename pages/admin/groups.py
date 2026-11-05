@@ -40,7 +40,7 @@ from utils.settings import get_settings
 from utils.token import (
     get_auth_header,
 )
-from utils.group import Group
+from utils.group import TOGGLE_SCRIPT as GROUP_TOGGLE_SCRIPT, Group
 
 settings = get_settings()
 
@@ -588,6 +588,7 @@ def create() -> None:
             return
 
         ui.add_head_html(default_styles)
+        ui.add_head_html(GROUP_TOGGLE_SCRIPT)
 
         with ui.row().style(
             "justify-content: space-between; align-items: center; width: 100%;"

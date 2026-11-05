@@ -26,6 +26,64 @@ from utils.settings import get_settings
 from utils.token import get_auth_header
 settings = get_settings()
 
+# "Show more" only where something is cut. Which text is cut depends on the
+# card's width, so the page asks the browser: a toggle whose name and
+# description all fit is hidden, and asked again when they change size (a
+# window made narrower, a menu opened). Shown while open, so it can close.
+# Without the script the button stays, which is the safe way round.
+TOGGLE_SCRIPT = """
+<style>
+    .group-description-toggle[hidden] {
+        display: none !important;
+    }
+</style>
+<script>
+(function () {
+    if (window._scribeGroupToggles) return;
+    window._scribeGroupToggles = true;
+
+    function controlled(button) {
+        return (button.getAttribute("aria-controls") || "")
+            .split(/\\s+/)
+            .map(function (id) { return id && document.getElementById(id); })
+            .filter(Boolean);
+    }
+
+    function check(button) {
+        if (button.getAttribute("aria-expanded") === "true") {
+            button.hidden = false;
+            return;
+        }
+
+        button.hidden = !controlled(button).some(function (element) {
+            return element.scrollHeight > element.clientHeight + 1;
+        });
+    }
+
+    function checkAll() {
+        document.querySelectorAll(".group-description-toggle").forEach(check);
+    }
+
+    var sizes = new ResizeObserver(checkAll);
+
+    function watch() {
+        document.querySelectorAll(".group-description-toggle").forEach(function (button) {
+            if (!button._scribeWatched) {
+                button._scribeWatched = true;
+                controlled(button).forEach(function (element) { sizes.observe(element); });
+            }
+
+            check(button);
+        });
+    }
+
+    new MutationObserver(watch).observe(document.documentElement, { childList: true, subtree: true });
+    document.addEventListener("DOMContentLoaded", watch);
+})();
+</script>
+"""
+
+
 class Group:
     def __init__(self, group_id: str, name: str, description: str, created_at: str, users: dict, nr_users: int, stats: dict, quota_seconds: int) -> None:
         self.group_id = group_id
