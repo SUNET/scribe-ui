@@ -1393,6 +1393,217 @@ theme_styles = """
         }
     }
 
+    /* ── Admin: customer cards (Customers page, utils/customer.py) ── */
+    /* The group cards' layout (above); a realm admin's card has no
+       actions, and then no column for them. */
+    .group-layout:not(:has(> .group-actions)) {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    @container (min-width: 52rem) {
+        .group-layout:not(:has(> .group-actions)) {
+            grid-template-columns: minmax(16rem, 1fr) minmax(0, 1fr);
+        }
+    }
+    /* The customer's three lines -- plan and blocks, fee and users, date
+       -- are lines on any card: on a narrow one too they wrap between
+       their items rather than going one to a line, so every customer has
+       the same lines. The dot that would begin a line is clipped, as
+       above. */
+    .customer-meta {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+    .customer-meta .group-meta-line {
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 0.25rem 0;
+        margin-left: -1.25rem;
+    }
+    .customer-meta .group-meta-line > .group-meta::before {
+        content: "\\00B7";
+        content: "\\00B7" / "";
+        display: inline-block;
+        width: 1.25rem;
+        text-align: center;
+    }
+    /* The month cards wide enough for "73845 minutes via" and the service's
+       name (SERVICE_NAME, by default two words) on one line, so the
+       customer's card takes its three columns only from 64rem; under that
+       the details and the months share the left column, the months side by
+       side where two fit. */
+    .customer-card .stats-tiles {
+        grid-template-columns: repeat(auto-fit, minmax(min(17.5rem, 100%), 1fr));
+    }
+    @container (min-width: 52rem) {
+        .customer-card .group-layout {
+            grid-template-columns: minmax(0, 1fr) 10rem;
+        }
+        .customer-card .group-layout > .group-actions {
+            grid-column: 2;
+            grid-row: 1 / span 2;
+        }
+        .customer-card .group-layout:not(:has(> .group-actions)) {
+            grid-template-columns: minmax(0, 1fr);
+        }
+    }
+    @container (min-width: 64rem) {
+        .customer-card .group-layout {
+            grid-template-columns: minmax(16rem, 1fr) minmax(35.75rem, 1.4fr) 10rem;
+        }
+        .customer-card .group-layout > .group-actions {
+            grid-column: 3;
+            grid-row: 1;
+        }
+        .customer-card .group-layout:not(:has(> .group-actions)) {
+            grid-template-columns: minmax(16rem, 1fr) minmax(35.75rem, 1.4fr);
+        }
+    }
+    /* Contact, realms, Drive and Kaltura: a name and its value side by
+       side, the value under its name on a narrow card. */
+    .customer-facts {
+        display: grid;
+        /* One width for the names on every card, so the values line up
+           from card to card whichever facts a customer has. */
+        grid-template-columns: 8.5rem minmax(0, 1fr);
+        gap: 0.25rem 1rem;
+        margin: 0.5rem 0 0;
+        font-size: 0.875rem;
+    }
+    .customer-facts dt {
+        color: var(--color-text-muted);
+    }
+    .customer-facts dd {
+        margin: 0;
+        color: var(--color-text-primary);
+        overflow-wrap: anywhere;
+        min-width: 0;
+    }
+    @container (max-width: 26rem) {
+        .customer-facts {
+            grid-template-columns: minmax(0, 1fr);
+            gap: 0;
+        }
+        .customer-facts dd {
+            margin-bottom: 0.375rem;
+        }
+    }
+    /* This month's blocks: used of bought, a bar, and what is left (green)
+       or over (amber: overage is billed, not an error). */
+    .customer-blocks {
+        align-self: stretch;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.375rem;
+        margin-top: 0.5rem;
+        padding-top: 0.625rem;
+        border-top: 1px solid color-mix(in srgb, var(--color-border-subtle) 35%, transparent);
+    }
+    .customer-blocks-used {
+        font-weight: 600;
+        color: var(--color-text-primary);
+    }
+    .customer-meter {
+        display: flex;
+        gap: 2px;
+        width: 100%;
+        height: 0.5rem;
+        border-radius: 999px;
+        background: var(--color-bg-surface-alt);
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-border-subtle) 60%, transparent);
+        overflow: hidden;
+    }
+    .customer-meter-fill {
+        height: 100%;
+        border-radius: 999px;
+        background: #16a34a;
+    }
+    /* The overage after the blocks, in amber: the blocks stay green as far
+       as they go, so the bar is in two colours once the month is over,
+       both of them used minutes. The 2px gap is where the blocks end. */
+    .customer-meter-over {
+        height: 100%;
+        border-radius: 999px;
+        background: #d97706;
+    }
+    .customer-missing {
+        color: var(--color-text-secondary);
+        font-style: italic;
+    }
+    .customer-blocks-state {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.375rem;
+        font-weight: 600;
+        padding: 0.125rem 0.625rem;
+        border-radius: 999px;
+    }
+    .customer-blocks-state::before {
+        content: "";
+        width: 0.5rem;
+        height: 0.5rem;
+        border-radius: 50%;
+        background: currentColor;
+    }
+    .customer-blocks-state.is-left {
+        color: #166534;
+        background: #dcfce7;
+    }
+    .customer-blocks-state.is-over {
+        color: #92400e;
+        background: #fef3c7;
+    }
+    .body--dark .customer-blocks-state.is-left {
+        color: #86efac;
+        background: #14532d;
+    }
+    .body--dark .customer-blocks-state.is-over {
+        color: #fcd34d;
+        background: #78350f;
+    }
+    @media (forced-colors: active) {
+        .customer-meter-fill {
+            background: CanvasText;
+        }
+        .customer-meter-over {
+            background: Highlight;
+        }
+    }
+    .customer-notes {
+        margin-top: 0.5rem;
+        white-space: pre-line;
+    }
+    /* The title on the left, the actions on the right; under it on a
+       phone, sharing its width. */
+    .customers-header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        width: 100%;
+    }
+    .customers-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+    .customers-actions .q-btn {
+        min-height: 44px;
+    }
+    @media (max-width: 600px) {
+        .customers-actions {
+            width: 100%;
+        }
+        .customers-actions .q-btn {
+            flex: 1 1 auto;
+        }
+    }
+    .customers-list {
+        width: 100%;
+    }
+
     /* ── Admin: edit group ── */
     .edit-group-header {
         display: flex;
@@ -1463,6 +1674,28 @@ theme_styles = """
         .edit-group-members .q-table td:first-child {
             padding-left: 0;
             width: 2.5rem;
+        }
+    }
+
+    /* ── Admin: edit customer ── */
+    /* Sections with headings in Edit group's card; in each, the fields
+       two to a line from 40rem of card and one to a line under it, with
+       realms and notes full width. */
+    .edit-customer-heading:not(:first-child) {
+        margin-top: 1.25rem;
+    }
+    .edit-customer-fields {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 1rem;
+        width: 100%;
+    }
+    @container (min-width: 40rem) {
+        .edit-customer-fields {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .edit-customer-wide {
+            grid-column: 1 / -1;
         }
     }
 
