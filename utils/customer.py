@@ -105,11 +105,14 @@ class Customer:
                 amount(self.stats.get(minutes_key, 0)),
             ]
 
+            # Through the service itself and through the video platform,
+            # by the names this installation gives them (utils/settings.py),
+            # each kept on one line.
             if kaltura:
-                lines.append(
-                    f"{amount(self.stats.get(scribe_key, 0))} via Scribe, "
-                    f"{amount(self.stats.get(play_key, 0))} via Play"
-                )
+                service = settings.SERVICE_NAME.replace(" ", NBSP)
+                platform = settings.VIDEO_PLATFORM_NAME.replace(" ", NBSP)
+                lines.append(f"{amount(self.stats.get(scribe_key, 0))} via {service}")
+                lines.append(f"{amount(self.stats.get(play_key, 0))} via {platform}")
 
             return lines
 
@@ -126,7 +129,7 @@ class Customer:
             "transcribed_minutes_last_month", "transcribed_minutes_external_last_month",
         )
 
-        with ui.card().classes("group-card admin-card my-2"):
+        with ui.card().classes("group-card customer-card admin-card my-2"):
             with ui.element("div").classes("group-layout"):
                 with ui.element("div").classes("group-info"):
                     name = self.name + (f" ({self.customer_abbr})" if self.customer_abbr else "")

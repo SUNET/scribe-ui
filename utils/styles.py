@@ -1425,6 +1425,37 @@ theme_styles = """
         width: 1.25rem;
         text-align: center;
     }
+    /* The month cards wide enough for "73845 minutes via Sunet Scribe" on
+       one line, so the customer's card takes its three columns only from
+       64rem; under that the details and the months share the left column,
+       the months side by side where two fit. */
+    .customer-card .stats-tiles {
+        grid-template-columns: repeat(auto-fit, minmax(17.5rem, 1fr));
+    }
+    @container (min-width: 52rem) {
+        .customer-card .group-layout {
+            grid-template-columns: minmax(0, 1fr) 10rem;
+        }
+        .customer-card .group-layout > .group-actions {
+            grid-column: 2;
+            grid-row: 1 / span 2;
+        }
+        .customer-card .group-layout:not(:has(> .group-actions)) {
+            grid-template-columns: minmax(0, 1fr);
+        }
+    }
+    @container (min-width: 64rem) {
+        .customer-card .group-layout {
+            grid-template-columns: minmax(16rem, 1fr) minmax(35.75rem, 1.4fr) 10rem;
+        }
+        .customer-card .group-layout > .group-actions {
+            grid-column: 3;
+            grid-row: 1;
+        }
+        .customer-card .group-layout:not(:has(> .group-actions)) {
+            grid-template-columns: minmax(16rem, 1fr) minmax(35.75rem, 1.4fr);
+        }
+    }
     /* Contact, realms, Drive and Kaltura: a name and its value side by
        side, the value under its name on a narrow card. */
     .customer-facts {
@@ -1640,6 +1671,28 @@ theme_styles = """
         .edit-group-members .q-table td:first-child {
             padding-left: 0;
             width: 2.5rem;
+        }
+    }
+
+    /* ── Admin: edit customer ── */
+    /* Sections with headings in Edit group's card; in each, the fields
+       two to a line from 40rem of card and one to a line under it, with
+       realms and notes full width. */
+    .edit-customer-heading:not(:first-child) {
+        margin-top: 1.25rem;
+    }
+    .edit-customer-fields {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 1rem;
+        width: 100%;
+    }
+    @container (min-width: 40rem) {
+        .edit-customer-fields {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .edit-customer-wide {
+            grid-column: 1 / -1;
         }
     }
 

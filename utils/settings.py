@@ -55,6 +55,12 @@ class Settings(BaseSettings):
     FAVICON: str = "favicon.ico"
     TAB_TITLE: str = "Sunet Scribe"
     TOPBAR_TEXT: str = "Sunet Scribe"
+    # What the service and the video platform are called where they are
+    # named in the interface, e.g. "via Sunet Scribe" and "via Sunet Play"
+    # on the Customers page: elsewhere in the Nordics they may be called
+    # something else ("NORDUnet S2T", "Kaltura").
+    SERVICE_NAME: str = "Sunet Scribe"
+    VIDEO_PLATFORM_NAME: str = "Sunet Play"
     LANDING_TEXT: str = "Welcome to Sunet Scribe"
     MANUAL_URL: str = "https://sunet.box.com/s/la16r5iu3gkm5n149mzmth9yiaulx3ub"
 

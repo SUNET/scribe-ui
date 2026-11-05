@@ -79,8 +79,19 @@ class TestTheMonths:
         assert "month_name(previous_first.isoformat())" in CARD
         assert 'ui.label("This month")' not in CARD and '"Last month"' not in CARD
 
-    def test_scribe_and_play_for_play_customers(self):
-        assert 'via Scribe, "' in CARD and 'via Play"' in CARD
+    def test_the_service_and_the_video_platform_by_the_names_set(self):
+        # Not written into the card: another installation calls them
+        # something else.
+        assert 'service = settings.SERVICE_NAME.replace(" ", NBSP)' in CARD
+        assert 'platform = settings.VIDEO_PLATFORM_NAME.replace(" ", NBSP)' in CARD
+        assert 'via {service}"' in CARD and 'via {platform}"' in CARD
+        assert "via Scribe" not in CARD and "via Play" not in CARD and "via Sunet" not in CARD
+
+    def test_the_names_default_to_sunets(self):
+        from utils.settings import Settings
+
+        assert Settings.model_fields["SERVICE_NAME"].default == "Sunet Scribe"
+        assert Settings.model_fields["VIDEO_PLATFORM_NAME"].default == "Sunet Play"
 
     def test_a_line_may_draw_itself(self):
         assert "line() if callable(line) else ui.label(line)" in TILES
@@ -140,3 +151,58 @@ class TestThePage:
     def test_billing_explained_in_the_menu_not_a_tooltip(self):
         assert "ui.tooltip(" not in LIST_PAGE
         assert '.props("caption")' in LIST_PAGE
+
+
+class TestTheMonthsWidth:
+    def test_wide_enough_for_five_figures_and_the_service_on_one_line(self):
+        assert "minmax(17.5rem, 1fr)" in rule(".customer-card .stats-tiles")
+        assert '.classes("group-card customer-card admin-card my-2")' in CARD
+
+    def test_three_columns_only_where_the_months_fit(self):
+        assert "@container (min-width: 64rem) {\n        .customer-card .group-layout {" in STYLES
+        assert "minmax(16rem, 1fr) minmax(35.75rem, 1.4fr) 10rem" in STYLES
+
+
+EDIT = PAGE[PAGE.index('@ui.page("/admin/customers/edit/{customer_id}")') : PAGE.index('@ui.page("/admin/customers")')]
+
+
+class TestTheEditPage:
+    def test_title_and_actions_as_on_edit_group(self):
+        assert 'with ui.element("div").classes("edit-group-header"):' in EDIT
+        assert 'with ui.element("div").classes("edit-group-actions"):' in EDIT
+        assert EDIT.index('ui.button("Save customer")') < EDIT.index('with ui.card().classes("edit-group-card admin-card"):')
+        # No second set of buttons at the bottom.
+        assert EDIT.count('ui.button("Save customer")') == 1
+        assert "padding: 16px; gap: 8px;" not in EDIT
+
+    def test_sections_with_headings_in_order(self):
+        titles = ("Customer details", "Plan", "Realms", "Kaltura REACH integration", "Sunet Drive", "Notes")
+        at = [EDIT.index(f'with section("{title}"):') for title in titles]
+        assert at == sorted(at)
+        assert '.props(\n            "role=heading aria-level=2"\n        )' in EDIT
+
+    def test_the_name_first(self):
+        assert EDIT.index('ui.input("Customer name"') < EDIT.index('"Customer abbreviation"')
+        assert EDIT.index('"Support contact address"') < EDIT.index('label="Price plan"')
+
+    def test_the_plan_its_blocks_beside_it(self):
+        assert '{"fixed": "Fixed", "variable": "Variable"}' in EDIT
+        assert '"Blocks per month (4000 minutes each)"' in EDIT
+        assert EDIT.index('label="Price plan"') < EDIT.index('"Blocks per month') < EDIT.index('ui.input("Base fee"')
+        assert 'blocks_input.set_visibility(priceplan_select.value == "fixed")' in EDIT
+
+    def test_kaltura_says_what_n_a_is(self):
+        assert '''hint="N/A for a customer without Kaltura."''' in EDIT
+
+    def test_drive_under_its_own_heading(self):
+        assert "drive_fields(customer, title=False)" in EDIT
+        assert "if title:" in PAGE
+
+    def test_two_fields_to_a_line_on_a_wide_card_one_on_a_narrow(self):
+        assert "grid-template-columns: minmax(0, 1fr);" in rule(".edit-customer-fields")
+        wide = STYLES[STYLES.index("@container (min-width: 40rem) {\n        .edit-customer-fields {") :][:300]
+        assert "repeat(2, minmax(0, 1fr))" in wide and "grid-column: 1 / -1;" in wide
+        assert EDIT.count('.classes("edit-customer-wide")') == 3
+
+    def test_the_notes_grow(self):
+        assert '.props("outlined autogrow")' in EDIT

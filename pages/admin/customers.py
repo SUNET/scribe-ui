@@ -43,7 +43,7 @@ from pages.admin.shared import _get_valid_realms
 settings = get_settings()
 
 
-def drive_fields(customer: dict | None = None) -> tuple:
+def drive_fields(customer: dict | None = None, title: bool = True) -> tuple:
     """
     The Sunet Drive settings of a customer (SUNET/scribe-backend#64): which
     instance is theirs -- users do not choose one -- and what the
@@ -58,7 +58,9 @@ def drive_fields(customer: dict | None = None) -> tuple:
 
     customer = customer or {}
 
-    ui.label("Sunet Drive").classes("text-lg font-semibold mt-2")
+    if title:
+        ui.label("Sunet Drive").classes("text-lg font-semibold mt-2")
+
     instance = (
         ui.input(
             "Drive instance",
@@ -306,76 +308,88 @@ async def edit_customer(customer_id: str) -> None:
         ui.label(f"Error fetching customer: {e}").classes("text-lg").style("color: var(--color-text-danger);")
         return
 
-    ui.label(f"Edit customer: {customer['name']}").classes("text-3xl font-bold mb-4").props("role=heading aria-level=1")
+    # The title and the actions, as on Edit group: wrapping on a phone,
+    # where the two buttons share the width (utils/styles.py, .edit-group-*).
+    # Then the fields in one card, in sections with headings, laid out by
+    # the card's own width (.edit-customer-fields): two to a line from
+    # 40rem, one to a line under it.
+    with ui.element("div").classes("edit-group-header"):
+        ui.label(f"Edit customer: {customer['name']}").classes("text-3xl font-bold edit-group-title").props(
+            "role=heading aria-level=1"
+        )
 
-    with ui.card().style("width: 100%; box-shadow: none; align-self: center;"):
-        with ui.column().classes("gap-4 w-full"):
+        with ui.element("div").classes("edit-group-actions"):
+            # do_save is defined further down; the click comes after.
+            ui.button("Save customer").classes("default-style").props(
+                "color=black flat no-wrap"
+            ).on("click", lambda: do_save())
+            ui.button("Cancel").classes("delete-style").props("color=black flat").on(
+                "click", lambda: ui.navigate.to("/admin/customers")
+            )
+
+    def section(title: str):
+        ui.label(title).classes("text-xl font-semibold edit-customer-heading").props(
+            "role=heading aria-level=2"
+        )
+
+        return ui.element("div").classes("edit-customer-fields")
+
+    with ui.card().classes("edit-group-card admin-card"):
+        with section("Customer details"):
+            name_input = (
+                ui.input("Customer name", value=customer["name"])
+                .props("outlined")
+            )
             customer_abbr_input = (
                 ui.input(
                     "Customer abbreviation", value=customer.get("customer_abbr", "")
                 )
                 .props("outlined")
-                .classes("w-full")
-            )
-            partner_id_input = (
-                ui.input("Kaltura Partner ID", value=customer["partner_id"])
-                .props("outlined")
-                .classes("w-full")
-            )
-            name_input = (
-                ui.input("Customer name", value=customer["name"])
-                .props("outlined")
-                .classes("w-full")
             )
             contact_email_input = (
                 ui.input("Contact email", value=customer.get("contact_email", ""))
-                .props("outlined")
-                .classes("w-full")
+                .props("outlined type=email")
             )
             support_contact_email_input = (
                 ui.input(
                     "Support contact address",
                     value=customer.get("support_contact_email", ""),
                 )
-                .props("outlined")
-                .classes("w-full")
+                .props("outlined type=email")
             )
 
+        with section("Plan"):
             priceplan_select = (
                 ui.select(
-                    ["fixed", "variable"],
+                    {"fixed": "Fixed", "variable": "Variable"},
                     label="Price plan",
                     value=customer["priceplan"],
                 )
-                .classes("w-full")
                 .props("outlined")
-            )
-            base_fee = (
-                ui.input("Base fee", value=str(customer.get("base_fee", 0)))
-                .classes("w-full")
-                .props("outlined type=number min=0")
             )
             blocks_input = (
                 ui.input(
-                    "Blocks purchased (4000 min/block)",
+                    "Blocks per month (4000 minutes each)",
                     value=str(customer.get("blocks_purchased", 0)),
                 )
-                .classes("w-full")
                 .props("outlined type=number min=0")
             )
 
-            # Show/hide blocks input based on price plan
+            base_fee = (
+                ui.input("Base fee", value=str(customer.get("base_fee", 0)))
+                .props("outlined type=number min=0")
+            )
+            # Blocks are for a fixed plan only, beside the plan; without
+            # them the base fee takes their place.
             def update_blocks_visibility():
-                if priceplan_select.value == "fixed":
-                    blocks_input.set_visibility(True)
-                else:
-                    blocks_input.set_visibility(False)
+                blocks_input.set_visibility(priceplan_select.value == "fixed")
 
             priceplan_select.on(
                 "update:model-value", lambda: update_blocks_visibility()
             )
             update_blocks_visibility()
 
+        with section("Realms"):
             realm_select = (
                 ui.select(
                     realms,
@@ -383,22 +397,30 @@ async def edit_customer(customer_id: str) -> None:
                     multiple=True,
                     value=customer_realms,
                 )
-                .classes("w-full")
+                .classes("edit-customer-wide")
                 .props("outlined use-chips")
             )
-
             new_realms_input = (
                 ui.input("Add new realms (comma-separated)")
-                .classes("w-full")
+                .classes("edit-customer-wide")
                 .props("outlined")
             )
 
-            drive_url_input, drive_name_input = drive_fields(customer)
+        with section("Kaltura REACH integration"):
+            partner_id_input = (
+                ui.input("Kaltura Partner ID", value=customer["partner_id"])
+                .props('outlined hint="N/A for a customer without Kaltura."')
+            )
 
+        with section("Sunet Drive"):
+            drive_url_input, drive_name_input = drive_fields(customer, title=False)
+
+        with section("Notes"):
+            # A textarea that grows, as on Edit group.
             notes_input = (
                 ui.textarea("Notes", value=customer.get("notes", ""))
-                .classes("w-full")
-                .props("outlined")
+                .classes("edit-customer-wide")
+                .props("outlined autogrow")
             )
 
     async def do_save() -> None:
@@ -457,16 +479,6 @@ async def edit_customer(customer_id: str) -> None:
             )
         else:
             ui.navigate.to("/admin/customers")
-
-    with ui.row().style(
-        "justify-content: flex-end; width: 100%; padding: 16px; gap: 8px;"
-    ):
-        ui.button("Save customer").classes("default-style").props(
-            "color=black flat no-wrap"
-        ).style("min-width: 150px").on("click", do_save)
-        ui.button("Cancel").classes("delete-style").props("color=black flat").on(
-            "click", lambda: ui.navigate.to("/admin/customers")
-        )
 
 
 @ui.page("/admin/customers")
