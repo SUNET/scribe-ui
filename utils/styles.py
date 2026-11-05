@@ -2395,6 +2395,9 @@ theme_styles = """
     }
     .health-last {
         margin-top: -0.375rem;
+        color: var(--color-text-secondary);
+    }
+    .health-last-offline {
         font-weight: 500;
         color: var(--color-text-primary);
     }

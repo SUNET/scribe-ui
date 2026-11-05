@@ -258,12 +258,14 @@ class WorkerCard:
 
         self.card.classes(remove="is-offline" if worker.online else "", add="" if worker.online else "is-offline")
         self.set(self.head, f'<div class="health-head"><h2 id="{self.heading}">{name}</h2>{state}</div>')
+        # The last heartbeat, online or not: an online worker's, short, says
+        # how fresh the figures are; an offline worker's stands out.
         self.set(
             self.last,
-            "" if worker.online else
-            f"Last heard from {when(worker.last_seen, now, zone)}, {wh.ago(now - worker.last_seen)}.",
+            f"Last heard {when(worker.last_seen, now, zone)}" if worker.online else
+            f'<span class="health-last-offline">Last heard from {when(worker.last_seen, now, zone)}, '
+            f"{wh.ago(now - worker.last_seen)}.</span>",
         )
-        self.last.set_visibility(not worker.online)
         self.set(self.tiles, tiles(worker, now, zone))
         self.set(self.sentence, phrased(summary_sentence(worker, now, zone)))
         self.set(self.cpu, cpu_group(worker, now, zone))

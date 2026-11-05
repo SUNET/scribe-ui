@@ -232,6 +232,11 @@ class TestThePage:
 
     def test_offline_in_words_and_figures_not_guessed(self):
         assert "Last heard from" in PAGE
+        assert 'class="health-last-offline"' in PAGE and ".health-last-offline {" in STYLESHEET
+
+    def test_the_last_heartbeat_shown_online_too(self):
+        assert "self.last.set_visibility" not in PAGE
+        assert 'f"Last heard {when(worker.last_seen, now, zone)}" if worker.online else' in PAGE
         assert 'if worker.online else "–"' in PAGE
         assert ">Offline</span>" in PAGE and ">Online</span>" in PAGE
 
