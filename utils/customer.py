@@ -134,7 +134,7 @@ class Customer:
 
                             if self.partner_id != "N/A" and self.partner_id != "":
                                 ui.label(
-                                    f"Transcribed minutes via Sunet Scribe: {self.stats.get('transcribed_minutes', 0):.0f}"
+                                    f"Transcribed minutes via {settings.SERVICE_NAME}: {self.stats.get('transcribed_minutes', 0):.0f}"
                                 )
                                 ui.label(
                                     f"Transcribed minutes via Sunet Play: {self.stats.get('transcribed_minutes_external', 0):.0f}"
@@ -166,7 +166,7 @@ class Customer:
                             ).classes("text-sm")
                             if self.partner_id != "N/A" and self.partner_id != "":
                                 ui.label(
-                                    f"Transcribed minutes via Sunet Scribe: {self.stats.get('transcribed_minutes_last_month', 0):.0f}"
+                                    f"Transcribed minutes via {settings.SERVICE_NAME}: {self.stats.get('transcribed_minutes_last_month', 0):.0f}"
                                 ).classes("text-sm")
                                 ui.label(
                                     f"Transcribed minutes via Sunet Play: {self.stats.get('transcribed_minutes_external_last_month', 0):.0f}"
