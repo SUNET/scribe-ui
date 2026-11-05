@@ -214,7 +214,8 @@ async def edit_group(group_id: str) -> None:
         for index, user in enumerate(group["users"]):
             user["id"] = index
             user["admin"] = "Yes" if user.get("admin", True) else "No"
-            user["active"] = "Yes" if user.get("active", True) else "No"
+            # Status in the words of the Users page and its buttons.
+            user["active"] = "Enabled" if user.get("active", True) else "Disabled"
 
     except httpx.HTTPError as e:
         ui.label(f"Error fetching group: {e}").classes("text-lg").style("color: var(--color-text-danger);")
@@ -301,7 +302,7 @@ async def edit_group(group_id: str) -> None:
                 },
                 {
                     "name": "active",
-                    "label": "Active",
+                    "label": "Status",
                     "field": "active",
                     "align": "left",
                     "sortable": True,

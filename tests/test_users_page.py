@@ -197,3 +197,13 @@ class TestTheFilterInTheBrowser:
         assert run_filter(ROWS, {"active": "Disabled", "realm": "gu.se", "admin": "No"}) == ["anna.ek@gu.se"]
         assert run_filter(ROWS, {"active": "Enabled", "q": "anna*"}) == ["anna.berg@su.se"]
         assert run_filter(ROWS, {"provisioning": "Manual"}) == ["erik.lund@gu.se"]
+
+
+class TestTheSameWordsOnTheEditGroupPage:
+    def test_members_status_is_enabled_or_disabled(self):
+        groups = (ROOT / "pages" / "admin" / "groups.py").read_text()
+        edit = groups[groups.index("async def edit_group") :]
+
+        assert 'user["active"] = "Enabled" if user.get("active", True) else "Disabled"' in edit
+        assert '"name": "active",\n                    "label": "Status",' in edit
+        assert '"label": "Active"' not in groups
