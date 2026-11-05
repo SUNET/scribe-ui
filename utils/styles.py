@@ -1210,10 +1210,11 @@ theme_styles = """
     }
 
     /* ── User settings (pages/user.py) ── */
-    /* Cards: one column on a phone, two from 52rem -- Account, Theme
-       and Connected services on the left, Email notifications on the
-       right; in the page Account, Email notifications, Theme,
-       Connected services, which is also the order on a phone. */
+    /* Cards: one column on a phone, two from 52rem -- Account, Theme and
+       Connected services on the left, Email notifications on the right.
+       Two real columns, each read top to bottom, so the page, the
+       keyboard and a phone all go Account, Theme, Connected services,
+       Email notifications. */
     .settings {
         width: 100%;
         max-width: 72rem;
@@ -1225,15 +1226,16 @@ theme_styles = """
         gap: 1.5rem;
         align-items: start;
     }
+    .settings-column {
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+        min-width: 0;
+    }
     @container (min-width: 52rem) {
         .settings-grid {
             grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-            grid-template-rows: auto auto 1fr;
         }
-        .settings-account { grid-column: 1; grid-row: 1; }
-        .settings-notifications { grid-column: 2; grid-row: 1 / span 3; }
-        .settings-theme-card { grid-column: 1; grid-row: 2; }
-        .settings-services { grid-column: 1; grid-row: 3; }
     }
     .settings-card {
         width: 100%;

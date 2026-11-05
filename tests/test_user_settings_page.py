@@ -43,16 +43,24 @@ class TestTheCards:
         assert 'ui.label("Connected services").classes("settings-card-title").props(' in PAGE
         assert 'ui.label(title).classes("settings-card-title").props("role=heading aria-level=2")' in PAGE
 
-    def test_in_the_page_in_the_order_of_a_phone(self):
-        order = [PAGE.index(f'"{title}",') for title in ("Account", "Email notifications", "Theme")]
-        assert order == sorted(order)
-        assert order[-1] < PAGE.index("drive_section = ui.element(\"section\")")
+    def test_in_the_page_as_the_columns_are_read(self):
+        """Left column top to bottom, then the right: the keyboard's order on a wide page."""
+
+        account = PAGE.index('card("account_circle", "Account",')
+        theme = PAGE.index('card("palette", "Theme",')
+        services = PAGE.index('drive_section = ui.element("section")')
+        notifications = PAGE.index('card("notifications", "Email notifications",')
+        assert account < theme < services < notifications
+        assert PAGE.count('ui.element("div").classes("settings-column")') == 2
+        right = PAGE.rindex('ui.element("div").classes("settings-column")')
+        assert services < right < notifications
 
     def test_two_columns_on_a_wide_page_one_on_a_phone(self):
         assert "grid-template-columns: minmax(0, 1fr);" in rule(".settings-grid")
         wide = block("    @container (min-width: 52rem) {\n        .settings-grid {")
         assert "grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);" in wide
-        assert ".settings-notifications { grid-column: 2; grid-row: 1 / span 3; }" in wide
+        assert "grid-row" not in wide  # no placing: the columns are the page's own order
+        assert "flex-direction: column;" in rule(".settings-column")
         assert "container-type: inline-size;" in rule(".settings")
 
 
@@ -77,7 +85,7 @@ class TestTheAccount:
 
 class TestTheNotifications:
     def test_the_address_with_the_choices(self):
-        notifications = PAGE[PAGE.index('"Email notifications",') : PAGE.index('card("palette", "Theme",')]
+        notifications = PAGE[PAGE.index('"Email notifications",') :]
         assert 'ui.input("Email address", value=current_email)' in notifications
         assert 'ui.button("Send test and save", on_click=lambda: email_save(email.value))' in notifications
 
