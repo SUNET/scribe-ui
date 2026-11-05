@@ -25,10 +25,10 @@ from datetime import date, timedelta
 import httpx
 
 from nicegui import ui
-from utils.common import add_timezone_to_timestamp, page_init, reload_on_theme_change
+from utils.common import add_timezone_to_timestamp, page_init
 from utils.styles import default_styles
 from utils.bar_chart import NBSP, amount, bar_chart, decimals_for, month_days, month_name, rounded
-from utils.chart_tables import chart_section, head_html as chart_head, minutes_summary
+from utils.chart_tables import chart_section, head_html as chart_head, minutes_summary, summary_cards
 from utils.helpers import (
     groups_get,
     save_group,
@@ -193,10 +193,6 @@ async def edit_group(group_id: str) -> None:
     Page to edit a group.
     """
     user_data = await page_init(use_drawer=True, title="Edit group")
-    # Plotly draws its charts in one theme's colours server-side and
-    # cannot restyle itself, so this page reloads when the OS theme
-    # changes. Only pages with charts do -- see reload_on_theme_change.
-    reload_on_theme_change()
 
     if not (user_data or {}).get("admin"):
         ui.navigate.to("/home")
@@ -435,16 +431,7 @@ async def statistics(group_id: str) -> None:
         )
 
         with ui.element("div").classes("stats-card stats-summary w-full"):
-            # role="list": Safari leaves a list without its markers out of
-            # the accessibility tree as a list unless it is told.
-            with ui.element("ul").classes("stats-tiles").props('role="list"'):
-                for title, lines in tiles:
-                    with ui.element("li"):
-                        with ui.card().props("flat bordered").classes("stats-tile"):
-                            ui.label(title).classes("stats-tile-name")
-
-                            for line in lines:
-                                ui.label(line).classes("stats-tile-meta")
+            summary_cards(tiles)
 
         # Each chart is a heading, a sentence, the chart as a picture and
         # the same numbers as a table (utils/chart_tables.py): a chart alone
@@ -587,10 +574,6 @@ def create() -> None:
         Main page of the application.
         """
         user_data = await page_init(use_drawer=True, title="Groups")
-        # Plotly draws its charts in one theme's colours server-side and
-        # cannot restyle itself, so this page reloads when the OS theme
-        # changes. Only pages with charts do -- see reload_on_theme_change.
-        reload_on_theme_change()
 
         if not (user_data or {}).get("admin"):
             ui.navigate.to("/home")

@@ -1226,6 +1226,140 @@ theme_styles = """
         background-color: var(--color-bg-surface-alt) !important;
     }
 
+    /* ── Summary cards (group statistics, Groups) ── */
+    /* The summary as cards, as the files are on /home on a phone (the
+       jobs-card look): side by side as far as they fit, else one above
+       the other. */
+    .stats-tiles {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+        gap: 0.75rem;
+        text-align: left;
+    }
+    .stats-tile {
+        width: 100%;
+        height: 100%;
+        padding: 0.75rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+    /* The figures are what the card is for, so in the page's body size
+       (the size of the sentences under the charts), not the small print
+       of a file's details. */
+    .stats-tile-name {
+        font-size: 1.125rem;
+        font-weight: 600;
+        color: var(--color-text-primary);
+    }
+    .stats-tile-meta {
+        font-size: 1rem;
+        color: var(--color-text-secondary);
+    }
+
+    /* ── Admin: group cards (Groups page) ── */
+    /* Name, details and actions, and the months as summary cards: three
+       columns on a wide card, one above the other on a narrow one -- the
+       card's own width decides (a container query), so an open menu on a
+       middling screen counts too. */
+    .group-card {
+        width: 100%;
+        box-shadow: none;
+        border: 1px solid var(--color-border-subtle);
+        padding: 1rem;
+        container-type: inline-size;
+        /* The customer's expansion around the cards is text-bold. */
+        font-weight: 400;
+    }
+    .group-layout {
+        display: grid;
+        gap: 1rem;
+        width: 100%;
+    }
+    .group-info {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        min-width: 0;
+    }
+    .group-name {
+        font-size: 1.375rem;
+        font-weight: 700;
+        line-height: 1.3;
+        color: var(--color-text-primary);
+        overflow-wrap: anywhere;
+    }
+    .group-description {
+        color: var(--color-text-secondary);
+        overflow-wrap: anywhere;
+    }
+    /* A long name cut to two lines and a long description to three;
+       "Show more" opens them. */
+    .group-name.is-clamped,
+    .group-description.is-clamped {
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 3;
+        line-clamp: 3;
+        overflow: hidden;
+    }
+    .group-name.is-clamped {
+        -webkit-line-clamp: 2;
+        line-clamp: 2;
+    }
+    .group-description-toggle {
+        align-self: flex-start;
+        padding: 0 0.25rem;
+        margin-left: -0.25rem;
+        min-height: 44px;
+        color: var(--color-brand-primary);
+        text-decoration: underline;
+    }
+    .group-meta {
+        font-size: 0.875rem;
+        color: var(--color-text-muted);
+    }
+    /* The two months share their column, the same in every card. */
+    .group-card .stats-tiles {
+        grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+    }
+    /* One above the other, all the same width: the card's full width on a
+       narrow card, a column of its own on the right on a wide one. */
+    .group-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    .group-actions .q-btn {
+        width: 100%;
+        min-width: 0;
+        min-height: 44px;
+    }
+    /* A middling card: the actions already on the right, the details and
+       the months above one another beside them. */
+    @container (min-width: 36rem) {
+        .group-layout {
+            grid-template-columns: minmax(0, 1fr) 10rem;
+            align-items: start;
+        }
+        .group-layout > .group-actions {
+            grid-column: 2;
+            grid-row: 1 / span 2;
+        }
+    }
+    @container (min-width: 52rem) {
+        .group-layout {
+            grid-template-columns: minmax(16rem, 1fr) minmax(0, 1fr) 10rem;
+        }
+        .group-layout > .group-actions {
+            grid-column: 3;
+            grid-row: 1;
+        }
+    }
+
     /* ── Admin: stats page ── */
     .stats-container {
         max-width: 1500px;

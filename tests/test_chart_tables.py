@@ -340,16 +340,21 @@ class TestTheGroupStatisticsPage:
     def test_the_summary_is_a_list_of_cards_like_on_home(self):
         stats = GROUPS[GROUPS.index("async def statistics") :]
         stats = stats[: stats.index("\ndef create(")]
+        source = (ROOT / "utils" / "chart_tables.py").read_text()
+        cards = source[source.index("def summary_cards(") :]
+        styles = (ROOT / "utils" / "styles.py").read_text()
 
-        assert 'ui.element("ul").classes("stats-tiles").props(\'role="list"\')' in stats
-        assert 'ui.element("li")' in stats
-        assert 'ui.card().props("flat bordered").classes("stats-tile")' in stats
+        assert "summary_cards(tiles)" in stats
+        assert 'ui.element("ul").classes("stats-tiles").props(\'role="list"\')' in cards
+        assert 'ui.element("li")' in cards
+        assert 'ui.card().props("flat bordered").classes("stats-tile")' in cards
         assert "Number of users" not in stats and "Transcribed files in" not in stats
-        assert "list-style: none;" in module.CHART_STYLES
-        assert "grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));" in module.CHART_STYLES
+        # The page's own styles, shared with the Groups page.
+        assert "list-style: none;" in styles
+        assert "grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));" in styles
         # The figures in the body size, the name a step above it.
-        assert ".stats-tile-name {\n        font-size: 1.125rem;" in module.CHART_STYLES
-        assert ".stats-tile-meta {\n        font-size: 1rem;" in module.CHART_STYLES
+        assert ".stats-tile-name {\n        font-size: 1.125rem;" in styles
+        assert ".stats-tile-meta {\n        font-size: 1rem;" in styles
 
     def test_less_room_round_the_cards_on_a_phone(self):
         rule = module.CHART_STYLES[module.CHART_STYLES.index("@media (max-width: 600px)") :]

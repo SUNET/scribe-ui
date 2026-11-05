@@ -314,6 +314,10 @@ A Plotly chart is a picture: its numbers are not there for a screen reader (1.1.
 
 **Not yet used** on the activity overview (`pages/admin/analytics.py`, seven charts including the day/hour heatmap) or the health page (two charts); those still draw `ui.plotly` directly. Tests: `tests/test_chart_tables.py`.
 
+## Group cards (Groups page, `utils/group.py`)
+
+`Group.create_card()`: the name as an `h2`, the description, members, monthly limit and "Created …" one to a line; this month and the one before as summary cards (`summary_cards()` from `utils/chart_tables.py`, months by name from today, whole minutes); and Statistics / Edit / Delete in a column of their own, all one width. The card's own width decides the layout (`.group-card`, a container query in `utils/styles.py`): one above the other under 36rem with the buttons full width, the buttons in a column on the right from 36rem, three columns (details, months, buttons) from 52rem. Each button is named for its group ("Statistics for Test group"; set through `_props`, since a quote in a name would break a props string). A name over 48 characters is cut to two lines and a description over 120 to three (`-webkit-line-clamp`, the whole text still in the DOM), with one "Show more" / "Show less" button (`aria-expanded`, `aria-controls` naming both). `font-weight: 400` on the card, as the customer's expansion around it is `text-bold`. The Groups and edit pages no longer reload on a change of theme (they have no charts).
+
 ## Admin hierarchy
 
 - **BOFH** (`bofh=True`): sees everything, manages all realms and onboarding attributes

@@ -15,9 +15,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from datetime import date, timedelta
+
 import httpx
 
 from nicegui import ui
+from utils.bar_chart import NBSP, amount, month_name
+from utils.chart_tables import summary_cards
 from utils.settings import get_settings
 from utils.token import get_auth_header
 settings = get_settings()
@@ -62,59 +66,134 @@ class Group:
 
             delete_group_dialog.open()
 
-    def create_card(self):
-        with ui.card().classes("my-2 admin-card").style("width: 100%; box-shadow: none; border: 1px solid var(--color-border-subtle); padding: 16px;"):
-            with ui.row().style(
-                "justify-content: space-between; align-items: center; width: 100%;"
-            ):
-                with ui.column().style("flex: 0 0 auto; min-width: 25%;"):
-                    ui.label(f"{self.name}").classes("text-h5 font-bold")
-                    ui.label(self.description).classes("text-md")
+    # Over this many characters a name is cut to two lines on the card, and
+    # a description to three, with one button to show them whole: some
+    # names are long, and some descriptions are essays.
+    LONG_NAME = 48
+    LONG_DESCRIPTION = 120
+
+    def name_and_description(self) -> None:
+        """
+        The name (a heading) and the description, each cut by CSS when
+        long, so the whole text is there for a screen reader either way;
+        and when either is cut, one "Show more" / "Show less" button under
+        them, with aria-expanded and aria-controls naming what it opens.
+        """
+
+        cut = []
+        name = ui.label(self.name).classes("group-name").props("role=heading aria-level=2")
+
+        if len(self.name) > self.LONG_NAME:
+            cut.append((name, f"group-name-{self.group_id}"))
+
+        if self.description:
+            description = ui.label(self.description).classes("group-description")
+
+            if len(self.description) > self.LONG_DESCRIPTION:
+                cut.append((description, f"group-description-{self.group_id}"))
+
+        if not cut:
+            return
+
+        for element, element_id in cut:
+            element.classes("is-clamped")
+            element._props["id"] = element_id
+
+        # color=None: NiceGUI's default "primary" is Quasar's .text-primary,
+        # 3:1 on a white card and in a CSS layer that wins over the page's
+        # own !important; without it the button takes the brand colour.
+        toggle = ui.button("Show more", color=None).classes("group-description-toggle").props("flat dense no-caps")
+        toggle._props["aria-expanded"] = "false"
+        toggle._props["aria-controls"] = " ".join(element_id for _, element_id in cut)
+
+        def flip() -> None:
+            opened = toggle._props.get("aria-expanded") == "false"
+
+            for element, _ in cut:
+                element.classes(remove="is-clamped") if opened else element.classes(add="is-clamped")
+
+            toggle.text = "Show less" if opened else "Show more"
+            toggle._props["aria-expanded"] = "true" if opened else "false"
+            toggle.update()
+
+        toggle.on("click", flip)
+
+    def create_card(self) -> None:
+        """
+        The group as a card: name, description and details, this month and
+        the one before as summary cards (whole minutes; months by name,
+        from today), and the actions in a column of their own (CSS in
+        utils/styles.py, .group-card). Each action is named for its group:
+        "Statistics" three times in a row says nothing to a screen reader.
+        """
+
+        today = date.today()
+        this_first = today.replace(day=1)
+        previous_first = (this_first - timedelta(days=1)).replace(day=1)
+        limit = (
+            "Unlimited"
+            if self.quota_seconds == 0
+            else f"{self.quota_seconds // 60}{NBSP}minutes"
+        )
+        members = f"{self.nr_users}{NBSP}member" if self.nr_users == 1 else f"{self.nr_users}{NBSP}members"
+
+        def files(count) -> str:
+            return f"{count}{NBSP}file" if count == 1 else f"{count}{NBSP}files"
+
+        def button(text: str, name: str, look: str, props: str, action) -> None:
+            control = ui.button(text).classes(look).props(props)
+            # Set directly, not through props(): a group's name may hold a
+            # quote, which the props string would take apart.
+            control._props["aria-label"] = name
+            control.on("click", action)
+
+        with ui.card().classes("group-card admin-card my-2"):
+            with ui.element("div").classes("group-layout"):
+                with ui.element("div").classes("group-info"):
+                    self.name_and_description()
+
+                    ui.label(members).classes("group-meta")
+                    ui.label(f"Monthly limit: {limit}").classes("group-meta")
 
                     if self.name != "All users":
-                        ui.label(f"Created {self.created_at}").classes("text-sm text-theme-muted")
+                        ui.label(f"Created {self.created_at}").classes("group-meta")
 
-                    ui.label(f"{self.nr_users} members").classes("text-sm text-theme-muted")
-                    ui.label(f"Monthly transcription limit: {'Unlimited' if self.quota_seconds == 0 else str(self.quota_seconds // 60) + ' minutes'}").classes("text-sm text-theme-muted")
-                with ui.column().style("flex: 1;"):
-                    ui.label("Statistics").classes("text-h6 font-bold")
+                summary_cards(
+                    (
+                        (
+                            month_name(this_first.isoformat()),
+                            [
+                                f"{files(self.stats['transcribed_files'])} transcribed",
+                                amount(self.stats["total_transcribed_minutes"]),
+                            ],
+                        ),
+                        (
+                            month_name(previous_first.isoformat()),
+                            [
+                                f"{files(self.stats['transcribed_files_last_month'])} transcribed",
+                                amount(self.stats["total_transcribed_minutes_last_month"]),
+                            ],
+                        ),
+                    )
+                )
 
-                    with ui.row().classes("w-full gap-8"):
-                        with ui.column().style("min-width: 30%;"):
-                            ui.label("This month").classes("font-semibold")
-                            ui.label(f"Transcribed files current month: {self.stats["transcribed_files"]}").classes("text-sm")
-                            ui.label(f"Transcribed minutes current month: {self.stats["total_transcribed_minutes"]:.0f}").classes("text-sm")
-                        with ui.column():
-                            ui.label("Last month").classes("font-semibold")
-                            ui.label(f"Transcribed files last month: {self.stats["transcribed_files_last_month"]}").classes("text-sm")
-                            ui.label(f"Transcribed minutes last month: {self.stats["total_transcribed_minutes_last_month"]:.0f}").classes("text-sm")
-
-                with ui.column().style("flex: 0 0 auto;"):
-
-                    statistics = ui.button("Statistics").classes("button-edit").props(
-                        "color=white flat"
-                    ).style("width: 100%")
-
-                    statistics.on(
-                        "click",
-                        lambda: ui.navigate.to(f"/admin/stats/{self.group_id}")
+                with ui.element("div").classes("group-actions"):
+                    button(
+                        "Statistics",
+                        f"Statistics for {self.name}",
+                        "button-edit",
+                        "color=white flat",
+                        lambda: ui.navigate.to(f"/admin/stats/{self.group_id}"),
                     )
 
                     if self.name == "All users":
                         return
 
-                    edit = ui.button("Edit").classes("button-edit").props(
-                        "color=white flat"
-                    ).style("width: 100%")
-                    delete = ui.button("Delete").classes("button-close").props(
-                        "color=black flat"
-                    ).style("width: 100%")
-
-                    edit.on(
-                        "click",
-                        lambda e: self.edit_group()
-                    )
-                    delete.on(
-                        "click",
-                        lambda e: self.delete_group_dialog()
+                    button("Edit", f"Edit {self.name}", "button-edit", "color=white flat", lambda: self.edit_group())
+                    button(
+                        "Delete",
+                        f"Delete {self.name}",
+                        "button-close",
+                        "color=black flat",
+                        lambda: self.delete_group_dialog(),
                     )
