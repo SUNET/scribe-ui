@@ -3997,14 +3997,29 @@ theme_styles = """
         }
     }
 
-    /* ── SRT editor controls under the video ── */
-    /* The switches on one row, what they mark under it -- grouped by what
-       each control affects, without a heading naming each group. */
+    /* ── Editor settings (the menu the gear in the toolbar opens) ── */
+    /* The switches one to a row, the sensitivity selector under them --
+       grouped by what each control affects, without a heading naming each
+       group. */
     .editor-settings {
         display: flex;
         flex-direction: column;
-        gap: 0.5rem;
-        padding: 0.75rem 0 0.25rem;
+        gap: 0.75rem;
+        padding: 0.75rem 1rem;
+    }
+    /* The flagged count's place, under the Uncertain words row. It keeps its
+       height while the marking is off (the count is hidden then), so the menu
+       is the same size either way and the count never has to find room. */
+    .editor-settings-count {
+        min-height: 1.25rem;
+        line-height: 1.25rem;
+    }
+    /* What a group is called: small and quiet, over the rows it names. */
+    .editor-settings-title {
+        font-size: 0.75rem;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        color: var(--color-text-secondary);
     }
     /* ── Theme-aware text utilities ── */
     .text-theme-primary {

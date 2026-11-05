@@ -585,7 +585,7 @@ class TestTheLook:
         css = stylesheet()
         block = css[
             css.index("The player's controls (utils/player_controls.js)") :
-            css.index("SRT editor controls under the video")
+            css.index("Editor settings (the menu the gear in the toolbar opens)")
         ]
 
         assert "hover: none" not in block
