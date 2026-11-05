@@ -202,8 +202,98 @@ BAR_CHART_STYLES = """
         vertical-align: -0.1em;
         background: var(--chart-bar);
     }
+    /* Stacked: each slot one column of segments, 2px of the card between
+       them so neighbours read apart by more than their hue; the
+       kinds in a fixed order of colours (validated for colour blindness
+       against the cards in both themes: data-viz palette, slots 1-6). */
+    .bar-chart {
+        --chart-s1: #2a78d6;
+        --chart-s2: #eb6834;
+        --chart-s3: #1baf7a;
+        --chart-s4: #eda100;
+        --chart-s5: #e87ba4;
+        --chart-s6: #008300;
+        --chart-line: #6b7280;
+    }
+    .body--dark .bar-chart {
+        --chart-s1: #3987e5;
+        --chart-s2: #d95926;
+        --chart-s3: #199e70;
+        --chart-s4: #c98500;
+        --chart-s5: #d55181;
+        --chart-s6: #008300;
+        --chart-line: #9ca3af;
+    }
+    .bar-chart-stack {
+        flex: 0 1 70%;
+        max-width: 2.5rem;
+        height: 100%;
+        display: flex;
+        flex-direction: column-reverse;
+    }
+    /* Each segment its true share of the height; the 2px of the card
+       between two is drawn inside the upper one, so nothing is taken from
+       the stack, and a segment too small to show still shows a sliver. */
+    .bar-chart-segment {
+        flex: none;
+        min-height: 2px;
+    }
+    .bar-chart-segment + .bar-chart-segment {
+        min-height: 4px;
+        box-shadow: inset 0 -2px 0 var(--color-bg-surface);
+    }
+    .bar-chart-stack .bar-chart-segment:last-child {
+        border-radius: 3px 3px 0 0;
+    }
+    .bar-chart-slot:hover .bar-chart-segment {
+        filter: brightness(1.1);
+    }
+    /* Days before the statistics began: the tone of the days still to
+       come on the group statistics, for the same reason: not counted, not
+       noughts. */
+    .bar-chart-slot.is-uncounted {
+        background: var(--chart-future);
+        box-shadow: -1px 0 0 var(--chart-future), 1px 0 0 var(--chart-future);
+    }
+    /* An average over the bars: grey and dashed, a calculated figure, not
+       a series; a ring of the card under it so it reads over the bars. */
+    .bar-chart-line {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        overflow: visible;
+        pointer-events: none;
+    }
+    .bar-chart-line .is-ring {
+        stroke: var(--color-bg-surface);
+        stroke-width: 5;
+    }
+    .bar-chart-line .is-line {
+        stroke: var(--chart-line);
+        stroke-width: 2;
+        stroke-dasharray: 6 4;
+    }
+    .bar-chart-legend {
+        flex-wrap: wrap;
+        row-gap: 0.25rem;
+    }
+    .bar-chart-legend i.is-line {
+        width: 1.25rem;
+        height: 2px;
+        border-radius: 0;
+        vertical-align: 0.25em;
+        background: repeating-linear-gradient(90deg, var(--chart-line) 0 6px, transparent 6px 9px);
+    }
     /* Windows high contrast takes backgrounds away; the bars keep a colour. */
     @media (forced-colors: active) {
+        .bar-chart-segment {
+            forced-color-adjust: none;
+            background: CanvasText !important;
+        }
+        .bar-chart-line .is-line {
+            stroke: Highlight;
+        }
         .bar-chart-bar,
         .bar-chart-legend i {
             forced-color-adjust: none;
@@ -456,6 +546,121 @@ def bar_chart(
         f'<div class="bar-chart-unit">{html.escape(unit)}</div>'
         f'<div class="bar-chart-ticks">{scale}</div>'
         f'<div class="bar-chart-plot">{grid}{"".join(slots)}</div>'
+        f'<div class="bar-chart-labels">{names}</div>'
+        f"{key}"
+        "</div>"
+    )
+
+
+def stacked_chart(
+    labels: Sequence[str],
+    series: Sequence[dict],
+    unit: str = "Actions",
+    line: Optional[dict] = None,
+    label_every: Optional[int] = None,
+    counted_from: Optional[str] = None,
+) -> str:
+    """
+    A stacked bar chart as HTML: one column a slot, each series a segment of
+    it in its colour slot (`series` are {"name", "values"}, in the order of
+    the colours, at most six), and `line` ({"name", "values"}, None for a
+    point not to draw) as a dashed line over the bars, an average. The
+    tooltip is the slot's: its total, each series and the line, in words. A
+    legend names every series and the line. The figures are for a table
+    beside it; this is the picture. Days before `counted_from` (ISO dates
+    compared as text) are toned, as days that were not counted rather than
+    days with nothing done: the log began after them.
+    """
+
+    totals = [sum((one["values"][at] or 0) for one in series) for at in range(len(labels))]
+    # The line on the scale too: its first days' average takes in days
+    # before the chart, which may have been busier than any shown.
+    line_values = [value for value in line["values"] if value is not None] if line else []
+    ticks = nice_ticks(max(totals + line_values + [0]), whole=True)
+    top = ticks[-1] or 1
+    every = label_every or max(1, math.ceil(len(labels) / MAX_LABELS))
+    slots = []
+
+    for at, label in enumerate(labels):
+        parts = [(at_series, one, one["values"][at] or 0) for at_series, one in enumerate(series)]
+        tip = f"{day_label(label)}: {amount(totals[at], unit)}"
+        said = [amount(value, one["name"]) for _, one, value in parts if value]
+
+        if said and len([1 for _, _, value in parts if value]) > 1:
+            tip += " \u2013 " + ", ".join(said)
+
+        if line and line["values"][at] is not None:
+            tip += f"; {line['name'].lower()} {figure(round(line['values'][at]))}"
+
+        segments = "".join(
+            f'<span class="bar-chart-segment" style="height: {round(100 * value / top, 3)}%; '
+            f'background: var(--chart-s{at_series + 1})"></span>'
+            for at_series, _, value in parts
+            if value > 0
+        )
+        if counted_from and str(label) < counted_from:
+            slots.append(
+                f'<div class="bar-chart-slot is-uncounted" title="{html.escape(day_label(label) + ": before the statistics began", quote=True)}"></div>'
+            )
+            continue
+
+        slots.append(
+            f'<div class="bar-chart-slot" title="{html.escape(tip, quote=True)}">'
+            f'<span class="bar-chart-stack">{segments}</span></div>'
+        )
+
+    drawn = ""
+
+    if line:
+        count = len(labels)
+        points = " ".join(
+            f"{round(100 * (at + 0.5) / count, 3)},{round(100 - 100 * value / top, 3)}"
+            for at, value in enumerate(line["values"])
+            if value is not None
+        )
+
+        if points:
+            shape = 'fill="none" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"'
+            drawn = (
+                '<svg class="bar-chart-line" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">'
+                f'<polyline class="is-ring" points="{points}" {shape}/>'
+                f'<polyline class="is-line" points="{points}" {shape}/></svg>'
+            )
+
+    grid = "".join(
+        f'<div class="bar-chart-grid" style="bottom: {round(100 * tick / top, 3)}%"></div>'
+        for tick in ticks[1:]
+    )
+    scale = "".join(
+        f'<span style="bottom: {round(100 * tick / top, 3)}%">{figure(tick)}</span>'
+        for tick in ticks
+    )
+    shown = math.ceil(len(labels) / every)
+
+    def name(at: int, label: str) -> str:
+        if at % every:
+            return "<span></span>"
+
+        minor = ' class="is-minor"' if shown > 4 and (at // every) % 2 else ""
+
+        return f"<span{minor}>{html.escape(day_label(label))}</span>"
+
+    names = "".join(name(at, label) for at, label in enumerate(labels))
+    key = '<div class="bar-chart-legend">' + "".join(
+        f'<span><i style="background: var(--chart-s{at + 1})"></i>{html.escape(one["name"])}</span>'
+        for at, one in enumerate(series)
+    )
+
+    if line:
+        key += f'<span><i class="is-line"></i>{html.escape(line["name"])}</span>'
+
+    key += "</div>"
+
+    return (
+        '<div class="bar-chart">'
+        f'<div class="bar-chart-unit">{html.escape(unit)}</div>'
+        f'<div class="bar-chart-ticks">{scale}</div>'
+        f'<div class="bar-chart-plot">{grid}{"".join(slots)}{drawn}</div>'
         f'<div class="bar-chart-labels">{names}</div>'
         f"{key}"
         "</div>"
