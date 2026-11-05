@@ -133,15 +133,16 @@ LINE_CHART_STYLES = """
             transparent 6px 12px
         );
     }
-    /* The word inside the toned part, clipped by it when it is still too
-       narrow to hold it: never out past the chart. */
-    .line-chart-offline {
-        overflow: hidden;
-    }
+    /* The word at the chart's right edge, so it is whole however little
+       of the time is toned: it reaches back over the lines when it has to,
+       on the card's own colour, and never out past the chart. */
     .line-chart-offline span {
         position: absolute;
         top: 0.125rem;
-        left: 0.375rem;
+        right: 0.25rem;
+        padding: 0 0.25rem;
+        border-radius: 0.25rem;
+        background: var(--color-bg-surface);
         font-size: 0.75rem;
         font-weight: 600;
         color: var(--color-text-secondary);
