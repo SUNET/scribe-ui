@@ -1261,6 +1261,9 @@ theme_styles = """
        that style the cards on /home, so they carry their own. */
     .rule-card {
         width: 100%;
+        /* A long name, description or example with no spaces breaks
+           rather than taking the card past the screen. */
+        overflow-wrap: anywhere;
         padding: 0.75rem;
         display: flex;
         flex-direction: column;

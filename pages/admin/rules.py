@@ -1001,6 +1001,15 @@ async def rules_page() -> None:
             rule["enabled_label"] = "Yes" if rule.get("enabled") else "No"
             cond = rule.get("attribute_condition", "")
             rule["condition_label"] = CONDITION_OPTIONS.get(cond.lower(), cond)
+            # What the Matches column says, as one field: the table's search
+            # looks in its columns' fields, not in what a slot draws, so the
+            # condition and the value are searched through this. It sorts
+            # by the attribute, which it begins with.
+            rule["match_text"] = " ".join(
+                str(part)
+                for part in (rule.get("attribute_name", ""), rule["condition_label"].lower(), rule.get("attribute_value", ""))
+                if part
+            )
 
         rules_table = (
             ui.table(
@@ -1021,7 +1030,7 @@ async def rules_page() -> None:
                     {
                         "name": "match",
                         "label": "Matches",
-                        "field": "attribute_name",
+                        "field": "match_text",
                         "align": "left",
                         "sortable": True,
                         "classes": "rules-col-wrap rules-col-match",

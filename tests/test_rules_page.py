@@ -53,6 +53,12 @@ class TestTheRulesTable:
             assert gone not in PAGE
         assert "body-cell-match" in PAGE
 
+    def test_the_search_finds_the_condition_and_the_value_too(self):
+        # The search looks in the columns' fields, not in what a slot draws.
+        assert '"field": "match_text",' in PAGE
+        assert 'rule["match_text"] = " ".join(' in SOURCE
+        assert 'rule["condition_label"].lower(), rule.get("attribute_value", "")' in SOURCE
+
     def test_long_names_and_values_wrap(self):
         assert '"classes": "rules-col-wrap",' in PAGE
         wrap = rule(".rules-table td.rules-col-wrap")
@@ -84,6 +90,8 @@ class TestTheRuleCards:
 
     def test_the_cards_carry_their_own_styles(self):
         assert "padding: 0.75rem;" in rule(".rule-card")
+        # Every field on a card, an attribute's description and example too.
+        assert "overflow-wrap: anywhere;" in rule(".rule-card")
         assert "min-height: 44px;" in rule(".rule-card-actions .q-btn")
 
     def test_the_search_as_wide_as_the_card_on_a_phone(self):
