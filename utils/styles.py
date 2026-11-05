@@ -2238,9 +2238,10 @@ theme_styles = """
     }
 
     /* ── Admin: health page (pages/admin/health.py) ── */
+    /* The page's whole width, as the other admin pages: three cards side
+       by side on a wide screen. */
     .health {
         width: 100%;
-        max-width: 90rem;
         display: flex;
         flex-direction: column;
         gap: 1.5rem;
