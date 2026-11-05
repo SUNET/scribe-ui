@@ -61,6 +61,10 @@ class Settings(BaseSettings):
     # it may be called something else ("NORDUnet S2T"). Never write the
     # name into the code -- tests/test_service_name.py looks for it.
     SERVICE_NAME: str = "Sunet Scribe"
+    # The initials Word shows beside an exported document's comments, which
+    # are from SERVICE_NAME. Set, not worked out from the name: initials
+    # made from a name can spell something no one wants beside their text.
+    SERVICE_INITIALS: str = "SCR"
     LANDING_TEXT: str = "Welcome to Sunet Scribe"
     MANUAL_URL: str = "https://sunet.box.com/s/la16r5iu3gkm5n149mzmth9yiaulx3ub"
 

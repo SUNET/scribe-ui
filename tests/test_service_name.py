@@ -93,6 +93,8 @@ def test_the_name_defaults_to_sunet_scribe():
     from utils.settings import Settings
 
     assert Settings.model_fields["SERVICE_NAME"].default == "Sunet Scribe"
+    # Set, not made from the name's initials.
+    assert Settings.model_fields["SERVICE_INITIALS"].default == "SCR"
 
 
 def test_the_page_tells_the_recorder_the_name():
@@ -110,7 +112,9 @@ def test_the_exports_comments_are_from_the_service():
     from utils import srt_export
 
     assert srt_export.RTF_COMMENT_AUTHOR == "Sunet Scribe"
-    assert srt_export.RTF_COMMENT_INITIALS == "SS"
+    assert srt_export.RTF_COMMENT_INITIALS == "SCR"
+    source = (ROOT / "utils" / "srt_export.py").read_text()
+    assert "RTF_COMMENT_INITIALS = settings.SERVICE_INITIALS" in source
 
 
 def test_the_job_tables_badge_escapes_the_name():

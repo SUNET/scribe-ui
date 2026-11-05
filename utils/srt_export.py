@@ -46,9 +46,7 @@ from utils.styles import default_styles
 settings = get_settings()
 
 RTF_COMMENT_AUTHOR = settings.SERVICE_NAME
-# The initials of the service's name, as Word shows beside a comment:
-# "SS" for Sunet Scribe.
-RTF_COMMENT_INITIALS = "".join(word[0] for word in RTF_COMMENT_AUTHOR.split()[:3]).upper() or "S"
+RTF_COMMENT_INITIALS = settings.SERVICE_INITIALS
 
 
 
