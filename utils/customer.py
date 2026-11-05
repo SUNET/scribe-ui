@@ -150,7 +150,7 @@ class Customer:
                                 if fixed
                                 else []
                             ),
-                            [f"Base fee: {self.base_fee}", users_text],
+                            [f"Base fee: {self.base_fee}{NBSP}{settings.CURRENCY}", users_text],
                             [f"Created {self.created_at}"],
                         ):
                             with ui.element("div").classes("group-meta-line"):

@@ -39,7 +39,7 @@ class TestWhatIsOnIt:
 
     def test_the_same_three_lines_for_every_customer(self):
         assert '[f"Plan: {self.priceplan.capitalize()}"]' in CARD
-        assert '[f"Base fee: {self.base_fee}", users_text],' in CARD
+        assert '[f"Base fee: {self.base_fee}{NBSP}{settings.CURRENCY}", users_text],' in CARD
         assert '[f"Created {self.created_at}"],' in CARD
         # Lines on any width, not one item to a line on a narrow card.
         assert "flex-direction: row;" in rule(".customer-meta .group-meta-line")
@@ -92,6 +92,18 @@ class TestTheMonths:
 
         assert Settings.model_fields["SERVICE_NAME"].default == "Sunet Scribe"
         assert Settings.model_fields["VIDEO_PLATFORM_NAME"].default == "Sunet Play"
+
+    def test_the_base_fee_in_the_currency_set_sek_by_default(self):
+        from utils.settings import Settings
+
+        assert Settings.model_fields["CURRENCY"].default == "SEK"
+        assert PAGE.count('f"Base fee ({settings.CURRENCY})"') == 2  # the create dialog and the edit page
+
+    def test_the_currency_is_shown_only_not_exported(self):
+        # The exports stay as they are: the billing report is byte for
+        # byte what the backend's script prints.
+        helpers = (ROOT / "utils" / "helpers.py").read_text()
+        assert "CURRENCY" not in helpers
 
     def test_a_line_may_draw_itself(self):
         assert "line() if callable(line) else ui.label(line)" in TILES
@@ -188,7 +200,7 @@ class TestTheEditPage:
     def test_the_plan_its_blocks_beside_it(self):
         assert '{"fixed": "Fixed", "variable": "Variable"}' in EDIT
         assert '"Blocks per month (4000 minutes each)"' in EDIT
-        assert EDIT.index('label="Price plan"') < EDIT.index('"Blocks per month') < EDIT.index('ui.input("Base fee"')
+        assert EDIT.index('label="Price plan"') < EDIT.index('"Blocks per month') < EDIT.index('ui.input(f"Base fee ({settings.CURRENCY})"')
         assert 'blocks_input.set_visibility(priceplan_select.value == "fixed")' in EDIT
 
     def test_kaltura_says_what_n_a_is(self):

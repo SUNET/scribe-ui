@@ -61,6 +61,10 @@ class Settings(BaseSettings):
     # something else ("NORDUnet S2T", "Kaltura").
     SERVICE_NAME: str = "Sunet Scribe"
     VIDEO_PLATFORM_NAME: str = "Sunet Play"
+    # The currency a customer's base fee is in, shown after it on the
+    # Customers page and in the base fee's label when editing. For the
+    # interface only: the exports are left as they are.
+    CURRENCY: str = "SEK"
     LANDING_TEXT: str = "Welcome to Sunet Scribe"
     MANUAL_URL: str = "https://sunet.box.com/s/la16r5iu3gkm5n149mzmth9yiaulx3ub"
 

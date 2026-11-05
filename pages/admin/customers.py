@@ -128,7 +128,7 @@ def create_customer_dialog(page: callable) -> None:
             )
 
             base_fee = (
-                ui.input("Base fee", value="0")
+                ui.input(f"Base fee ({settings.CURRENCY})", value="0")
                 .classes("w-full")
                 .props("outlined type=number min=0")
             )
@@ -376,7 +376,7 @@ async def edit_customer(customer_id: str) -> None:
             )
 
             base_fee = (
-                ui.input("Base fee", value=str(customer.get("base_fee", 0)))
+                ui.input(f"Base fee ({settings.CURRENCY})", value=str(customer.get("base_fee", 0)))
                 .props("outlined type=number min=0")
             )
             # Blocks are for a fixed plan only, beside the plan; without
