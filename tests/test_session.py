@@ -220,9 +220,11 @@ class TestThemeReloadIsOnlyForCharts:
         assert "_scribeThemeListener" not in body
 
     def test_the_chart_pages_ask_for_it_themselves(self):
+        # The group statistics page draws its own charts in the theme's
+        # custom properties (utils/bar_chart.py) and needs no reload; see
+        # tests/test_chart_tables.py.
         for page in (
             "pages/admin/analytics.py",
-            "pages/admin/groups.py",
             "pages/admin/health.py",
         ):
             source = pathlib.Path(page).read_text()
