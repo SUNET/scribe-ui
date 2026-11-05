@@ -15,6 +15,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Callable
+
 from nicegui import app, ui
 from utils.common import page_init
 from utils.styles import default_styles
@@ -35,12 +37,32 @@ from utils.settings import get_settings
 settings = get_settings()
 
 
-async def draw_drive_section(section: ui.column) -> None:
+def card(icon: str, title: str, summary: str) -> ui.element:
+    """
+    A settings card: an icon (not read out), the title as a heading (h2)
+    and a line saying what the card is for. Returns the card, to fill.
+    """
+
+    section = ui.element("section").classes("settings-card")
+
+    with section:
+        with ui.element("div").classes("settings-card-head"):
+            ui.icon(icon).props("aria-hidden=true")
+
+            with ui.element("div"):
+                ui.label(title).classes("settings-card-title").props("role=heading aria-level=2")
+                ui.label(summary).classes("settings-card-summary")
+
+    return section
+
+
+async def draw_drive_section(section: ui.element) -> None:
     """
     Whether Scribe is signed in to the reader's Sunet Drive, and a way to
-    log out of it. Drawn only when their organisation offers Drive -- which
-    Drive that is, and what it is called, is the organisation's setting,
-    not the reader's.
+    log out of it, in the Connected services card. Drawn only when their
+    organisation offers Drive -- which Drive that is, and what it is called,
+    is the organisation's setting, not the reader's; without it the card is
+    not shown at all.
 
     Logging out revokes Scribe's access in Drive as well; the next Get from
     or Save to asks the reader to sign in again.
@@ -53,22 +75,41 @@ async def draw_drive_section(section: ui.column) -> None:
     name = drive_display_name(status.result)
 
     section.clear()
-    with section:
-        ui.label(name).classes("text-lg font-semibold mb-2").props("role=heading aria-level=2")
-        ui.separator()
+    section.set_visibility(True)
 
-        with ui.row().classes("items-center gap-3 mt-2 mb-6"):
-            ui.icon("cloud").style("font-size: 20px;").props("aria-hidden=true")
-            state = ui.label("").classes("text-theme-secondary").props(
-                "role=status aria-live=polite"
-            )
+    with section:
+        with ui.element("div").classes("settings-card-head"):
+            ui.icon("cloud").props("aria-hidden=true")
+
+            with ui.element("div"):
+                ui.label("Connected services").classes("settings-card-title").props(
+                    "role=heading aria-level=2"
+                )
+                ui.label("Services Scribe can get files from and save files to.").classes(
+                    "settings-card-summary"
+                )
+
+        with ui.element("div").classes("settings-row settings-row-first"):
+            with ui.element("div").classes("settings-row-text"):
+                with ui.element("div").classes("settings-service"):
+                    ui.label(name).classes("settings-row-title")
+                    # Said when it changes: signed in, or not after logging out.
+                    state = ui.label("").classes("settings-status").props(
+                        "role=status aria-live=polite"
+                    )
+                hint = ui.label("").classes("settings-row-summary")
+
             logout = ui.button(f"Log out from {name}", icon="logout")
-            logout.props("color=black flat")
-            logout.classes("delete-style")
+            logout.props("color=black flat no-caps")
+            logout.classes("delete-style settings-button")
 
     def show_state(connected: bool) -> None:
-        state.set_text(
-            f"Signed in to {name}." if connected else f"Not signed in to {name}."
+        state.set_text("Signed in" if connected else "Not signed in")
+        state.classes(add="is-on") if connected else state.classes(remove="is-on")
+        hint.set_text(
+            f"Logging out also removes Scribe's access in {name}."
+            if connected
+            else "Scribe asks you to sign in the first time you get or save a file."
         )
         logout.set_visibility(connected)
 
@@ -85,12 +126,11 @@ async def draw_drive_section(section: ui.column) -> None:
 
 
 def show_user_token() -> None:
-    with ui.dialog().props('aria-label="User token"') as dialog:
-        # As wide as it was on a wide screen, the screen's width on a phone
-        # (it was 500px at least, wider than a phone).
+    with ui.dialog().props('aria-label="API token"') as dialog:
+        # As wide as it was on a wide screen, the screen's width on a phone.
         with ui.card().classes("user-token-card"):
-            ui.label("User token").classes("text-2xl font-bold")
-            ui.label("Your user token is used to authenticate API requests.").classes(
+            ui.label("API token").classes("text-2xl font-bold").props("role=heading aria-level=2")
+            ui.label("Used to authenticate requests to the Scribe API.").classes(
                 "my-4"
             )
             token = app.storage.user.get("token", "No token found.")
@@ -105,12 +145,32 @@ def show_user_token() -> None:
         dialog.open()
 
 
+def option(label: str, description: str, value: bool, on_change: Callable) -> ui.checkbox:
+    """
+    A notification to choose: the checkbox with its name, and under it, in
+    the page rather than in a tooltip, what it is for -- the checkbox's
+    description for a screen reader too. Saved when it changes, by mouse or
+    by keyboard.
+    """
+
+    with ui.element("div").classes("settings-option"):
+        box = ui.checkbox(label, value=value, on_change=on_change).classes("settings-option-box")
+        text = ui.label(description).classes("settings-option-summary")
+        box._props["aria-describedby"] = text.html_id
+
+    return box
+
+
 def create() -> None:
     @ui.refreshable
     @ui.page("/user")
     async def home() -> None:
         """
-        User page for managing user settings and information.
+        User settings: who the reader is, their e-mail notifications, how
+        Scribe looks, and the services it is connected to -- as cards, two
+        columns on a wide page and one on a phone (utils/styles.py,
+        .settings-grid). In the page they come in that order: Account,
+        Email notifications, Theme, Connected services.
         """
         user_data = await page_init(use_drawer=True, title="User settings")
         userdata = user_data
@@ -124,121 +184,137 @@ def create() -> None:
             ui.navigate.to("/")
             return
 
-        ui.label("User settings").classes("text-3xl font-bold mb-4").props("role=heading aria-level=1")
-
         total_seconds = userdata["transcribed_seconds"]
         hours = int(total_seconds) // 3600
         minutes = int(total_seconds) % 3600 // 60
+        is_admin = bool(userdata.get("admin") or userdata.get("bofh"))
 
-        # Two columns side by side where they fit, one above the other on a
-        # phone (utils/styles.py, .user-settings-column).
-        with ui.row().classes("w-full gap-8 items-start"):
-            # ── Left column: Profile, Email, Dark mode ──
-            with ui.column().classes("user-settings-column"):
-                # -- Profile section --
-                ui.label("Profile").classes("text-lg font-semibold mb-2").props("role=heading aria-level=2")
-                ui.separator()
+        with ui.element("div").classes("settings"):
+            ui.label("User settings").classes("text-3xl font-bold mb-4").props(
+                "role=heading aria-level=1"
+            )
 
-                # Icon, name and value in columns of their own; on a narrow
-                # column the value goes under the name (.user-profile-row).
-                with ui.column().classes("gap-2 mt-2 mb-6 w-full"):
-                    with ui.element("div").classes("user-profile-row"):
-                        ui.icon("person").classes("user-profile-icon").props("aria-hidden=true")
-                        ui.label("Username").classes(
-                            "font-medium text-theme-secondary"
-                        )
-                        # A ui.label with an on-click handler renders as a
-                        # div: no role, not in the Tab order, and Enter/Space
-                        # do nothing to it, so the API token was reachable by
-                        # mouse only (WCAG 2.1.1). ui.button gives the control
-                        # what a label structurally cannot: a button role, a
-                        # Tab stop, and Enter/Space activation. Its own
-                        # default chrome (padding, border, min-height) is
-                        # reset in styles.py under .user-token-btn, so it
-                        # still reads as the underlined username it replaces,
-                        # not a boxed button.
-                        # color=None, not left at ui.button's own default
-                        # of "primary": that default adds Quasar's own
-                        # "text-primary" class, painting the button
-                        # #5898d4 (Quasar's JS config, unrelated to either
-                        # theme) ahead of the text-theme-primary class
-                        # below -- measured with axe, which is how this
-                        # was caught even though the button visibly still
-                        # looked underlined and in-place. color=None adds
-                        # no Quasar colour class at all, leaving
-                        # text-theme-primary as the only rule painting it.
-                        with ui.button(
-                            userdata["username"],
-                            on_click=show_user_token,
-                            color=None,
-                        ).props("flat no-caps").classes(
-                            "text-theme-primary user-token-btn user-profile-value"
+            with ui.element("div").classes("settings-grid"):
+                # ── Account ──
+                with card("account_circle", "Account", "Who you are signed in as, and your use of Scribe.").classes(
+                    "settings-account"
+                ):
+                    with ui.element("div").classes("settings-identity"):
+                        ui.label("Signed in as").classes("settings-identity-summary")
+
+                        with ui.element("div").classes("settings-identity-line"):
+                            ui.label(userdata["username"]).classes("settings-identity-name")
+
+                            if is_admin:
+                                ui.label("Administrator").classes("settings-role")
+
+                    with ui.element("dl").classes("settings-list"):
+                        for name, value, extra in (
+                            ("User ID", userdata["user_id"], "settings-mono"),
+                            ("Transcribed time", f"{hours} h {minutes} min", ""),
+                            ("Time zone", app.storage.user.get("timezone", "UTC"), ""),
                         ):
-                            ui.tooltip("Click to view your API token")
+                            with ui.element("dt"):
+                                ui.label(name)
+                            with ui.element("dd"):
+                                ui.label(value).classes(extra)
 
-                    with ui.element("div").classes("user-profile-row"):
-                        ui.icon("fingerprint").classes("user-profile-icon").props("aria-hidden=true")
-                        ui.label("User id").classes(
-                            "font-medium text-theme-secondary"
+                    with ui.element("div").classes("settings-row"):
+                        with ui.element("div").classes("settings-row-text"):
+                            ui.label("API token").classes("settings-row-title")
+                            ui.label("Used to authenticate requests to the Scribe API.").classes(
+                                "settings-row-summary"
+                            )
+
+                        ui.button("Show token", icon="key", on_click=show_user_token).props(
+                            "color=black flat no-caps"
+                        ).classes("button-close settings-button")
+
+                # ── Email notifications ──
+                with card("notifications", "Email notifications", "What Scribe emails you about, and where.").classes(
+                    "settings-notifications"
+                ):
+                    with ui.element("div").classes("settings-email"):
+                        # A real label: the field's accessible name (3.3.2);
+                        # type=email and autocomplete=email for the keyboard
+                        # and for autofill.
+                        email = ui.input("Email address", value=current_email).props(
+                            "outlined type=email autocomplete=email"
                         )
-                        ui.label(userdata["user_id"]).classes(
-                            "text-theme-muted text-sm user-profile-value"
-                        )
+                        ui.button("Send test and save", on_click=lambda: email_save(email.value)).props(
+                            "color=black flat no-caps"
+                        ).classes("default-style settings-button")
 
-                    with ui.element("div").classes("user-profile-row"):
-                        ui.icon("schedule").classes("user-profile-icon").props("aria-hidden=true")
-                        ui.label("Transcribed time").classes(
-                            "font-medium text-theme-secondary"
-                        )
-                        ui.label(f"{hours}h {minutes}min").classes("text-theme-primary user-profile-value")
-
-                    with ui.element("div").classes("user-profile-row"):
-                        ui.icon("public").classes("user-profile-icon").props("aria-hidden=true")
-                        ui.label("Timezone").classes(
-                            "font-medium text-theme-secondary"
-                        )
-                        ui.label(app.storage.user.get("timezone", "UTC")).classes(
-                            "text-theme-primary user-profile-value"
-                        )
-
-                # -- Email section --
-                ui.label("Email").classes("text-lg font-semibold mb-2").props("role=heading aria-level=2")
-                ui.separator()
-
-                # The field and its button: side by side, the field taking the
-                # room; the button under it where there is none.
-                with ui.element("div").classes("user-email-row mt-2 mb-6"):
-                    ui.icon("email").classes("user-profile-icon").props("aria-hidden=true")
-                    # The "Email" heading two rows above is a section title,
-                    # not this field's label -- nothing connected the two,
-                    # and the placeholder was the reader's own current
-                    # address, which describes nothing about what the field
-                    # is for (WCAG 3.3.2). A real label fixes both: it is
-                    # the field's accessible name, and it reads as an
-                    # instruction on its own. type=email and
-                    # autocomplete=email were also missing; value already
-                    # covers what the placeholder used to.
-                    email = ui.input(
-                        "Email address for notifications",
-                        value=current_email,
-                    ).props("type=email autocomplete=email").classes("user-email-field")
-
-                    save = ui.button("Test and save")
-                    save.props("color=black flat")
-                    save.classes("default-style")
-                    save.on("click", lambda: email_save(email.value))
-
-                # -- Theme section --
-                theme_label = ui.label("Theme").classes("text-lg font-semibold mb-2").props("role=heading aria-level=2")
-                ui.separator()
-
-                with ui.column().classes("gap-2 mt-2 mb-6"):
-                    dark_options = {
-                        "off": "Light",
-                        "on": "Dark",
-                        "auto": "Auto (System)",
+                    chosen = {
+                        "job": "job" in current_notifications,
+                        "deletion": "deletion" in current_notifications,
+                        "user": "user" in current_notifications if is_admin else None,
+                        "quota": "quota" in current_notifications if is_admin else None,
+                        "weekly_report": "weekly_report" in current_notifications if is_admin else None,
                     }
 
+                    def save(key: str, value: bool) -> None:
+                        chosen[key] = value
+                        email_save_notifications(**chosen)
+
+                    def group(heading: str, summary: str = "") -> ui.element:
+                        block = ui.element("div").classes("settings-group").props('role="group"')
+
+                        with block:
+                            title = ui.label(heading).classes("settings-group-title").props(
+                                "role=heading aria-level=3"
+                            )
+
+                            if summary:
+                                ui.label(summary).classes("settings-group-summary")
+
+                        block._props["aria-labelledby"] = title.html_id
+
+                        return block
+
+                    with group("Your files"):
+                        option(
+                            "Transcription completed",
+                            "When one of your transcriptions has finished.",
+                            chosen["job"],
+                            lambda e: save("job", e.value),
+                        )
+                        option(
+                            "Upcoming file deletions",
+                            "24 hours before one of your files is deleted.",
+                            chosen["deletion"],
+                            lambda e: save("deletion", e.value),
+                        )
+
+                    if (user_data or {}).get("admin"):
+                        with group("Administration", "Only administrators see these."):
+                            option(
+                                "New user registrations",
+                                "When a new account is waiting to be enabled.",
+                                chosen["user"],
+                                lambda e: save("user", e.value),
+                            )
+                            option(
+                                "Quota alerts",
+                                "When a group or account is close to its monthly limit or quota.",
+                                chosen["quota"],
+                                lambda e: save("quota", e.value),
+                            )
+                            option(
+                                "Usage summary",
+                                "A weekly email with this month's transcription use.",
+                                chosen["weekly_report"],
+                                lambda e: save("weekly_report", e.value),
+                            )
+
+                    with ui.element("div").classes("settings-saved"):
+                        ui.icon("check_circle").props("aria-hidden=true")
+                        ui.label("Changes are saved as you make them.")
+
+                # ── Theme ──
+                with card("palette", "Theme", "How Scribe looks on this and your other devices.").classes(
+                    "settings-theme-card"
+                ):
                     # Current value: True -> "on", False -> "off", None -> "auto"
                     raw = app.storage.user.get("dark_mode", None)
                     if raw is None:
@@ -277,142 +353,36 @@ def create() -> None:
                         """
                         )
 
-                    # A button group has no name of its own: role=group and
-                    # the visible "Theme" heading as its label (WCAG 1.3.1,
-                    # 4.1.2).
-                    ui.toggle(
-                        dark_options,
-                        value=current_dark,
-                        on_change=lambda e: set_dark_mode(e.value),
-                    ).props(
-                        "toggle-color=primary no-caps role=group "
-                        f"aria-labelledby={theme_label.html_id}"
-                    ).tooltip(
-                        "Light: always light, Dark: always dark, Auto: follow system settings."
+                    # Real radio buttons, one name: a radio group to a screen
+                    # reader, moved through with the arrow keys, each named by
+                    # the words in its tile (utils/styles.py, .settings-theme).
+                    with ui.element("div").classes("settings-theme").props(
+                        'role=radiogroup aria-label="Theme"'
+                    ):
+                        for key, icon, name in (
+                            ("off", "light_mode", "Light"),
+                            ("on", "dark_mode", "Dark"),
+                            ("auto", "brightness_auto", "Match system"),
+                        ):
+                            with ui.element("label").classes("settings-theme-choice"):
+                                radio = ui.element("input").props(
+                                    f"type=radio name=theme value={key}"
+                                )
+
+                                if key == current_dark:
+                                    radio._props["checked"] = True
+
+                                radio.on("change", lambda e, key=key: set_dark_mode(key))
+                                ui.icon(icon).props("aria-hidden=true")
+                                ui.label(name)
+
+                    ui.label("Match system follows the light or dark setting of your device.").classes(
+                        "settings-hint"
                     )
 
-                # -- Sunet Drive sign-in, when the organisation offers it --
-                drive_section = ui.column().classes("w-full gap-0")
+                # ── Connected services, when the organisation offers Drive ──
+                drive_section = ui.element("section").classes("settings-card settings-services")
+                drive_section.set_visibility(False)
                 ui.timer(
                     0.0, lambda: draw_drive_section(drive_section), once=True
                 )
-
-            # ── Right column: Notifications ──
-            with ui.column().classes("user-settings-column"):
-                ui.label("Notifications").classes("text-lg font-semibold mb-2").props("role=heading aria-level=2")
-                ui.separator()
-
-                users = None
-                quota = None
-                weekly_report = None
-
-                with ui.column().classes("gap-1 mt-2"):
-                    ui.label("Personal").classes(
-                        "font-medium text-theme-secondary mb-1"
-                    ).props("role=heading aria-level=3")
-                    ui.label(
-                        "Notifications related to your own files and activity."
-                    ).classes("text-sm text-theme-muted mb-2")
-
-                    jobs = ui.checkbox(
-                        "Transcription completed",
-                        value="job" in current_notifications,
-                    )
-                    jobs.on(
-                        "click",
-                        lambda e: email_save_notifications(
-                            job=jobs.value,
-                            user=users.value if users is not None else None,
-                            deletion=deletions.value,
-                            quota=quota.value if quota is not None else None,
-                            weekly_report=weekly_report.value
-                            if weekly_report is not None
-                            else None,
-                        ),
-                    )
-                    jobs.tooltip(
-                        "Get an email when one of your transcription jobs finishes processing."
-                    )
-
-                    deletions = ui.checkbox(
-                        "Upcoming file deletions",
-                        value="deletion" in current_notifications,
-                    )
-                    deletions.on(
-                        "click",
-                        lambda e: email_save_notifications(
-                            job=jobs.value,
-                            user=users.value if users is not None else None,
-                            deletion=deletions.value,
-                            quota=quota.value if quota is not None else None,
-                            weekly_report=weekly_report.value
-                            if weekly_report is not None
-                            else None,
-                        ),
-                    )
-                    deletions.tooltip(
-                        "Get an email one day before your uploaded files are permanently deleted."
-                    )
-
-                if (user_data or {}).get("admin"):
-                    with ui.column().classes("gap-1 mt-4"):
-                        ui.label("Administration").classes(
-                            "font-medium text-theme-secondary mb-1"
-                        ).props("role=heading aria-level=3")
-                        ui.label(
-                            "Notifications related to administrative tasks."
-                        ).classes("text-sm text-theme-muted mb-2")
-
-                        users = ui.checkbox(
-                            "New user registrations",
-                            value="user" in current_notifications,
-                        )
-                        users.on(
-                            "click",
-                            lambda e: email_save_notifications(
-                                job=jobs.value,
-                                user=users.value,
-                                deletion=deletions.value,
-                                quota=quota.value,
-                                weekly_report=weekly_report.value,
-                            ),
-                        )
-                        users.tooltip(
-                            "Get an email when a new user creates an account."
-                        )
-
-                        quota = ui.checkbox(
-                            "Quota alerts",
-                            value="quota" in current_notifications,
-                        )
-                        quota.on(
-                            "click",
-                            lambda e: email_save_notifications(
-                                job=jobs.value,
-                                user=users.value,
-                                deletion=deletions.value,
-                                quota=quota.value,
-                                weekly_report=weekly_report.value,
-                            ),
-                        )
-                        quota.tooltip(
-                            "Get an email when a group or account quota is approaching its limit."
-                        )
-
-                        weekly_report = ui.checkbox(
-                            "Usage summary (current month, sent weekly)",
-                            value="weekly_report" in current_notifications,
-                        )
-                        weekly_report.on(
-                            "click",
-                            lambda e: email_save_notifications(
-                                job=jobs.value,
-                                user=users.value,
-                                deletion=deletions.value,
-                                quota=quota.value,
-                                weekly_report=weekly_report.value,
-                            ),
-                        )
-                        weekly_report.tooltip(
-                            "Get a weekly email with a summary of transcription usage."
-                        )

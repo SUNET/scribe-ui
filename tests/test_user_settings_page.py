@@ -15,7 +15,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""User settings (pages/user.py) on a phone and on a wide page."""
+"""User settings (pages/user.py): the cards, on a phone and on a wide page."""
 
 import pathlib
 
@@ -30,57 +30,104 @@ def rule(selector: str) -> str:
     return STYLES[at : STYLES.index("}", at)]
 
 
-def narrow() -> str:
-    at = STYLES.index("    @container (max-width: 24rem) {\n        .user-profile-row {")
+def block(start: str, length: int = 900) -> str:
+    at = STYLES.index(start)
 
-    return STYLES[at : at + 600]
-
-
-class TestTheColumns:
-    def test_side_by_side_where_both_fit_one_above_the_other_otherwise(self):
-        assert PAGE.count('ui.column().classes("user-settings-column")') == 2
-        assert "flex: 1 1 22rem;" in rule(".user-settings-column")
-        assert "min-width: 0;" in rule(".user-settings-column")
-        assert "container-type: inline-size;" in rule(".user-settings-column")
+    return STYLES[at : at + length]
 
 
-class TestTheProfile:
-    def test_icon_name_value_in_columns(self):
-        assert PAGE.count('ui.element("div").classes("user-profile-row")') == 4
-        assert "grid-template-columns: 1.25rem 9rem minmax(0, 1fr);" in rule(".user-profile-row")
-        assert 'min-width: 140px' not in PAGE
+class TestTheCards:
+    def test_four_cards_each_with_a_heading(self):
+        for title in ("Account", "Email notifications", "Theme"):
+            assert f'card("' in PAGE and f'"{title}",' in PAGE, title
+        assert 'ui.label("Connected services").classes("settings-card-title").props(' in PAGE
+        assert 'ui.label(title).classes("settings-card-title").props("role=heading aria-level=2")' in PAGE
 
-    def test_the_value_under_the_name_on_a_narrow_column(self):
-        assert "grid-template-columns: 1.25rem minmax(0, 1fr);" in narrow()
-        assert "grid-column: 2;" in narrow()
-        assert "overflow-wrap: anywhere;" in rule(".user-profile-value")
+    def test_in_the_page_in_the_order_of_a_phone(self):
+        order = [PAGE.index(f'"{title}",') for title in ("Account", "Email notifications", "Theme")]
+        assert order == sorted(order)
+        assert order[-1] < PAGE.index("drive_section = ui.element(\"section\")")
 
-    def test_the_icons_are_not_read_out(self):
-        profile = PAGE[PAGE.index('ui.label("Profile")') : PAGE.index("# -- Email section --")]
-        assert profile.count('.classes("user-profile-icon").props("aria-hidden=true")') == 4
-
-
-class TestTheEmail:
-    def test_the_field_takes_the_room_and_the_button_goes_under_it(self):
-        assert 'ui.element("div").classes("user-email-row mt-2 mb-6")' in PAGE
-        assert 'classes("user-email-field")' in PAGE and "min-width: 300px" not in PAGE
-        assert "grid-template-columns: 1.25rem minmax(0, 1fr) auto;" in rule(".user-email-row")
-        assert ".user-email-row > .q-btn {\n            grid-column: 2;" in narrow()
+    def test_two_columns_on_a_wide_page_one_on_a_phone(self):
+        assert "grid-template-columns: minmax(0, 1fr);" in rule(".settings-grid")
+        wide = block("    @container (min-width: 52rem) {\n        .settings-grid {")
+        assert "grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);" in wide
+        assert ".settings-notifications { grid-column: 2; grid-row: 1 / span 3; }" in wide
+        assert "container-type: inline-size;" in rule(".settings")
 
 
-class TestHeadings:
-    def test_the_sections_are_headings(self):
-        for name in ("Profile", "Email", "Notifications"):
-            assert f'ui.label("{name}").classes("text-lg font-semibold mb-2").props("role=heading aria-level=2")' in PAGE
-        assert 'ui.label("Theme").classes("text-lg font-semibold mb-2").props("role=heading aria-level=2")' in PAGE
-        assert 'ui.label(name).classes("text-lg font-semibold mb-2").props("role=heading aria-level=2")' in PAGE
+class TestTheAccount:
+    def test_who_is_signed_in_without_initials(self):
+        assert 'ui.label("Signed in as")' in PAGE
+        assert 'ui.label(userdata["username"]).classes("settings-identity-name")' in PAGE
+        assert 'ui.label("Administrator").classes("settings-role")' in PAGE
+        assert "avatar" not in PAGE
 
-    def test_personal_and_administration_under_notifications(self):
-        assert PAGE.count('.props("role=heading aria-level=3")') == 2
+    def test_the_details_are_a_list(self):
+        assert 'ui.element("dl").classes("settings-list")' in PAGE
+        assert 'with ui.element("dt"):' in PAGE and 'with ui.element("dd"):' in PAGE
+        for name in ("User ID", "Transcribed time", "Time zone"):
+            assert f'("{name}",' in PAGE
 
-
-class TestTheTokenDialog:
-    def test_no_wider_than_a_phone(self):
-        assert 'ui.card().classes("user-token-card")' in PAGE
-        assert "min-width: 500px" not in PAGE
+    def test_the_api_token_has_a_button_of_its_own(self):
+        assert 'ui.button("Show token", icon="key", on_click=show_user_token)' in PAGE
+        assert "user-token-btn" not in PAGE and "user-token-btn" not in STYLES
         assert "width: min(32rem, 100%);" in rule(".user-token-card")
+
+
+class TestTheNotifications:
+    def test_the_address_with_the_choices(self):
+        notifications = PAGE[PAGE.index('"Email notifications",') : PAGE.index('card("palette", "Theme",')]
+        assert 'ui.input("Email address", value=current_email)' in notifications
+        assert 'ui.button("Send test and save", on_click=lambda: email_save(email.value))' in notifications
+
+    def test_what_each_is_for_is_on_the_page_not_in_a_tooltip(self):
+        assert ".tooltip(" not in PAGE
+        for text in (
+            "When one of your transcriptions has finished.",
+            "24 hours before one of your files is deleted.",
+            "When a new account is waiting to be enabled.",
+            "When a group or account is close to its monthly limit or quota.",
+            "A weekly email with this month's transcription use.",
+        ):
+            assert text in PAGE, text
+        assert 'box._props["aria-describedby"] = text.html_id' in PAGE
+
+    def test_saved_when_changed_by_keyboard_too(self):
+        assert "ui.checkbox(label, value=value, on_change=on_change)" in PAGE
+        assert '.on(\n                        "click",' not in PAGE
+
+    def test_groups_named_by_their_headings(self):
+        assert """ui.element("div").classes("settings-group").props('role="group"')""" in PAGE
+        assert 'block._props["aria-labelledby"] = title.html_id' in PAGE
+        assert '"role=heading aria-level=3"' in PAGE
+        assert 'group("Administration", "Only administrators see these.")' in PAGE
+
+
+class TestTheTheme:
+    def test_real_radio_buttons_named_by_their_tiles(self):
+        assert """'role=radiogroup aria-label="Theme"'""" in PAGE
+        assert 'ui.element("label").classes("settings-theme-choice")' in PAGE
+        assert 'f"type=radio name=theme value={key}"' in PAGE
+        assert '("auto", "brightness_auto", "Match system")' in PAGE
+
+    def test_the_chosen_tile_is_framed_and_the_focus_seen(self):
+        assert ".settings-theme-choice:has(input:checked)" in STYLES
+        assert ".settings-theme-choice:has(input:focus-visible)" in STYLES
+        assert "opacity: 0;" in rule(".settings-theme-choice input")
+
+
+class TestTheServices:
+    def test_only_where_the_organisation_offers_drive(self):
+        assert "drive_section.set_visibility(False)" in PAGE
+        assert "section.set_visibility(True)" in PAGE
+
+    def test_the_state_is_said_when_it_changes(self):
+        assert 'state = ui.label("").classes("settings-status").props(\n                        "role=status aria-live=polite"' in PAGE
+        assert 'f"Log out from {name}"' in PAGE
+
+
+class TestTargets:
+    def test_buttons_and_tiles_big_enough_to_hit(self):
+        assert "min-height: 44px;" in rule(".settings-button")
+        assert "min-height: 44px;" in rule(".settings-theme-choice")
