@@ -147,9 +147,13 @@ def test_the_short_form_only_in_running_text():
         ("utils/srt_export.py", "RTF_COMMENT_AUTHOR = settings.SERVICE_NAME"),
         ("pages/home.py", "html.escape(get_settings().SERVICE_NAME, quote=True)"),
         ("utils/drive_dialogs.py", 'f"{settings.SERVICE_NAME} access. Then come back to this tab."'),
-        ("utils/customer.py", "via {settings.SERVICE_NAME}"),
     ):
         assert full in (ROOT / path).read_text(), path
+
+    # The Customers card, beside the video platform: the full name, however
+    # the card writes it (the Customers PR, #183, rewrites the card).
+    customer = (ROOT / "utils" / "customer.py").read_text()
+    assert "settings.SERVICE_NAME" in customer and "short_service_name" not in customer
 
     # Running text: the short form.
     user = (ROOT / "pages" / "user.py").read_text()
