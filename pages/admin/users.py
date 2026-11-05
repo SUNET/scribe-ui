@@ -397,10 +397,7 @@ async def users() -> None:
                                     label=label,
                                     with_input=key in ("realm", "group"),
                                     on_change=lambda e, key=key: (ask(key, e.value or ""), show_in_use()),
-                                ).props("outlined dense options-dense").classes(
-                                    # Group names are long: the whole width of the box.
-                                    "users-filter users-filter-group" if key == "group" else "users-filter"
-                                )
+                                ).props("outlined dense options-dense").classes("users-filter")
                             )
 
                         def clear_filters() -> None:

@@ -1306,11 +1306,10 @@ theme_styles = """
     .users-filter {
         min-width: 0;
     }
-    .users-filter-group {
-        grid-column: 1 / -1;
-    }
+    /* All filters one size, two to a line; Clear filters in the right-hand
+       cell after them, so an odd number of filters leaves no hole. */
     .users-filter-clear {
-        grid-column: 1 / -1;
+        grid-column: -2 / -1;
         justify-self: end;
         min-height: 44px;
         margin-bottom: -0.5rem;

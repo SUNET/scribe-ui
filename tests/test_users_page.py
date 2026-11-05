@@ -116,7 +116,7 @@ class TestFilters:
     def test_group_with_no_group_wherever_there_are_groups(self):
         assert '("group", "Group", {"": "All", "__none__": "No group", **{name: name for name in group_names}})' in PAGE
         assert "if group_names:" in PAGE
-        assert "grid-column: 1 / -1;" in rule(".users-filter-group")
+        assert "users-filter-group" not in PAGE and "users-filter-group" not in STYLES
 
     def test_long_lists_can_be_typed_into(self):
         assert 'with_input=key in ("realm", "group"),' in PAGE
@@ -160,6 +160,10 @@ class TestFilters:
     def test_filters_can_be_cleared(self):
         assert 'ui.button("Clear filters", on_click=clear_filters, color=None)' in PAGE
         assert "color: var(--color-brand-primary);" in rule(".users-filter-clear")
+
+    def test_all_filters_one_size_and_clear_in_the_cell_after_them(self):
+        assert "grid-column: -2 / -1;" in rule(".users-filter-clear")
+        assert 'classes("users-filter")' in PAGE
 
     def test_two_filters_to_a_line_in_a_box_under_the_search(self):
         assert "grid-template-columns: repeat(2, minmax(0, 1fr));" in rule(".users-filters")
