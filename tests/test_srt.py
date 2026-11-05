@@ -43,7 +43,6 @@ class TestSRTCaption:
         assert caption.text == "Hello world"
         assert caption.speaker == "John"
         assert caption.is_selected is False
-        assert caption.is_highlighted is False
         assert caption.is_valid is True
 
     def test_init_default_speaker(self):
@@ -85,7 +84,6 @@ class TestSRTCaption:
             speaker="John"
         )
         original.is_selected = True
-        original.is_highlighted = True
         original.is_valid = False
         
         copied = original.copy()
@@ -96,7 +94,6 @@ class TestSRTCaption:
         assert copied.text == original.text
         assert copied.speaker == original.speaker
         assert copied.is_selected == original.is_selected
-        assert copied.is_highlighted == original.is_highlighted
         assert copied.is_valid == original.is_valid
         
         # Ensure it's a deep copy

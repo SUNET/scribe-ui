@@ -125,6 +125,8 @@ class TranscriptBody(
         self._props["reviewId"] = -1
         self._props["commentId"] = -1
         self._props["commentIndex"] = -1
+        self._props["findMarks"] = []
+        self._props["findCurrent"] = -1
         self._props["reviewLabel"] = REVIEW_TOOLTIP
         self._props["editLabel"] = EDIT_TOOLTIP
         self._props["showEdits"] = False
@@ -182,6 +184,21 @@ class TranscriptBody(
 
         self._props["commentId"] = block_id
         self._props["commentIndex"] = comment_index
+        self.update()
+
+    def set_find(self, marks: list, current: int) -> None:
+        """
+        The words the Find card has found, as {id, s, e} (the caption and
+        where in its text, as the browser counts), and which of them is the
+        current one (an index into the list, or -1). Drawn by the component
+        over the words themselves, so the text is not touched.
+        """
+
+        if self._props["findMarks"] == marks and self._props["findCurrent"] == current:
+            return
+
+        self._props["findMarks"] = marks
+        self._props["findCurrent"] = current
         self.update()
 
     def set_follow(self, follow: bool) -> None:
@@ -394,6 +411,7 @@ class TranscriptEditor:
         self.caret_block = block_id
         # The reader has moved on to something else.
         self.last_context = None
+        self.editor.caret_index = block_id
 
         if self.on_caret is not None:
             self.on_caret(block_id)
@@ -651,6 +669,8 @@ class TranscriptEditor:
         # And this is what refresh_display's caller, select_caption, uses to
         # say which caption search or autoscroll just moved to.
         self.editor.on_select = self.scroll_to
+        # The words Find has found, to be drawn over the text.
+        self.editor.on_find_marks = self.set_find_marks
         # Ctrl/Cmd+G is the page's key, so the editor tells us to open it.
         self.editor.on_quick_jump = self.open_quick_jump
 
@@ -706,7 +726,6 @@ class TranscriptEditor:
                 # a warning, rather than an error's red. One error among them
                 # and the caption is red -- the highest severity decides.
                 "warning": not caption.is_valid and not caption.has_error,
-                "highlighted": caption.is_highlighted,
             }
 
             if subtitles:
@@ -725,6 +744,10 @@ class TranscriptEditor:
             return
 
         self.body.set_blocks(self.blocks())
+        # Captions added, removed, moved or changed under Find: its matches
+        # are looked for again, so the marks are on the right captions
+        # whoever asked for the redraw.
+        self.editor.look_again()
         self.body.set_speakers(
             sorted(self.editor.speakers),
             [name for name in sorted(self.editor.speakers)
@@ -804,6 +827,10 @@ class TranscriptEditor:
 
         self.editor.update_caption_text(caption, text)
         self.changed()
+
+        # Not drawn again, so Find's count and marks are brought up to date
+        # here: what was typed can make a match or take one away.
+        self.editor.look_again()
 
         # The block being typed into is not drawn again (that would move the
         # caret), so the refresh that tells the comments card about a change
@@ -1630,6 +1657,14 @@ class TranscriptEditor:
 
         if self.on_change:
             self.on_change()
+
+    def set_find_marks(self, marks: list, current: int) -> None:
+        """
+        Draw the matches the Find card found, or none.
+        """
+
+        if self.body is not None:
+            self.body.set_find(marks, current)
 
     def scroll_to(self, caption: SRTCaption) -> None:
         """
