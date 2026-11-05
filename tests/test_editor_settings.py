@@ -107,7 +107,9 @@ class TestWhatIsInTheMenu:
         source = page()
         start = self.menu_start()
 
-        assert source.count("ui.switch(") >= 6
+        # Five: the subtitle overlay is the player's CC button now
+        # (feature/player-controls), not a switch.
+        assert source.count("ui.switch(") >= 5
         assert source.index("ui.switch(") > start
         assert 'with ui.row().classes("items-center gap-4"):' not in source
 
@@ -123,13 +125,16 @@ class TestWhatIsInTheMenu:
 
         for label in (
             '"Follow audio" if following_words else "Autoscroll"',
-            '"Subtitle overlay"',
             '"Timeline"',
             '"My edits"',
             '"Highlights"',
             '"Comments"',
         ):
             assert label in source
+
+    def test_the_subtitle_overlay_is_the_players_cc_button_not_a_switch(self):
+        assert '"Subtitle overlay"' not in page()
+        assert "CC button" in pathlib.Path("utils/player_controls.js").read_text()
 
     def test_one_to_a_row(self):
         source = page()
@@ -191,7 +196,7 @@ class TestWhatIsInTheMenu:
 
         source = page()[self.menu_start() :]
 
-        assert source.count("focus_element(event.sender)") == 6
+        assert source.count("focus_element(event.sender)") == 5
 
     def test_they_still_listen_for_a_keyboard_activation_too(self):
         source = page()[self.menu_start() :]
