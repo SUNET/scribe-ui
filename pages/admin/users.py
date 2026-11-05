@@ -20,8 +20,9 @@
 The user administration page.
 """
 
-import httpx
+import json
 
+import httpx
 
 from nicegui import ui
 from utils.common import page_init
@@ -40,6 +41,27 @@ from utils.token import (
 )
 
 settings = get_settings()
+
+# The search and the filters run in the browser, over the rows it already
+# has: with thousands of users, sending them again on every key would be
+# slow. The table's filter is a JSON string of what is asked for; this
+# replaces Quasar's own filter (which only knows a search string) and also
+# says how many users are shown, in the page's status line.
+FILTER_METHOD = """(rows, terms, cols, getCellValue) => {
+    let asked;
+    try { asked = JSON.parse(terms); } catch (error) { asked = { q: terms }; }
+    const q = String(asked.q || "").trim().toLowerCase();
+    const shown = rows.filter((row) =>
+        ["active", "admin", "provisioning", "realm"].every((key) => !asked[key] || row[key] === asked[key]) &&
+        (!q || cols.some((col) => String(getCellValue(col, row) ?? "").toLowerCase().includes(q)))
+    );
+    const count = document.querySelector(".users-count");
+    if (count) {
+        const all = rows.length === 1 ? "1 user" : rows.length + " users";
+        count.textContent = shown.length === rows.length ? all : "Showing " + shown.length + " of " + all;
+    }
+    return shown;
+}"""
 
 
 @ui.page("/admin/users")
@@ -157,6 +179,17 @@ async def users() -> None:
     # a height worked out from the window suits a wide table, not a phone's
     # list of cards.
     users_table.classes("table-style users-table")
+
+    asked = {"q": "", "active": "", "admin": "", "provisioning": "", "realm": ""}
+
+    def ask(key: str, value: str) -> None:
+        asked[key] = value
+        users_table.filter = json.dumps(asked)
+
+    # Set directly: the function's quotes and spaces would be taken apart
+    # by a props string. A ":" prop is evaluated in the browser.
+    users_table._props[":filter-method"] = FILTER_METHOD
+    users_table.filter = json.dumps(asked)
 
     # On a phone seven columns cannot be read; Quasar's grid mode draws each
     # user as a card instead, in the look of the files on /home (the same
@@ -276,7 +309,31 @@ async def users() -> None:
                             on_click=confirm_remove_user,
                         )
 
-            with ui.input(placeholder="Search").props('type=search aria-label="Search users"').classes(
-                "users-search"
-            ).bind_value(users_table, "filter").add_slot("append"):
+            with ui.input(
+                placeholder="Search", on_change=lambda e: ask("q", e.value or "")
+            ).props('type=search aria-label="Search users"').classes("users-search").add_slot("append"):
                 ui.icon("search")
+
+            # Filters, each with a visible label; "All" is no filter.
+            realms = sorted({user.get("realm") for user in users if user.get("realm")})
+            filters = [
+                ("active", "Status", {"": "All", "Yes": "Active", "No": "Disabled"}),
+                ("admin", "Admin", {"": "All", "Yes": "Admins", "No": "Not admins"}),
+                ("provisioning", "Provisioning", {"": "All", "Auto": "Auto", "Manual": "Manual"}),
+            ]
+
+            if len(realms) > 1:
+                filters.append(("realm", "Realm", {"": "All", **{realm: realm for realm in realms}}))
+
+            with ui.element("div").classes("users-filters"):
+                for key, label, options in filters:
+                    ui.select(
+                        options,
+                        value="",
+                        label=label,
+                        on_change=lambda e, key=key: ask(key, e.value or ""),
+                    ).props("outlined dense options-dense").classes("users-filter")
+
+            # How many are shown, said when it changes (4.1.3). Filled in by
+            # FILTER_METHOD in the browser.
+            ui.label("").classes("users-count text-theme-secondary").props('role=status aria-live=polite')

@@ -33,7 +33,7 @@ def rule(selector: str) -> str:
 def phone() -> str:
     at = STYLES.index("    /* A phone: the users as cards")
 
-    return STYLES[at : at + 900]
+    return STYLES[at : at + 1300]
 
 
 class TestOnAPhone:
@@ -65,7 +65,7 @@ class TestOnAPhone:
     def test_the_list_is_as_long_as_it_is_and_the_search_comes_first(self):
         block = phone()
         assert "height: auto;" in block
-        assert "order: -1;" in block and "flex: 1 1 100%;" in block
+        assert "order: -2;" in block and "flex: 1 1 100%;" in block
         assert "flex: 1 1 0;" in block
 
 
@@ -89,3 +89,33 @@ class TestTheBar:
     def test_the_height_and_size_in_the_stylesheet(self):
         assert "height: calc(100vh - 160px - var(--banner-offset, 0px));" in rule(".users-table")
         assert "height: calc(100vh - 100px" not in PAGE
+
+
+class TestFilters:
+    def test_status_admin_provisioning_and_realm_where_there_are_several(self):
+        assert '("active", "Status", {"": "All", "Yes": "Active", "No": "Disabled"})' in PAGE
+        assert '("admin", "Admin", {"": "All", "Yes": "Admins", "No": "Not admins"})' in PAGE
+        assert '("provisioning", "Provisioning", {"": "All", "Auto": "Auto", "Manual": "Manual"})' in PAGE
+        assert "if len(realms) > 1:" in PAGE
+
+    def test_each_filter_has_a_visible_label(self):
+        assert "label=label," in PAGE
+
+    def test_the_filter_method(self):
+        method = PAGE[PAGE.index('FILTER_METHOD = """') :]
+        method = method[: method.index('"""\n', 20)]
+        assert '["active", "admin", "provisioning", "realm"].every' in method
+        assert "cols.some((col) =>" in method
+        assert "JSON.parse(terms)" in method
+        assert 'users_table._props[":filter-method"] = FILTER_METHOD' in PAGE
+        assert "users_table.filter = json.dumps(asked)" in PAGE
+        # The search no longer binds the filter as a bare string.
+        assert 'bind_value(users_table, "filter")' not in PAGE
+
+    def test_how_many_are_shown_is_said(self):
+        assert "ui.label(\"\").classes(\"users-count text-theme-secondary\").props('role=status aria-live=polite')" in PAGE
+        method = PAGE[PAGE.index('FILTER_METHOD = """') :]
+        assert '"Showing " + shown.length + " of " + all' in method
+
+    def test_two_filters_to_a_line_on_a_phone(self):
+        assert "flex: 1 1 calc(50% - 0.25rem);" in phone()

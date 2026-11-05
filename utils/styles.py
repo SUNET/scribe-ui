@@ -1253,6 +1253,22 @@ theme_styles = """
     .users-search {
         flex: 0 1 18rem;
     }
+    /* The filters on a line of their own under the actions and the search,
+       wrapping; the count of users shown under them. */
+    .users-filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        width: 100%;
+    }
+    .users-filter {
+        flex: 0 1 11rem;
+        min-width: 9rem;
+    }
+    .users-count {
+        width: 100%;
+        font-size: 0.875rem;
+    }
     /* A phone: the users as cards (grid mode, pages/admin/users.py), the
        list as long as it is rather than a box of its own to scroll in;
        the search first and full width, the actions sharing a line. */
@@ -1262,7 +1278,7 @@ theme_styles = """
             font-size: 1rem;
         }
         .users-search {
-            order: -1;
+            order: -2;
             flex: 1 1 100%;
         }
         .users-actions {
@@ -1271,6 +1287,14 @@ theme_styles = """
         }
         .users-actions .q-btn {
             flex: 1 1 0;
+            min-width: 0;
+        }
+        /* Two filters to a line, under the search. */
+        .users-filters {
+            order: -1;
+        }
+        .users-filter {
+            flex: 1 1 calc(50% - 0.25rem);
             min-width: 0;
         }
     }
