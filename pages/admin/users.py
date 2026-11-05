@@ -63,6 +63,9 @@ FILTER_METHOD = """(rows, terms, cols, getCellValue) => {
     }
     const shown = rows.filter((row) =>
         ["active", "admin", "provisioning", "realm"].every((key) => !asked[key] || row[key] === asked[key]) &&
+        (!asked.group || (asked.group === "__none__"
+            ? !(row.group_list || []).length
+            : (row.group_list || []).includes(asked.group))) &&
         (!q || cols.some((col) => matches(String(getCellValue(col, row) ?? "").toLowerCase())))
     );
     const count = document.querySelector(".users-count");
@@ -107,6 +110,16 @@ async def users() -> None:
             )
 
             # Lists read as "a, b", in the table and on a phone's cards.
+            # The groups as they are, for the Group filter: a group's own
+            # name may hold a comma ("Krishantering, styrning och samverkan"),
+            # so a joined string cannot be split again.
+            groups = user.get("groups")
+            user["group_list"] = (
+                [str(group) for group in groups]
+                if isinstance(groups, (list, tuple))
+                else ([str(groups)] if groups else [])
+            )
+
             for field in ("groups", "admin_domains"):
                 if isinstance(user.get(field), (list, tuple)):
                     user[field] = ", ".join(str(item) for item in user[field])
@@ -189,7 +202,7 @@ async def users() -> None:
     # list of cards.
     users_table.classes("table-style users-table")
 
-    asked = {"q": "", "active": "", "admin": "", "provisioning": "", "realm": ""}
+    asked = {"q": "", "active": "", "admin": "", "provisioning": "", "realm": "", "group": ""}
 
     def ask(key: str, value: str) -> None:
         asked[key] = value
@@ -331,8 +344,18 @@ async def users() -> None:
                     ("provisioning", "Provisioning", {"": "All", "Auto": "Auto", "Manual": "Manual"}),
                 ]
 
+                # Realm only where there is more than one to choose between;
+                # Group wherever there are groups, with "No group" for the
+                # users in none. Both can be long lists: typed into to narrow.
                 if len(realms) > 1:
                     filters.append(("realm", "Realm", {"": "All", **{realm: realm for realm in realms}}))
+
+                group_names = sorted({group for user in users for group in user["group_list"]}, key=str.lower)
+
+                if group_names:
+                    filters.append(
+                        ("group", "Group", {"": "All", "__none__": "No group", **{name: name for name in group_names}})
+                    )
 
                 # The search, the filter button beside it, and the filters it
                 # opens right under them, in one group on the right: one place to
@@ -372,8 +395,12 @@ async def users() -> None:
                                     options,
                                     value="",
                                     label=label,
+                                    with_input=key in ("realm", "group"),
                                     on_change=lambda e, key=key: (ask(key, e.value or ""), show_in_use()),
-                                ).props("outlined dense options-dense").classes("users-filter")
+                                ).props("outlined dense options-dense").classes(
+                                    # Group names are long: the whole width of the box.
+                                    "users-filter users-filter-group" if key == "group" else "users-filter"
+                                )
                             )
 
                         def clear_filters() -> None:

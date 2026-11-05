@@ -1306,6 +1306,9 @@ theme_styles = """
     .users-filter {
         min-width: 0;
     }
+    .users-filter-group {
+        grid-column: 1 / -1;
+    }
     .users-filter-clear {
         grid-column: 1 / -1;
         justify-self: end;

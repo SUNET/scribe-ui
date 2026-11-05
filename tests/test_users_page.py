@@ -113,6 +113,18 @@ class TestFilters:
         assert '("provisioning", "Provisioning", {"": "All", "Auto": "Auto", "Manual": "Manual"})' in PAGE
         assert "if len(realms) > 1:" in PAGE
 
+    def test_group_with_no_group_wherever_there_are_groups(self):
+        assert '("group", "Group", {"": "All", "__none__": "No group", **{name: name for name in group_names}})' in PAGE
+        assert "if group_names:" in PAGE
+        assert "grid-column: 1 / -1;" in rule(".users-filter-group")
+
+    def test_long_lists_can_be_typed_into(self):
+        assert 'with_input=key in ("realm", "group"),' in PAGE
+
+    def test_a_groups_own_comma_is_not_a_separator(self):
+        assert 'user["group_list"] = (' in PAGE
+        assert "else ([str(groups)] if groups else [])" in PAGE
+
     def test_each_filter_has_a_visible_label(self):
         assert "label=label," in PAGE
 
@@ -189,10 +201,14 @@ def run_filter(rows: list, asked: dict) -> list:
 
 
 ROWS = [
-    {"username": "anna.berg@su.se", "realm": "su.se", "active": "Enabled", "admin": "No", "provisioning": "Auto"},
-    {"username": "erik.lund@gu.se", "realm": "gu.se", "active": "Disabled", "admin": "Yes", "provisioning": "Manual"},
-    {"username": "anna.ek@gu.se", "realm": "gu.se", "active": "Disabled", "admin": "No", "provisioning": "Auto"},
-    {"username": "a+b(c)@x.se", "realm": "x.se", "active": "Enabled", "admin": "No", "provisioning": "Auto"},
+    {"username": "anna.berg@su.se", "realm": "su.se", "active": "Enabled", "admin": "No", "provisioning": "Auto",
+     "group_list": ["Humsam"]},
+    {"username": "erik.lund@gu.se", "realm": "gu.se", "active": "Disabled", "admin": "Yes", "provisioning": "Manual",
+     "group_list": ["Humsam", "Krishantering, styrning och samverkan"]},
+    {"username": "anna.ek@gu.se", "realm": "gu.se", "active": "Disabled", "admin": "No", "provisioning": "Auto",
+     "group_list": []},
+    {"username": "a+b(c)@x.se", "realm": "x.se", "active": "Enabled", "admin": "No", "provisioning": "Auto",
+     "group_list": []},
 ]
 
 
@@ -212,6 +228,12 @@ class TestTheFilterInTheBrowser:
         assert run_filter(ROWS, {"q": "a+b(c)*"}) == ["a+b(c)@x.se"]
         assert run_filter(ROWS, {"q": "anna.berg@su?se"}) == ["anna.berg@su.se"]
         assert run_filter(ROWS, {"q": "anna.berg@su.s"}) == ["anna.berg@su.se"]  # plain: anywhere
+
+    def test_a_group_and_no_group(self):
+        assert run_filter(ROWS, {"group": "Humsam"}) == ["anna.berg@su.se", "erik.lund@gu.se"]
+        assert run_filter(ROWS, {"group": "Krishantering, styrning och samverkan"}) == ["erik.lund@gu.se"]
+        assert run_filter(ROWS, {"group": "__none__"}) == ["anna.ek@gu.se", "a+b(c)@x.se"]
+        assert run_filter(ROWS, {"group": "__none__", "realm": "gu.se"}) == ["anna.ek@gu.se"]
 
     def test_the_filters_and_the_search_together(self):
         assert run_filter(ROWS, {"active": "Disabled"}) == ["erik.lund@gu.se", "anna.ek@gu.se"]
