@@ -977,11 +977,17 @@ theme_styles = """
     /* A tooltip is as wide as its text up to a limit, then wraps. The old
        white-space: nowrap kept every tip on one line, so a long one ran off
        the edge of a narrow screen or a text-zoomed page (WCAG 1.4.10).
-       width: max-content keeps a short tip exactly as it was. */
+       width: max-content keeps a short tip exactly as it was.
+       The limit is ours, over Quasar's own: where a tip reaches the
+       window's edge, Quasar pulls it in and sets its max-width to the width
+       it measured, rounded to whole pixels. Rounded down (a text 72.05px
+       wide given 72px), the last word broke onto a line of its own, in a
+       tip that fitted on one; which tips broke depended on how the browser
+       measured the font. Ours still keeps a tip inside the window. */
     .q-tooltip {
         font-size: 14px;
         width: max-content;
-        max-width: min(320px, calc(100vw - 32px));
+        max-width: min(320px, calc(100vw - 32px)) !important;
         white-space: normal;
         overflow-wrap: break-word;
     }
