@@ -17,7 +17,12 @@
 
 """The Users page (pages/admin/users.py) on a phone and on a wide page."""
 
+import json
 import pathlib
+import shutil
+import subprocess
+
+import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 PAGE = (ROOT / "pages" / "admin" / "users.py").read_text()
@@ -119,3 +124,53 @@ class TestFilters:
 
     def test_two_filters_to_a_line_on_a_phone(self):
         assert "flex: 1 1 calc(50% - 0.25rem);" in phone()
+
+
+def run_filter(rows: list, asked: dict) -> list:
+    """FILTER_METHOD run in node on made-up rows; the user names it keeps."""
+
+    from pages.admin.users import FILTER_METHOD
+
+    script = (
+        "global.document = { querySelector: () => null };\n"
+        f"const filter = {FILTER_METHOD};\n"
+        f"const rows = {json.dumps(rows)};\n"
+        "const cols = Object.keys(rows[0]);\n"
+        f"const shown = filter(rows, {json.dumps(json.dumps(asked))}, cols, (col, row) => row[col]);\n"
+        "console.log(JSON.stringify(shown.map((row) => row.username)));\n"
+    )
+    out = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+
+    return json.loads(out.stdout)
+
+
+ROWS = [
+    {"username": "anna.berg@su.se", "realm": "su.se", "active": "Yes", "admin": "No", "provisioning": "Auto"},
+    {"username": "erik.lund@gu.se", "realm": "gu.se", "active": "No", "admin": "Yes", "provisioning": "Manual"},
+    {"username": "anna.ek@gu.se", "realm": "gu.se", "active": "No", "admin": "No", "provisioning": "Auto"},
+    {"username": "a+b(c)@x.se", "realm": "x.se", "active": "Yes", "admin": "No", "provisioning": "Auto"},
+]
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+class TestTheFilterInTheBrowser:
+    def test_a_plain_word_anywhere_in_any_column(self):
+        assert run_filter(ROWS, {"q": "ANNA"}) == ["anna.berg@su.se", "anna.ek@gu.se"]
+        assert run_filter(ROWS, {"q": "gu.se"}) == ["erik.lund@gu.se", "anna.ek@gu.se"]
+
+    def test_wildcards_are_the_whole_cell(self):
+        assert run_filter(ROWS, {"q": "*@su.se"}) == ["anna.berg@su.se"]
+        assert run_filter(ROWS, {"q": "anna*"}) == ["anna.berg@su.se", "anna.ek@gu.se"]
+        assert run_filter(ROWS, {"q": "anna.??@gu.se"}) == ["anna.ek@gu.se"]
+        assert run_filter(ROWS, {"q": "*"}) == [row["username"] for row in ROWS]
+
+    def test_the_rest_of_a_pattern_is_taken_as_it_is(self):
+        assert run_filter(ROWS, {"q": "a+b(c)*"}) == ["a+b(c)@x.se"]
+        assert run_filter(ROWS, {"q": "anna.berg@su?se"}) == ["anna.berg@su.se"]
+        assert run_filter(ROWS, {"q": "anna.berg@su.s"}) == ["anna.berg@su.se"]  # plain: anywhere
+
+    def test_the_filters_and_the_search_together(self):
+        assert run_filter(ROWS, {"active": "No"}) == ["erik.lund@gu.se", "anna.ek@gu.se"]
+        assert run_filter(ROWS, {"active": "No", "realm": "gu.se", "admin": "No"}) == ["anna.ek@gu.se"]
+        assert run_filter(ROWS, {"active": "Yes", "q": "anna*"}) == ["anna.berg@su.se"]
+        assert run_filter(ROWS, {"provisioning": "Manual"}) == ["erik.lund@gu.se"]

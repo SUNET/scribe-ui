@@ -51,9 +51,19 @@ FILTER_METHOD = """(rows, terms, cols, getCellValue) => {
     let asked;
     try { asked = JSON.parse(terms); } catch (error) { asked = { q: terms }; }
     const q = String(asked.q || "").trim().toLowerCase();
+    // Plain words are found anywhere in a cell. With * (any run of
+    // characters) or ? (any one), the pattern is the whole cell:
+    // "*@su.se" ends there, "anna*" begins there.
+    let matches = (text) => text.includes(q);
+    if (/[*?]/.test(q)) {
+        const pattern = new RegExp(
+            "^" + q.replace(/[.+^${}()|[\\]\\\\]/g, "\\\\$&").replace(/\\*/g, ".*").replace(/\\?/g, ".") + "$"
+        );
+        matches = (text) => pattern.test(text);
+    }
     const shown = rows.filter((row) =>
         ["active", "admin", "provisioning", "realm"].every((key) => !asked[key] || row[key] === asked[key]) &&
-        (!q || cols.some((col) => String(getCellValue(col, row) ?? "").toLowerCase().includes(q)))
+        (!q || cols.some((col) => matches(String(getCellValue(col, row) ?? "").toLowerCase())))
     );
     const count = document.querySelector(".users-count");
     if (count) {
