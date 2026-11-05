@@ -1226,6 +1226,125 @@ theme_styles = """
         background-color: var(--color-bg-surface-alt) !important;
     }
 
+    /* ── Admin: users ── */
+    .users-table {
+        width: 100%;
+        height: calc(100vh - 160px - var(--banner-offset, 0px));
+        box-shadow: none;
+        font-size: 18px;
+    }
+    /* The title on the left, the controls together on the right (as
+       before): the search, then the actions level with it; the filters
+       open under the search. */
+    .users-header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 0.75rem 1rem;
+        width: 100%;
+    }
+    .users-title {
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+    }
+    .users-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        justify-content: flex-end;
+        gap: 0.75rem 1rem;
+        flex: 1 1 auto;
+    }
+    .users-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+    .users-actions .q-btn {
+        min-width: 9rem;
+        min-height: 44px;
+    }
+    /* The search, the filter button and the filters under them: one
+       group on the right, the filters in a box of their own under the
+       search, the same width, so they are seen to belong together. */
+    .users-find-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        flex: 0 1 26rem;
+        min-width: 0;
+    }
+    .users-find {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+    }
+    .users-search {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+    .users-filter-toggle {
+        min-width: 44px;
+        min-height: 44px;
+        color: var(--color-text-primary);
+    }
+    /* Open: a tint behind the funnel, as well as aria-expanded. */
+    .users-filter-toggle[aria-expanded="true"] {
+        background: color-mix(in srgb, currentColor 14%, transparent);
+    }
+    .users-filters {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.5rem;
+        padding: 0.75rem;
+        border: 1px solid var(--color-border-subtle);
+        border-radius: 4px;
+        background: var(--color-bg-surface);
+    }
+    .users-filter {
+        min-width: 0;
+    }
+    /* All filters one size, two to a line; Clear filters in the right-hand
+       cell after them, so an odd number of filters leaves no hole. */
+    .users-filter-clear {
+        grid-column: -2 / -1;
+        justify-self: end;
+        min-height: 44px;
+        margin-bottom: -0.5rem;
+        color: var(--color-brand-primary);
+        text-decoration: underline;
+    }
+    .users-count {
+        width: 100%;
+        font-size: 0.875rem;
+    }
+    /* A phone: the users as cards (grid mode, pages/admin/users.py), the
+       list as long as it is rather than a box of its own to scroll in;
+       the search first and full width (first in the page too), the
+       actions sharing the line under it. */
+    @media (max-width: 700px) {
+        .users-table {
+            height: auto;
+            font-size: 1rem;
+        }
+        .users-toolbar {
+            width: 100%;
+        }
+        .users-find-group {
+            flex: 1 1 100%;
+        }
+        .users-actions {
+            width: 100%;
+            flex-wrap: nowrap;
+        }
+        .users-actions .q-btn {
+            flex: 1 1 0;
+            min-width: 0;
+        }
+    }
+
     /* ── Admin: stats page ── */
     .stats-container {
         max-width: 1500px;
