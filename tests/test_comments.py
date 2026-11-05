@@ -718,6 +718,19 @@ class TestRtfExport:
         assert r"{\*\atnauthor Sunet Scribe}\chatn{\*\annotation{\*\atnref 0}" in rtf
         assert r"\pard\plain\f0\fs20 check this}" in rtf
 
+    def test_the_author_and_initials_are_escaped_like_the_text(self, editor, monkeypatch):
+        # Both come from the settings, which may hold anything.
+        from utils import srt_export
+
+        monkeypatch.setattr(srt_export, "RTF_COMMENT_AUTHOR", "Tjänsten {Nord}")
+        monkeypatch.setattr(srt_export, "RTF_COMMENT_INITIALS", "TÅ\\")
+        editor.captions[0].comments = [comment({1}, "x")]
+
+        rtf = self.export(editor, comments=True)
+
+        assert r"{\*\atnauthor Tj\u228?nsten \{Nord\}}" in rtf
+        assert r"{\*\atnid T\u197?\\}" in rtf
+
     def test_the_text_between_the_markers_is_the_words(self, editor):
         editor.captions[0].comments = [comment({1, 2}, "x")]
 

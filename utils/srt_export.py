@@ -405,7 +405,10 @@ class ExportMixin:
                             rtf_data += (
                                 r"{\*\atrfend %d}" % numbers[note]
                                 + "{\\*\\atnid %s}{\\*\\atnauthor %s}\\chatn"
-                                % (RTF_COMMENT_INITIALS, RTF_COMMENT_AUTHOR)
+                                # Escaped like the text: a setting may
+                                # hold "å" or a brace, which unescaped
+                                # would garble the name or open a group.
+                                % (to_rtf_unicode(RTF_COMMENT_INITIALS), to_rtf_unicode(RTF_COMMENT_AUTHOR))
                                 + r"{\*\annotation{\*\atnref %d}{\*\atndate %d}"
                                 % (numbers[note], stamp)
                                 + r"\pard\plain\f0\fs20 "
