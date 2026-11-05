@@ -17,6 +17,7 @@
 
 import httpx
 import pytz
+import weakref
 
 
 from datetime import datetime, timedelta
@@ -519,6 +520,36 @@ def hidden_page_heading(text: str) -> None:
     ui.label(text).classes("sr-only").props("role=heading aria-level=1")
 
 
+
+# The page's one dark mode element, per client: page_init makes it, and
+# the header's button and User settings both change it. A second
+# ui.dark_mode on the page would be a second element, and the two would
+# disagree -- going back to light from dark then did nothing until the
+# page was loaded again.
+_DARK_MODE: "weakref.WeakKeyDictionary" = weakref.WeakKeyDictionary()
+
+
+def _remember_dark_mode(element) -> None:
+    # Both held weakly: the client as the key, and the element too, so
+    # nothing here keeps a page alive once it is closed. (NiceGUI's
+    # elements hold their client weakly as well, so a strong value did
+    # not keep it in 3.7 or 3.18; this does not depend on that.)
+    try:
+        _DARK_MODE[ui.context.client] = weakref.ref(element)
+    except (RuntimeError, TypeError):
+        pass
+
+
+def page_dark_mode():
+    """The dark mode element page_init made for this page, or None."""
+
+    try:
+        element = _DARK_MODE.get(ui.context.client)
+    except (RuntimeError, TypeError):
+        return None
+
+    return element() if element is not None else None
+
 async def page_init(
     header_text: Optional[str] = "",
     use_drawer: bool = False,
@@ -619,6 +650,7 @@ async def page_init(
     ui.add_head_html(default_styles)
     dark_pref = app.storage.user.get("dark_mode", None)
     dark_mode_el = ui.dark_mode(dark_pref)
+    _remember_dark_mode(dark_mode_el)
 
     # Store resolved dark mode state for components like Plotly
     if dark_pref is not None:
