@@ -732,6 +732,19 @@ async def page_init(
             active = current_path == path
             return menu_item_style + (menu_active_style if active else "")
 
+        def menu_tooltip(text: str) -> ui.tooltip:
+            """
+            A menu entry's tooltip in mini mode: beside the rail, level with
+            its icon, not under it. Centred under a 56px icon, a tooltip
+            wider than the rail reached the window's left edge, where Quasar
+            pulls it in and caps its width at the width it measured, rounded
+            to whole pixels; rounded down, the last word broke onto a line
+            of its own ("Customer" / "s"). Beside the rail it never reaches
+            the edge, and it no longer covers the entries below.
+            """
+
+            return ui.tooltip(text).props('anchor="center right" self="center left" :offset="[8, 0]"')
+
         def menu_link(path: str, icon: str, label: str) -> None:
             """
             A menu entry rendered as a real link.
@@ -770,7 +783,7 @@ async def page_init(
                 # The tooltip is a visual aid in mini mode, where the label is
                 # clipped for the eye but still present for screen readers. It is
                 # not the link's accessible name; the label is.
-                t = ui.tooltip(label)
+                t = menu_tooltip(label)
                 t.set_visibility(not app.storage.user.get("drawer_open", False))
                 menu_tooltips.append(t)
 
@@ -850,7 +863,7 @@ async def page_init(
                                     # (WCAG 2.4.4 / good practice 3.2.5)
                                     with ui.element("span").classes("sr-only"):
                                         ui.label(" (opens in a new tab)")
-                                    t = ui.tooltip("API documentation")
+                                    t = menu_tooltip("API documentation")
                                     t.set_visibility(
                                         not app.storage.user.get("drawer_open", False)
                                     )
