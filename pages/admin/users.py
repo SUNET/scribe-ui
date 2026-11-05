@@ -53,14 +53,22 @@ FILTER_METHOD = """(rows, terms, cols, getCellValue) => {
     const q = String(asked.q || "").trim().toLowerCase();
     // Plain words are found anywhere in a cell. With * (any run of
     // characters) or ? (any one), the pattern is the whole cell:
-    // "*@su.se" ends there, "anna*" begins there.
-    let matches = (text) => text.includes(q);
-    if (/[*?]/.test(q)) {
-        const pattern = new RegExp(
-            "^" + q.replace(/[.+^${}()|[\\]\\\\]/g, "\\\\$&").replace(/\\*/g, ".*").replace(/\\?/g, ".") + "$"
-        );
-        matches = (text) => pattern.test(text);
-    }
+    // "*@su.se" ends there, "anna*" begins there. Matched by walking the
+    // pattern and the cell side by side, going back only to the last *,
+    // rather than by a regular expression: "*a*a*a*a*b" made into one
+    // backtracks without end on a long name, and this runs on every key.
+    const wildcard = (text) => {
+        let p = 0, t = 0, star = -1, from = 0;
+        while (t < text.length) {
+            if (p < q.length && (q[p] === "?" || q[p] === text[t])) { p++; t++; }
+            else if (p < q.length && q[p] === "*") { star = p++; from = t; }
+            else if (star !== -1) { p = star + 1; t = ++from; }
+            else return false;
+        }
+        while (q[p] === "*") p++;
+        return p === q.length;
+    };
+    const matches = /[*?]/.test(q) ? wildcard : (text) => text.includes(q);
     const shown = rows.filter((row) =>
         ["active", "admin", "provisioning", "realm"].every((key) => !asked[key] || row[key] === asked[key]) &&
         (!asked.group || (asked.group === "__none__"
@@ -205,8 +213,18 @@ async def users() -> None:
     asked = {"q": "", "active": "", "admin": "", "provisioning": "", "realm": "", "group": ""}
 
     def ask(key: str, value: str) -> None:
+        # Given to the table in the browser only. Setting the table's filter
+        # (or any of its props) here updates the table, and an update sends
+        # all its props, the thousands of rows among them, on every key
+        # typed. Kept in _props as well, without an update, so that the table
+        # has it if it is ever sent again.
         asked[key] = value
-        users_table.filter = json.dumps(asked)
+        terms = json.dumps(asked)
+        with users_table._props.suspend_updates():
+            users_table._props["filter"] = terms
+        users_table.client.run_javascript(
+            f"mounted_app.elements[{users_table.id}].props.filter = {json.dumps(terms)};"
+        )
 
     # Set directly: the function's quotes and spaces would be taken apart
     # by a props string. A ":" prop is evaluated in the browser.
@@ -269,6 +287,82 @@ async def users() -> None:
             ui.label("Users").classes("text-3xl font-bold users-title").props("role=heading aria-level=1")
 
             with ui.element("div").classes("users-toolbar"):
+                # Filters, each with a visible label; "All" is no filter.
+                realms = sorted({user.get("realm") for user in users if user.get("realm")})
+                filters = [
+                    ("active", "Status", {"": "All", "Enabled": "Enabled", "Disabled": "Disabled"}),
+                    ("admin", "Admin", {"": "All", "Yes": "Admins", "No": "Not admins"}),
+                    ("provisioning", "Provisioning", {"": "All", "Auto": "Auto", "Manual": "Manual"}),
+                ]
+
+                # Realm only where there is more than one to choose between;
+                # Group wherever there are groups, with "No group" for the
+                # users in none. Both can be long lists: typed into to narrow.
+                if len(realms) > 1:
+                    filters.append(("realm", "Realm", {"": "All", **{realm: realm for realm in realms}}))
+
+                group_names = sorted({group for user in users for group in user["group_list"]}, key=str.lower)
+
+                if group_names:
+                    filters.append(
+                        ("group", "Group", {"": "All", "__none__": "No group", **{name: name for name in group_names}})
+                    )
+
+                # The search, the filter button beside it, and the filters it
+                # opens right under them, in one group on the right: one place to
+                # find users, in that order for the keyboard too (search, filter
+                # button, filters, Clear filters), the actions before it.
+                # The search, the filter button beside it, and the filters it
+                # opens right under them, in one group: one place to find users.
+                # Before the actions, on the screen and for the keyboard alike:
+                # find the users, choose them, then say what to do with them.
+                with ui.element("div").classes("users-find-group"):
+                    with ui.element("div").classes("users-find"):
+                        with ui.input(
+                            placeholder="Search", on_change=lambda e: ask("q", e.value or "")
+                        ).props('type=search aria-label="Search users"').classes("users-search").add_slot("append"):
+                            ui.icon("search")
+
+                        # color=None: the theme's text colour (utils/styles.py),
+                        # not black on a dark page or Quasar's 3:1 primary.
+                        toggle = ui.button(icon="filter_alt", color=None).classes("users-filter-toggle").props(
+                            "flat round"
+                        )
+                        toggle._props["aria-label"] = "Filters"
+                        toggle._props["aria-expanded"] = "false"
+
+                        with toggle:
+                            badge = ui.badge("", color="red").props("floating").classes("users-filter-badge")
+                            badge.set_visibility(False)
+
+                    # A disclosure: the button says whether it is open and which
+                    # element it opens; the panel is a group named by the button.
+                    panel = ui.element("div").classes("users-filters").props('role="group"')
+                    panel.set_visibility(False)
+                    toggle._props["aria-controls"] = f"c{panel.id}"
+                    panel._props["aria-labelledby"] = f"c{toggle.id}"
+                    selects = []
+
+                    with panel:
+                        for key, label, options in filters:
+                            selects.append(
+                                ui.select(
+                                    options,
+                                    value="",
+                                    label=label,
+                                    with_input=key in ("realm", "group"),
+                                    on_change=lambda e, key=key: (ask(key, e.value or ""), show_in_use()),
+                                ).props("outlined dense options-dense").classes("users-filter")
+                            )
+
+                        def clear_filters() -> None:
+                            for select in selects:
+                                select.value = ""
+
+                        ui.button("Clear filters", on_click=clear_filters, color=None).props("flat no-caps").classes(
+                            "users-filter-clear"
+                        )
+
                 with ui.element("div").classes("users-actions"):
                     ui.button("Enable").classes("button-close").props("color=black flat").on(
                         "click", lambda: set_active_status(users_table.selected, True)
@@ -336,78 +430,6 @@ async def users() -> None:
                                 on_click=confirm_remove_user,
                             )
 
-                # Filters, each with a visible label; "All" is no filter.
-                realms = sorted({user.get("realm") for user in users if user.get("realm")})
-                filters = [
-                    ("active", "Status", {"": "All", "Enabled": "Enabled", "Disabled": "Disabled"}),
-                    ("admin", "Admin", {"": "All", "Yes": "Admins", "No": "Not admins"}),
-                    ("provisioning", "Provisioning", {"": "All", "Auto": "Auto", "Manual": "Manual"}),
-                ]
-
-                # Realm only where there is more than one to choose between;
-                # Group wherever there are groups, with "No group" for the
-                # users in none. Both can be long lists: typed into to narrow.
-                if len(realms) > 1:
-                    filters.append(("realm", "Realm", {"": "All", **{realm: realm for realm in realms}}))
-
-                group_names = sorted({group for user in users for group in user["group_list"]}, key=str.lower)
-
-                if group_names:
-                    filters.append(
-                        ("group", "Group", {"": "All", "__none__": "No group", **{name: name for name in group_names}})
-                    )
-
-                # The search, the filter button beside it, and the filters it
-                # opens right under them, in one group on the right: one place to
-                # find users, in that order for the keyboard too (search, filter
-                # button, filters, Clear filters), the actions before it.
-                with ui.element("div").classes("users-find-group"):
-                    with ui.element("div").classes("users-find"):
-                        with ui.input(
-                            placeholder="Search", on_change=lambda e: ask("q", e.value or "")
-                        ).props('type=search aria-label="Search users"').classes("users-search").add_slot("append"):
-                            ui.icon("search")
-
-                        # color=None: the theme's text colour (utils/styles.py),
-                        # not black on a dark page or Quasar's 3:1 primary.
-                        toggle = ui.button(icon="filter_alt", color=None).classes("users-filter-toggle").props(
-                            "flat round"
-                        )
-                        toggle._props["aria-label"] = "Filters"
-                        toggle._props["aria-expanded"] = "false"
-
-                        with toggle:
-                            badge = ui.badge("", color="red").props("floating").classes("users-filter-badge")
-                            badge.set_visibility(False)
-
-                    # A disclosure: the button says whether it is open and which
-                    # element it opens; the panel is a group named by the button.
-                    panel = ui.element("div").classes("users-filters").props('role="group"')
-                    panel.set_visibility(False)
-                    toggle._props["aria-controls"] = f"c{panel.id}"
-                    panel._props["aria-labelledby"] = f"c{toggle.id}"
-                    selects = []
-
-                    with panel:
-                        for key, label, options in filters:
-                            selects.append(
-                                ui.select(
-                                    options,
-                                    value="",
-                                    label=label,
-                                    with_input=key in ("realm", "group"),
-                                    on_change=lambda e, key=key: (ask(key, e.value or ""), show_in_use()),
-                                ).props("outlined dense options-dense").classes("users-filter")
-                            )
-
-                        def clear_filters() -> None:
-                            for select in selects:
-                                select.value = ""
-
-                        ui.button("Clear filters", on_click=clear_filters, color=None).props("flat no-caps").classes(
-                            "users-filter-clear"
-                        )
-
                 def show_in_use() -> None:
                     in_use = sum(1 for select in selects if select.value)
                     badge.text = str(in_use)
@@ -427,4 +449,8 @@ async def users() -> None:
 
         # How many are shown, said when it changes (4.1.3). Filled in by
         # FILTER_METHOD in the browser.
-        ui.label("").classes("users-count text-theme-secondary").props('role=status aria-live=polite')
+        # Written here too: the first time Quasar filters, before the page
+        # is drawn, there is no label yet for FILTER_METHOD to fill in.
+        ui.label(f"{len(users)} user{'s' if len(users) != 1 else ''}").classes(
+            "users-count text-theme-secondary"
+        ).props('role=status aria-live=polite')

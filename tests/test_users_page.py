@@ -75,8 +75,10 @@ class TestOnAPhone:
     def test_the_list_is_as_long_as_it_is_and_the_search_comes_first(self):
         block = phone()
         assert "height: auto;" in block
-        assert "order: -2;" in block and "flex: 1 1 100%;" in block
-        assert ".users-find-group {\n            order: -2;" in block
+        assert ".users-find-group {\n            flex: 1 1 100%;" in block
+        # First on the screen by being first in the page, not by "order",
+        # so the keyboard and a screen reader meet it first too (1.3.2).
+        assert "order:" not in block
         assert "flex: 1 1 0;" in block
 
 
@@ -139,8 +141,24 @@ class TestFilters:
         # The search no longer binds the filter as a bare string.
         assert 'bind_value(users_table, "filter")' not in PAGE
 
+    def test_a_search_or_a_filter_does_not_send_the_rows_again(self):
+        # users_table.filter = ... updates the table, and an update sends
+        # all its rows. A search or a filter sets it in the browser only.
+        ask = PAGE[PAGE.index("    def ask(key: str, value: str) -> None:") :]
+        ask = ask[: ask.index("\n\n")]
+        assert "users_table.filter =" not in ask
+        assert "users_table.update()" not in ask
+        assert 'with users_table._props.suspend_updates():\n            users_table._props["filter"] = terms' in ask
+        assert "users_table.client.run_javascript(" in ask
+        assert 'f"mounted_app.elements[{users_table.id}].props.filter = {json.dumps(terms)};"' in ask
+
     def test_how_many_are_shown_is_said(self):
-        assert "ui.label(\"\").classes(\"users-count text-theme-secondary\").props('role=status aria-live=polite')" in PAGE
+        # The whole number from the start: Quasar first filters before the
+        # label is there to be filled in.
+        assert """ui.label(f"{len(users)} user{'s' if len(users) != 1 else ''}").classes(
+            "users-count text-theme-secondary"
+        ).props('role=status aria-live=polite')""" in PAGE
+        assert 'ui.label("").classes("users-count' not in PAGE
         method = PAGE[PAGE.index('FILTER_METHOD = """') :]
         assert '"Showing " + shown.length + " of " + all' in method
 
@@ -177,8 +195,9 @@ class TestFilters:
         panel = group.index('panel = ui.element("div").classes("users-filters")')
         clear = group.index('ui.button("Clear filters"')
         assert search < toggle < panel < clear
-        # The actions come before the group, as on the screen.
-        assert PAGE.index('ui.element("div").classes("users-actions")') < PAGE.index('classes("users-find-group")')
+        # The group comes before the actions, as on the screen, on a phone
+        # and on a wide page alike.
+        assert PAGE.index('classes("users-find-group")') < PAGE.index('ui.element("div").classes("users-actions")')
 
     def test_the_panel_is_a_group_named_by_its_button(self):
         assert 'toggle._props["aria-controls"] = f"c{panel.id}"' in PAGE
@@ -232,6 +251,26 @@ class TestTheFilterInTheBrowser:
         assert run_filter(ROWS, {"q": "a+b(c)*"}) == ["a+b(c)@x.se"]
         assert run_filter(ROWS, {"q": "anna.berg@su?se"}) == ["anna.berg@su.se"]
         assert run_filter(ROWS, {"q": "anna.berg@su.s"}) == ["anna.berg@su.se"]  # plain: anywhere
+
+    def test_many_stars_do_not_take_long(self):
+        # As a regular expression, each * a .*, this took seconds on one
+        # name; walked side by side, it is at most the pattern times the cell.
+        import time
+
+        rows = [{"username": "a" * 40, "realm": "x.se", "active": "Enabled", "admin": "No",
+                 "provisioning": "Auto", "group_list": []}] * 200
+        started = time.monotonic()
+        assert run_filter(rows, {"q": "*a" * 10 + "b"}) == []
+        assert run_filter(rows, {"q": "*a" * 10}) == ["a" * 40] * 200
+        assert time.monotonic() - started < 2
+
+    def test_stars_and_question_marks_together(self):
+        assert run_filter(ROWS, {"q": "*.*@*.se"}) == ["anna.berg@su.se", "erik.lund@gu.se", "anna.ek@gu.se"]
+        assert run_filter(ROWS, {"q": "*ek*"}) == ["anna.ek@gu.se"]
+        assert run_filter(ROWS, {"q": "a**k@g?.se"}) == ["anna.ek@gu.se"]
+        assert run_filter(ROWS, {"q": "e*k@g?.se"}) == []
+        assert run_filter(ROWS, {"q": "*k@g?.se"}) == ["anna.ek@gu.se"]
+        assert run_filter(ROWS, {"q": "?"}) == []
 
     def test_a_group_and_no_group(self):
         assert run_filter(ROWS, {"group": "Humsam"}) == ["anna.berg@su.se", "erik.lund@gu.se"]

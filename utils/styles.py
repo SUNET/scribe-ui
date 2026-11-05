@@ -1234,8 +1234,8 @@ theme_styles = """
         font-size: 18px;
     }
     /* The title on the left, the controls together on the right (as
-       before); the filters open under the search, the actions staying
-       level with it. */
+       before): the search, then the actions level with it; the filters
+       open under the search. */
     .users-header {
         display: flex;
         flex-wrap: wrap;
@@ -1322,7 +1322,8 @@ theme_styles = """
     }
     /* A phone: the users as cards (grid mode, pages/admin/users.py), the
        list as long as it is rather than a box of its own to scroll in;
-       the search first and full width, the actions sharing a line. */
+       the search first and full width (first in the page too), the
+       actions sharing the line under it. */
     @media (max-width: 700px) {
         .users-table {
             height: auto;
@@ -1332,7 +1333,6 @@ theme_styles = """
             width: 100%;
         }
         .users-find-group {
-            order: -2;
             flex: 1 1 100%;
         }
         .users-actions {
