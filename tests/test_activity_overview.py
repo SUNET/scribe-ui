@@ -39,11 +39,29 @@ class TestWhatIsCounted:
     def test_actions_by_name_table_and_kind(self):
         assert activity.action("/action/upload") == ("Uploads", "user", "uploads")
         assert activity.action("/action/bulk_export") == ("Bulk exports", "user", "exports")
-        assert activity.action("/action/set_admin") == ("Admin rights granted", "admin", "admin")
+        assert activity.action("/action/modify_user") == ("Users edited", "admin", "admin")
+        assert activity.action("/action/add_group_user") == ("Users added to groups", "admin", "admin")
         # Not known here: its own table, named from its path.
         assert activity.action("/action/merge_files") == ("Merge files", "other", "other")
         # A page is not an action, and is left out.
         assert activity.action("/home") is None
+
+    def test_every_action_the_backend_logs_has_a_name(self):
+        # scribe-backend's ANALYTICS_ROUTE_MAP (app.py), as of 2.2.0.
+        logged = (
+            "upload delete_job transcription export modify_user remove_user create_group edit_group "
+            "delete_group add_group_user remove_group_user create_rule edit_rule delete_rule "
+            "create_attribute delete_attribute create_customer edit_customer delete_customer "
+            "create_announcement edit_announcement delete_announcement"
+        ).split()
+        for name in logged:
+            assert f"/action/{name}" in activity.ACTIONS, name
+            assert f"/action/{name}" not in activity.LEGACY, name
+
+    def test_names_no_longer_logged_are_kept_and_listed_only_with_something_to_count(self):
+        assert activity.action("/action/set_admin") == ("Admin rights granted", "admin", "admin")
+        assert activity.LEGACY <= set(activity.ACTIONS)
+        assert "path not in activity.LEGACY or all_time.get(path) or count(path, days + before_days)" in PAGE
 
     def test_the_kinds_and_their_names(self):
         assert [name for _, name in activity.KINDS] == ["Uploads", "Transcriptions", "Exports", "Deletions", "Administrative actions"]

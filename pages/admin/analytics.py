@@ -251,8 +251,15 @@ async def analytics() -> None:
                     if table == "other" and not chosen:
                         continue
 
+                    # Every action the backend logs, in its order; one it
+                    # no longer logs only where there is something to count.
                     if table != "other":
-                        chosen = [path for path, (_, group, _) in activity.ACTIONS.items() if group == table]
+                        chosen = [
+                            path
+                            for path, (_, group, _) in activity.ACTIONS.items()
+                            if group == table
+                            and (path not in activity.LEGACY or all_time.get(path) or count(path, days + before_days))
+                        ]
 
                     with ui.element("div"):
                         heading(title, level=3)

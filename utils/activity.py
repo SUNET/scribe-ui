@@ -42,23 +42,52 @@ KINDS = (
 )
 OTHER = ("other", "Other actions")
 
-# Each action: its name, its table (user or admin) and its kind.
+# Each action: its name, its table (user or admin) and its kind. The paths
+# are the backend's ANALYTICS_ROUTE_MAP (app.py in scribe-backend), in the
+# order a reader looks for them: what users do, then administration by
+# what it is done to.
 ACTIONS = {
     "/action/upload": ("Uploads", "user", "uploads"),
     "/action/transcription": ("Transcriptions", "user", "transcriptions"),
-    "/action/bulk_transcription": ("Bulk transcriptions", "user", "transcriptions"),
     "/action/export": ("Exports", "user", "exports"),
-    "/action/bulk_export": ("Bulk exports", "user", "exports"),
     "/action/delete_job": ("Files deleted", "user", "deletions"),
+    "/action/modify_user": ("Users edited", "admin", "admin"),
+    "/action/remove_user": ("Users removed", "admin", "admin"),
     "/action/create_group": ("Groups created", "admin", "admin"),
     "/action/edit_group": ("Groups edited", "admin", "admin"),
     "/action/delete_group": ("Groups deleted", "admin", "admin"),
+    "/action/add_group_user": ("Users added to groups", "admin", "admin"),
+    "/action/remove_group_user": ("Users removed from groups", "admin", "admin"),
+    "/action/create_rule": ("Provisioning rules created", "admin", "admin"),
+    "/action/edit_rule": ("Provisioning rules edited", "admin", "admin"),
+    "/action/delete_rule": ("Provisioning rules deleted", "admin", "admin"),
+    "/action/create_attribute": ("Attributes added", "admin", "admin"),
+    "/action/delete_attribute": ("Attributes deleted", "admin", "admin"),
+    "/action/create_customer": ("Customers created", "admin", "admin"),
+    "/action/edit_customer": ("Customers edited", "admin", "admin"),
+    "/action/delete_customer": ("Customers deleted", "admin", "admin"),
+    "/action/create_announcement": ("Announcements created", "admin", "admin"),
+    "/action/edit_announcement": ("Announcements edited", "admin", "admin"),
+    "/action/delete_announcement": ("Announcements deleted", "admin", "admin"),
+    # Names the backend no longer logs (the old page knew them), still in
+    # an older log: counted under their kind, and listed only where they
+    # have something to count (LEGACY).
+    "/action/bulk_transcription": ("Bulk transcriptions", "user", "transcriptions"),
+    "/action/bulk_export": ("Bulk exports", "user", "exports"),
     "/action/activate_user": ("Users activated", "admin", "admin"),
     "/action/deactivate_user": ("Users deactivated", "admin", "admin"),
-    "/action/remove_user": ("Users removed", "admin", "admin"),
     "/action/set_admin": ("Admin rights granted", "admin", "admin"),
     "/action/remove_admin": ("Admin rights revoked", "admin", "admin"),
     "/action/set_domains": ("Domains updated", "admin", "admin"),
+}
+LEGACY = {
+    "/action/bulk_transcription",
+    "/action/bulk_export",
+    "/action/activate_user",
+    "/action/deactivate_user",
+    "/action/set_admin",
+    "/action/remove_admin",
+    "/action/set_domains",
 }
 
 WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
