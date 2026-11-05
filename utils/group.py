@@ -152,11 +152,15 @@ class Group:
                 with ui.element("div").classes("group-info"):
                     self.name_and_description()
 
-                    ui.label(members).classes("group-meta")
-                    ui.label(f"Monthly limit: {limit}").classes("group-meta")
+                    # One line with separators on a wide card, one to a line
+                    # on a narrow one (utils/styles.py, .group-meta-line).
+                    with ui.element("div").classes("group-meta-wrap"):
+                        with ui.element("div").classes("group-meta-line"):
+                            ui.label(members).classes("group-meta")
+                            ui.label(f"Monthly limit: {limit}").classes("group-meta")
 
-                    if self.name != "All users":
-                        ui.label(f"Created {self.created_at}").classes("group-meta")
+                            if self.name != "All users":
+                                ui.label(f"Created {self.created_at}").classes("group-meta")
 
                 summary_cards(
                     (

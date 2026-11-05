@@ -1322,6 +1322,37 @@ theme_styles = """
         font-size: 0.875rem;
         color: var(--color-text-muted);
     }
+    /* Members, limit and date: one to a line on a narrow card; on a wider
+       one in a line with a dot between, wrapping where it must. Each dot
+       sits in front of its item, and the line is pulled left by a dot's
+       width inside a wrapper that clips, so the dot that would begin a
+       line is out of sight. The dot is drawn, not read out. */
+    .group-meta-wrap {
+        overflow: hidden;
+    }
+    .group-meta-line {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+    @container (min-width: 36rem) {
+        .group-meta-line {
+            flex-direction: row;
+            flex-wrap: wrap;
+            gap: 0.25rem 0;
+            margin-left: -1.25rem;
+        }
+        .group-meta-line > .group-meta {
+            white-space: nowrap;
+        }
+        .group-meta-line > .group-meta::before {
+            content: "\\00B7";
+            content: "\\00B7" / "";
+            display: inline-block;
+            width: 1.25rem;
+            text-align: center;
+        }
+    }
     /* The two months share their column, the same in every card. */
     .group-card .stats-tiles {
         grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));

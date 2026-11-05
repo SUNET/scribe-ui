@@ -38,7 +38,21 @@ class TestWhatIsOnIt:
     def test_the_name_is_a_heading(self):
         assert "self.name_and_description()" in CARD
 
-    def test_details_one_to_a_line(self):
+    def test_details_in_one_line_on_a_wide_card_one_to_a_line_on_a_narrow(self):
+        assert 'with ui.element("div").classes("group-meta-wrap"):' in CARD
+        assert 'with ui.element("div").classes("group-meta-line"):' in CARD
+        assert "flex-direction: column;" in rule(".group-meta-line")
+        assert "overflow: hidden;" in rule(".group-meta-wrap")
+        wide = STYLES[STYLES.index("    @container (min-width: 36rem) {\n        .group-meta-line {") :][:900]
+        assert "flex-direction: row;" in wide and "flex-wrap: wrap;" in wide
+        assert "margin-left: -1.25rem;" in wide and "width: 1.25rem;" in wide
+        # Drawn, not read out.
+        assert 'content: "\\\\00B7" / "";' in wide
+        from utils.styles import default_styles
+
+        assert 'content: "\\00B7" / "";' in default_styles  # the CSS escape, not a NUL
+
+    def test_details(self):
         assert 'ui.label(members).classes("group-meta")' in CARD
         assert 'ui.label(f"Monthly limit: {limit}").classes("group-meta")' in CARD
         assert 'ui.label(f"Created {self.created_at}").classes("group-meta")' in CARD
@@ -113,7 +127,7 @@ class TestTheLayout:
         assert "@container (min-width: 52rem)" in STYLES
         wide = STYLES[STYLES.index("@container (min-width: 52rem)") :][:200]
         assert "grid-template-columns: minmax(16rem, 1fr) minmax(0, 1fr) 10rem;" in wide
-        middling = STYLES[STYLES.index("@container (min-width: 36rem)") :][:400]
+        middling = STYLES[STYLES.index("    @container (min-width: 36rem) {\n        .group-layout {") :][:400]
         assert "grid-template-columns: minmax(0, 1fr) 10rem;" in middling
         assert "grid-column: 2;" in middling
 
