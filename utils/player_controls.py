@@ -1,0 +1,77 @@
+# Copyright (c) 2025-2026 Sunet.
+# Contributor: Kristofer Hallin
+#
+# This file is part of Sunet Scribe.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+The player's controls, over the foot of the picture (or, for sound alone,
+on a surface of their own).
+
+The browser's own bar is gone (see player_controls.js for why): this is what
+replaces it. Everything it shows -- position, length, volume, speed -- it reads
+from the video element itself, so the server is not asked for any of it. The
+two things it needs the server for are "play with context", which depends on
+which caption the caret was last in, and the CC button of a subtitle file,
+whose overlay the server draws and whose setting it keeps. Those are the two
+events it emits ("playcontext" and "captions", the latter with the new
+setting).
+
+It has to be made inside the `.video-frame` that holds the picture: it finds
+the frame with `closest()`, lays itself over its foot, and tells it (a class)
+when the recording turns out to have no picture.
+
+The same registration gotcha applies here as to speech_timeline.js: the
+component is keyed by file content at import time, so an edit to the .js
+needs the server process restarted (main.py's uvicorn_reload_includes covers
+it for the dev server).
+"""
+
+from nicegui import ui
+
+
+class PlayerControls(
+    ui.element,
+    component="player_controls.js",
+):
+    """
+    Play and pause, the stretch around a caption, speed, position and volume.
+
+    `label` is the recording's file name. It is only shown for a recording that
+    is sound alone, where there is no picture to carry it.
+
+    `captions` is for subtitle files: it gives the player a CC button, which
+    starts out showing `captions_on`. A transcription has no subtitles to put
+    over the picture, so it gets no button.
+    """
+
+    def __init__(
+        self,
+        label: str = "",
+        captions: bool = False,
+        captions_on: bool = True,
+    ) -> None:
+        super().__init__()
+        self._props["label"] = label
+        self._props["captions"] = bool(captions)
+        self._props["captionsOn"] = bool(captions_on)
+
+    def set_captions(self, on: bool) -> None:
+        """
+        Show the CC button as on or off, for when the setting is changed from
+        somewhere other than the button.
+        """
+
+        # Setting a prop already tells the browser; no update() of its own.
+        self._props["captionsOn"] = bool(on)

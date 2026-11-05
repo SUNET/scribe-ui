@@ -25,7 +25,10 @@ The writers here are the ones with nothing to configure.
 """
 
 import json
+import re
+import unicodedata
 from datetime import datetime
+from typing import Optional
 
 from nicegui import ui
 
@@ -39,14 +42,309 @@ from utils.recording_api import ORIGINAL_PREFIX
 from utils.settings import get_settings
 from utils.styles import default_styles
 
+# The languages a recording can be transcribed in, as the Windows language ids
+# RTF marks text with, so a word processor checks the spelling in the right
+# language whatever its own is set to, and a screen reader reads it with the
+# right voice. Every language Whisper names (its LANGUAGES, and the other
+# names it takes for some of them, TO_LANGUAGE_CODE) and the Sámi languages of
+# Sweden, so that opening a language in settings.WHISPER_LANGUAGES needs no
+# change here. The names are what a job's language is called, lower case and
+# without accents or a "(...)" after it (rtf_language).
+#
+# A name only names a language, so where it has variants one is chosen: the
+# language as written where it is mostly spoken or in Europe -- British
+# English, Norwegian Bokmål (Nynorsk is a name of its own), European Spanish
+# and Portuguese, Mainland Chinese for Chinese and Mandarin and Hong Kong for
+# Cantonese, Serbian, Bosnian, Azerbaijani, Uzbek and Hausa in the Latin
+# script, and the Sámi languages as written in Sweden. Six languages Whisper
+# knows have no Windows id -- Shona, Haitian Creole, Malagasy, Lingala,
+# Javanese and Sundanese -- and are left unmarked, like any name not here.
+RTF_LANGUAGES = {
+    "afrikaans": 1078,  # af-ZA
+    "albanian": 1052,  # sq-AL
+    "amharic": 1118,  # am-ET
+    "arabic": 1025,  # ar-SA
+    "armenian": 1067,  # hy-AM
+    "assamese": 1101,  # as-IN
+    "azerbaijani": 1068,  # az-Latn-AZ
+    "bashkir": 1133,  # ba-RU
+    "basque": 1069,  # eu-ES
+    "belarusian": 1059,  # be-BY
+    "bengali": 2117,  # bn-BD
+    "bosnian": 5146,  # bs-Latn-BA
+    "breton": 1150,  # br-FR
+    "bulgarian": 1026,  # bg-BG
+    "burmese": 1109,  # my-MM
+    "cantonese": 3076,  # zh-HK
+    "castilian": 3082,  # es-ES
+    "catalan": 1027,  # ca-ES
+    "chinese": 2052,  # zh-CN
+    "croatian": 1050,  # hr-HR
+    "czech": 1029,  # cs-CZ
+    "danish": 1030,  # da-DK
+    "dutch": 1043,  # nl-NL
+    "english": 2057,  # en-GB
+    "estonian": 1061,  # et-EE
+    "faroese": 1080,  # fo-FO
+    "finnish": 1035,  # fi-FI
+    "flemish": 1043,  # nl-NL
+    "french": 1036,  # fr-FR
+    "galician": 1110,  # gl-ES
+    "georgian": 1079,  # ka-GE
+    "german": 1031,  # de-DE
+    "greek": 1032,  # el-GR
+    "gujarati": 1095,  # gu-IN
+    "hausa": 1128,  # ha-Latn-NG
+    "hawaiian": 1141,  # haw-US
+    "hebrew": 1037,  # he-IL
+    "hindi": 1081,  # hi-IN
+    "hungarian": 1038,  # hu-HU
+    "icelandic": 1039,  # is-IS
+    "indonesian": 1057,  # id-ID
+    "italian": 1040,  # it-IT
+    "japanese": 1041,  # ja-JP
+    "kannada": 1099,  # kn-IN
+    "kazakh": 1087,  # kk-KZ
+    "khmer": 1107,  # km-KH
+    "korean": 1042,  # ko-KR
+    "lao": 1108,  # lo-LA
+    "latin": 1142,  # la-VA
+    "latvian": 1062,  # lv-LV
+    "letzeburgesch": 1134,  # lb-LU
+    "lithuanian": 1063,  # lt-LT
+    "lule sami": 5179,  # smj-SE
+    "luxembourgish": 1134,  # lb-LU
+    "macedonian": 1071,  # mk-MK
+    "malay": 1086,  # ms-MY
+    "malayalam": 1100,  # ml-IN
+    "maltese": 1082,  # mt-MT
+    "mandarin": 2052,  # zh-CN
+    "maori": 1153,  # mi-NZ
+    "marathi": 1102,  # mr-IN
+    "moldavian": 1048,  # ro-RO
+    "moldovan": 1048,  # ro-RO
+    "mongolian": 1104,  # mn-MN
+    "myanmar": 1109,  # my-MM
+    "nepali": 1121,  # ne-NP
+    "northern sami": 2107,  # se-SE
+    "norwegian": 1044,  # nb-NO
+    "nynorsk": 2068,  # nn-NO
+    "occitan": 1154,  # oc-FR
+    "panjabi": 1094,  # pa-IN
+    "pashto": 1123,  # ps-AF
+    "persian": 1065,  # fa-IR
+    "polish": 1045,  # pl-PL
+    "portuguese": 2070,  # pt-PT
+    "punjabi": 1094,  # pa-IN
+    "pushto": 1123,  # ps-AF
+    "romanian": 1048,  # ro-RO
+    "russian": 1049,  # ru-RU
+    "sanskrit": 1103,  # sa-IN
+    "serbian": 9242,  # sr-Latn-RS
+    "sindhi": 2137,  # sd-Arab-PK
+    "sinhala": 1115,  # si-LK
+    "sinhalese": 1115,  # si-LK
+    "slovak": 1051,  # sk-SK
+    "slovenian": 1060,  # sl-SI
+    "somali": 1143,  # so-SO
+    "southern sami": 7227,  # sma-SE
+    "spanish": 3082,  # es-ES
+    "swahili": 1089,  # sw-KE
+    "swedish": 1053,  # sv-SE
+    "tagalog": 1124,  # fil-PH
+    "tajik": 1064,  # tg-Cyrl-TJ
+    "tamil": 1097,  # ta-IN
+    "tatar": 1092,  # tt-RU
+    "telugu": 1098,  # te-IN
+    "thai": 1054,  # th-TH
+    "tibetan": 1105,  # bo-CN
+    "turkish": 1055,  # tr-TR
+    "turkmen": 1090,  # tk-TM
+    "ukrainian": 1058,  # uk-UA
+    "urdu": 1056,  # ur-PK
+    "uzbek": 1091,  # uz-Latn-UZ
+    "valencian": 2051,  # ca-ES-valencia
+    "vietnamese": 1066,  # vi-VN
+    "welsh": 1106,  # cy-GB
+    "yiddish": 1085,  # yi
+    "yoruba": 1130,  # yo-NG
+}
+
+# British English, for what Scribe itself writes into an export: the key to
+# the markings, and the names it gives a speaker it knows nothing about.
+RTF_ENGLISH = 2057
+
+# The names Scribe gives speakers itself ("Speaker 2", "SPEAKER_01",
+# "UNKNOWN"), as opposed to a name the reader gave one.
+DEFAULT_SPEAKER = re.compile(r"(speaker[ _]?\d+|unknown)", re.IGNORECASE)
+
+# The colours an export with markings uses, by their place in the table:
+# 1 the highlighter (pure yellow, Word's own), 2 the teal of a changed word,
+# 3 the violet of an uncertain word (the editor's --color-review-accent),
+# 4 the grey of the key. On white, 2 is 5.3:1, 3 5.7:1 and 4 6.4:1; on the
+# yellow, 2 is 4.9:1 and 3 5.3:1.
+RTF_COLOURS = (
+    r"{\colortbl;\red255\green255\blue0;\red18\green121\blue106;"
+    r"\red109\green81\blue201;\red95\green95\blue95;}"
+)
+
+# How each mark is written. A changed and an uncertain word each carry a named
+# character style, so a reader can see what a word is marked for and find, or
+# clear, every one of them at once; the formatting is repeated beside the
+# style, as RTF has it. A highlight is the word processor's own highlighter,
+# which a style cannot hold -- and so a word has at most one style: changed and
+# uncertain never go together (see marked_spans).
+RTF_HIGHLIGHT = r"\highlight1"
+RTF_EDIT = r"\cs11\cf2\ul"
+RTF_UNCERTAIN = r"\cs12\cf3\uld"
+
+RTF_SENSITIVITY_NAMES = {"low": "Low", "medium": "Medium", "high": "High"}
+
+# The export's choice of them, Off first: an export carries no mark unless it
+# is asked to.
+RTF_UNCERTAIN_OPTIONS = {"off": "Off", **RTF_SENSITIVITY_NAMES}
+
+
+def rtf_language(name: Optional[str]) -> Optional[int]:
+    """
+    The RTF language id for a language as the job names it, or None.
+    "Northern Sámi (Experimental)" is Northern Sámi.
+    """
+
+    if not isinstance(name, str):
+        return None
+
+    plain = unicodedata.normalize("NFD", name)
+    plain = "".join(ch for ch in plain if not unicodedata.combining(ch))
+    plain = plain.split("(")[0].strip().lower()
+
+    return RTF_LANGUAGES.get(plain)
+
+
+def rtf_text(text: str) -> str:
+    """
+    Text as RTF: the three characters RTF keeps for itself escaped, and
+    everything outside ASCII as a Unicode escape (two, for a character
+    outside the Basic Multilingual Plane).
+    """
+
+    result = []
+
+    for ch in text:
+        code = ord(ch)
+
+        if code < 128:
+            result.append("\\" + ch if ch in "\\{}" else ch)
+        elif code <= 0xFFFF:
+            # BMP character - use signed 16-bit representation
+            signed_code = code if code <= 0x7FFF else code - 0x10000
+            result.append(f"\\u{signed_code}?")
+        else:
+            # Supplementary character (outside BMP) - use UTF-16 surrogate pair
+            code -= 0x10000
+            high_surrogate = 0xD800 + (code >> 10)
+            low_surrogate = 0xDC00 + (code & 0x3FF)
+            # Surrogates are always > 0x7FFF, convert to signed
+            result.append(
+                f"\\u{high_surrogate - 0x10000}?\\u{low_surrogate - 0x10000}?"
+            )
+
+    return "".join(result)
+
+
+def rtf_key(found: dict, sensitivity: Optional[str]) -> str:
+    """
+    The key to the markings, put first in an export that has any: what each
+    kind of mark looks like and what it means, for the kinds that are in this
+    file and no others. In English, and marked as English, like the rest of
+    what Scribe writes; a paragraph of its own, in a style of its own ("Scribe:
+    Export key"), with a rule under it, so it can be told from the transcript
+    and taken out of it. The samples are drawn with the formatting alone, not
+    the styles, so that finding every word in a style finds the transcript's.
+    """
+
+    lines = []
+
+    if found["highlight"]:
+        lines.append(
+            "{" + RTF_HIGHLIGHT + " Yellow highlight}"
+            + rtf_text(" \u2013 your highlights.")
+        )
+
+    if found["edit"]:
+        lines.append(
+            r"{\cf2\ul Teal, underlined}"
+            + rtf_text(
+                f" \u2013 words you changed (character style \u201c{RTF_COMMENT_AUTHOR}: My edit\u201d)."
+            )
+        )
+
+    if found["uncertain"]:
+        level = RTF_SENSITIVITY_NAMES.get(sensitivity, "")
+        lines.append(
+            r"{\cf3\uld Violet, dotted underline}"
+            + rtf_text(
+                " \u2013 words the speech recognition was less sure of, at "
+                f"sensitivity {level} (character style \u201c{RTF_COMMENT_AUTHOR}: Uncertain "
+                "word\u201d)."
+            )
+        )
+
+    if found["comment"]:
+        lines.append(
+            rtf_text("Comments in the margin \u2013 your comments.")
+        )
+
+    if found["edit"] or found["uncertain"]:
+        lines.append(
+            rtf_text(
+                "A character style can be found, or removed everywhere at once, "
+                "from the document\u2019s styles."
+            )
+        )
+
+    return (
+        rf"\pard\plain\s1\f0\fs18\cf4\lang{RTF_ENGLISH}\brdrb\brdrs\brdrw10\brsp80 "
+        r"{\b Markings in this export}\line "
+        + r"\line ".join(lines)
+        + r"\par"
+    )
+
+
+def rtf_stylesheet(found: dict, language: Optional[int]) -> str:
+    """
+    The styles an export with markings uses: the transcript's own paragraph,
+    the key's, and a character style for each kind of mark that has one and
+    is in the file. Each gives its font and size, or a word processor draws a
+    word in the style in its own default (LibreOffice did).
+    """
+
+    lang = rf"\lang{language}" if language else ""
+    # The styles are the service's, named for it as the comments' author is.
+    service = rtf_text(RTF_COMMENT_AUTHOR)
+    styles = [
+        rf"{{\s0\f0\fs20{lang} Normal;}}",
+        rf"{{\s1\sbasedon0\f0\fs18\cf4\lang{RTF_ENGLISH} {service}: Export key;}}",
+        r"{\*\cs10\additive Default Paragraph Font;}",
+    ]
+
+    if found["edit"]:
+        styles.append(rf"{{\*\cs11\additive\sbasedon10\f0\fs20\cf2\ul {service}: My edit;}}")
+
+    if found["uncertain"]:
+        styles.append(rf"{{\*\cs12\additive\sbasedon10\f0\fs20\cf3\uld {service}: Uncertain word;}}")
+
+    return r"{\stylesheet" + "".join(styles) + "}"
+
+
 # Who a comment in an exported document is from. It is "Scribe" on purpose, not
 # the reader's username: the editor could get that (utils/token.get_user_info),
 # but it would put a personal identifier into every exported file, and the
 # document is only ever the reader's own, so there is no one to tell apart.
-RTF_COMMENT_AUTHOR = "Scribe"
-RTF_COMMENT_INITIALS = "SC"
-
 settings = get_settings()
+
+RTF_COMMENT_AUTHOR = settings.SERVICE_NAME
+RTF_COMMENT_INITIALS = settings.SERVICE_INITIALS
 
 
 
@@ -191,6 +489,19 @@ class ExportMixin:
             any(caption.edited_words for caption in captions),
         )
 
+    def rtf_uncertain_available(self, others: list | None = None) -> bool:
+        """
+        Whether uncertain words can be marked in the export: some
+        transcription in it has the scores the editor flags them by. A bulk
+        export fetches no word data, so there it is not offered.
+        """
+
+        return any(
+            editor.has_confidence
+            for editor in [self] + list(others or [])
+            if editor.data_format != "srt"
+        )
+
     def rtf_comments_available(self, others: list | None = None) -> bool:
         """
         Whether any caption in this editor, or in the others exported along
@@ -250,28 +561,47 @@ class ExportMixin:
         highlights: bool = False,
         edits: bool = False,
         comments: bool = False,
+        uncertain: Optional[str] = None,
     ) -> str:
         """
         Export captions to RTF format with proper Unicode handling.
 
-        `highlights` carries the reader's highlights as a yellow marker and
-        `edits` carries the words they changed, underlined and in the teal of
-        the editor's own marking -- underlined as well because a printout
-        may have no colour. Both are off by default, which is the clean
-        transcript: nothing about the text itself changes either way.
+        `highlights` carries the reader's highlights as the word processor's
+        own yellow highlighter, and `edits` the words they changed, underlined
+        and in the teal of the editor's own marking -- underlined as well
+        because a printout may have no colour. `uncertain` is a sensitivity
+        ("low", "medium", "high"): the words the speech recognition was less
+        sure of at it, violet with a dotted underline, as the editor would flag
+        them there; a changed word is never one (see marked_spans). All are off
+        by default, which is the clean transcript: nothing about the text
+        itself changes either way.
 
         `comments` carries the reader's comments as Word comments on the words
         they are on. Off by default for the same reason.
 
-        Transcriptions only, for now: subtitles never carry them.
+        An export with any of them starts with a key to them, for the kinds
+        that are in it and no others (rtf_key). The text is marked with the
+        language it was transcribed in when that is known (self.language,
+        rtf_language()), with the lines that say who speaks when left out of
+        the spelling check; without a language nothing is marked, and a clean
+        export is what it always was.
+
+        Transcriptions only, for now: subtitles never carry the marks.
         """
 
         if self.data_format == "srt":
             highlights = edits = comments = False
+            uncertain = None
+
+        if uncertain not in RTF_SENSITIVITY_NAMES or not self.has_confidence:
+            uncertain = None
+
+        language = rtf_language(self.language)
 
         # One date for the whole export: every comment was made before it.
         stamp = self.rtf_date(datetime.now())
         note_count = 0
+        found = {"highlight": False, "edit": False, "uncertain": False, "comment": False}
 
         def fmt_ts(ts: str, f: str) -> str:
             """
@@ -287,45 +617,7 @@ class ExportMixin:
                 return f"{h:02d}:{m:02d}:{s:02d}.{ms:03d}"
             return ts
 
-        def to_rtf_unicode(text: str) -> str:
-            result = []
-            for ch in text:
-                code = ord(ch)
-                if code < 128:
-                    if ch in ["\\", "{", "}"]:
-                        result.append("\\" + ch)
-                    else:
-                        result.append(ch)
-                elif code <= 0xFFFF:
-                    # BMP character - use signed 16-bit representation
-                    signed_code = code if code <= 0x7FFF else code - 0x10000
-                    result.append(f"\\u{signed_code}?")
-                else:
-                    # Supplementary character (outside BMP) - use UTF-16 surrogate pair
-                    code -= 0x10000
-                    high_surrogate = 0xD800 + (code >> 10)
-                    low_surrogate = 0xDC00 + (code & 0x3FF)
-                    # Surrogates are always > 0x7FFF, convert to signed
-                    result.append(
-                        f"\\u{high_surrogate - 0x10000}?\\u{low_surrogate - 0x10000}?"
-                    )
-            return "".join(result)
-
-        # Colour 1 is the marker (pure yellow: it is what Word's own highlighter
-        # palette holds, so it is shown as drawn and not matched to the nearest
-        # colour), colour 2 the editor's teal for changed words. The table is
-        # only written when it is used, so a clean export is the document it
-        # always was.
-        colours = (
-            r"{\colortbl;\red255\green255\blue0;\red18\green121\blue106;}"
-            if highlights or edits
-            else ""
-        )
-        rtf_content = (
-            r"{\rtf1\ansi\deff0{\fonttbl{\f0 Arial;}}"
-            + colours
-            + r"\viewkind4\uc1\pard\f0\fs20 "
-        )
+        to_rtf_unicode = rtf_text
 
         parts = []
 
@@ -344,12 +636,24 @@ class ExportMixin:
                     header_parts.append(to_rtf_unicode(f"({' - '.join(ts_parts)})"))
 
             if speakers:
-                header_parts.append(to_rtf_unicode(f"{caption.speaker}:"))
+                name = to_rtf_unicode(f"{caption.speaker}:")
 
-            # Build RTF data with consistent bold formatting for header
+                # A name Scribe gave ("Speaker 2") is English, whatever the
+                # recording is in, and is read out as such.
+                if language and DEFAULT_SPEAKER.fullmatch(caption.speaker.strip()):
+                    name = rf"{{\lang{RTF_ENGLISH} {name}}}"
+
+                header_parts.append(name)
+
+            # Build RTF data with consistent bold formatting for header. In a
+            # text marked with its language the header is left out of the
+            # spelling check: numbers, times and names, nothing to correct.
             rtf_data = ""
             if header_parts:
-                rtf_data = r"\b " + " ".join(header_parts) + r"\b0\line "
+                if language:
+                    rtf_data = r"{\b\noproof " + " ".join(header_parts) + r"}\line "
+                else:
+                    rtf_data = r"\b " + " ".join(header_parts) + r"\b0\line "
 
             # A comment is anchored by a start and an end marker round the
             # words it is on, and its text follows the end. The pieces are cut
@@ -366,8 +670,8 @@ class ExportMixin:
             cuts = sorted({edge for start, end, _ in notes for edge in (start, end)})
             offset = 0
 
-            for text, highlighted, edited in self.marked_spans(
-                caption, highlights, edits
+            for text, highlighted, edited, doubtful in self.marked_spans(
+                caption, highlights, edits, uncertain
             ):
                 cut_at = [cut - offset for cut in cuts if 0 < cut - offset < len(text)]
                 segments = [
@@ -385,27 +689,37 @@ class ExportMixin:
 
                     body = to_rtf_unicode(segment).replace("\n", r"\line ")
 
-                    if highlighted or edited:
+                    if highlighted or edited or doubtful:
                         # A group, so the formatting ends with the piece. The
                         # one space after a control word is its delimiter and
                         # is not part of the text, so a piece that starts with
                         # a space keeps it.
-                        style = (r"\highlight1" if highlighted else "") + (
-                            r"\cf2\ul" if edited else ""
+                        style = (
+                            (RTF_HIGHLIGHT if highlighted else "")
+                            + (RTF_EDIT if edited else "")
+                            + (RTF_UNCERTAIN if doubtful else "")
                         )
                         body = "{" + style + " " + body + "}"
+
+                        found["highlight"] |= highlighted
+                        found["edit"] |= edited
+                        found["uncertain"] |= doubtful
 
                     rtf_data += body
 
                     for note in notes:
                         if note[1] == there:
+                            found["comment"] = True
                             note_text = to_rtf_unicode(note[2]).replace(
                                 "\n", r"\line "
                             )
                             rtf_data += (
                                 r"{\*\atrfend %d}" % numbers[note]
                                 + "{\\*\\atnid %s}{\\*\\atnauthor %s}\\chatn"
-                                % (RTF_COMMENT_INITIALS, RTF_COMMENT_AUTHOR)
+                                # Escaped like the text: a setting may
+                                # hold "å" or a brace, which unescaped
+                                # would garble the name or open a group.
+                                % (to_rtf_unicode(RTF_COMMENT_INITIALS), to_rtf_unicode(RTF_COMMENT_AUTHOR))
                                 + r"{\*\annotation{\*\atnref %d}{\*\atndate %d}"
                                 % (numbers[note], stamp)
                                 + r"\pard\plain\f0\fs20 "
@@ -416,6 +730,27 @@ class ExportMixin:
             rtf_data += r"\line\line "
 
             parts.append(rtf_data)
+
+        lang = rf"\lang{language}" if language else ""
+        marked = any(found.values())
+
+        # The colour table, the styles and the key only when there is a mark,
+        # so a clean export is the document it always was.
+        rtf_content = (
+            r"{\rtf1\ansi\deff0"
+            + (rf"\deflang{language}" if language else "")
+            + r"{\fonttbl{\f0 Arial;}}"
+            + (RTF_COLOURS + rtf_stylesheet(found, language) if marked else "")
+            + r"\viewkind4\uc1"
+        )
+
+        if marked:
+            rtf_content += (
+                rtf_key(found, uncertain)
+                + rf"\pard\plain\s0\f0\fs20{lang}\sb200 "
+            )
+        else:
+            rtf_content += rf"\pard\f0\fs20{lang} "
 
         rtf_content += "".join(parts) + "}"
 
@@ -737,6 +1072,24 @@ class ExportMixin:
                                 )
                                 rtf_comments_incl.set_visibility(
                                     self.rtf_comments_available(
+                                        [editor for _, editor in bulk_editors or []]
+                                    )
+                                )
+                                # Uncertain words at a sensitivity of the
+                                # reader's choosing -- the editor's own
+                                # levels -- and Off unless asked for. Only
+                                # where there are word scores to go on.
+                                rtf_uncertain = (
+                                    ui.select(
+                                        options=RTF_UNCERTAIN_OPTIONS,
+                                        value="off",
+                                        label="Include uncertain words",
+                                    )
+                                    .classes("w-full")
+                                    .props("outlined dense")
+                                )
+                                rtf_uncertain.set_visibility(
+                                    self.rtf_uncertain_available(
                                         [editor for _, editor in bulk_editors or []]
                                     )
                                 )
@@ -1216,6 +1569,12 @@ class ExportMixin:
                                             comments=bool(
                                                 rtf_comments_incl.visible
                                                 and rtf_comments_incl.value
+                                            ),
+                                            uncertain=(
+                                                rtf_uncertain.value
+                                                if rtf_uncertain.visible
+                                                and rtf_uncertain.value != "off"
+                                                else None
                                             ),
                                         )
                                     elif fmt.value == "txt":

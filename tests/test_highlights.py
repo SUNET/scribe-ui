@@ -450,7 +450,8 @@ class TestFollowingTheText:
         editor.selected_caption = first
         editor.case_sensitive = True
 
-        editor.replace_in_current_caption("ett nytt")
+        editor.rebuild_matches(after=(editor.captions[0].index, 0))
+        editor.replace_in_current_match("ett nytt")
 
         assert first.text == "ett nytt två tre"
         assert first.highlighted_words == {3}
@@ -537,6 +538,14 @@ class TestDrawing:
         assert "hl" not in [run for run in runs if run["t"] == "ett"][0]
 
 
+def body(rtf):
+    """The transcript of an RTF export, without the header and the key."""
+
+    return re.split(
+        r"\\pard(?:\\plain\\s0)?\\f0\\fs20(?:\\lang\d+)?(?:\\sb200)? ", rtf, maxsplit=1
+    )[1]
+
+
 class TestRtfExport:
     def export(self, editor, **kwargs):
         return editor.export_rtf(False, False, False, **kwargs)
@@ -572,7 +581,7 @@ class TestRtfExport:
 
         rtf = self.export(editor, highlights=True)
 
-        assert rtf.count(r"\highlight1") == 1
+        assert body(rtf).count(r"\highlight1") == 1
         assert r"{\highlight1 ett tv\u229?} tre" in rtf
 
     def test_a_piece_starting_with_a_space_keeps_it(self, editor):
@@ -593,7 +602,7 @@ class TestRtfExport:
         rtf = self.export(editor, edits=True)
 
         assert r"\red18\green121\blue106;" in rtf
-        assert r"{\cf2\ul tre}" in rtf
+        assert r"{\cs11\cf2\ul tre}" in rtf
         assert "highlight1" not in rtf
 
     def test_both_on_the_same_word(self, editor):
@@ -602,7 +611,7 @@ class TestRtfExport:
 
         rtf = self.export(editor, highlights=True, edits=True)
 
-        assert r"{\highlight1\cf2\ul tre}" in rtf
+        assert r"{\highlight1\cs11\cf2\ul tre}" in rtf
 
     def test_each_is_independent_of_the_other(self, editor):
         editor.captions[0].edited_words = {2}
@@ -619,15 +628,12 @@ class TestRtfExport:
         editor.captions[0].edited_words = {1}
         editor.captions[1].highlighted_words = {1}
 
-        def body(rtf):
-            return rtf.split(r"\fs20 ", 1)[1]
-
         marked = body(self.export(editor, highlights=True, edits=True))
         clean = body(self.export(editor))
 
         # Take the groups back out: what is left must be the clean text.
         stripped = re.sub(
-            r"\{(?:\\highlight1)?(?:\\cf2\\ul)? ", "", marked
+            r"\{(?:\\highlight1)?(?:\\cs11\\cf2\\ul)? ", "", marked
         )
         # Every group's closing brace goes, but the document's own stays.
         stripped = stripped[:-1].replace("}", "") + "}"
@@ -731,15 +737,15 @@ class TestMarkedSpans:
 
         spans = editor.marked_spans(caption, True, True)
 
-        assert "".join(text for text, _, _ in spans) == "ett  två\ntre"
+        assert "".join(text for text, *_ in spans) == "ett  två\ntre"
 
     def test_neighbouring_words_with_the_same_marks_are_one_piece(self, editor):
         caption = editor.captions[0]
         caption.highlighted_words = {0, 1}
 
         assert editor.marked_spans(caption, True, False) == [
-            ("ett två", True, False),
-            (" tre", False, False),
+            ("ett två", True, False, False),
+            (" tre", False, False, False),
         ]
 
     def test_with_both_off_it_is_one_unmarked_piece(self, editor):
@@ -748,7 +754,7 @@ class TestMarkedSpans:
         caption.edited_words = {2}
 
         assert editor.marked_spans(caption, False, False) == [
-            ("ett två tre", False, False)
+            ("ett två tre", False, False, False)
         ]
 
     def test_no_text_no_pieces(self, editor):

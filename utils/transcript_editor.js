@@ -86,7 +86,7 @@ export default {
             @keydown="onControlKeydown($event, block.id, 'speaker')"
           >{{ block.speaker }}</span><span v-if="!subtitleMode" class="transcript-colon">:</span></div><div
           class="transcript-cell"
-          :class="{ 'transcript-cell-active': block.id === activeId, 'transcript-cell-editing': block.id === caretId, 'transcript-cell-invalid': block.invalid, 'transcript-cell-warning': block.warning, 'transcript-cell-highlighted': block.highlighted, 'transcript-cell-reviewing': block.id === reviewId, 'transcript-cell-commenting': block.id === commentId }"
+          :class="{ 'transcript-cell-active': block.id === activeId, 'transcript-cell-editing': block.id === caretId, 'transcript-cell-invalid': block.invalid, 'transcript-cell-warning': block.warning, 'transcript-cell-reviewing': block.id === reviewId, 'transcript-cell-commenting': block.id === commentId }"
           :data-id="block.id"
         ><div
             v-if="!subtitleMode"
@@ -295,6 +295,13 @@ export default {
     // being written has a caption but no comment yet.
     commentId: { type: Number, default: -1 },
     commentIndex: { type: Number, default: -1 },
+    // What the Find card has found (utils/find_panel.py): each match as
+    // { id, s, e } -- the caption and where in its text -- and which of them
+    // is the current one, or -1. Painted over the words with the browser's
+    // highlight registry, so no element is added to the text and nothing
+    // about it has to be rebuilt for a search.
+    findMarks: { type: Array, default: () => [] },
+    findCurrent: { type: Number, default: -1 },
     reviewLabel: { type: String, default: "" },
     editLabel: { type: String, default: "" },
     showEdits: { type: Boolean, default: false },
@@ -327,6 +334,15 @@ export default {
       this.caretSync = setTimeout(() => {
         if (this.caretId === id) this.$emit("caretblock", { id });
       }, 300);
+    },
+    // An update resends every prop, and an array arrives as a new reference
+    // each time, so these fire as often as the active word moves; paintFind
+    // does nothing when what it would draw has not changed.
+    findMarks() {
+      this.$nextTick(() => this.paintFind());
+    },
+    findCurrent() {
+      this.$nextTick(() => this.paintFind());
     },
     revision() {
       // Bumped by the server only when the blocks actually change. Watching
@@ -392,6 +408,10 @@ export default {
 
       this.$nextTick(() => {
         this.indexWords();
+
+        // The text was rebuilt, so the ranges the matches were painted on are
+        // gone with it.
+        this.paintFind(true);
 
         // A fresh render is the server's own account of which words have been
         // changed, worked out by diffing the text properly rather than word by
@@ -516,6 +536,7 @@ export default {
     this.$nextTick(() => this.indexWords());
   },
   beforeUnmount() {
+    this.clearFind();
     clearTimeout(this.caretSync);
     this.video?.removeEventListener("timeupdate", this.onTime);
     this.video?.removeEventListener("seeking", this.onTime);
@@ -523,6 +544,68 @@ export default {
     document.removeEventListener("keydown", this.onEscape, true);
   },
   methods: {
+    // Paint what the Find card found over the words: every match, and the
+    // current one over it (two highlights, drawn in styles.py). The browser's
+    // highlight registry is used rather than wrapping the matches in
+    // elements: this text is a contenteditable the reader types into, and a
+    // search must not change it or take the caret anywhere. Where the
+    // registry does not exist the caption's own marking is all there is.
+    //
+    // `force` repaints even when nothing changed -- after the text was
+    // rebuilt, when the ranges point at nodes that are gone.
+    paintFind(force = false) {
+      if (!window.CSS || !CSS.highlights || typeof Highlight === "undefined") return;
+
+      const signature = JSON.stringify([this.findMarks, this.findCurrent]);
+      if (!force && signature === this.findSignature) return;
+      this.findSignature = signature;
+
+      this.clearFind();
+      if (!this.findMarks.length) return;
+
+      const found = [];
+      const current = [];
+      const nodesOf = {};
+
+      this.findMarks.forEach((mark, at) => {
+        if (!(mark.id in nodesOf)) {
+          const block = this.$refs.body?.querySelector(
+            `.transcript-text[data-id="${mark.id}"]`
+          );
+          const nodes = [];
+          if (block) {
+            const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+            let node;
+            let from = 0;
+            while ((node = walker.nextNode())) {
+              nodes.push({ node, from, to: from + node.data.length });
+              from += node.data.length;
+            }
+          }
+          nodesOf[mark.id] = nodes;
+        }
+
+        const nodes = nodesOf[mark.id];
+        const first = nodes.find((n) => mark.s >= n.from && mark.s < n.to);
+        const last = nodes.find((n) => mark.e > n.from && mark.e <= n.to);
+        if (!first || !last) return;
+
+        const range = new Range();
+        range.setStart(first.node, mark.s - first.from);
+        range.setEnd(last.node, mark.e - last.from);
+        (at === this.findCurrent ? current : found).push(range);
+      });
+
+      if (found.length) CSS.highlights.set("find-match", new Highlight(...found));
+      if (current.length) CSS.highlights.set("find-current", new Highlight(...current));
+    },
+
+    clearFind() {
+      if (!window.CSS || !CSS.highlights) return;
+      CSS.highlights.delete("find-match");
+      CSS.highlights.delete("find-current");
+    },
+
     // The block a node sits in, walking up from wherever the caret is.
     blockOf(node) {
       let el = node instanceof Element ? node : node?.parentElement;
@@ -2303,10 +2386,9 @@ export default {
         // when asked, the way stepping between validation issues shows a
         // caption; otherwise only as far as it takes to be seen.
         const cell = center ? block.closest(".transcript-cell") || block : block;
-        cell.scrollIntoView(
-          center
-            ? { block: "center", behavior: "smooth" }
-            : { block: "nearest" }
+        this.scrollWithin(
+          cell,
+          center ? { block: "center", behavior: "smooth" } : { block: "nearest" }
         );
       });
     },
@@ -2345,8 +2427,100 @@ export default {
         const cell = this.$refs.body?.querySelector(
           `.transcript-cell[data-id="${id}"]`
         );
-        if (cell) cell.scrollIntoView({ block: "center", behavior: "smooth" });
+        if (cell) this.scrollWithin(cell, { block: "center", behavior: "smooth" });
       });
+    },
+
+    // Bring an element into view by moving the transcript's own scroller
+    // first. Element.scrollIntoView() moves every scrollable ancestor, the
+    // window included, and the window can be scrolled: with the Timeline
+    // docked along the foot the page is given room for it (about 170 px), so
+    // centring a caption slid the whole page up and took the video and its
+    // controls out of view.
+    //
+    // The part of the scroller under the docked Timeline does not count as
+    // visible, so a caption is not brought to rest behind it. The transcript
+    // ends under the Timeline, though, so its last captions cannot be scrolled
+    // clear of it from inside; for those, and only for those, the window moves,
+    // by as little as it takes.
+    //
+    // `block` is "center" or "nearest", as for scrollIntoView.
+    scrollWithin(element, { block = "nearest", behavior = "auto" } = {}) {
+      const scroller = this.scrollerOf(element);
+
+      if (!scroller) {
+        element.scrollIntoView({ block, behavior });
+        return;
+      }
+
+      const view = scroller.getBoundingClientRect();
+      const at = element.getBoundingClientRect();
+      // A Timeline that is switched off keeps its element, hidden with
+      // v-show: it has no box, and its rectangle is all zeros, which would
+      // read as a dock at the very top of the page. No box, no dock.
+      const dock = document.querySelector(".speech-timeline-docked");
+      const dockTop =
+        dock && dock.getClientRects().length ? dock.getBoundingClientRect().top : Infinity;
+      const bottom = dockTop > view.top && dockTop < view.bottom ? dockTop : view.bottom;
+
+      let delta = 0;
+
+      if (block === "center") {
+        delta = at.top + at.height / 2 - (view.top + (bottom - view.top) / 2);
+      } else if (at.top < view.top && at.bottom <= bottom) {
+        // Above the top, its foot in view. Aligned the way scrollIntoView's
+        // "nearest" does it: by the edge that takes the shorter move, which
+        // for a paragraph taller than the scroller is its foot.
+        delta = Math.max(at.top - view.top, at.bottom - bottom);
+      } else if (at.bottom > bottom && at.top >= view.top) {
+        // Its head in view, the foot below.
+        delta = Math.min(at.bottom - bottom, at.top - view.top);
+      }
+      // Inside, or spanning both edges (a long paragraph the caret is in the
+      // middle of): left where it is, as "nearest" leaves it.
+
+      // What the scroller can actually do: it stops at its ends.
+      const room = scroller.scrollHeight - scroller.clientHeight;
+      const target = Math.max(0, Math.min(room, scroller.scrollTop + delta));
+      const moved = target - scroller.scrollTop;
+
+      if (Math.abs(moved) >= 1) scroller.scrollTo({ top: target, behavior });
+
+      // Still behind the Timeline once the scroller has done what it can:
+      // the window gives way by that much. It is given back as soon as a
+      // caption no longer needs it, so going up the transcript again does
+      // not leave the page where the last captions put it. What the reader
+      // scrolled the window by is not touched: only what was moved here is
+      // given back.
+      // Something taller than what is left above the Timeline cannot be
+      // cleared of it by moving the page, so it does not move it.
+      const fits = at.height <= bottom - view.top;
+      const hidden = fits ? at.bottom - moved - dockTop : 0;
+      const pageRoom =
+        document.documentElement.scrollHeight - window.innerHeight - window.scrollY;
+      const given = this.pageGiven || 0;
+      let shift = 0;
+
+      if (hidden > 0) {
+        shift = Math.max(0, Math.min(hidden, pageRoom));
+      } else if (given > 0) {
+        shift = -Math.min(given, window.scrollY, -hidden);
+      }
+
+      if (Math.abs(shift) >= 1) {
+        window.scrollBy({ top: shift, behavior });
+        this.pageGiven = Math.max(0, given + shift);
+      }
+    },
+
+    // The nearest ancestor that scrolls by itself: the area the transcript
+    // sits in. Not the window, which is never what is meant.
+    scrollerOf(element) {
+      for (let el = element.parentElement; el && el !== document.body; el = el.parentElement) {
+        const overflow = getComputedStyle(el).overflowY;
+        if (overflow === "auto" || overflow === "scroll") return el;
+      }
+      return null;
     },
 
     attachVideo() {

@@ -36,6 +36,7 @@ from typing import Optional, Tuple
 from nicegui import ui
 
 from utils.caption import SRTCaption, WordComment
+from utils.card_fold import CardFold
 from utils.srt_comments import COMMENT_MAX_LENGTH
 from utils.transcript_editor import format_time_label
 
@@ -98,7 +99,10 @@ class CommentsPanel:
                 "validation-panel is-comment w-full"
             ).props('aria-labelledby="comments-panel-heading"') as self.panel:
                 with ui.element("div").classes("validation-panel-head"):
-                    self.heading = (
+                    self.fold = CardFold(
+                        self.container, "Comments", "comments-panel-body"
+                    )
+                    self.heading = self.fold.heading(
                         ui.label("")
                         .classes("validation-panel-heading")
                         .props("id=comments-panel-heading tabindex=-1")
@@ -131,7 +135,9 @@ class CommentsPanel:
                     "role=status aria-live=polite aria-atomic=true"
                 )
 
-                with ui.element("div").classes("validation-panel-body"):
+                with ui.element("div").classes("validation-panel-body").props(
+                    "id=comments-panel-body"
+                ):
                     with ui.element("div").classes("validation-panel-issue"):
                         with ui.element("div").classes("validation-panel-kind"):
                             ui.icon("comment").props("aria-hidden=true")
@@ -294,6 +300,7 @@ class CommentsPanel:
         """
 
         self.container.set_visibility(False)
+        self.fold.unfold()
         self.transcript.mark_comment(None)
 
     def mark(self) -> None:
@@ -340,6 +347,13 @@ class CommentsPanel:
             self.text.set_value("")
 
         self.container.set_visibility(True)
+
+        # Asked for with the key or the button -- the reader wants to write --
+        # so the card opens whole. Following the caret from one comment to
+        # the next leaves it as the reader left it.
+        if focus:
+            self.fold.unfold()
+
         self.draw(scroll=scroll)
 
         if focus:

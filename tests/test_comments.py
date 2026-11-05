@@ -521,7 +521,8 @@ class TestFollowingTheText:
         editor.selected_caption = first
         editor.case_sensitive = True
 
-        editor.replace_in_current_caption("ett nytt")
+        editor.rebuild_matches(after=(editor.captions[0].index, 0))
+        editor.replace_in_current_match("ett nytt")
 
         assert first.text == "ett nytt två tre"
         assert shape(first) == [([3], "c")]
@@ -715,8 +716,21 @@ class TestRtfExport:
         rtf = self.export(editor, comments=True)
 
         assert r"ett {\*\atrfstart 0}tv\u229?{\*\atrfend 0}" in rtf
-        assert r"{\*\atnauthor Scribe}\chatn{\*\annotation{\*\atnref 0}" in rtf
+        assert r"{\*\atnauthor Sunet Scribe}\chatn{\*\annotation{\*\atnref 0}" in rtf
         assert r"\pard\plain\f0\fs20 check this}" in rtf
+
+    def test_the_author_and_initials_are_escaped_like_the_text(self, editor, monkeypatch):
+        # Both come from the settings, which may hold anything.
+        from utils import srt_export
+
+        monkeypatch.setattr(srt_export, "RTF_COMMENT_AUTHOR", "Tjänsten {Nord}")
+        monkeypatch.setattr(srt_export, "RTF_COMMENT_INITIALS", "TÅ\\")
+        editor.captions[0].comments = [comment({1}, "x")]
+
+        rtf = self.export(editor, comments=True)
+
+        assert r"{\*\atnauthor Tj\u228?nsten \{Nord\}}" in rtf
+        assert r"{\*\atnid T\u197?\\}" in rtf
 
     def test_the_text_between_the_markers_is_the_words(self, editor):
         editor.captions[0].comments = [comment({1, 2}, "x")]
@@ -755,7 +769,7 @@ class TestRtfExport:
             r"{\*\atrfstart 0}{\highlight1 fyra}{\*\atrfend 0}" in rtf
         )
         # The rest of the highlighted passage carries on after the comment.
-        assert r"{\highlight1  }{\highlight1\cf2\ul fem}" in rtf
+        assert r"{\highlight1  }{\highlight1\cs11\cf2\ul fem}" in rtf
 
     def test_a_comment_in_the_middle_of_one_marked_stretch_cuts_it_in_two(self, editor):
         second = editor.captions[1]
@@ -783,7 +797,13 @@ class TestRtfExport:
             stripped,
         )
 
-        assert stripped == self.export(editor)
+        # The key at the top is about the comments; the transcript is not.
+        def body(rtf):
+            return re.split(
+                r"\\pard(?:\\plain\\s0)?\\f0\\fs20(?:\\lang\d+)?(?:\\sb200)? ", rtf, maxsplit=1
+            )[1]
+
+        assert body(stripped) == body(self.export(editor))
 
     def test_the_date_is_the_one_rtf_keeps_dates_in(self):
         # Sunday 18 October 2026, 08:21.
@@ -917,6 +937,18 @@ def view(editor, monkeypatch):
     return view
 
 
+class Fold:
+    """
+    The card's fold, as far as the panel can tell: folded or not.
+    """
+
+    def __init__(self):
+        self.folded = False
+
+    def unfold(self):
+        self.folded = False
+
+
 @pytest.fixture
 def panel(view, editor, monkeypatch):
     from utils.comments_panel import CommentsPanel
@@ -925,6 +957,7 @@ def panel(view, editor, monkeypatch):
     built.transcript = view
     built.current = None
     built.pending = None
+    built.fold = Fold()
 
     for name in (
         "container",
@@ -1253,6 +1286,45 @@ class TestFollowingTheCaret:
 
         assert panel.text.value == "b"
         assert panel.heading.text == "Comment 2 of 2"
+
+    def test_a_folded_card_stays_folded_as_the_caret_moves_between_comments(
+        self, panel, editor
+    ):
+        first, second = self.one(editor)
+        panel.show(editor.captions[0], first)
+        panel.fold.folded = True
+
+        panel.follow(editor.captions[1], second, click=False)
+        panel.follow(editor.captions[0], first, click=True)
+
+        assert panel.fold.folded is True
+
+    def test_writing_a_comment_unfolds_the_card(self, panel, editor):
+        panel.container.visible = True
+        panel.fold.folded = True
+
+        panel.open_for(editor.captions[0], 5, 9)
+
+        assert panel.fold.folded is False
+
+    def test_opening_an_existing_comment_with_the_key_unfolds_the_card(
+        self, panel, editor
+    ):
+        editor.captions[0].comments = [comment({1, 2}, "there")]
+        panel.fold.folded = True
+
+        panel.open_for(editor.captions[0], 5, 9)
+
+        assert panel.fold.folded is False
+
+    def test_putting_the_card_away_forgets_that_it_was_folded(self, panel, editor):
+        first, second = self.one(editor)
+        panel.show(editor.captions[0], first)
+        panel.fold.folded = True
+
+        panel.hide()
+
+        assert panel.fold.folded is False
 
     def test_following_does_not_scroll_the_text_under_the_caret(self, panel, editor):
         first, second = self.one(editor)
@@ -2020,7 +2092,6 @@ class TestTheStyles:
         for earlier in (
             "    .transcript-cell-editing {",
             "    .transcript-cell-invalid {",
-            "    .transcript-cell-highlighted {",
         ):
             assert css.index(earlier) < at
 

@@ -67,7 +67,7 @@ from starlette.requests import ClientDisconnect
 
 from utils.crypto import decrypt_string, get_browser_id
 from utils.helpers import recording_store_key
-from utils.settings import get_settings
+from utils.settings import get_settings, short_service_name
 from utils.token import RefreshUnavailable, get_user_info, token_refresh
 
 settings = get_settings()
@@ -420,7 +420,7 @@ async def recording_original(job_id: str) -> Response:
         response = await client.send(request, stream=True)
     except httpx.HTTPError:
         await client.aclose()
-        return Response("Scribe is not answering right now.", status_code=503)
+        return Response(f"{short_service_name()} is not answering right now.", status_code=503)
 
     if response.status_code != 200:
         status = response.status_code

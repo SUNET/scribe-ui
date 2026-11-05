@@ -86,8 +86,15 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin, CommentsMixi
         self.search_term = ""
         self.search_results = []
         self.current_search_index = 0
+        # The caption the caret last settled in (the transcript reports it),
+        # which is where a new search begins when none is live.
+        self.caret_index: Optional[int] = None
         self.case_sensitive = False
-        self.search_container = None
+        # The Find card and its toolbar button; set by the page. The text
+        # editor hands the matches' words to on_find_marks.
+        self.find_panel = None
+        self.find_button = None
+        self.on_find_marks: Optional[Callable] = None
         self._video_player = None
         self.autoscroll = False
 
@@ -125,6 +132,10 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin, CommentsMixi
         self.words: List[dict] = []
         self._word_midpoints: List[float] = []
         self.has_confidence = False
+        # The language the recording was transcribed in, as the job names it
+        # ("Swedish"), when the page knows it. The RTF export marks the text
+        # with it (rtf_language()).
+        self.language: Optional[str] = None
         self.show_uncertain_words = False
         self.show_my_edits = False
         # The reader's own highlights, shown whenever an editor is opened.
@@ -435,9 +446,14 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin, CommentsMixi
 
             # Open find, Ctrl+F
             case "f" if event.modifiers.ctrl and not event.modifiers.shift:
-                self.create_search_panel(open_window=True)
+                self.open_find()
             case "f" if event.modifiers.meta and not event.modifiers.shift:
-                self.create_search_panel(open_window=True)
+                self.open_find()
+
+            # Find and replace, Ctrl+H, as in Word. Ctrl only: Cmd+H hides
+            # the application on a Mac and never reaches the page.
+            case "h" if event.modifiers.ctrl and not event.modifiers.shift:
+                self.open_find(replace=True)
 
             # Save file, Ctrl+S / Cmd+S
             case "s" if event.modifiers.ctrl or event.modifiers.meta:
@@ -649,21 +665,39 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin, CommentsMixi
         const finish = () => {
           if (frame !== null) cancelAnimationFrame(frame);
           frame = null;
-          video.removeEventListener("seeking", finish);
+          video.removeEventListener("seeking", leave);
+          video.removeEventListener("play", leave);
           video._scribeStopWatch = null;
         };
+        // What a next press of "Play with context" needs to know, kept on the
+        // player (see RANGE_STATE_SCRIPT): this stretch is running, or it has
+        // stopped and the reader has not touched the position since. Anything
+        // of the reader's -- a pause, a move, playing on -- clears it.
+        const leave = () => {
+          video._scribeRange = null;
+          finish();
+        };
+        // At its end, by the stop or by the recording running out first.
+        const rest = () => {
+          video._scribeRange = "stopped";
+          if (frame !== null) cancelAnimationFrame(frame);
+          frame = null;
+          video.addEventListener("play", leave);
+        };
         video._scribeStopWatch = finish;
+        video._scribeRange = "playing";
         const watch = () => {
-          if (video.paused || video.ended) return finish();
+          if (video.ended) return rest();
+          if (video.paused) return leave();
           if (video.currentTime >= end) {
             video.pause();
-            return finish();
+            return rest();
           }
           frame = requestAnimationFrame(watch);
         };
         const begin = () => {
           // Any move from here on is the reader's: this one has been made.
-          video.addEventListener("seeking", finish);
+          video.addEventListener("seeking", leave);
           video.play();
           frame = requestAnimationFrame(watch);
         };
@@ -675,26 +709,63 @@ class SRTEditor(ReviewMixin, SearchMixin, ExportMixin, RenderMixin, CommentsMixi
         }
     """
 
+    # Whether the last stretch played is still "the reader's current one":
+    # "playing" while it runs, "stopped" once it has reached its end with
+    # nothing of the reader's done to the position since, and null otherwise
+    # (never played, or the reader paused, moved or played on).
+    RANGE_STATE_SCRIPT = """
+        (() => {
+          const video = %(element)s;
+          return (video && video._scribeRange) || null;
+        })()
+    """
+
+    def _player_element(self) -> Optional[str]:
+        """
+        How the scripts above reach the video, or None with no player.
+        """
+
+        if not self._video_player:
+            return None
+
+        identifier = getattr(self._video_player, "id", None)
+
+        if isinstance(identifier, int):
+            return f"getHtmlElement({int(identifier)})"
+
+        return 'document.querySelector("video")'
+
     def play_range(self, start: float, end: float) -> None:
         """
         Play from `start` to `end` once and stop, if a player is attached.
         """
 
-        if not self._video_player or end <= start:
-            return
+        element = self._player_element()
 
-        identifier = getattr(self._video_player, "id", None)
-        element = (
-            f"getHtmlElement({int(identifier)})"
-            if isinstance(identifier, int)
-            else 'document.querySelector("video")'
-        )
+        if element is None or end <= start:
+            return
 
         ui.run_javascript(
             self.PLAY_RANGE_SCRIPT
             % {"element": element, "start": float(start), "end": float(end)}
         )
         self._set_play_pause_state(True)
+
+    async def context_state(self) -> Optional[str]:
+        """
+        "playing", "stopped" or None -- see RANGE_STATE_SCRIPT.
+        """
+
+        element = self._player_element()
+
+        if element is None:
+            return None
+
+        state = await ui.run_javascript(
+            self.RANGE_STATE_SCRIPT % {"element": element}
+        )
+
+        return state if state in ("playing", "stopped") else None
 
     def set_video_player(self, player) -> None:
         """

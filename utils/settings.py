@@ -55,6 +55,32 @@ class Settings(BaseSettings):
     FAVICON: str = "favicon.ico"
     TAB_TITLE: str = "Sunet Scribe"
     TOPBAR_TEXT: str = "Sunet Scribe"
+    # What the service is called wherever the interface or an export names
+    # it ("Back to Sunet Scribe", "No connection to Sunet Scribe.", the
+    # author of an exported document's comments): elsewhere in the Nordics
+    # it may be called something else ("NORDUnet S2T"). Never write the
+    # name into the code -- tests/test_service_name.py looks for it.
+    SERVICE_NAME: str = "Sunet Scribe"
+    # The initials Word shows beside an exported document's comments, which
+    # are from SERVICE_NAME. Set, not worked out from the name: initials
+    # made from a name can spell something no one wants beside their text.
+    SERVICE_INITIALS: str = "SCR"
+    # A familiar short form for running text inside the service, where the
+    # full name would be said over and over: the recorder's statuses and
+    # help, User settings, errors. Empty means the full name. Never in
+    # headings, buttons, names for screen readers, or where the service is
+    # presented or another service is named beside it: there SERVICE_NAME,
+    # always (short_service_name() below). An installation that sets its
+    # own SERVICE_NAME sets this too, or empties it.
+    SERVICE_SHORT_NAME: str = "Scribe"
+    # What the video platform is called where it is named beside the
+    # service, e.g. "via Sunet Play" on the Customers page: elsewhere in
+    # the Nordics it may be called something else ("Kaltura").
+    VIDEO_PLATFORM_NAME: str = "Sunet Play"
+    # The currency a customer's base fee is in, shown after it on the
+    # Customers page and in the base fee's label when editing. For the
+    # interface only: the exports are left as they are.
+    CURRENCY: str = "SEK"
     LANDING_TEXT: str = "Welcome to Sunet Scribe"
     MANUAL_URL: str = "https://sunet.box.com/s/la16r5iu3gkm5n149mzmth9yiaulx3ub"
 
@@ -149,3 +175,11 @@ def get_settings() -> Settings:
     """
 
     return Settings()
+
+
+def short_service_name() -> str:
+    """The service's short form for running text, or its full name when there is none."""
+
+    settings = get_settings()
+
+    return settings.SERVICE_SHORT_NAME.strip() or settings.SERVICE_NAME

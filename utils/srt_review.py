@@ -242,6 +242,73 @@ class ReviewMixin:
 
         return (max(0.0, start), end)
 
+    def context_range_at(
+        self,
+        moment: float,
+        words: int = CONTEXT_WORDS,
+        seconds: float = CONTEXT_SECONDS,
+    ) -> tuple:
+        """
+        The stretch to play around a moment that belongs to no caption: from
+        the start of the word `words` words before it to the end of the word
+        `words` words after it, no word further than `seconds` from it.
+
+        Unlike context_range this never comes back empty. A moment with no
+        word near it -- a pause, a stretch the recording was not marked as
+        speech in, a recording with no word timings at all -- is played as
+        the plain window of `seconds` either side. Whether anyone is speaking
+        there is not for this to decide; the reader asked to hear it.
+
+        The stretch always contains the moment itself. Near the start of the
+        recording it begins at 0; past its end the player simply stops.
+        """
+
+        moment = max(0.0, float(moment))
+        first = last = moment
+
+        if self.words:
+            # Words that began before the moment are "before" (a word
+            # straddling it is heard whole), the rest "after".
+            split = bisect.bisect_left(self._word_midpoints, moment)
+            floor = moment - seconds
+            ceiling = moment + seconds
+
+            for position in range(split - 1, max(0, split - words) - 1, -1):
+                began = self.words[position].get(
+                    "s", self._word_midpoints[position]
+                )
+
+                if began < floor:
+                    break
+
+                first = min(first, began)
+
+                # A word straddling the moment has its midpoint before it, so
+                # it is "before" -- but it is heard whole, so its end counts.
+                ended = self.words[position].get(
+                    "e", self._word_midpoints[position]
+                )
+
+                last = max(last, min(ended, ceiling))
+
+            for position in range(split, min(len(self.words), split + words)):
+                word = self.words[position]
+                began = word.get("s", self._word_midpoints[position])
+                ended = word.get("e", self._word_midpoints[position])
+
+                if ended > ceiling:
+                    break
+
+                if began < moment:
+                    first = min(first, max(began, floor))
+
+                last = max(last, ended)
+
+        if last <= first:
+            return (max(0.0, moment - seconds), moment + seconds)
+
+        return (first, last)
+
     def words_in_range(self, start: float, end: float) -> List[dict]:
         """
         Words spoken inside a time range, matched on their midpoint so a word
@@ -306,24 +373,26 @@ class ReviewMixin:
         return self.words_in_range(floor, ceiling)
 
 
-    def review_threshold(self) -> float:
+    def review_threshold(self, sensitivity: Optional[str] = None) -> float:
         """
-        Confidence below which a word is flagged, for the current sensitivity.
+        Confidence below which a word is flagged, for the current sensitivity
+        -- or for the one given, which is how an export asks for a level of
+        its own without touching the editor's.
         """
 
         return {
             "low": settings.REVIEW_SENSITIVITY_LOW,
             "medium": settings.REVIEW_SENSITIVITY_MEDIUM,
             "high": settings.REVIEW_SENSITIVITY_HIGH,
-        }.get(self.review_sensitivity, settings.REVIEW_SENSITIVITY_LOW)
+        }.get(sensitivity or self.review_sensitivity, settings.REVIEW_SENSITIVITY_LOW)
 
 
-    def is_flagged(self, score: Optional[float]) -> bool:
+    def is_flagged(self, score: Optional[float], sensitivity: Optional[str] = None) -> bool:
         """
         Whether a word scoring this low is worth a second look.
         """
 
-        return score is not None and score < self.review_threshold()
+        return score is not None and score < self.review_threshold(sensitivity)
 
 
     @staticmethod
@@ -478,11 +547,22 @@ class ReviewMixin:
         return carried
 
     def marked_spans(
-        self, caption: SRTCaption, highlights: bool, edits: bool
+        self,
+        caption: SRTCaption,
+        highlights: bool,
+        edits: bool,
+        uncertain: Optional[str] = None,
     ) -> list:
         """
-        A caption's text as (text, highlighted, edited) pieces, for a format
-        that draws the marks itself -- the RTF export.
+        A caption's text as (text, highlighted, edited, uncertain) pieces, for
+        a format that draws the marks itself -- the RTF export.
+
+        `uncertain` is a sensitivity ("low", "medium", "high") or None for
+        none: a word is uncertain at it as the editor would flag it there. A
+        word the reader changed is never uncertain -- the doubt was about the
+        word that was transcribed, and that is not the word any more -- the
+        same as in the editor, where a changed word no longer aligns with the
+        word that carried the score.
 
         Not the editor's own runs (review_runs): those follow the switches
         under the video, while an export is told what to carry. A piece's
@@ -506,6 +586,16 @@ class ReviewMixin:
             else:
                 positions.append(None)
 
+        aligned = self.aligned_words(caption) if uncertain else []
+
+        def doubtful(word: int) -> bool:
+            if not uncertain or word >= len(aligned) or self.token_is_edit(caption, word):
+                return False
+
+            found = aligned[word]
+
+            return bool(found) and "c" in found and self.is_flagged(found["c"], uncertain)
+
         def flags(at: int) -> tuple:
             word = positions[at]
 
@@ -513,13 +603,16 @@ class ReviewMixin:
                 return (
                     highlights and self.token_is_highlight(caption, word),
                     edits and self.token_is_edit(caption, word),
+                    doubtful(word),
                 )
 
             before = positions[at - 1] if at > 0 else None
             after = positions[at + 1] if at + 1 < len(tokens) else None
 
+            # The space between two uncertain words is not uncertain: the
+            # doubt is word by word, and the dotted line has its gaps.
             if before is None or after is None or "\n" in tokens[at]:
-                return (False, False)
+                return (False, False, False)
 
             return (
                 highlights
@@ -528,17 +621,18 @@ class ReviewMixin:
                 edits
                 and self.token_is_edit(caption, before)
                 and self.token_is_edit(caption, after),
+                False,
             )
 
         pieces: list = []
 
         for at, token in enumerate(tokens):
-            highlighted, edited = flags(at)
+            marks = flags(at)
 
-            if pieces and pieces[-1][1:] == (highlighted, edited):
-                pieces[-1] = (pieces[-1][0] + token, highlighted, edited)
+            if pieces and pieces[-1][1:] == marks:
+                pieces[-1] = (pieces[-1][0] + token, *marks)
             else:
-                pieces.append((token, highlighted, edited))
+                pieces.append((token, *marks))
 
         return pieces
 

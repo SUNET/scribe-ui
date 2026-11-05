@@ -15,6 +15,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import html
+
 from nicegui import ui, events
 from utils.common import (
     page_init,
@@ -31,6 +33,11 @@ from utils.drive import display_name, drive_status
 from utils.drive_dialogs import get_from_drive
 from utils.recorder import RecorderReminder, current_owner, engine_script
 from utils.styles import default_styles, jobs_columns
+from utils.settings import get_settings
+
+# The service's name in the job table's templates (an attribute value there,
+# so escaped as one): "Recorded in Sunet Scribe".
+SERVICE_NAME_ATTRIBUTE = html.escape(get_settings().SERVICE_NAME, quote=True)
 
 
 def create() -> None:
@@ -160,7 +167,7 @@ def create() -> None:
                                 <q-badge
                                     v-if="props.row.is_recording"
                                     class="jobs-recording-badge"
-                                    aria-label="Recorded in Scribe"
+                                    aria-label="Recorded in __SERVICE_NAME__"
                                 >
                                     <q-icon name="mic" size="14px" aria-hidden="true" />
                                     Recording
@@ -191,7 +198,7 @@ def create() -> None:
                     </div>
                 </q-card>
             </div>
-            """,
+            """.replace("__SERVICE_NAME__", SERVICE_NAME_ATTRIBUTE),
         )
 
         # Custom header checkbox that selects/deselects ALL rows across all pages
@@ -290,7 +297,7 @@ def create() -> None:
                     <q-badge
                         v-if="props.row.is_recording"
                         class="jobs-recording-badge"
-                        aria-label="Recorded in Scribe"
+                        aria-label="Recorded in __SERVICE_NAME__"
                     >
                         <q-icon name="mic" size="14px" aria-hidden="true" />
                         Recording
@@ -307,7 +314,7 @@ def create() -> None:
                     </q-badge>
                 </div>
             </q-td>
-            """,
+            """.replace("__SERVICE_NAME__", SERVICE_NAME_ATTRIBUTE),
         )
         table.add_slot(
             "body-cell-action",

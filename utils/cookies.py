@@ -104,7 +104,7 @@ COOKIES = [
             if get_settings().HTTPS_ONLY_COOKIES
             else "HttpOnly, SameSite=Lax"
         ),
-        source="Sunet Scribe (first-party)",
+        source=f"{get_settings().SERVICE_NAME} (first-party)",
     ),
 ]
 

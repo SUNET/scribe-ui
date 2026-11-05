@@ -1059,11 +1059,17 @@ class TestControlTooltips:
         assert "Follow playback and highlight the " in page
         assert "current word." in page
 
-    def test_the_subtitle_overlay(self):
+    def test_the_subtitle_overlay_is_not_a_switch_here_any_more(self):
+        """
+        The CC button in the player took it over (see test_player_controls.py),
+        so there is no "Subtitle overlay" switch left among these.
+        """
+
         page = self.page()
 
-        assert "Show captions as an overlay on the " in page
-        assert "video." in page
+        assert "Show captions as an overlay on the " not in page
+        assert '"Subtitle overlay"' not in page
+        assert "overlay_switch" not in page
 
 
 class TestSensitivitySelector:
@@ -1685,7 +1691,8 @@ class TestFindAndReplaceKeepsMarksStraight:
         editor = self.editor("alpha beta gamma", edited=[2])
         editor.selected_caption = editor.captions[0]
 
-        editor.replace_in_current_caption("two words")
+        editor.rebuild_matches(after=(editor.captions[0].index, 0))
+        editor.replace_in_current_match("two words")
 
         assert editor.captions[0].text == "alpha two words gamma"
         assert "gamma" in self.words(editor)
@@ -1695,7 +1702,8 @@ class TestFindAndReplaceKeepsMarksStraight:
         editor = self.editor("alpha beta gamma")
         editor.selected_caption = editor.captions[0]
 
-        editor.replace_in_current_caption("BETA")
+        editor.rebuild_matches(after=(editor.captions[0].index, 0))
+        editor.replace_in_current_match("BETA")
 
         assert self.words(editor) == ["BETA"]
 
