@@ -194,12 +194,20 @@ def readings_table(worker: wh.Worker, now: float, zone) -> str:
     )
 
 
+# A details element tells the server when it is opened or shut.
+TOLD = "(event) => emit(event.target.open)"
+
+
 class WorkerCard:
     """
     One worker's card, built once and then only changed. Compact: the name,
     the state, and the figures with their trend lines; the charts and the
     readings behind "Show the charts and the readings", shut each time the
     page is opened (and kept as they are while it is open).
+
+    The charts and the table are only built, and only sent, while they are
+    open: shut, they would be sent again with every update all the same,
+    and the readings table alone is some 1 000 elements a worker.
     """
 
     count = 0
@@ -208,6 +216,9 @@ class WorkerCard:
         WorkerCard.count += 1
         heading = f"health-worker-{WorkerCard.count}"
         worker_id = worker.worker_id
+        self.opened = opened
+        self.key = worker_id
+        self.key_table = (worker_id, "table")
 
         with ui.element("section").classes("health-card").props(f'aria-labelledby="{heading}"') as self.card:
             self.head = ui.html("", sanitize=False)
@@ -225,11 +236,7 @@ class WorkerCard:
             self.more = ui.element("details").classes("chart-data health-more")
             if opened.get(worker_id):
                 self.more.props("open")
-            self.more.on(
-                "toggle",
-                lambda e: opened.__setitem__(worker_id, bool(e.args)),
-                js_handler="(event) => emit(event.target.open)",
-            )
+            self.more.on("toggle", lambda e: self.toggled(self.key, e.args), js_handler=TOLD)
 
             with self.more:
                 with ui.element("summary"):
@@ -241,7 +248,10 @@ class WorkerCard:
 
                 # Only the table inside is changed, so it stays open while
                 # the figures come in.
-                with ui.element("details").classes("chart-data"):
+                with ui.element("details").classes("chart-data") as box:
+                    if opened.get(self.key_table):
+                        box.props("open")
+                    box.on("toggle", lambda e: self.toggled(self.key_table, e.args), js_handler=TOLD)
                     with ui.element("summary"):
                         ui.label("Show the readings as a table")
                     self.table = ui.html("", sanitize=False).classes("w-full")
@@ -268,10 +278,24 @@ class WorkerCard:
         )
         self.set(self.tiles, tiles(worker, now, zone))
         self.set(self.sentence, phrased(summary_sentence(worker, now, zone)))
-        self.set(self.cpu, cpu_group(worker, now, zone))
-        self.set(self.gpu, gpu_group(worker, now, zone) if worker.gpu_indexes else "")
+        self.now_showing = (worker, now, zone)
+        self.fill()
+
+    def toggled(self, key, is_open) -> None:
+        self.opened[key] = bool(is_open)
+        self.fill()
+
+    def fill(self) -> None:
+        """The charts and the table, while they are open; else nothing."""
+
+        worker, now, zone = self.now_showing
+        more = bool(self.opened.get(self.key))
+        table = more and bool(self.opened.get(self.key_table))
+
+        self.set(self.cpu, cpu_group(worker, now, zone) if more else "")
+        self.set(self.gpu, gpu_group(worker, now, zone) if more and worker.gpu_indexes else "")
         self.gpu.set_visibility(bool(worker.gpu_indexes))
-        self.set(self.table, readings_table(worker, now, zone))
+        self.set(self.table, readings_table(worker, now, zone) if table else "")
 
     @staticmethod
     def set(element, content: str) -> None:

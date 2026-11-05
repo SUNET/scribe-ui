@@ -200,8 +200,17 @@ class TestThePage:
         assert 'self.more = ui.element("details").classes("chart-data health-more")' in PAGE
         # Kept while the page is open, so a card built again opens as it was.
         assert "opened: dict = {}" in PAGE and "if opened.get(worker_id):" in PAGE
-        assert 'js_handler="(event) => emit(event.target.open)"' in PAGE
+        assert 'TOLD = "(event) => emit(event.target.open)"' in PAGE
         assert "app.storage" not in PAGE[PAGE.index("opened: dict = {}") - 200 : PAGE.index("opened: dict = {}")]
+
+    def test_the_charts_and_the_table_built_only_while_open(self):
+        # Shut, they would be sent again with every update; the table alone
+        # is some 1 000 elements a worker.
+        assert 'self.set(self.cpu, cpu_group(worker, now, zone) if more else "")' in PAGE
+        assert 'self.set(self.table, readings_table(worker, now, zone) if table else "")' in PAGE
+        assert "table = more and bool(self.opened.get(self.key_table))" in PAGE
+        assert PAGE.count("js_handler=TOLD") == 2
+        assert "self.toggled(self.key, e.args)" in PAGE and "self.toggled(self.key_table, e.args)" in PAGE
 
     def test_the_figures_with_their_trend_lines(self):
         assert "f\"{sparkline(points, start, now, colour, quiet)}</li>\"" in PAGE
