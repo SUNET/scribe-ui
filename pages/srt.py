@@ -37,6 +37,7 @@ from utils.srt import (
     TIMELINE_SHOW_KEY,
 )
 from utils.speech_timeline import SpeechTimeline
+from utils.comments_panel import CommentsPanel
 from utils.validation_panel import ValidationPanel
 from utils.transcript_editor import TranscriptEditor
 from utils.video import create_video_proxy
@@ -101,6 +102,11 @@ def create() -> None:
 
             // Block Ctrl + f / Cmd + f for find
             if ((e.metaKey || e.ctrlKey) && ! e.shiftKey && e.key.toLowerCase() === 'f') {
+                e.preventDefault();
+            }
+
+            // Block Ctrl + g / Cmd + g (find next in a browser): Quick Jump
+            if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'g') {
                 e.preventDefault();
             }
 
@@ -255,6 +261,50 @@ def create() -> None:
                         validate_button.on(
                             "click",
                             lambda: editor.validate_captions(),
+                        )
+                else:
+                    # Where Validate is in the subtitle editor: the one thing
+                    # about the text that is not history or finding. The same
+                    # as Ctrl+Shift+H. Transcriptions only, for now.
+                    #
+                    # A mouse press must not take focus, or the selection it
+                    # is meant to act on is the first thing it would lose --
+                    # the same reason the caption row's music-note icon
+                    # prevents the default on mousedown.
+                    # sym_o_ is Quasar's prefix for Material Symbols Outlined, which
+                    # ships with NiceGUI and has the marker pen the plain
+                    # Material Icons "highlight" (a torch) does not.
+                    with ui.button("Highlight", icon="sym_o_format_ink_highlighter").props(
+                        "flat aria-keyshortcuts=Control+Shift+H"
+                    ).classes(
+                        "editor-btn editor-toolbar-btn editor-quiet"
+                    ) as highlight_button:
+                        highlight_button.tooltip(
+                            "Toggle highlight on selected text (Ctrl + Shift + H)"
+                        )
+                        highlight_button.on(
+                            "mousedown", js_handler="(event) => event.preventDefault()"
+                        )
+                        highlight_button.on(
+                            "click", lambda: transcript.highlight_selection()
+                        )
+
+                    # Beside it: a note on the selected words. The same as
+                    # Ctrl+Shift+K, and for the same reason it does not take
+                    # focus on a mouse press.
+                    with ui.button("Comment", icon="sym_o_add_comment").props(
+                        "flat aria-keyshortcuts=Control+Shift+K"
+                    ).classes(
+                        "editor-btn editor-toolbar-btn editor-quiet"
+                    ) as comment_button:
+                        comment_button.tooltip(
+                            "Add or open comment (Ctrl + Shift + K)"
+                        )
+                        comment_button.on(
+                            "mousedown", js_handler="(event) => event.preventDefault()"
+                        )
+                        comment_button.on(
+                            "click", lambda: transcript.comment_selection()
                         )
 
             with ui.row().classes("editor-toolbar-group"):
@@ -797,6 +847,94 @@ def create() -> None:
                                             "changed"
                                         )
 
+                                # Only a transcription can hold highlights;
+                                # a set of subtitles is saved as plain SRT.
+                                if data_format != "srt":
+
+                                    def save_show_highlights(event) -> None:
+                                        value = bool(event.sender.value)
+
+                                        # The highlight command turns this on
+                                        # itself and moves the switch to
+                                        # match, which lands here too.
+                                        if value != editor.show_highlights:
+                                            transcript.set_show_highlights(value)
+
+                                        # Not saved: hiding them is a way of
+                                        # looking at the text for a while, and
+                                        # every editor opens with them shown.
+
+                                        # See save_follow above (F-74).
+                                        focus_element(event.sender)
+
+                                    highlights_switch = ui.switch(
+                                        "Highlights",
+                                        value=editor.show_highlights,
+                                    ).props("dense").classes(
+                                        "editor-switch highlights-switch"
+                                    )
+                                    # Same reason as the switches above:
+                                    # "click" is mouse-only on a QToggle,
+                                    # and update:model-value fires for a
+                                    # keyboard activation too.
+                                    highlights_switch.on(
+                                        "update:model-value", save_show_highlights
+                                    )
+                                    with highlights_switch:
+                                        ui.tooltip(
+                                            "Show the words you have "
+                                            "highlighted. Hiding them keeps "
+                                            "them."
+                                        )
+
+                                    def highlights_shown() -> None:
+                                        highlights_switch.value = True
+
+                                    editor.on_highlights_shown = highlights_shown
+                                # Only a transcription can hold comments; a
+                                # set of subtitles is saved as plain SRT.
+                                if data_format != "srt":
+
+                                    def save_show_comments(event) -> None:
+                                        value = bool(event.sender.value)
+
+                                        # The comment command turns this on
+                                        # itself and moves the switch to
+                                        # match, which lands here too.
+                                        if value != editor.show_comments:
+                                            transcript.set_show_comments(value)
+
+                                        # Not saved: hiding them is a way of
+                                        # looking at the text for a while, and
+                                        # every editor opens with them shown.
+
+                                        # See save_follow above (F-74).
+                                        focus_element(event.sender)
+
+                                    comments_switch = ui.switch(
+                                        "Comments",
+                                        value=editor.show_comments,
+                                    ).props("dense").classes(
+                                        "editor-switch comments-switch"
+                                    )
+                                    # Same reason as the switches above:
+                                    # "click" is mouse-only on a QToggle,
+                                    # and update:model-value fires for a
+                                    # keyboard activation too.
+                                    comments_switch.on(
+                                        "update:model-value", save_show_comments
+                                    )
+                                    with comments_switch:
+                                        ui.tooltip(
+                                            "Show the comments on words. "
+                                            "Hiding them keeps them."
+                                        )
+
+                                    def comments_shown() -> None:
+                                        comments_switch.value = True
+
+                                    editor.on_comments_shown = comments_shown
+
                             # One control rather than a switch plus a level:
                             # "off" is just the lowest setting of the same
                             # thing, and splitting them meant two places to
@@ -928,3 +1066,12 @@ def create() -> None:
                             transcript.on_caret = (
                                 editor.validation_panel.follow_caret
                             )
+                        else:
+                            # Its counterpart in a transcription: the card
+                            # where comments are written and read, drawn like
+                            # the validation card and following the caret the
+                            # same way. Shut until needed -- except in a file
+                            # that already has comments, which opens on the
+                            # first.
+                            transcript.comments_panel = CommentsPanel(transcript)
+                            transcript.comments_panel.open_first()
