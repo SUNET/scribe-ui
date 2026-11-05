@@ -60,7 +60,12 @@ class TestOnAPhone:
 
     def test_one_status_line_for_three_columns(self):
         assert '"Admin" if user["admin"] == "Yes" else ""' in PAGE
-        assert '"Active" if user["active"] == "Yes" else "Disabled"' in PAGE
+        assert 'user["active"] = "Enabled" if user.get("active", True) else "Disabled"' in PAGE
+        assert '                    user["active"],' in PAGE
+
+    def test_status_in_the_words_of_the_buttons(self):
+        assert '"name": "active",\n                "label": "Status",' in PAGE
+        assert '"label": "Active"' not in PAGE
         assert "f\"{user['provisioning']} provisioning\"" in PAGE
 
     def test_lists_read_as_a_comma_and_a_space(self):
@@ -99,7 +104,7 @@ class TestTheBar:
 
 class TestFilters:
     def test_status_admin_provisioning_and_realm_where_there_are_several(self):
-        assert '("active", "Status", {"": "All", "Yes": "Active", "No": "Disabled"})' in PAGE
+        assert '("active", "Status", {"": "All", "Enabled": "Enabled", "Disabled": "Disabled"})' in PAGE
         assert '("admin", "Admin", {"": "All", "Yes": "Admins", "No": "Not admins"})' in PAGE
         assert '("provisioning", "Provisioning", {"": "All", "Auto": "Auto", "Manual": "Manual"})' in PAGE
         assert "if len(realms) > 1:" in PAGE
@@ -163,10 +168,10 @@ def run_filter(rows: list, asked: dict) -> list:
 
 
 ROWS = [
-    {"username": "anna.berg@su.se", "realm": "su.se", "active": "Yes", "admin": "No", "provisioning": "Auto"},
-    {"username": "erik.lund@gu.se", "realm": "gu.se", "active": "No", "admin": "Yes", "provisioning": "Manual"},
-    {"username": "anna.ek@gu.se", "realm": "gu.se", "active": "No", "admin": "No", "provisioning": "Auto"},
-    {"username": "a+b(c)@x.se", "realm": "x.se", "active": "Yes", "admin": "No", "provisioning": "Auto"},
+    {"username": "anna.berg@su.se", "realm": "su.se", "active": "Enabled", "admin": "No", "provisioning": "Auto"},
+    {"username": "erik.lund@gu.se", "realm": "gu.se", "active": "Disabled", "admin": "Yes", "provisioning": "Manual"},
+    {"username": "anna.ek@gu.se", "realm": "gu.se", "active": "Disabled", "admin": "No", "provisioning": "Auto"},
+    {"username": "a+b(c)@x.se", "realm": "x.se", "active": "Enabled", "admin": "No", "provisioning": "Auto"},
 ]
 
 
@@ -188,7 +193,7 @@ class TestTheFilterInTheBrowser:
         assert run_filter(ROWS, {"q": "anna.berg@su.s"}) == ["anna.berg@su.se"]  # plain: anywhere
 
     def test_the_filters_and_the_search_together(self):
-        assert run_filter(ROWS, {"active": "No"}) == ["erik.lund@gu.se", "anna.ek@gu.se"]
-        assert run_filter(ROWS, {"active": "No", "realm": "gu.se", "admin": "No"}) == ["anna.ek@gu.se"]
-        assert run_filter(ROWS, {"active": "Yes", "q": "anna*"}) == ["anna.berg@su.se"]
+        assert run_filter(ROWS, {"active": "Disabled"}) == ["erik.lund@gu.se", "anna.ek@gu.se"]
+        assert run_filter(ROWS, {"active": "Disabled", "realm": "gu.se", "admin": "No"}) == ["anna.ek@gu.se"]
+        assert run_filter(ROWS, {"active": "Enabled", "q": "anna*"}) == ["anna.berg@su.se"]
         assert run_filter(ROWS, {"provisioning": "Manual"}) == ["erik.lund@gu.se"]

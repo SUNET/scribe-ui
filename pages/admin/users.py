@@ -98,7 +98,8 @@ async def users() -> None:
         for index, user in enumerate(users):
             user["id"] = index
             user["admin"] = "Yes" if user.get("admin", True) else "No"
-            user["active"] = "Yes" if user.get("active", True) else "No"
+            # The same words as the Enable and Disable buttons.
+            user["active"] = "Enabled" if user.get("active", True) else "Disabled"
             user["provisioning"] = (
                 "Manual"
                 if user.get("manually_activated") or user.get("manually_deactivated")
@@ -115,7 +116,7 @@ async def users() -> None:
                 part
                 for part in (
                     "Admin" if user["admin"] == "Yes" else "",
-                    "Active" if user["active"] == "Yes" else "Disabled",
+                    user["active"],
                     f"{user['provisioning']} provisioning",
                 )
                 if part
@@ -167,7 +168,7 @@ async def users() -> None:
             },
             {
                 "name": "active",
-                "label": "Active",
+                "label": "Status",
                 "field": "active",
                 "align": "left",
                 "sortable": True,
@@ -322,7 +323,7 @@ async def users() -> None:
             # Filters, each with a visible label; "All" is no filter.
             realms = sorted({user.get("realm") for user in users if user.get("realm")})
             filters = [
-                ("active", "Status", {"": "All", "Yes": "Active", "No": "Disabled"}),
+                ("active", "Status", {"": "All", "Enabled": "Enabled", "Disabled": "Disabled"}),
                 ("admin", "Admin", {"": "All", "Yes": "Admins", "No": "Not admins"}),
                 ("provisioning", "Provisioning", {"": "All", "Auto": "Auto", "Manual": "Manual"}),
             ]
