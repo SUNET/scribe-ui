@@ -306,6 +306,10 @@ Tunables belong here; wire-format constants do not. `WORDS_FORMAT_VERSION` in `u
 
 Access via `get_settings()` (cached).
 
+## User settings (`pages/user.py`)
+
+Two columns (`.user-settings-column`, `flex: 1 1 22rem`) side by side where both fit, one above the other otherwise; each column is a container. The profile's rows are icon / name / value in a grid (`.user-profile-row`), the value under the name on a column under 24rem; the e-mail field takes the room with its button beside it, or under it, lined up with the field (`.user-email-row`). Profile, Email, Theme, Drive and Notifications are `h2`, Personal and Administration `h3`; the icons are `aria-hidden`. The token dialog is `min(32rem, 100%)` wide.
+
 ## Admin hierarchy
 
 - **BOFH** (`bofh=True`): sees everything, manages all realms and onboarding attributes

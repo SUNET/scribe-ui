@@ -1226,6 +1226,68 @@ theme_styles = """
         background-color: var(--color-bg-surface-alt) !important;
     }
 
+    /* ── User settings ── */
+    /* Two columns where both fit at 22rem, one above the other otherwise;
+       each column lays out its own rows by its own width. */
+    .user-settings-column {
+        flex: 1 1 22rem;
+        min-width: 0;
+        container-type: inline-size;
+    }
+    /* Icon, name, value. On a narrow column the value goes under the name,
+       so a long user id or name wraps by itself, not beside the name. */
+    .user-profile-row {
+        display: grid;
+        grid-template-columns: 1.25rem 9rem minmax(0, 1fr);
+        align-items: center;
+        column-gap: 0.75rem;
+        row-gap: 0.125rem;
+        width: 100%;
+    }
+    .user-profile-icon {
+        font-size: 20px;
+    }
+    .user-profile-value {
+        min-width: 0;
+        overflow-wrap: anywhere;
+        justify-self: start;
+    }
+    @container (max-width: 24rem) {
+        .user-profile-row {
+            grid-template-columns: 1.25rem minmax(0, 1fr);
+        }
+        .user-profile-row > .user-profile-value {
+            grid-column: 2;
+        }
+        /* The button under the field, lined up with it. */
+        .user-email-row {
+            grid-template-columns: 1.25rem minmax(0, 1fr);
+        }
+        .user-email-row > .q-btn {
+            grid-column: 2;
+            justify-self: start;
+        }
+    }
+    /* The e-mail field takes the room; the button goes under it when there
+       is none. */
+    .user-email-row {
+        display: grid;
+        grid-template-columns: 1.25rem minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 0.5rem 0.75rem;
+        width: 100%;
+    }
+    .user-email-field {
+        min-width: 0;
+    }
+    .user-email-row .q-btn {
+        min-height: 44px;
+    }
+    .user-token-card {
+        width: min(32rem, 100%);
+        max-width: 100%;
+    }
+
     /* ── Admin: stats page ── */
     .stats-container {
         max-width: 1500px;

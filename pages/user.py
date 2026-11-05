@@ -54,7 +54,7 @@ async def draw_drive_section(section: ui.column) -> None:
 
     section.clear()
     with section:
-        ui.label(name).classes("text-lg font-semibold mb-2")
+        ui.label(name).classes("text-lg font-semibold mb-2").props("role=heading aria-level=2")
         ui.separator()
 
         with ui.row().classes("items-center gap-3 mt-2 mb-6"):
@@ -86,7 +86,9 @@ async def draw_drive_section(section: ui.column) -> None:
 
 def show_user_token() -> None:
     with ui.dialog().props('aria-label="User token"') as dialog:
-        with ui.card().style("max-width: 50%; width: 500px; min-width: 500px;"):
+        # As wide as it was on a wide screen, the screen's width on a phone
+        # (it was 500px at least, wider than a phone).
+        with ui.card().classes("user-token-card"):
             ui.label("User token").classes("text-2xl font-bold")
             ui.label("Your user token is used to authenticate API requests.").classes(
                 "my-4"
@@ -128,19 +130,23 @@ def create() -> None:
         hours = int(total_seconds) // 3600
         minutes = int(total_seconds) % 3600 // 60
 
+        # Two columns side by side where they fit, one above the other on a
+        # phone (utils/styles.py, .user-settings-column).
         with ui.row().classes("w-full gap-8 items-start"):
             # ── Left column: Profile, Email, Dark mode ──
-            with ui.column().classes("flex-1"):
+            with ui.column().classes("user-settings-column"):
                 # -- Profile section --
-                ui.label("Profile").classes("text-lg font-semibold mb-2")
+                ui.label("Profile").classes("text-lg font-semibold mb-2").props("role=heading aria-level=2")
                 ui.separator()
 
-                with ui.column().classes("gap-2 mt-2 mb-6"):
-                    with ui.row().classes("items-center gap-3"):
-                        ui.icon("person").style("font-size: 20px;")
+                # Icon, name and value in columns of their own; on a narrow
+                # column the value goes under the name (.user-profile-row).
+                with ui.column().classes("gap-2 mt-2 mb-6 w-full"):
+                    with ui.element("div").classes("user-profile-row"):
+                        ui.icon("person").classes("user-profile-icon").props("aria-hidden=true")
                         ui.label("Username").classes(
                             "font-medium text-theme-secondary"
-                        ).style("min-width: 140px;")
+                        )
                         # A ui.label with an on-click handler renders as a
                         # div: no role, not in the Tab order, and Enter/Space
                         # do nothing to it, so the API token was reachable by
@@ -166,41 +172,43 @@ def create() -> None:
                             on_click=show_user_token,
                             color=None,
                         ).props("flat no-caps").classes(
-                            "text-theme-primary user-token-btn"
+                            "text-theme-primary user-token-btn user-profile-value"
                         ):
                             ui.tooltip("Click to view your API token")
 
-                    with ui.row().classes("items-center gap-3"):
-                        ui.icon("fingerprint").style("font-size: 20px;")
+                    with ui.element("div").classes("user-profile-row"):
+                        ui.icon("fingerprint").classes("user-profile-icon").props("aria-hidden=true")
                         ui.label("User id").classes(
                             "font-medium text-theme-secondary"
-                        ).style("min-width: 140px;")
+                        )
                         ui.label(userdata["user_id"]).classes(
-                            "text-theme-muted text-sm"
+                            "text-theme-muted text-sm user-profile-value"
                         )
 
-                    with ui.row().classes("items-center gap-3"):
-                        ui.icon("schedule").style("font-size: 20px;")
+                    with ui.element("div").classes("user-profile-row"):
+                        ui.icon("schedule").classes("user-profile-icon").props("aria-hidden=true")
                         ui.label("Transcribed time").classes(
                             "font-medium text-theme-secondary"
-                        ).style("min-width: 140px;")
-                        ui.label(f"{hours}h {minutes}min").classes("text-theme-primary")
+                        )
+                        ui.label(f"{hours}h {minutes}min").classes("text-theme-primary user-profile-value")
 
-                    with ui.row().classes("items-center gap-3"):
-                        ui.icon("public").style("font-size: 20px;")
+                    with ui.element("div").classes("user-profile-row"):
+                        ui.icon("public").classes("user-profile-icon").props("aria-hidden=true")
                         ui.label("Timezone").classes(
                             "font-medium text-theme-secondary"
-                        ).style("min-width: 140px;")
+                        )
                         ui.label(app.storage.user.get("timezone", "UTC")).classes(
-                            "text-theme-primary"
+                            "text-theme-primary user-profile-value"
                         )
 
                 # -- Email section --
-                ui.label("Email").classes("text-lg font-semibold mb-2")
+                ui.label("Email").classes("text-lg font-semibold mb-2").props("role=heading aria-level=2")
                 ui.separator()
 
-                with ui.row().classes("items-center gap-3 mt-2 mb-6"):
-                    ui.icon("email").style("font-size: 20px;")
+                # The field and its button: side by side, the field taking the
+                # room; the button under it where there is none.
+                with ui.element("div").classes("user-email-row mt-2 mb-6"):
+                    ui.icon("email").classes("user-profile-icon").props("aria-hidden=true")
                     # The "Email" heading two rows above is a section title,
                     # not this field's label -- nothing connected the two,
                     # and the placeholder was the reader's own current
@@ -213,9 +221,7 @@ def create() -> None:
                     email = ui.input(
                         "Email address for notifications",
                         value=current_email,
-                    ).props("type=email autocomplete=email").style(
-                        "min-width: 300px;"
-                    )
+                    ).props("type=email autocomplete=email").classes("user-email-field")
 
                     save = ui.button("Test and save")
                     save.props("color=black flat")
@@ -223,7 +229,7 @@ def create() -> None:
                     save.on("click", lambda: email_save(email.value))
 
                 # -- Theme section --
-                theme_label = ui.label("Theme").classes("text-lg font-semibold mb-2")
+                theme_label = ui.label("Theme").classes("text-lg font-semibold mb-2").props("role=heading aria-level=2")
                 ui.separator()
 
                 with ui.column().classes("gap-2 mt-2 mb-6"):
@@ -292,8 +298,8 @@ def create() -> None:
                 )
 
             # ── Right column: Notifications ──
-            with ui.column().classes("flex-1"):
-                ui.label("Notifications").classes("text-lg font-semibold mb-2")
+            with ui.column().classes("user-settings-column"):
+                ui.label("Notifications").classes("text-lg font-semibold mb-2").props("role=heading aria-level=2")
                 ui.separator()
 
                 users = None
@@ -303,7 +309,7 @@ def create() -> None:
                 with ui.column().classes("gap-1 mt-2"):
                     ui.label("Personal").classes(
                         "font-medium text-theme-secondary mb-1"
-                    )
+                    ).props("role=heading aria-level=3")
                     ui.label(
                         "Notifications related to your own files and activity."
                     ).classes("text-sm text-theme-muted mb-2")
@@ -352,7 +358,7 @@ def create() -> None:
                     with ui.column().classes("gap-1 mt-4"):
                         ui.label("Administration").classes(
                             "font-medium text-theme-secondary mb-1"
-                        )
+                        ).props("role=heading aria-level=3")
                         ui.label(
                             "Notifications related to administrative tasks."
                         ).classes("text-sm text-theme-muted mb-2")
