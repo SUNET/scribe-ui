@@ -514,8 +514,12 @@ _DARK_MODE: "weakref.WeakKeyDictionary" = weakref.WeakKeyDictionary()
 
 
 def _remember_dark_mode(element) -> None:
+    # Both held weakly: the client as the key, and the element too, so
+    # nothing here keeps a page alive once it is closed. (NiceGUI's
+    # elements hold their client weakly as well, so a strong value did
+    # not keep it in 3.7 or 3.18; this does not depend on that.)
     try:
-        _DARK_MODE[ui.context.client] = element
+        _DARK_MODE[ui.context.client] = weakref.ref(element)
     except (RuntimeError, TypeError):
         pass
 
@@ -524,9 +528,11 @@ def page_dark_mode():
     """The dark mode element page_init made for this page, or None."""
 
     try:
-        return _DARK_MODE.get(ui.context.client)
+        element = _DARK_MODE.get(ui.context.client)
     except (RuntimeError, TypeError):
         return None
+
+    return element() if element is not None else None
 
 async def page_init(
     header_text: Optional[str] = "",

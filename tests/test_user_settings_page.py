@@ -158,3 +158,38 @@ class TestTargets:
     def test_buttons_and_tiles_big_enough_to_hit(self):
         assert "min-height: 44px;" in rule(".settings-button")
         assert "min-height: 44px;" in rule(".settings-theme-choice")
+
+
+class TestThePagesDarkModeElement:
+    """page_dark_mode() keeps nothing alive: neither a closed page's client nor its element."""
+
+    def test_found_while_both_live_and_neither_held(self, monkeypatch):
+        import gc
+        import types
+
+        from utils import common
+
+        class Client:
+            pass
+
+        class Element:
+            pass
+
+        client, element = Client(), Element()
+        context = types.SimpleNamespace(client=client)
+        monkeypatch.setattr(common, "ui", types.SimpleNamespace(context=context))
+        monkeypatch.setattr(common, "_DARK_MODE", type(common._DARK_MODE)())
+
+        common._remember_dark_mode(element)
+        assert common.page_dark_mode() is element
+
+        # The element gone (its page torn down): not kept by the registry.
+        del element
+        gc.collect()
+        assert common.page_dark_mode() is None
+
+        # The client gone: its entry goes with it.
+        context.client = None
+        del client
+        gc.collect()
+        assert len(common._DARK_MODE) == 0
