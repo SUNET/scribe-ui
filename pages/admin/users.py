@@ -126,8 +126,6 @@ async def users() -> None:
         ui.label(f"Error fetching users: {e}").classes("text-lg").style("color: var(--color-text-danger);")
         return
 
-    ui.label("Users").classes("text-3xl font-bold").props("role=heading aria-level=1")
-
     users_table = ui.table(
         columns=[
             {
@@ -252,144 +250,157 @@ async def users() -> None:
     # the search first and full width on a phone, where finding one user
     # among thousands is what the page is mostly for.
     with users_table.add_slot("top"):
-        with ui.element("div").classes("users-toolbar"):
-            with ui.element("div").classes("users-actions"):
-                ui.button("Enable").classes("button-close").props("color=black flat").on(
-                    "click", lambda: set_active_status(users_table.selected, True)
-                )
-                ui.button("Disable").classes("delete-style").props("color=black flat").on(
-                    "click", lambda: set_active_status(users_table.selected, False)
-                )
+        # The title on the left and the controls on the right, as before;
+        # on a phone they wrap, the search first (utils/styles.py).
+        with ui.element("div").classes("users-header"):
+            ui.label("Users").classes("text-3xl font-bold users-title").props("role=heading aria-level=1")
 
-                def confirm_remove_user():
-                    selected = users_table.selected
-                    if not selected:
-                        ui.notify("No users selected", type="warning", timeout=None, close_button="Close")
-                        return
-
-                    usernames = ", ".join(u["username"] for u in selected)
-
-                    with ui.dialog().props('aria-label="Remove users"') as dialog:
-                        with ui.card():
-                            ui.label("Remove users").classes("text-h6")
-                            ui.label(
-                                f"Are you sure you want to remove: {usernames}? "
-                                "Statistics will be preserved until all associated data has been cleaned up."
-                            ).classes("text-subtitle2").style("margin-bottom: 10px;")
-
-                            with ui.row().classes("justify-between w-full"):
-                                ui.button("Cancel", on_click=lambda: dialog.close()).props(
-                                    "color=black"
-                                )
-                                ui.button(
-                                    "Remove",
-                                    on_click=lambda: (
-                                        dialog.close(),
-                                        remove_user(selected),
-                                    ),
-                                ).props("color=red")
-
-                    dialog.open()
-
-                with ui.button("More").classes("button-close").props(
-                    "color=black flat icon-right=arrow_drop_down"
-                ):
-                    with ui.menu():
-                        ui.menu_item(
-                            "Domains",
-                            on_click=lambda: set_domains(users_table.selected, users),
-                        )
-                        ui.menu_item(
-                            "Make admin",
-                            on_click=lambda: open_make_admin_dialog(
-                                users_table.selected, users,
-                            ),
-                        )       
-                        ui.menu_item(
-                            "Remove admin",
-                            on_click=lambda: set_admin_status(
-                                users_table.selected, False, None, ""
-                            ),
-                        )
-                        ui.menu_item(
-                            "Reset to auto provisioning",
-                            on_click=lambda: reset_manual_override(users_table.selected),
-                        )
-                        ui.menu_item(
-                            "Remove user",
-                            on_click=confirm_remove_user,
-                        )
-
-            # Filters, each with a visible label; "All" is no filter.
-            realms = sorted({user.get("realm") for user in users if user.get("realm")})
-            filters = [
-                ("active", "Status", {"": "All", "Enabled": "Enabled", "Disabled": "Disabled"}),
-                ("admin", "Admin", {"": "All", "Yes": "Admins", "No": "Not admins"}),
-                ("provisioning", "Provisioning", {"": "All", "Auto": "Auto", "Manual": "Manual"}),
-            ]
-
-            if len(realms) > 1:
-                filters.append(("realm", "Realm", {"": "All", **{realm: realm for realm in realms}}))
-
-            # The search, and beside it a filter button that opens the
-            # filters under the bar (a disclosure: aria-expanded, and the
-            # number of filters in use on the button and in its name).
-            with ui.element("div").classes("users-find"):
-                with ui.input(
-                    placeholder="Search", on_change=lambda e: ask("q", e.value or "")
-                ).props('type=search aria-label="Search users"').classes("users-search").add_slot("append"):
-                    ui.icon("search")
-
-                # color=None: the theme's text colour (utils/styles.py), not
-                # black on a dark page or Quasar's 3:1 primary.
-                toggle = ui.button(icon="filter_alt", color=None).classes("users-filter-toggle").props(
-                    "flat round"
-                )
-                toggle._props["aria-label"] = "Filters"
-                toggle._props["aria-expanded"] = "false"
-
-                with toggle:
-                    badge = ui.badge("", color="red").props("floating").classes("users-filter-badge")
-                    badge.set_visibility(False)
-
-            panel = ui.element("div").classes("users-filters")
-            panel.set_visibility(False)
-            selects = []
-
-            with panel:
-                for key, label, options in filters:
-                    selects.append(
-                        ui.select(
-                            options,
-                            value="",
-                            label=label,
-                            on_change=lambda e, key=key: (ask(key, e.value or ""), show_in_use()),
-                        ).props("outlined dense options-dense").classes("users-filter")
+            with ui.element("div").classes("users-toolbar"):
+                with ui.element("div").classes("users-actions"):
+                    ui.button("Enable").classes("button-close").props("color=black flat").on(
+                        "click", lambda: set_active_status(users_table.selected, True)
+                    )
+                    ui.button("Disable").classes("delete-style").props("color=black flat").on(
+                        "click", lambda: set_active_status(users_table.selected, False)
                     )
 
-                def clear_filters() -> None:
-                    for select in selects:
-                        select.value = ""
+                    def confirm_remove_user():
+                        selected = users_table.selected
+                        if not selected:
+                            ui.notify("No users selected", type="warning", timeout=None, close_button="Close")
+                            return
 
-                ui.button("Clear filters", on_click=clear_filters, color=None).props("flat no-caps").classes(
-                    "users-filter-clear"
-                )
+                        usernames = ", ".join(u["username"] for u in selected)
 
-            def show_in_use() -> None:
-                in_use = sum(1 for select in selects if select.value)
-                badge.text = str(in_use)
-                badge.set_visibility(in_use > 0)
-                toggle._props["aria-label"] = (
-                    "Filters" if not in_use else f"Filters, {in_use} in use"
-                )
-                toggle.update()
+                        with ui.dialog().props('aria-label="Remove users"') as dialog:
+                            with ui.card():
+                                ui.label("Remove users").classes("text-h6")
+                                ui.label(
+                                    f"Are you sure you want to remove: {usernames}? "
+                                    "Statistics will be preserved until all associated data has been cleaned up."
+                                ).classes("text-subtitle2").style("margin-bottom: 10px;")
 
-            def flip_filters() -> None:
-                opened = not panel.visible
-                panel.set_visibility(opened)
-                toggle._props["aria-expanded"] = "true" if opened else "false"
-                toggle.update()
+                                with ui.row().classes("justify-between w-full"):
+                                    ui.button("Cancel", on_click=lambda: dialog.close()).props(
+                                        "color=black"
+                                    )
+                                    ui.button(
+                                        "Remove",
+                                        on_click=lambda: (
+                                            dialog.close(),
+                                            remove_user(selected),
+                                        ),
+                                    ).props("color=red")
 
-            toggle.on("click", flip_filters)
+                        dialog.open()
 
-            ui.label("").classes("users-count text-theme-secondary").props('role=status aria-live=polite')
+                    with ui.button("More").classes("button-close").props(
+                        "color=black flat icon-right=arrow_drop_down"
+                    ):
+                        with ui.menu():
+                            ui.menu_item(
+                                "Domains",
+                                on_click=lambda: set_domains(users_table.selected, users),
+                            )
+                            ui.menu_item(
+                                "Make admin",
+                                on_click=lambda: open_make_admin_dialog(
+                                    users_table.selected, users,
+                                ),
+                            )       
+                            ui.menu_item(
+                                "Remove admin",
+                                on_click=lambda: set_admin_status(
+                                    users_table.selected, False, None, ""
+                                ),
+                            )
+                            ui.menu_item(
+                                "Reset to auto provisioning",
+                                on_click=lambda: reset_manual_override(users_table.selected),
+                            )
+                            ui.menu_item(
+                                "Remove user",
+                                on_click=confirm_remove_user,
+                            )
+
+                # Filters, each with a visible label; "All" is no filter.
+                realms = sorted({user.get("realm") for user in users if user.get("realm")})
+                filters = [
+                    ("active", "Status", {"": "All", "Enabled": "Enabled", "Disabled": "Disabled"}),
+                    ("admin", "Admin", {"": "All", "Yes": "Admins", "No": "Not admins"}),
+                    ("provisioning", "Provisioning", {"": "All", "Auto": "Auto", "Manual": "Manual"}),
+                ]
+
+                if len(realms) > 1:
+                    filters.append(("realm", "Realm", {"": "All", **{realm: realm for realm in realms}}))
+
+                # The search, the filter button beside it, and the filters it
+                # opens right under them, in one group on the right: one place to
+                # find users, in that order for the keyboard too (search, filter
+                # button, filters, Clear filters), the actions before it.
+                with ui.element("div").classes("users-find-group"):
+                    with ui.element("div").classes("users-find"):
+                        with ui.input(
+                            placeholder="Search", on_change=lambda e: ask("q", e.value or "")
+                        ).props('type=search aria-label="Search users"').classes("users-search").add_slot("append"):
+                            ui.icon("search")
+
+                        # color=None: the theme's text colour (utils/styles.py),
+                        # not black on a dark page or Quasar's 3:1 primary.
+                        toggle = ui.button(icon="filter_alt", color=None).classes("users-filter-toggle").props(
+                            "flat round"
+                        )
+                        toggle._props["aria-label"] = "Filters"
+                        toggle._props["aria-expanded"] = "false"
+
+                        with toggle:
+                            badge = ui.badge("", color="red").props("floating").classes("users-filter-badge")
+                            badge.set_visibility(False)
+
+                    # A disclosure: the button says whether it is open and which
+                    # element it opens; the panel is a group named by the button.
+                    panel = ui.element("div").classes("users-filters").props('role="group"')
+                    panel.set_visibility(False)
+                    toggle._props["aria-controls"] = f"c{panel.id}"
+                    panel._props["aria-labelledby"] = f"c{toggle.id}"
+                    selects = []
+
+                    with panel:
+                        for key, label, options in filters:
+                            selects.append(
+                                ui.select(
+                                    options,
+                                    value="",
+                                    label=label,
+                                    on_change=lambda e, key=key: (ask(key, e.value or ""), show_in_use()),
+                                ).props("outlined dense options-dense").classes("users-filter")
+                            )
+
+                        def clear_filters() -> None:
+                            for select in selects:
+                                select.value = ""
+
+                        ui.button("Clear filters", on_click=clear_filters, color=None).props("flat no-caps").classes(
+                            "users-filter-clear"
+                        )
+
+                def show_in_use() -> None:
+                    in_use = sum(1 for select in selects if select.value)
+                    badge.text = str(in_use)
+                    badge.set_visibility(in_use > 0)
+                    toggle._props["aria-label"] = (
+                        "Filters" if not in_use else f"Filters, {in_use} in use"
+                    )
+                    toggle.update()
+
+                def flip_filters() -> None:
+                    opened = not panel.visible
+                    panel.set_visibility(opened)
+                    toggle._props["aria-expanded"] = "true" if opened else "false"
+                    toggle.update()
+
+                toggle.on("click", flip_filters)
+
+        # How many are shown, said when it changes (4.1.3). Filled in by
+        # FILTER_METHOD in the browser.
+        ui.label("").classes("users-count text-theme-secondary").props('role=status aria-live=polite')

@@ -76,14 +76,16 @@ class TestOnAPhone:
         block = phone()
         assert "height: auto;" in block
         assert "order: -2;" in block and "flex: 1 1 100%;" in block
-        assert ".users-find {\n            order: -2;" in block
+        assert ".users-find-group {\n            order: -2;" in block
         assert "flex: 1 1 0;" in block
 
 
 class TestTheBar:
-    def test_the_title_is_above_the_table_not_in_it(self):
-        title = PAGE.index('ui.label("Users").classes("text-3xl font-bold").props("role=heading aria-level=1")')
-        assert title < PAGE.index("users_table = ui.table(")
+    def test_the_title_on_the_left_the_controls_on_the_right(self):
+        header = PAGE[PAGE.index('with ui.element("div").classes("users-header"):') :]
+        assert header.index('ui.label("Users").classes("text-3xl font-bold users-title")') < header.index("users-toolbar")
+        assert "justify-content: space-between;" in rule(".users-header")
+        assert "justify-content: flex-end;" in rule(".users-toolbar")
         assert 'add_slot("top-left")' not in PAGE
 
     def test_actions_and_search_in_one_bar(self):
@@ -92,6 +94,8 @@ class TestTheBar:
         assert 'ui.element("div").classes("users-actions")' in PAGE
         assert '"users-search"' in PAGE
         assert "flex-wrap: wrap;" in rule(".users-toolbar")
+        assert "align-items: flex-start;" in rule(".users-toolbar")
+        assert "align-items: flex-start;" in rule(".users-header")
 
     def test_buttons_big_enough_to_hit_and_no_fixed_width(self):
         assert "min-height: 44px;" in rule(".users-actions .q-btn")
@@ -145,8 +149,25 @@ class TestFilters:
         assert 'ui.button("Clear filters", on_click=clear_filters, color=None)' in PAGE
         assert "color: var(--color-brand-primary);" in rule(".users-filter-clear")
 
-    def test_two_filters_to_a_line_on_a_phone(self):
-        assert "flex: 1 1 calc(50% - 0.25rem);" in phone()
+    def test_two_filters_to_a_line_in_a_box_under_the_search(self):
+        assert "grid-template-columns: repeat(2, minmax(0, 1fr));" in rule(".users-filters")
+        assert "border: 1px solid var(--color-border-subtle);" in rule(".users-filters")
+        assert "flex-direction: column;" in rule(".users-find-group")
+
+    def test_search_button_and_filters_in_one_group_in_that_order(self):
+        group = PAGE[PAGE.index('with ui.element("div").classes("users-find-group"):') :]
+        search = group.index('placeholder="Search"')
+        toggle = group.index('ui.button(icon="filter_alt"')
+        panel = group.index('panel = ui.element("div").classes("users-filters")')
+        clear = group.index('ui.button("Clear filters"')
+        assert search < toggle < panel < clear
+        # The actions come before the group, as on the screen.
+        assert PAGE.index('ui.element("div").classes("users-actions")') < PAGE.index('classes("users-find-group")')
+
+    def test_the_panel_is_a_group_named_by_its_button(self):
+        assert 'toggle._props["aria-controls"] = f"c{panel.id}"' in PAGE
+        assert 'panel._props["aria-labelledby"] = f"c{toggle.id}"' in PAGE
+        assert """.props('role="group"')""" in PAGE
 
 
 def run_filter(rows: list, asked: dict) -> list:

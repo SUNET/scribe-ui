@@ -1233,13 +1233,29 @@ theme_styles = """
         box-shadow: none;
         font-size: 18px;
     }
-    .users-toolbar {
+    /* The title on the left, the controls together on the right (as
+       before); the filters open under the search, the actions staying
+       level with it. */
+    .users-header {
         display: flex;
         flex-wrap: wrap;
-        align-items: center;
+        align-items: flex-start;
         justify-content: space-between;
         gap: 0.75rem 1rem;
         width: 100%;
+    }
+    .users-title {
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+    }
+    .users-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        justify-content: flex-end;
+        gap: 0.75rem 1rem;
+        flex: 1 1 auto;
     }
     .users-actions {
         display: flex;
@@ -1250,12 +1266,20 @@ theme_styles = """
         min-width: 9rem;
         min-height: 44px;
     }
-    /* The search and the filter button beside it. */
+    /* The search, the filter button and the filters under them: one
+       group on the right, the filters in a box of their own under the
+       search, the same width, so they are seen to belong together. */
+    .users-find-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        flex: 0 1 26rem;
+        min-width: 0;
+    }
     .users-find {
         display: flex;
         align-items: center;
         gap: 0.25rem;
-        flex: 0 1 21rem;
     }
     .users-search {
         flex: 1 1 auto;
@@ -1270,23 +1294,25 @@ theme_styles = """
     .users-filter-toggle[aria-expanded="true"] {
         background: color-mix(in srgb, currentColor 14%, transparent);
     }
-    .users-filter-clear {
-        align-self: center;
-        min-height: 44px;
-        color: var(--color-brand-primary);
-        text-decoration: underline;
-    }
-    /* The filters on a line of their own under the actions and the search,
-       wrapping; the count of users shown under them. */
     .users-filters {
-        display: flex;
-        flex-wrap: wrap;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 0.5rem;
-        width: 100%;
+        padding: 0.75rem;
+        border: 1px solid var(--color-border-subtle);
+        border-radius: 4px;
+        background: var(--color-bg-surface);
     }
     .users-filter {
-        flex: 0 1 11rem;
-        min-width: 9rem;
+        min-width: 0;
+    }
+    .users-filter-clear {
+        grid-column: 1 / -1;
+        justify-self: end;
+        min-height: 44px;
+        margin-bottom: -0.5rem;
+        color: var(--color-brand-primary);
+        text-decoration: underline;
     }
     .users-count {
         width: 100%;
@@ -1300,7 +1326,10 @@ theme_styles = """
             height: auto;
             font-size: 1rem;
         }
-        .users-find {
+        .users-toolbar {
+            width: 100%;
+        }
+        .users-find-group {
             order: -2;
             flex: 1 1 100%;
         }
@@ -1310,14 +1339,6 @@ theme_styles = """
         }
         .users-actions .q-btn {
             flex: 1 1 0;
-            min-width: 0;
-        }
-        /* Two filters to a line, under the search. */
-        .users-filters {
-            order: -1;
-        }
-        .users-filter {
-            flex: 1 1 calc(50% - 0.25rem);
             min-width: 0;
         }
     }
