@@ -145,6 +145,18 @@ class TestTheStackedChart:
         assert '<i class="is-line"></i>7-day average' in self.CHART
         assert self.CHART.count("<span><i") == 3
 
+    def test_the_scale_takes_in_the_average(self):
+        # The first days' average takes in busier days before the chart.
+        chart = stacked_chart(["2026-11-01"], [{"name": "Uploads", "values": [10]}], line={"name": "7-day average", "values": [180.0]})
+        assert ">200</span>" in chart
+        assert "-" not in re.search(r'class="is-line" points="([^"]*)"', chart).group(1)
+
+    def test_a_segment_its_true_share_and_a_small_one_still_shown(self):
+        chart = stacked_chart(["2026-11-01"], [{"name": "Uploads", "values": [995]}, {"name": "Exports", "values": [5]}])
+        assert "height: 0.5%;" in chart and "calc(" not in chart
+        assert "min-height: 2px;" in BAR_CHART_STYLES
+        assert "box-shadow: inset 0 -2px 0 var(--color-bg-surface);" in BAR_CHART_STYLES
+
     def test_high_contrast(self):
         forced = BAR_CHART_STYLES[BAR_CHART_STYLES.index("@media (forced-colors: active)"):]
         assert ".bar-chart-segment" in forced and "stroke: Highlight;" in forced
@@ -194,6 +206,16 @@ class TestThePage:
         assert '("Action", "Last 30 days", "30 days before", "All time") if whole_before else ("Action", "Last 30 days", "All time")' in PAGE
         assert "do not reach back" not in PAGE
         assert "The statistics begin on" in PAGE
+
+    def test_the_days_table_scrolls_in_a_region_of_its_own_on_a_phone(self):
+        from utils.chart_tables import data_table
+
+        table = data_table("Show", "Actions per day", ("Date", "Uploads"), [("2026-11-01", 3)], (1,), wide=True)
+        assert '<div class="chart-scroll" role="region" tabindex="0" aria-label="Actions per day">' in table
+        assert "overflow-x: auto;" in CHART_STYLES
+        assert "wide=True," in PAGE
+        # Others as they were.
+        assert "chart-scroll" not in data_table("Show", "Minutes", ("Date", "Minutes"), [], (1,))
 
     def test_the_days_table_has_the_days_counted_only(self):
         assert "if not (counted and day < counted)" in PAGE

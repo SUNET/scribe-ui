@@ -195,6 +195,7 @@ async def analytics() -> None:
                 ],
                 numeric=tuple(range(1, len(shown_kinds) + 3)),
                 empty=not everything,
+                wide=True,
             )
 
         # ── When: weekday and hour, as a heat map that is a table ──

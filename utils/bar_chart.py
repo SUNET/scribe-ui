@@ -202,8 +202,8 @@ BAR_CHART_STYLES = """
         vertical-align: -0.1em;
         background: var(--chart-bar);
     }
-    /* Stacked: each slot one column of segments, a 2px gap of the card
-       between them so neighbours read apart by more than their hue; the
+    /* Stacked: each slot one column of segments, 2px of the card between
+       them so neighbours read apart by more than their hue; the
        kinds in a fixed order of colours (validated for colour blindness
        against the cards in both themes: data-viz palette, slots 1-6). */
     .bar-chart {
@@ -230,10 +230,17 @@ BAR_CHART_STYLES = """
         height: 100%;
         display: flex;
         flex-direction: column-reverse;
-        gap: 2px;
     }
+    /* Each segment its true share of the height; the 2px of the card
+       between two is drawn inside the upper one, so nothing is taken from
+       the stack, and a segment too small to show still shows a sliver. */
     .bar-chart-segment {
         flex: none;
+        min-height: 2px;
+    }
+    .bar-chart-segment + .bar-chart-segment {
+        min-height: 4px;
+        box-shadow: inset 0 -2px 0 var(--color-bg-surface);
     }
     .bar-chart-stack .bar-chart-segment:last-child {
         border-radius: 3px 3px 0 0;
@@ -566,7 +573,10 @@ def stacked_chart(
     """
 
     totals = [sum((one["values"][at] or 0) for one in series) for at in range(len(labels))]
-    ticks = nice_ticks(max(totals + [0]), whole=True)
+    # The line on the scale too: its first days' average takes in days
+    # before the chart, which may have been busier than any shown.
+    line_values = [value for value in line["values"] if value is not None] if line else []
+    ticks = nice_ticks(max(totals + line_values + [0]), whole=True)
     top = ticks[-1] or 1
     every = label_every or max(1, math.ceil(len(labels) / MAX_LABELS))
     slots = []
@@ -583,7 +593,7 @@ def stacked_chart(
             tip += f"; {line['name'].lower()} {figure(round(line['values'][at]))}"
 
         segments = "".join(
-            f'<span class="bar-chart-segment" style="height: calc({round(100 * value / top, 3)}% - 2px); '
+            f'<span class="bar-chart-segment" style="height: {round(100 * value / top, 3)}%; '
             f'background: var(--chart-s{at_series + 1})"></span>'
             for at_series, _, value in parts
             if value > 0

@@ -165,6 +165,19 @@ CHART_STYLES = """
         font-weight: 600;
         color: var(--color-text-primary);
     }
+    /* A table wider than a phone scrolls in its own region, not the page. */
+    .chart-scroll {
+        max-width: 100%;
+        overflow-x: auto;
+    }
+    .chart-scroll:focus-visible {
+        outline: 3px solid var(--color-brand-primary);
+        outline-offset: 2px;
+    }
+    .chart-scroll th,
+    .chart-scroll td {
+        white-space: nowrap;
+    }
     /* A table shown, not behind a disclosure: as wide as its card, its
        caption said by the heading above it. */
     .chart-table table {
@@ -281,9 +294,15 @@ def data_table(
     headers: Sequence[str],
     rows: Iterable[Sequence],
     numeric: Sequence[int] = (),
+    wide: bool = False,
 ) -> str:
     """
     The numbers behind a chart as a table behind a native disclosure.
+
+    `wide` is a table of more columns than a phone has room for: it scrolls
+    sideways inside a region of its own, which the keyboard can reach and
+    scroll (tabindex, named by the caption), rather than taking the page
+    with it (1.4.10: a table of two dimensions may scroll).
 
     The first column heads each row (th scope=row): a date, a name. Columns
     whose index is in `numeric` are set right and in figures of one width,
@@ -310,12 +329,20 @@ def data_table(
         for row in rows
     )
 
-    return (
-        '<details class="chart-data">'
-        f"<summary>{html.escape(summary)}</summary>"
+    table = (
         f"<table><caption>{html.escape(caption)}</caption>"
         f"<thead><tr>{head}</tr></thead>"
         f"<tbody>{body}</tbody></table>"
+    )
+
+    if wide:
+        name = html.escape(caption, quote=True)
+        table = f'<div class="chart-scroll" role="region" tabindex="0" aria-label="{name}">{table}</div>'
+
+    return (
+        '<details class="chart-data">'
+        f"<summary>{html.escape(summary)}</summary>"
+        f"{table}"
         "</details>"
     )
 
@@ -380,6 +407,7 @@ def chart_section(
     numeric: Sequence[int] = (),
     level: int = 2,
     empty: bool = False,
+    wide: bool = False,
 ) -> None:
     """
     A chart that can be read without seeing it: heading, sentence, the
@@ -406,7 +434,7 @@ def chart_section(
             ui.plotly(static_chart(figure)).classes("w-full")
 
     ui.html(
-        data_table(table_summary, caption, headers, rows, numeric), sanitize=False
+        data_table(table_summary, caption, headers, rows, numeric, wide=wide), sanitize=False
     ).classes("w-full")
 
 
