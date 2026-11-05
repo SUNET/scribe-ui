@@ -220,6 +220,14 @@ class TestThePage:
         assert "now = wh.drawn_at(worker, now)" in PAGE
         assert PAGE.index("now = wh.drawn_at(worker, now)") > PAGE.index("Last heard from {when(worker.last_seen, now, zone)}")
 
+    def test_focus_kept_when_the_cards_are_built_again(self):
+        assert 'self.card._props["data-worker"] = worker_id' in PAGE
+        assert "ui.add_body_html(KEEP_FOCUS)" in PAGE
+        rebuilt = PAGE[PAGE.index("grid.clear()") : PAGE.index("shown_order = order")]
+        assert 'ui.run_javascript("window.healthKeepFocus && window.healthKeepFocus()")' in rebuilt
+        # Not taken back from wherever the user has gone on to.
+        assert "if (now && now !== document.body) return;" in PAGE
+
     def test_the_charts_and_the_table_built_only_while_open(self):
         # Shut, they would be sent again with every update; the table alone
         # is some 1 000 elements a worker.
@@ -266,12 +274,16 @@ class TestThePage:
         assert '"" if worker.online else' in PAGE
         rule = STYLESHEET.split(".health-last {", 1)[1].split("}", 1)[0]
         assert "min-height: 1.5em" in rule and "line-height: 1.5" in rule
-        assert 'if worker.online else "–"' in PAGE
+        assert "html.escape(wh.percent(value)) if worker.online else NOT_KNOWN" in PAGE
+        assert 'NOT_KNOWN = \'<span aria-hidden="true">–</span><span class="sr-only">not known</span>\'' in PAGE
         assert ">Offline</span>" in PAGE and ">Online</span>" in PAGE
 
     def test_the_readings_in_a_table_newest_first(self):
         assert "reversed(wh.in_window(worker, now))" in PAGE
-        assert "table_region(" in PAGE
+        assert "return table_html(" in PAGE
+        # The region kept, so focus on it stays while the table changes.
+        assert 'region = ui.element("div").classes("chart-scroll").props("role=region tabindex=0")' in PAGE
+        assert 'region._props["aria-label"] = readings_caption(worker_id)' in PAGE
 
     def test_times_in_the_readers_zone(self):
         assert 'app.storage.user.get("timezone", "UTC")' in PAGE

@@ -332,6 +332,22 @@ def table_region(
     backend.
     """
 
+    name = html.escape(caption, quote=True)
+
+    return f'<div class="chart-scroll" role="region" tabindex="0" aria-label="{name}">{table_html(caption, headers, rows, numeric)}</div>'
+
+
+def table_html(
+    caption: str,
+    headers: Sequence[str],
+    rows: Iterable[Sequence],
+    numeric: Sequence[int] = (),
+) -> str:
+    """
+    The table of table_region() without its region: for a page that keeps
+    the region, so that focus on it stays while the table is changed.
+    """
+
     def cell(at: int, value) -> str:
         text = html.escape(str(value))
         number = ' class="chart-number"' if at in numeric else ""
@@ -351,14 +367,10 @@ def table_region(
         for row in rows
     )
 
-    name = html.escape(caption, quote=True)
-
     return (
-        f'<div class="chart-scroll" role="region" tabindex="0" aria-label="{name}">'
         f"<table><caption>{html.escape(caption)}</caption>"
         f"<thead><tr>{head}</tr></thead>"
         f"<tbody>{body}</tbody></table>"
-        "</div>"
     )
 
 

@@ -40,7 +40,7 @@ import httpx
 
 from nicegui import app, ui
 from utils import worker_health as wh
-from utils.chart_tables import head_html as chart_head, phrased, table_region
+from utils.chart_tables import head_html as chart_head, phrased, table_html
 from utils.common import page_init
 from utils.line_chart import LINE_CHART_STYLES, SINGLE, STYLES, clock, line_chart, sparkline
 from utils.styles import default_styles
@@ -125,7 +125,7 @@ def tiles(worker: wh.Worker, now: float, zone) -> str:
         '<ul class="health-figures" role="list">'
         + "".join(
             f'<li><span class="health-figure-label">{html.escape(label)}</span>'
-            f'<span class="health-figure-value">{html.escape(wh.percent(value) if worker.online else "–")}</span>'
+            f'<span class="health-figure-value">{html.escape(wh.percent(value)) if worker.online else NOT_KNOWN}</span>'
             f"{sparkline(points, start, now, colour, quiet)}</li>"
             for label, value, points, colour in items
         )
@@ -170,6 +170,10 @@ def gpu_group(worker: wh.Worker, now: float, zone) -> str:
     )
 
 
+def readings_caption(worker_id: str) -> str:
+    return f"Readings for {worker_id}, the last 30 minutes, newest first"
+
+
 def readings_table(worker: wh.Worker, now: float, zone) -> str:
     indexes = worker.gpu_indexes
     headers = ["Time", "CPU", "Memory"]
@@ -186,13 +190,55 @@ def readings_table(worker: wh.Worker, now: float, zone) -> str:
             row += [wh.percent(wh.gpu_value(reading, index, "use")), wh.percent(wh.gpu_value(reading, index, "memory"))]
         rows.append(row)
 
-    return table_region(
-        f"Readings for {worker.worker_id}, the last 30 minutes, newest first",
+    return table_html(
+        readings_caption(worker.worker_id),
         headers,
         rows,
         numeric=tuple(range(1, len(headers))),
     )
 
+
+# An offline worker's figure: a dash to see, words to hear (a dash is read
+# out as "dash", or not at all).
+NOT_KNOWN = '<span aria-hidden="true">–</span><span class="sr-only">not known</span>'
+
+# The cards are built again when their order changes (a worker has gone
+# offline), and the control that had focus in one is gone with it: focus
+# would fall to the page. The browser keeps which control in which card had
+# it, and puts it back on the same control in the card built again, unless
+# focus has gone on somewhere else by then (2.4.3).
+KEEP_FOCUS = """<script>
+(() => {
+  const FOCUSABLE = 'summary, a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])';
+  let kept = null;
+  document.addEventListener('focusin', (event) => {
+    const card = event.target.closest && event.target.closest('.health-card[data-worker]');
+    kept = card ? { worker: card.dataset.worker, at: [...card.querySelectorAll(FOCUSABLE)].indexOf(event.target) } : null;
+  });
+  document.addEventListener('focusout', (event) => {
+    // Left while still in the page: focus has gone on outside the cards.
+    // (A control taken away with its card is no longer in the page.)
+    setTimeout(() => {
+      const now = document.activeElement;
+      if (event.target.isConnected && !(now && now.closest && now.closest('.health-card[data-worker]'))) kept = null;
+    });
+  });
+  window.healthKeepFocus = () => {
+    const was = kept;
+    if (!was) return;
+    // Once the new cards are drawn.
+    requestAnimationFrame(() => setTimeout(() => {
+      const now = document.activeElement;
+      if (now && now !== document.body) return;
+      const card = [...document.querySelectorAll('.health-card[data-worker]')].find((c) => c.dataset.worker === was.worker);
+      if (!card) return;
+      const all = [...card.querySelectorAll(FOCUSABLE)];
+      const to = all[was.at] || all[0];
+      if (to) to.focus();
+    }));
+  };
+})();
+</script>"""
 
 # A details element tells the server when it is opened or shut.
 TOLD = "(event) => emit(event.target.open)"
@@ -221,6 +267,8 @@ class WorkerCard:
         self.key_table = (worker_id, "table")
 
         with ui.element("section").classes("health-card").props(f'aria-labelledby="{heading}"') as self.card:
+            # Which worker's card this is, for KEEP_FOCUS.
+            self.card._props["data-worker"] = worker_id
             self.head = ui.html("", sanitize=False)
             self.heading = heading
             self.last = ui.html("", sanitize=False).classes("health-last")
@@ -254,7 +302,12 @@ class WorkerCard:
                     box.on("toggle", lambda e: self.toggled(self.key_table, e.args), js_handler=TOLD)
                     with ui.element("summary"):
                         ui.label("Show the readings as a table")
-                    self.table = ui.html("", sanitize=False).classes("w-full")
+                    # The region is kept and only the table in it changed,
+                    # so focus on it stays through the updates (2.4.3).
+                    region = ui.element("div").classes("chart-scroll").props("role=region tabindex=0")
+                    region._props["aria-label"] = readings_caption(worker_id)
+                    with region:
+                        self.table = ui.html("", sanitize=False).classes("w-full")
 
         self.update(worker, now, zone)
 
@@ -323,6 +376,7 @@ async def health() -> None:
     ui.add_head_html(default_styles)
     ui.add_head_html(chart_head())
     ui.add_head_html(LINE_CHART_STYLES)
+    ui.add_body_html(KEEP_FOCUS)
 
     zone_name = app.storage.user.get("timezone", "UTC")
 
@@ -423,6 +477,8 @@ async def health() -> None:
             with grid:
                 for worker in shown:
                     cards[worker.worker_id] = WorkerCard(worker, now, zone, opened)
+
+                ui.run_javascript("window.healthKeepFocus && window.healthKeepFocus()")
 
             shown_order = order
         else:
