@@ -87,7 +87,7 @@ class TestTheNotifications:
             "When one of your transcriptions has finished.",
             "24 hours before one of your files is deleted.",
             "When a new account is waiting to be enabled.",
-            "When a group is close to its monthly limit, or a customer account to its quota.",
+            "When a group or account is close to its monthly limit or quota.",
             "A weekly email with this month's transcription use.",
         ):
             assert text in PAGE, text

@@ -296,7 +296,7 @@ def create() -> None:
                             )
                             option(
                                 "Quota alerts",
-                                "When a group is close to its monthly limit, or a customer account to its quota.",
+                                "When a group or account is close to its monthly limit or quota.",
                                 chosen["quota"],
                                 lambda e: save("quota", e.value),
                             )
