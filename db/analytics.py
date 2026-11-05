@@ -120,3 +120,23 @@ async def fetch_all(days: int = 30, recent_limit: int = 50) -> dict:
         "recent",
     )
     return dict(zip(keys, results))
+
+
+async def fetch_overview(days: int, history_days: int, recent_limit: int = 50) -> dict:
+    """
+    What the Activity overview draws, fetched in parallel over one client:
+    the all-time summary per action, the weekday-and-hour counts for `days`,
+    the counts per action and day for `history_days` (this period, the one
+    before and a week more, for the comparison and the 7-day average), and
+    the latest actions.
+    """
+
+    async with httpx.AsyncClient() as client:
+        summary, heatmap, views, recent = await asyncio.gather(
+            _fetch(client, "/api/v1/admin/analytics/summary", []),
+            _fetch(client, "/api/v1/admin/analytics/heatmap", [], days=days),
+            _fetch(client, "/api/v1/admin/analytics/views", [], days=history_days),
+            _fetch(client, "/api/v1/admin/analytics/recent", [], limit=recent_limit),
+        )
+
+    return {"summary": summary, "heatmap": heatmap, "views": views, "recent": recent}
