@@ -135,8 +135,8 @@ class TestTheActions:
 class TestTheLayout:
     def test_the_card_decides_by_its_own_width(self):
         assert "container-type: inline-size;" in rule(".group-card")
-        assert "@container (min-width: 52rem)" in STYLES
-        wide = STYLES[STYLES.index("@container (min-width: 52rem)") :][:200]
+        # The group card's own: another page's rules may have the same width.
+        wide = STYLES[STYLES.index("@container (min-width: 52rem) {\n        .group-layout {") :][:200]
         assert "grid-template-columns: minmax(16rem, 1fr) minmax(0, 1fr) 10rem;" in wide
         middling = STYLES[STYLES.index("    @container (min-width: 36rem) {\n        .group-layout {") :][:400]
         assert "grid-template-columns: minmax(0, 1fr) 10rem;" in middling
