@@ -219,15 +219,16 @@ class TestThemeReloadIsOnlyForCharts:
 
         assert "_scribeThemeListener" not in body
 
-    def test_the_chart_pages_ask_for_it_themselves(self):
-        # The group statistics page and the activity overview draw their
-        # own charts in the theme's custom properties (utils/bar_chart.py)
-        # and need no reload; see tests/test_chart_tables.py.
-        for page in ("pages/admin/health.py",):
-            source = pathlib.Path(page).read_text()
+    def test_no_page_asks_for_it_now(self):
+        # The group statistics, the activity overview and the health page
+        # draw their own charts in the theme's custom properties
+        # (utils/bar_chart.py, utils/line_chart.py), so none of them needs
+        # a reload on a change of theme.
+        for page in sorted(pathlib.Path("pages").rglob("*.py")):
+            source = page.read_text()
 
-            assert "reload_on_theme_change()" in source, page
-            assert "plotly" in source, page
+            assert "reload_on_theme_change()" not in source, page
+            assert "ui.plotly(" not in source, page
 
     def test_the_editor_does_not(self):
         assert "reload_on_theme_change" not in pathlib.Path("pages/srt.py").read_text()

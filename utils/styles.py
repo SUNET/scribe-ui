@@ -2237,41 +2237,236 @@ theme_styles = """
         padding: 1.5rem 2rem;
     }
 
-    /* ── Admin: health page ── */
-    .health-card {
-        background-color: var(--color-bg-surface);
-        border-radius: 1rem;
-        box-shadow: 0 2px 8px var(--color-shadow-medium);
-        padding: 1.25rem;
+    /* ── Admin: health page (pages/admin/health.py) ── */
+    .health {
         width: 100%;
-        max-width: 100%;
+        max-width: 90rem;
         display: flex;
         flex-direction: column;
+        gap: 1.5rem;
+    }
+    .health-bar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
         justify-content: space-between;
+        gap: 0.75rem 1.5rem;
     }
-    .status-dot {
-        width: 12px;
-        height: 12px;
-        border-radius: 50%;
-        display: inline-block;
-        margin-right: 6px;
+    .health-count {
+        margin-top: 0.25rem;
+        color: var(--color-text-secondary);
     }
-    .status-dot-online {
-        background-color: var(--color-status-ok-border);
+    .health-controls {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.5rem 1rem;
     }
-    .status-dot-offline {
-        background-color: var(--color-status-error-border);
+    .health-refresh-label {
+        font-weight: 600;
+    }
+    .health-refresh {
+        border: 1px solid var(--color-border-subtle);
+        border-radius: 0.5rem;
+        overflow: hidden;
+    }
+    .health-refresh .q-btn {
+        min-height: 40px;
+        padding: 0 0.75rem;
+        color: var(--color-text-primary);
+        background: transparent;
+    }
+    .health-refresh .q-btn + .q-btn {
+        border-left: 1px solid var(--color-border-subtle);
+    }
+    /* The one chosen is Quasar's primary with white text (14.4:1 on the
+       light theme's, 9.1:1 on the dark's), and aria-pressed says which. */
+    .health-refresh .q-btn[aria-pressed="true"] {
+        font-weight: 600;
+    }
+    .health-update-now {
+        min-height: 40px;
+        color: var(--color-text-primary);
+    }
+    .health-updated,
+    .health-note {
+        font-size: 0.875rem;
+        color: var(--color-text-secondary);
     }
     .health-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
-        gap: 1.25rem;
+        grid-template-columns: repeat(auto-fit, minmax(min(36rem, 100%), 1fr));
+        gap: 1.5rem;
         width: 100%;
     }
-    @media (max-width: 768px) {
-        .health-grid {
-            grid-template-columns: 1fr;
+    .health-card {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        padding: 1.25rem 1.5rem;
+        background-color: var(--color-bg-surface);
+        border: 1px solid color-mix(in srgb, var(--color-border-subtle) 35%, transparent);
+        border-radius: 1rem;
+        box-shadow: 0 2px 10px var(--color-shadow-light);
+        container-type: inline-size;
+    }
+    @media (max-width: 600px) {
+        .health-card {
+            padding: 1rem;
         }
+    }
+    .health-card.is-offline {
+        border-color: var(--color-status-error-border);
+    }
+    .health-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem 1rem;
+    }
+    .health-head h2 {
+        margin: 0;
+        font-size: 1.25rem;
+        font-weight: 600;
+        line-height: 1.3;
+        overflow-wrap: anywhere;
+        color: var(--color-text-primary);
+    }
+    /* Online or offline in words, a shape and a colour: a filled dot, or
+       a ring. The words carry it; the colour is only a help. */
+    .health-state {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.25rem 0.75rem;
+        border-radius: 999px;
+        font-size: 0.9375rem;
+        font-weight: 600;
+    }
+    .health-dot {
+        width: 0.625rem;
+        height: 0.625rem;
+        border-radius: 50%;
+        flex: none;
+    }
+    .health-state.is-online {
+        background: color-mix(in srgb, #15803d 12%, transparent);
+        color: #166534;
+    }
+    .health-state.is-online .health-dot {
+        background: #15803d;
+    }
+    .health-state.is-offline {
+        background: color-mix(in srgb, #b91c1c 12%, transparent);
+        color: #991b1b;
+    }
+    .health-state.is-offline .health-dot {
+        border: 2px solid #b91c1c;
+    }
+    .body--dark .health-state.is-online {
+        color: #86efac;
+    }
+    .body--dark .health-state.is-online .health-dot {
+        background: #4ade80;
+    }
+    .body--dark .health-state.is-offline {
+        color: #fca5a5;
+    }
+    .body--dark .health-state.is-offline .health-dot {
+        border-color: #f87171;
+    }
+    @media (forced-colors: active) {
+        .health-state {
+            border: 1px solid CanvasText;
+        }
+        .health-state.is-online .health-dot {
+            background: CanvasText;
+            forced-color-adjust: none;
+        }
+        .health-state.is-offline .health-dot {
+            border-color: CanvasText;
+        }
+    }
+    .health-last {
+        margin-top: -0.5rem;
+        font-weight: 500;
+        color: var(--color-text-primary);
+    }
+    .health-groups {
+        display: flex;
+        flex-direction: column;
+        gap: 1.25rem;
+    }
+    .health-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        padding-top: 1rem;
+        border-top: 1px solid color-mix(in srgb, var(--color-border-subtle) 35%, transparent);
+    }
+    .health-group-title {
+        margin: 0;
+        font-size: 1.0625rem;
+        font-weight: 700;
+        /* Quasar's h3 has a line of 3rem. */
+        line-height: 1.3;
+        color: var(--color-text-primary);
+    }
+    .health-group-sub {
+        margin: -0.5rem 0 0;
+        font-size: 0.875rem;
+        color: var(--color-text-secondary);
+    }
+    .health-figures {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(min(9rem, 100%), 1fr));
+        gap: 0.5rem;
+    }
+    .health-figures li {
+        display: flex;
+        flex-direction: column;
+        padding: 0.5rem 0.75rem;
+        border: 1px solid color-mix(in srgb, var(--color-border-subtle) 45%, transparent);
+        border-radius: 0.5rem;
+    }
+    .health-figure-label {
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: var(--color-text-secondary);
+    }
+    .health-figure-value {
+        font-size: 1.5rem;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        color: var(--color-text-primary);
+    }
+    .health-figure-sub {
+        font-size: 0.875rem;
+        color: var(--color-text-secondary);
+    }
+    .health-charts {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1.25rem 1.5rem;
+    }
+    @container (max-width: 34rem) {
+        .health-charts {
+            grid-template-columns: minmax(0, 1fr);
+        }
+    }
+    /* The disclosures' words are a label (a div): on the triangle's line. */
+    .health .chart-data summary > div {
+        display: inline;
+    }
+    .health-away-list {
+        margin: 0.5rem 0 0;
+        padding-left: 1.25rem;
+        color: var(--color-text-primary);
     }
 
     /* ── NiceGUI content padding ── */
