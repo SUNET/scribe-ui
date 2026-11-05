@@ -1234,7 +1234,9 @@ theme_styles = """
         flex-direction: column;
         align-items: center;
         gap: 2rem;
-        padding: 2rem 1rem;
+        /* No room above: the title's own margin and the page's gap make
+           the same 2rem to the first card as between the cards. */
+        padding: 0 1rem 2rem;
     }
     .stats-card {
         width: 100%;
@@ -4068,7 +4070,8 @@ default_styles = theme_styles + drive_styles
 chart_colors = {
     "light": {
         "bar_current": "#4F46E5",
-        "bar_previous": "#10B981",
+        # #10B981 was 2.5:1 on the white card, under 1.4.11's 3:1.
+        "bar_previous": "#059669",
         "bar_primary": "#082954",
         "bar_secondary": "#4caf50",
         "line_cpu": "#3b82f6",
