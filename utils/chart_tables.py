@@ -111,10 +111,21 @@ CHART_STYLES = """
         outline: 3px solid var(--color-brand-primary);
         outline-offset: 2px;
     }
+    /* The table scrolls sideways in a region of its own if it is ever
+       wider than the card (a larger text size on a phone), not the page;
+       the region can be reached and scrolled with the keyboard. */
+    .chart-scroll {
+        max-width: 100%;
+        overflow-x: auto;
+    }
+    .chart-scroll:focus-visible {
+        outline: 3px solid var(--color-brand-primary);
+        outline-offset: 2px;
+    }
     .chart-data table {
         border-collapse: collapse;
         margin-top: 0.5rem;
-        min-width: 16rem;
+        min-width: min(16rem, 100%);
         color: var(--color-text-primary);
     }
     .chart-data caption {
@@ -168,6 +179,11 @@ def data_table(
     """
     The numbers behind a chart as a table behind a native disclosure.
 
+    The table is in a region of its own, named by its caption, that scrolls
+    sideways if the table is ever wider than its card, rather than taking
+    the page with it (1.4.10); tabindex, so the keyboard can reach and
+    scroll it.
+
     The first column heads each row (th scope=row): a date, a name. Columns
     whose index is in `numeric` are set right and in figures of one width,
     so they line up. Everything is escaped: dates and names come from the
@@ -193,14 +209,29 @@ def data_table(
         for row in rows
     )
 
+    name = html.escape(caption, quote=True)
+
     return (
         '<details class="chart-data">'
         f"<summary>{html.escape(summary)}</summary>"
+        f'<div class="chart-scroll" role="region" tabindex="0" aria-label="{name}">'
         f"<table><caption>{html.escape(caption)}</caption>"
         f"<thead><tr>{head}</tr></thead>"
         f"<tbody>{body}</tbody></table>"
-        "</details>"
+        "</div></details>"
     )
+
+
+def days_so_far(per_day: dict, today: str) -> dict:
+    """
+    The days of a month under way that have come: up to `today` (as
+    "2026-11-04"), and any later day with minutes (the server that counts
+    may be in another time zone). The backend fills every day of the month
+    with a nought, the days to come too; they are no figures yet, so no
+    tooltip and no row in the table.
+    """
+
+    return {day: value for day, value in per_day.items() if str(day) <= today or (value and value > 0)}
 
 
 def phrased(text: str) -> str:
@@ -306,7 +337,10 @@ def summary_cards(cards: Sequence) -> None:
         for name, lines in cards:
             with ui.element("li"):
                 with ui.card().props("flat bordered").classes("stats-tile"):
-                    ui.label(name).classes("stats-tile-name")
+                    # A plain space: "November 2026" may break in a card,
+                    # which at a larger text size on a phone is narrower
+                    # than the name.
+                    ui.label(name.replace(NBSP, " ")).classes("stats-tile-name")
 
                     for line in lines:
                         ui.label(line).classes("stats-tile-meta")

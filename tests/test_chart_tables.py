@@ -77,7 +77,7 @@ class TestTheNumbersAreATable:
 
         assert table.startswith('<details class="chart-data"><summary>')
         assert "<summary>Show the minutes per day for this month as a table</summary>" in table
-        assert table.endswith("</table></details>")
+        assert table.endswith("</table></div></details>")
         # Shut until asked for: no "open".
         assert "<details open" not in table
 
@@ -97,6 +97,18 @@ class TestTheNumbersAreATable:
         assert "&lt;b&gt;x&lt;/b&gt;" in table
         assert "1 &amp; 2" in table
         assert "a &quot;c&quot; &lt;d&gt;" in table
+
+    def test_in_a_region_of_its_own_that_scrolls_not_the_page(self):
+        table = self.table(caption='a "c" <d>')
+
+        assert '<div class="chart-scroll" role="region" tabindex="0" aria-label="a &quot;c&quot; &lt;d&gt;"><table>' in table
+        styles = module.CHART_STYLES
+        scroll = styles[styles.index("    .chart-scroll {") :][:80]
+        assert "max-width: 100%;" in scroll and "overflow-x: auto;" in scroll
+        assert ".chart-scroll:focus-visible" in styles
+        # Its least width never more than the card has.
+        assert "min-width: min(16rem, 100%);" in styles
+        assert "min-width: 16rem;" not in styles
 
     def test_no_rows_is_still_a_table(self):
         table = self.table(rows=[])
@@ -142,6 +154,22 @@ class TestTheSentence:
 
         assert said == "57\u00a0minutes so\u00a0far. Busiest day: 3\u00a0Nov, 37\u00a0minutes."
         assert module.minutes_summary({}, so_far=True) == "Nothing has been transcribed so\u00a0far."
+
+    def test_the_days_to_come_are_no_figures_yet(self):
+        # The backend fills the whole month with noughts.
+        per_day = {"2026-11-01": 3, "2026-11-02": 0, "2026-11-03": 0, "2026-11-04": 0, "2026-11-05": 2}
+
+        assert module.days_so_far(per_day, "2026-11-03") == {
+            "2026-11-01": 3, "2026-11-02": 0, "2026-11-03": 0, "2026-11-05": 2,
+        }
+        assert module.days_so_far({}, "2026-11-03") == {}
+        assert module.days_so_far({"2026-11-04": None}, "2026-11-03") == {}
+
+    def test_the_page_leaves_the_days_to_come_out_of_tooltips_and_table(self):
+        stats = GROUPS[GROUPS.index("async def statistics") :]
+        assert "shown = days_so_far(minutes, today.isoformat()) if under_way else minutes" in stats
+        assert '"values": [shown.get(day) for day in days]' in stats
+        assert "rows=[(day, rounded(value, decimals)) for day, value in shown.items()]" in stats
 
     def test_the_page_says_so_far_for_this_month_only(self):
         assert "(per_day, this_month, this_name, True)" in GROUPS
@@ -351,7 +379,11 @@ class TestTheGroupStatisticsPage:
         assert "Number of users" not in stats and "Transcribed files in" not in stats
         # The page's own styles, shared with the Groups page.
         assert "list-style: none;" in styles
-        assert "grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));" in styles
+        # Never wider than the card, whatever the text size; the month's
+        # name may break inside the card.
+        assert "grid-template-columns: repeat(auto-fit, minmax(min(13rem, 100%), 1fr));" in styles
+        assert "minmax(13rem, 1fr)" not in styles
+        assert 'ui.label(name.replace(NBSP, " ")).classes("stats-tile-name")' in cards
         # The figures in the body size, the name a step above it.
         assert ".stats-tile-name {\n        font-size: 1.125rem;" in styles
         assert ".stats-tile-meta {\n        font-size: 1rem;" in styles
