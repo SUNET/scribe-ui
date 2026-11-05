@@ -1427,10 +1427,11 @@ theme_styles = """
         width: 1.25rem;
         text-align: center;
     }
-    /* The month cards wide enough for "73845 minutes via Sunet Scribe" on
-       one line, so the customer's card takes its three columns only from
-       64rem; under that the details and the months share the left column,
-       the months side by side where two fit. */
+    /* The month cards wide enough for "73845 minutes via" and the service's
+       name (SERVICE_NAME, by default two words) on one line, so the
+       customer's card takes its three columns only from 64rem; under that
+       the details and the months share the left column, the months side by
+       side where two fit. */
     .customer-card .stats-tiles {
         grid-template-columns: repeat(auto-fit, minmax(min(17.5rem, 100%), 1fr));
     }
