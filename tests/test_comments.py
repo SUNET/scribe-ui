@@ -756,7 +756,7 @@ class TestRtfExport:
             r"{\*\atrfstart 0}{\highlight1 fyra}{\*\atrfend 0}" in rtf
         )
         # The rest of the highlighted passage carries on after the comment.
-        assert r"{\highlight1  }{\highlight1\cf2\ul fem}" in rtf
+        assert r"{\highlight1  }{\highlight1\cs11\cf2\ul fem}" in rtf
 
     def test_a_comment_in_the_middle_of_one_marked_stretch_cuts_it_in_two(self, editor):
         second = editor.captions[1]
@@ -784,7 +784,13 @@ class TestRtfExport:
             stripped,
         )
 
-        assert stripped == self.export(editor)
+        # The key at the top is about the comments; the transcript is not.
+        def body(rtf):
+            return re.split(
+                r"\\pard(?:\\plain\\s0)?\\f0\\fs20(?:\\lang\d+)?(?:\\sb200)? ", rtf, maxsplit=1
+            )[1]
+
+        assert body(stripped) == body(self.export(editor))
 
     def test_the_date_is_the_one_rtf_keeps_dates_in(self):
         # Sunday 18 October 2026, 08:21.

@@ -86,6 +86,9 @@ def create() -> None:
         hidden_page_heading(title)
 
         editor = SRTEditor(uuid, data_format, filename)
+        # What the recording was transcribed in, for the RTF export to mark
+        # the text with.
+        editor.language = language
         editor.setup_beforeunload_warning()
 
         ui.add_head_html(

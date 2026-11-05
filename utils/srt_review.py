@@ -373,24 +373,26 @@ class ReviewMixin:
         return self.words_in_range(floor, ceiling)
 
 
-    def review_threshold(self) -> float:
+    def review_threshold(self, sensitivity: Optional[str] = None) -> float:
         """
-        Confidence below which a word is flagged, for the current sensitivity.
+        Confidence below which a word is flagged, for the current sensitivity
+        -- or for the one given, which is how an export asks for a level of
+        its own without touching the editor's.
         """
 
         return {
             "low": settings.REVIEW_SENSITIVITY_LOW,
             "medium": settings.REVIEW_SENSITIVITY_MEDIUM,
             "high": settings.REVIEW_SENSITIVITY_HIGH,
-        }.get(self.review_sensitivity, settings.REVIEW_SENSITIVITY_LOW)
+        }.get(sensitivity or self.review_sensitivity, settings.REVIEW_SENSITIVITY_LOW)
 
 
-    def is_flagged(self, score: Optional[float]) -> bool:
+    def is_flagged(self, score: Optional[float], sensitivity: Optional[str] = None) -> bool:
         """
         Whether a word scoring this low is worth a second look.
         """
 
-        return score is not None and score < self.review_threshold()
+        return score is not None and score < self.review_threshold(sensitivity)
 
 
     @staticmethod
@@ -545,11 +547,22 @@ class ReviewMixin:
         return carried
 
     def marked_spans(
-        self, caption: SRTCaption, highlights: bool, edits: bool
+        self,
+        caption: SRTCaption,
+        highlights: bool,
+        edits: bool,
+        uncertain: Optional[str] = None,
     ) -> list:
         """
-        A caption's text as (text, highlighted, edited) pieces, for a format
-        that draws the marks itself -- the RTF export.
+        A caption's text as (text, highlighted, edited, uncertain) pieces, for
+        a format that draws the marks itself -- the RTF export.
+
+        `uncertain` is a sensitivity ("low", "medium", "high") or None for
+        none: a word is uncertain at it as the editor would flag it there. A
+        word the reader changed is never uncertain -- the doubt was about the
+        word that was transcribed, and that is not the word any more -- the
+        same as in the editor, where a changed word no longer aligns with the
+        word that carried the score.
 
         Not the editor's own runs (review_runs): those follow the switches
         under the video, while an export is told what to carry. A piece's
@@ -573,6 +586,16 @@ class ReviewMixin:
             else:
                 positions.append(None)
 
+        aligned = self.aligned_words(caption) if uncertain else []
+
+        def doubtful(word: int) -> bool:
+            if not uncertain or word >= len(aligned) or self.token_is_edit(caption, word):
+                return False
+
+            found = aligned[word]
+
+            return bool(found) and "c" in found and self.is_flagged(found["c"], uncertain)
+
         def flags(at: int) -> tuple:
             word = positions[at]
 
@@ -580,13 +603,16 @@ class ReviewMixin:
                 return (
                     highlights and self.token_is_highlight(caption, word),
                     edits and self.token_is_edit(caption, word),
+                    doubtful(word),
                 )
 
             before = positions[at - 1] if at > 0 else None
             after = positions[at + 1] if at + 1 < len(tokens) else None
 
+            # The space between two uncertain words is not uncertain: the
+            # doubt is word by word, and the dotted line has its gaps.
             if before is None or after is None or "\n" in tokens[at]:
-                return (False, False)
+                return (False, False, False)
 
             return (
                 highlights
@@ -595,17 +621,18 @@ class ReviewMixin:
                 edits
                 and self.token_is_edit(caption, before)
                 and self.token_is_edit(caption, after),
+                False,
             )
 
         pieces: list = []
 
         for at, token in enumerate(tokens):
-            highlighted, edited = flags(at)
+            marks = flags(at)
 
-            if pieces and pieces[-1][1:] == (highlighted, edited):
-                pieces[-1] = (pieces[-1][0] + token, highlighted, edited)
+            if pieces and pieces[-1][1:] == marks:
+                pieces[-1] = (pieces[-1][0] + token, *marks)
             else:
-                pieces.append((token, highlighted, edited))
+                pieces.append((token, *marks))
 
         return pieces
 
