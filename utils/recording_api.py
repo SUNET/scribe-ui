@@ -420,7 +420,7 @@ async def recording_original(job_id: str) -> Response:
         response = await client.send(request, stream=True)
     except httpx.HTTPError:
         await client.aclose()
-        return Response("Scribe is not answering right now.", status_code=503)
+        return Response(f"{settings.SERVICE_NAME} is not answering right now.", status_code=503)
 
     if response.status_code != 200:
         status = response.status_code

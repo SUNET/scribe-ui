@@ -530,7 +530,7 @@ test("a part the backend lost after the device let it go is reported, not looped
 
   const shown = later.engine.list().find((r) => r.id === id);
   assert.equal(shown.sync.phase, "error");
-  assert.match(shown.error, /lost on Scribe/);
+  assert.match(shown.error, /lost on Sunet Scribe/);
   assert.equal(ctx.server.finishes, 0);
 });
 
@@ -928,4 +928,18 @@ test("finished from another device while this one held more: what is here is kep
 
 test("a default name says when it was recorded", () => {
   assert.equal(Recorder.defaultName(new Date(2026, 8, 24, 9, 5)), "Recording 2026-09-24 09.05");
+});
+
+test("the engine names the service as the page tells it to, Sunet Scribe by default", () => {
+  assert.equal(Recorder.SERVICE_NAME, "Sunet Scribe");
+
+  const file = path.join(__dirname, "..", "..", "static", "recorder_engine.js");
+  globalThis.SCRIBE_SERVICE_NAME = "NORDUnet S2T";
+  delete require.cache[require.resolve(file)];
+  try {
+    assert.equal(require(file).SERVICE_NAME, "NORDUnet S2T");
+  } finally {
+    delete globalThis.SCRIBE_SERVICE_NAME;
+    delete require.cache[require.resolve(file)];
+  }
 });

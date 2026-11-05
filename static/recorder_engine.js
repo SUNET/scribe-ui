@@ -57,15 +57,20 @@
 // recovery logic is tested without a browser (tests/js/recorder_engine.test.js).
 
 (function (root, factory) {
-  const api = factory();
+  const api = factory(root);
 
   if (typeof module === "object" && module.exports) {
     module.exports = api;
   } else {
     root.ScribeRecorder = api;
   }
-})(typeof window !== "undefined" ? window : globalThis, function () {
+})(typeof window !== "undefined" ? window : globalThis, function (root) {
   "use strict";
+
+  // What the service is called in what the engine tells the reader, set by
+  // the page from the settings (utils/recorder.py, engine_script) -- never
+  // written into the messages themselves.
+  const SERVICE_NAME = (root && root.SCRIBE_SERVICE_NAME) || "Sunet Scribe";
 
   // One chunk a second: what a crash can cost at most.
   const CHUNK_MS = 1000;
@@ -397,7 +402,7 @@
             const answer = await api("GET", "/key");
             raw = Uint8Array.from(atob(String(answer.key || "")), (c) => c.charCodeAt(0));
           }
-          if (!raw || raw.length !== 32) throw new SyncError("unavailable", "Scribe did not hand over a key.");
+          if (!raw || raw.length !== 32) throw new SyncError("unavailable", SERVICE_NAME + " did not hand over a key.");
           return subtle.importKey("raw", raw, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
         })();
         keyPromise.catch(() => {
@@ -581,7 +586,7 @@
           headers: Object.assign({ "X-Scribe-Recording": "1" }, headers || {}),
         });
       } catch (e) {
-        throw new SyncError("offline", "No connection to Scribe.");
+        throw new SyncError("offline", "No connection to " + SERVICE_NAME + ".");
       }
 
       if (response.ok || response.status === 409) {
@@ -593,7 +598,7 @@
       }
 
       if (response.status === 401) {
-        throw new SyncError("auth", "Signed out of Scribe.");
+        throw new SyncError("auth", "Signed out of " + SERVICE_NAME + ".");
       }
 
       if (response.status === 400 || response.status === 413 || response.status === 422) {
@@ -604,14 +609,14 @@
           /* the status says enough */
         }
         if (detail === "already finished") throw finishedElsewhere();
-        throw new SyncError("refused", detail || "Scribe refused the recording.");
+        throw new SyncError("refused", detail || SERVICE_NAME + " refused the recording.");
       }
 
       // The status is in the message on purpose: "not answering" covers a
       // backend that is down (503) and a proxy sending these routes
       // somewhere they do not exist (404), and the two are fixed by
       // different people.
-      throw new SyncError("unavailable", "Scribe is not answering right now (" + response.status + ").");
+      throw new SyncError("unavailable", SERVICE_NAME + " is not answering right now (" + response.status + ").");
     }
 
     const finishedElsewhere = () =>
@@ -657,7 +662,7 @@
       "/" + meta.id + "/part/" + part + (meta.mime ? "?type=" + encodeURIComponent(meta.mime) : "");
 
     const lostPart = () =>
-      new SyncError("refused", "Part of this recording was lost on Scribe before it was finished.");
+      new SyncError("refused", "Part of this recording was lost on " + SERVICE_NAME + " before it was finished.");
 
     // One attempt at moving a recording on: send what the server lacks and,
     // if the reader has asked for it, finish.  Throws a SyncError to say why
@@ -759,10 +764,10 @@
           continue;
         }
 
-        throw new SyncError("unavailable", "Scribe gave an unexpected answer.");
+        throw new SyncError("unavailable", SERVICE_NAME + " gave an unexpected answer.");
       }
 
-      throw new SyncError("unavailable", "Scribe keeps losing parts of the recording.");
+      throw new SyncError("unavailable", SERVICE_NAME + " keeps losing parts of the recording.");
     }
 
     // Single flight per recording: a kick while one is running is folded
@@ -1599,7 +1604,7 @@
         "Content-Type": "application/json",
       });
       if (!answer || !answer.done) {
-        throw new SyncError("unavailable", "Scribe gave an unexpected answer.");
+        throw new SyncError("unavailable", SERVICE_NAME + " gave an unexpected answer.");
       }
       onScribe = onScribe.filter((item) => item.id !== id);
       emit();
@@ -1731,5 +1736,6 @@
     memoryStore: memoryStore,
     defaultName: defaultName,
     engine: engine,
+    SERVICE_NAME: SERVICE_NAME,
   };
 });

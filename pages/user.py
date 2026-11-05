@@ -106,9 +106,9 @@ async def draw_drive_section(section: ui.element) -> None:
         state.set_text("Signed in" if connected else "Not signed in")
         state.classes(add="is-on") if connected else state.classes(remove="is-on")
         hint.set_text(
-            f"Logging out also removes Scribe's access in {name}."
+            f"Logging out also removes {settings.SERVICE_NAME}'s access in {name}."
             if connected
-            else "Scribe asks you to sign in the first time you get or save a file."
+            else f"{settings.SERVICE_NAME} asks you to sign in the first time you get or save a file."
         )
         logout.set_visibility(connected)
 
@@ -129,7 +129,7 @@ def show_user_token() -> None:
         # As wide as it was on a wide screen, the screen's width on a phone.
         with ui.card().classes("user-token-card"):
             ui.label("API token").classes("text-2xl font-bold").props("role=heading aria-level=2")
-            ui.label("Used to authenticate requests to the Scribe API.").classes(
+            ui.label(f"Used to authenticate requests to the {settings.SERVICE_NAME} API.").classes(
                 "my-4"
             )
             token = app.storage.user.get("token", "No token found.")
@@ -199,7 +199,7 @@ def create() -> None:
                 # Account, Theme, Sunet Drive, then Email notifications.
                 with ui.element("div").classes("settings-column"):
                     # ── Account ──
-                    with card("account_circle", "Account", "Who you are signed in as, and your use of Scribe.").classes(
+                    with card("account_circle", "Account", f"Who you are signed in as, and your use of {settings.SERVICE_NAME}.").classes(
                         "settings-account"
                     ):
                         with ui.element("div").classes("settings-identity"):
@@ -225,7 +225,7 @@ def create() -> None:
                         with ui.element("div").classes("settings-row"):
                             with ui.element("div").classes("settings-row-text"):
                                 ui.label("API token").classes("settings-row-title")
-                                ui.label("Used to authenticate requests to the Scribe API.").classes(
+                                ui.label(f"Used to authenticate requests to the {settings.SERVICE_NAME} API.").classes(
                                     "settings-row-summary"
                                 )
 
@@ -234,7 +234,7 @@ def create() -> None:
                             ).classes("button-close settings-button")
 
                     # ── Theme ──
-                    with card("palette", "Theme", "How Scribe looks on this and your other devices.").classes(
+                    with card("palette", "Theme", f"How {settings.SERVICE_NAME} looks on this and your other devices.").classes(
                         "settings-theme-card"
                     ):
                         # Current value: True -> "on", False -> "off", None -> "auto"
@@ -323,7 +323,7 @@ def create() -> None:
 
                 with ui.element("div").classes("settings-column"):
                     # ── Email notifications ──
-                    with card("notifications", "Email notifications", "What Scribe emails you about, and where.").classes(
+                    with card("notifications", "Email notifications", f"What {settings.SERVICE_NAME} emails you about, and where.").classes(
                         "settings-notifications"
                     ):
                         with ui.element("div").classes("settings-email"):

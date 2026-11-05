@@ -98,7 +98,7 @@ def show_help_dialog() -> None:
                 with ui.card().classes("help-about-card border-l-4").style(
                     "padding: 20px;"
                 ):
-                    ui.label("About Sunet Scribe").classes("text-h6 font-semibold mb-2")
+                    ui.label(f"About {settings.SERVICE_NAME}").classes("text-h6 font-semibold mb-2")
                     ui.label(
                         "Turn audio and video into searchable text or subtitles. Built for research and education, with privacy and accuracy at its core."
                     ).classes("text-body1")

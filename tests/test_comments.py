@@ -715,7 +715,7 @@ class TestRtfExport:
         rtf = self.export(editor, comments=True)
 
         assert r"ett {\*\atrfstart 0}tv\u229?{\*\atrfend 0}" in rtf
-        assert r"{\*\atnauthor Scribe}\chatn{\*\annotation{\*\atnref 0}" in rtf
+        assert r"{\*\atnauthor Sunet Scribe}\chatn{\*\annotation{\*\atnref 0}" in rtf
         assert r"\pard\plain\f0\fs20 check this}" in rtf
 
     def test_the_text_between_the_markers_is_the_words(self, editor):

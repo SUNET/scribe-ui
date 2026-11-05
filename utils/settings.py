@@ -55,6 +55,12 @@ class Settings(BaseSettings):
     FAVICON: str = "favicon.ico"
     TAB_TITLE: str = "Sunet Scribe"
     TOPBAR_TEXT: str = "Sunet Scribe"
+    # What the service is called wherever the interface or an export names
+    # it ("Back to Sunet Scribe", "No connection to Sunet Scribe.", the
+    # author of an exported document's comments): elsewhere in the Nordics
+    # it may be called something else ("NORDUnet S2T"). Never write the
+    # name into the code -- tests/test_service_name.py looks for it.
+    SERVICE_NAME: str = "Sunet Scribe"
     LANDING_TEXT: str = "Welcome to Sunet Scribe"
     MANUAL_URL: str = "https://sunet.box.com/s/la16r5iu3gkm5n149mzmth9yiaulx3ub"
 

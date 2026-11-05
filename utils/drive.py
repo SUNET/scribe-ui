@@ -73,7 +73,7 @@ async def _call(method: str, path: str, timeout=TIMEOUT, **kwargs) -> DriveResul
             )
     except httpx.HTTPError:
         return DriveResult(
-            False, error="Scribe could not be reached. Try again.", reason="unavailable"
+            False, error=f"{settings.SERVICE_NAME} could not be reached. Try again.", reason="unavailable"
         )
 
     return _answer(response)

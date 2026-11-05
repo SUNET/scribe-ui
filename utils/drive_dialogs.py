@@ -46,6 +46,9 @@ from utils.drive import (
     drive_save_original,
     drive_status,
 )
+from utils.settings import get_settings
+
+settings = get_settings()
 
 POLL_SECONDS = 2.0
 # Files one Get from Drive brings in. Each is its own transfer and its own
@@ -153,10 +156,10 @@ async def ensure_connected(status: dict) -> bool:
         ui.label(f"Connect to {name}").classes("text-h6")
         ui.label(
             f"{name} opens in a new tab. Sign in there if asked, and grant "
-            "Scribe access. Then come back to this tab."
+            f"{settings.SERVICE_NAME} access. Then come back to this tab."
         ).classes("text-body2")
         ui.label(
-            f"Scribe will see the files you can see in {name}, and only while "
+            f"{settings.SERVICE_NAME} will see the files you can see in {name}, and only while "
             "you use it: access ends after an hour without use, or when you "
             "log out of it under User settings."
         ).classes("text-body2 text-theme-muted")
