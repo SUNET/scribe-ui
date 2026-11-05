@@ -1109,50 +1109,6 @@ class TestCreatingACaptionAtThePlayhead:
         assert '"createatplayhead"' in source.split("emits:")[1].split("\n")[0]
 
 
-class TestTheOverlayFollowsTheControlBar:
-    """
-    A browser offers no signal for whether the player's own control bar is
-    up, so the page follows the same rules the browser draws it by: up while
-    the recording is paused, and while the pointer has moved over the frame
-    within the last few seconds.
-    """
-
-    def page(self) -> str:
-        return pathlib.Path("pages/srt.py").read_text()
-
-    def test_pausing_puts_the_bar_up(self):
-        page = self.page()
-
-        assert 'video.addEventListener("pause", show)' in page
-
-    def test_the_pointer_keeps_it_up_for_a_while(self):
-        page = self.page()
-
-        assert 'frame.addEventListener("mousemove", stir)' in page
-        assert "idle = setTimeout(hide, HIDE_AFTER)" in page
-
-    def test_it_never_hides_the_bar_while_paused(self):
-        """
-        The browser does not either, however long the pointer sits still.
-        """
-
-        page = self.page()
-        hide = page[page.index("const hide = () => {"):]
-        hide = hide[: hide.index("};")]
-
-        assert "if (video.paused) return;" in hide
-
-    def test_it_waits_for_the_player_to_exist(self):
-        """
-        The script arrives before NiceGUI has drawn the video element.
-        """
-
-        page = self.page()
-
-        assert "setInterval" in page
-        assert "clearInterval(waiting)" in page
-
-
 class TestDockingTheStrip:
     """
     The strip can be dragged to the foot of the page, where it spans the
@@ -2095,6 +2051,39 @@ class TestTheTrayFollowsThePlayhead:
         wrap = wrap[: wrap.index("}")]
 
         assert "container-type: inline-size;" in wrap
+
+    def test_the_strip_asks_for_the_width_it_is_a_container_of(self):
+        from utils.styles import theme_styles
+
+        wrap = theme_styles[theme_styles.index("    .speech-timeline-wrap {"):]
+        wrap = wrap[: wrap.index("}")]
+
+        # Containment on the inline axis means the wrap's own content cannot
+        # give it a width. In a flex column that aligns to the start (the
+        # editor's) nothing else does either, and it was 0 wide.
+        #
+        # Whole lines: "max-width: 100%;" holds the text "width: 100%;" too,
+        # and the test would pass without the declaration.
+        assert "width: 100%;" in {line.strip() for line in wrap.splitlines()}
+
+    def test_docked_the_strip_takes_its_width_from_its_two_insets(self):
+        from utils.styles import theme_styles
+
+        docked = theme_styles[
+            theme_styles.index("    .speech-timeline-wrap.speech-timeline-docked {"):
+        ]
+        docked = docked[: docked.index("}")]
+
+        # A fixed element with left, right and a width takes the width and
+        # ignores right: it ran off the right edge by the rail's width.
+        assert "width: auto;" in {line.strip() for line in docked.splitlines()}
+
+    def test_the_docked_rule_comes_after_the_wrap_rule_it_overrides(self):
+        from utils.styles import theme_styles
+
+        assert theme_styles.index(
+            "    .speech-timeline-wrap {"
+        ) < theme_styles.index("    .speech-timeline-wrap.speech-timeline-docked {")
 
     def test_the_middle_column_is_the_strips_own_centre(self):
         rules = self.legend_rules()
