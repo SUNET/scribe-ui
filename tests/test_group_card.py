@@ -147,3 +147,41 @@ class TestTheLayout:
 class TestNoReloadWithoutCharts:
     def test_the_groups_and_edit_pages_do_not_reload_on_a_theme_change(self):
         assert "reload_on_theme_change" not in GROUPS
+
+
+EDIT = GROUPS[GROUPS.index("async def edit_group") : GROUPS.index('@ui.page("/admin/stats/{group_id}")')]
+
+
+class TestTheEditPage:
+    def test_the_fields_full_width_one_under_another_on_a_narrow_card(self):
+        assert "grid-template-columns: minmax(0, 1fr);" in rule(".edit-group-fields")
+        assert "container-type: inline-size;" in rule(".edit-group-card")
+        wide = STYLES[STYLES.index("@container (min-width: 40rem)") :][:300]
+        assert "grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);" in wide
+        assert "grid-column: 1 / -1;" in wide
+        assert "w-1/3" not in EDIT and "w-1/2" not in EDIT
+
+    def test_the_description_is_a_growing_textarea(self):
+        assert 'ui.textarea("Group description", value=group["description"])' in EDIT
+        assert '.props("outlined autogrow")' in EDIT
+
+    def test_the_limits_label_fits_and_says_what_0_is(self):
+        assert '"Monthly limit in minutes (0 = unlimited)"' in EDIT
+
+    def test_headings_for_the_two_parts(self):
+        assert 'ui.label("Group details").classes("text-xl font-semibold").props("role=heading aria-level=2")' in EDIT
+        assert 'ui.label("Members").classes("text-xl font-semibold mt-4").props("role=heading aria-level=2")' in EDIT
+        assert "Select users to be included in group:" not in EDIT
+
+    def test_the_members_table_has_no_height_of_its_own(self):
+        assert "calc(100vh - 550px" not in EDIT
+
+    def test_the_actions_share_a_phones_width(self):
+        phone = STYLES[STYLES.index("    /* On a phone the two actions share the width, side by side. */") :][:300]
+        assert "flex: 1 1 0;" in phone and "width: 100%;" in phone
+        assert "min-height: 44px;" in rule(".edit-group-actions .q-btn")
+        assert 'style("width: 150px")' not in EDIT
+
+    def test_the_members_table_fits_a_narrow_card(self):
+        narrow = STYLES[STYLES.index("    @container (max-width: 36rem) {\n        .edit-group-members") :][:500]
+        assert "white-space: normal;" in narrow and "overflow-wrap: anywhere;" in narrow

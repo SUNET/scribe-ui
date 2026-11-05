@@ -59,7 +59,7 @@ def create_group_dialog(page: callable) -> None:
             )
             quota = (
                 ui.input(
-                    "Monthly transcription limit (minutes, 0 = unlimited)", value=0
+                    "Monthly limit in minutes (0 = unlimited)", value=0
                 )
                 .classes("w-full")
                 .props("outlined type=number min=0")
@@ -75,7 +75,7 @@ def create_group_dialog(page: callable) -> None:
                     quota_seconds = int(quota.value) * 60 if quota.value else 0
                 except ValueError:
                     quota.props(
-                        'error error-message="Monthly transcription limit '
+                        'error error-message="Monthly limit '
                         'must be a whole number of minutes."'
                     )
                     quota.run_method("focus")
@@ -218,11 +218,14 @@ async def edit_group(group_id: str) -> None:
         ui.label(f"Error fetching group: {e}").classes("text-lg").style("color: var(--color-text-danger);")
         return
 
-    with ui.row().style(
-        "justify-content: space-between; align-items: center; width: 100%;"
-    ):
-        ui.label(f"Edit group: {group['name']}").classes("text-3xl font-bold").props("role=heading aria-level=1")
-        with ui.element("div").style("display: flex; gap: 8px;"):
+    # The title and the actions, wrapping on a phone; the fields in a card
+    # whose own width lays them out (utils/styles.py, .edit-group-*).
+    with ui.element("div").classes("edit-group-header"):
+        ui.label(f"Edit group: {group['name']}").classes("text-3xl font-bold edit-group-title").props(
+            "role=heading aria-level=1"
+        )
+
+        with ui.element("div").classes("edit-group-actions"):
             def do_save() -> None:
                 # save_group's own int(quota_seconds) has the same unshown
                 # ValueError as create_group_dialog's copy above -- see its
@@ -234,7 +237,7 @@ async def edit_group(group_id: str) -> None:
                     int(quota.value) if quota.value else 0
                 except ValueError:
                     quota.props(
-                        'error error-message="Monthly transcription limit '
+                        'error error-message="Monthly limit '
                         'must be a whole number of minutes."'
                     )
                     quota.run_method("focus")
@@ -251,35 +254,38 @@ async def edit_group(group_id: str) -> None:
 
             ui.button("Save group").classes("default-style").props(
                 "color=black flat"
-            ).style("width: 150px").on("click", do_save)
+            ).on("click", do_save)
             ui.button("Cancel").classes("delete-style").props("color=black flat").on(
                 "click", lambda: ui.navigate.to("/admin")
             )
 
-    with ui.card().style("width: 100%; box-shadow: none; align-self: center;"):
-        with ui.row().classes("gap-4 w-full"):
+    with ui.card().classes("edit-group-card admin-card"):
+        ui.label("Group details").classes("text-xl font-semibold").props("role=heading aria-level=2")
+
+        with ui.element("div").classes("edit-group-fields"):
             name_input = (
                 ui.input("Group name", value=group["name"])
                 .props("outlined")
-                .classes("w-1/3")
-            )
-            description_input = (
-                ui.input("Group description", value=group["description"])
-                .props("outlined")
-                .classes("w-1/2")
+                .classes("edit-group-name")
             )
             quota = (
                 ui.input(
-                    "Monthly transcription limit (minutes, 0 = unlimited)",
+                    "Monthly limit in minutes (0 = unlimited)",
                     value=group["quota_seconds"] // 60,
                 )
                 .props("outlined type=number min=0")
-                .classes("w-1/2")
+                .classes("edit-group-quota")
+            )
+            # A textarea that grows: a description can be long, and a
+            # one-line field showed a few words of it.
+            description_input = (
+                ui.textarea("Group description", value=group["description"])
+                .props("outlined autogrow")
+                .classes("edit-group-description")
             )
 
-        ui.label("Select users to be included in group:").classes(
-            "text-xl font-semibold mt-4 mb-2"
-        )
+        ui.label("Members").classes("text-xl font-semibold mt-4").props("role=heading aria-level=2")
+        ui.label("Select the users who are in this group.").classes("text-theme-secondary")
 
         users_table = ui.table(
             columns=[
@@ -309,8 +315,10 @@ async def edit_group(group_id: str) -> None:
             selection="multiple",
             pagination=20,
             on_select=lambda e: None,
-        ).style(
-            "width: 100%; box-shadow: none; font-size: 18px; height: calc(100vh - 550px - var(--banner-offset, 0px));"
+        ).classes("edit-group-members").style(
+            # No height of its own: one worked out from the window left most
+            # of a phone empty below two rows.
+            "width: 100%; box-shadow: none;"
         )
 
         # Quasar generates selection checkboxes from selection="multiple"

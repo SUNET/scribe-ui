@@ -1391,6 +1391,79 @@ theme_styles = """
         }
     }
 
+    /* ── Admin: edit group ── */
+    .edit-group-header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        width: 100%;
+    }
+    .edit-group-title {
+        overflow-wrap: anywhere;
+    }
+    .edit-group-actions {
+        display: flex;
+        gap: 0.5rem;
+    }
+    .edit-group-actions .q-btn {
+        min-width: 9rem;
+        min-height: 44px;
+    }
+    /* On a phone the two actions share the width, side by side. */
+    @media (max-width: 600px) {
+        .edit-group-actions {
+            width: 100%;
+        }
+        .edit-group-actions .q-btn {
+            flex: 1 1 0;
+            min-width: 0;
+        }
+    }
+    .edit-group-card {
+        width: 100%;
+        box-shadow: none;
+        border: 1px solid var(--color-border-subtle);
+        padding: 1rem;
+        container-type: inline-size;
+        gap: 0.5rem;
+    }
+    /* One field under another on a narrow card; on a wide one the name and
+       the limit side by side, the description under them, full width. */
+    .edit-group-fields {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 1rem;
+        width: 100%;
+    }
+    @container (min-width: 40rem) {
+        .edit-group-fields {
+            grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+        }
+        .edit-group-description {
+            grid-column: 1 / -1;
+        }
+    }
+    .edit-group-members {
+        width: 100%;
+    }
+    /* On a narrow card the members' table fits instead of scrolling
+       sideways: closer cells, and a long user name wraps. */
+    @container (max-width: 36rem) {
+        .edit-group-members .q-table th,
+        .edit-group-members .q-table td {
+            padding: 0.5rem 0.375rem;
+            white-space: normal;
+            overflow-wrap: anywhere;
+        }
+        .edit-group-members .q-table th:first-child,
+        .edit-group-members .q-table td:first-child {
+            padding-left: 0;
+            width: 2.5rem;
+        }
+    }
+
     /* ── Admin: stats page ── */
     .stats-container {
         max-width: 1500px;
