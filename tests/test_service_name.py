@@ -123,3 +123,52 @@ def test_the_job_tables_badge_escapes_the_name():
     assert 'SERVICE_NAME_ATTRIBUTE = html.escape(get_settings().SERVICE_NAME, quote=True)' in home
     assert home.count('aria-label="Recorded in __SERVICE_NAME__"') == 2
     assert home.count('.replace("__SERVICE_NAME__", SERVICE_NAME_ATTRIBUTE)') == 2
+
+
+def test_a_short_form_for_running_text_the_full_name_without_one(monkeypatch):
+    from utils import settings as module
+
+    assert module.Settings.model_fields["SERVICE_SHORT_NAME"].default == "Scribe"
+
+    current = module.get_settings()
+    monkeypatch.setattr(current, "SERVICE_SHORT_NAME", "")
+    assert module.short_service_name() == current.SERVICE_NAME
+    monkeypatch.setattr(current, "SERVICE_SHORT_NAME", "  Scribe ")
+    assert module.short_service_name() == "Scribe"
+
+
+def test_the_short_form_only_in_running_text():
+    # Headings, names for screen readers, the presenting pages, exports,
+    # and beside another service: the full name.
+    for path, full in (
+        ("utils/common.py", 'f"About {settings.SERVICE_NAME}"'),
+        ("pages/cookies.py", 'f"← Back to {settings.SERVICE_NAME}"'),
+        ("utils/cookies.py", 'f"{get_settings().SERVICE_NAME} (first-party)"'),
+        ("utils/srt_export.py", "RTF_COMMENT_AUTHOR = settings.SERVICE_NAME"),
+        ("pages/home.py", "html.escape(get_settings().SERVICE_NAME, quote=True)"),
+        ("utils/drive_dialogs.py", 'f"{settings.SERVICE_NAME} access. Then come back to this tab."'),
+        ("utils/customer.py", "via {settings.SERVICE_NAME}"),
+    ):
+        assert full in (ROOT / path).read_text(), path
+
+    # Running text: the short form.
+    user = (ROOT / "pages" / "user.py").read_text()
+    assert "{settings.SERVICE_NAME}" not in user and user.count("{short_service_name()}") == 7
+    assert 'f"{short_service_name()} will see the files you can see in {name}' in (ROOT / "utils" / "drive_dialogs.py").read_text()
+
+    recorder = (ROOT / "utils" / "recorder.js").read_text()
+    assert "Unfinished recordings on {{ serviceName }}</h2>" in recorder
+    assert recorder.count("{{ serviceName }}") == 1
+    assert recorder.count("{{ serviceShortName }}") == 21
+    assert "SERVICE_NAME + " not in recorder and "+ SERVICE_NAME;" not in recorder
+
+    engine = (ROOT / "static" / "recorder_engine.js").read_text()
+    assert "const SERVICE_SHORT_NAME = (root && root.SCRIBE_SERVICE_SHORT_NAME) || SERVICE_NAME;" in engine
+    assert "SERVICE_NAME + " not in engine
+
+
+def test_the_page_tells_the_recorder_both_names():
+    recorder = (ROOT / "utils" / "recorder.py").read_text()
+
+    assert "window.SCRIBE_SERVICE_SHORT_NAME = {short};" in recorder
+    assert 'json.dumps(short_service_name()).replace("<", "\\\\u003c")' in recorder

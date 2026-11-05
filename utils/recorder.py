@@ -40,7 +40,7 @@ import pathlib
 from nicegui import app, ui
 
 from utils.recording_api import recording_owner
-from utils.settings import get_settings
+from utils.settings import get_settings, short_service_name
 from utils.token import get_user_info
 
 ENGINE_PATH = pathlib.Path(__file__).resolve().parent.parent / "static" / "recorder_engine.js"
@@ -66,8 +66,9 @@ def engine_script() -> None:
     # The service's name first, for the engine's messages (and through it
     # the recorder's); JSON with "<" escaped, so a name cannot end the script.
     name = json.dumps(get_settings().SERVICE_NAME).replace("<", "\\u003c")
+    short = json.dumps(short_service_name()).replace("<", "\\u003c")
     ui.add_head_html(
-        f"<script>window.SCRIBE_SERVICE_NAME = {name};</script>"
+        f"<script>window.SCRIBE_SERVICE_NAME = {name}; window.SCRIBE_SERVICE_SHORT_NAME = {short};</script>"
         f'<script src="{ENGINE_URL}?v={ENGINE_VERSION}"></script>'
     )
 

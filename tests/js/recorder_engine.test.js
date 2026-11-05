@@ -943,3 +943,21 @@ test("the engine names the service as the page tells it to, Sunet Scribe by defa
     delete require.cache[require.resolve(file)];
   }
 });
+
+test("the engine's messages use the short form, the full name without one", () => {
+  assert.equal(Recorder.SERVICE_SHORT_NAME, Recorder.SERVICE_NAME);
+
+  const file = path.join(__dirname, "..", "..", "static", "recorder_engine.js");
+  globalThis.SCRIBE_SERVICE_NAME = "Sunet Scribe";
+  globalThis.SCRIBE_SERVICE_SHORT_NAME = "Scribe";
+  delete require.cache[require.resolve(file)];
+  try {
+    const engine = require(file);
+    assert.equal(engine.SERVICE_NAME, "Sunet Scribe");
+    assert.equal(engine.SERVICE_SHORT_NAME, "Scribe");
+  } finally {
+    delete globalThis.SCRIBE_SERVICE_NAME;
+    delete globalThis.SCRIBE_SERVICE_SHORT_NAME;
+    delete require.cache[require.resolve(file)];
+  }
+});

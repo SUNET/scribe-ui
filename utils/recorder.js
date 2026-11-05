@@ -43,6 +43,9 @@
 // by way of the engine (static/recorder_engine.js), which the page loads
 // first.
 const SERVICE_NAME = (window.ScribeRecorder && window.ScribeRecorder.SERVICE_NAME) || "Sunet Scribe";
+// Its familiar short form, for the statuses and the help, or the full name;
+// headings keep the full one.
+const SERVICE_SHORT_NAME = (window.ScribeRecorder && window.ScribeRecorder.SERVICE_SHORT_NAME) || SERVICE_NAME;
 
 const METER_MS = 100;
 // Which microphone was chosen last, remembered per browser.
@@ -93,7 +96,7 @@ const FAILURES = {
   TrackStartError: "The microphone is being used by another app.",
   InsecureContext: "Recording needs an https connection.",
   NotSupported: "This browser cannot record audio. Try an up-to-date Chrome, Edge, Firefox or Safari.",
-  NoKey: SERVICE_NAME + " could not be reached to start recording. Check the connection and try again.",
+  NoKey: SERVICE_SHORT_NAME + " could not be reached to start recording. Check the connection and try again.",
 };
 
 // NiceGUI reloads the page by itself in four places: a reconnect attempt
@@ -297,12 +300,12 @@ export default {
 
       <div v-if="sessionEnded" class="recorder-banner recorder-banner-warn" role="alert">
         You have been signed out. The recording goes on and is saved in this browser; when you
-        stop it you are taken to sign in again, and it is sent to {{ serviceName }} once you have.
+        stop it you are taken to sign in again, and it is sent to {{ serviceShortName }} once you have.
       </div>
 
       <div v-if="!persistent" class="recorder-banner recorder-banner-danger" role="alert">
-        This browser does not let {{ serviceName }} save recordings while they are made (a private
-        window?). If this page closes, whatever has not yet reached {{ serviceName }} is lost.
+        This browser does not let {{ serviceShortName }} save recordings while they are made (a private
+        window?). If this page closes, whatever has not yet reached {{ serviceShortName }} is lost.
       </div>
 
       <!-- Stands in for NiceGUI's own "Connection lost" popup, which
@@ -310,12 +313,12 @@ export default {
            goes away by itself then, and the recording is not affected.
            Gone again once the socket is back. -->
       <div v-if="stale && live && !connected" class="recorder-banner recorder-banner-warn" role="status">
-        The connection to {{ serviceName }} was interrupted. Recording and uploading carry on; reload the
-        page after you stop to reconnect the rest of {{ serviceName }}.
+        The connection to {{ serviceShortName }} was interrupted. Recording and uploading carry on; reload the
+        page after you stop to reconnect the rest of {{ serviceShortName }}.
       </div>
       <div v-if="stale && !live" class="recorder-banner recorder-banner-warn" role="status">
-        The connection to {{ serviceName }} was interrupted while recording. Your recordings are safe and
-        uploads carry on; reload the page to reconnect the rest of {{ serviceName }}.
+        The connection to {{ serviceShortName }} was interrupted while recording. Your recordings are safe and
+        uploads carry on; reload the page to reconnect the rest of {{ serviceShortName }}.
         <q-btn flat no-caps dense class="recorder-quiet" icon="refresh" label="Reload" @click="reloadPage" />
       </div>
 
@@ -358,7 +361,7 @@ export default {
         <div v-if="live" class="recorder-safety" role="status" aria-live="polite">
           <span class="recorder-safety-item">
             <q-icon :name="sentMs ? 'cloud_done' : 'cloud_queue'" size="16px" aria-hidden="true" />
-            Sent to {{ serviceName }}: {{ sentMs ? clock(sentMs) : "not yet" }}
+            Sent to {{ serviceShortName }}: {{ sentMs ? clock(sentMs) : "not yet" }}
           </span>
           <span v-if="liveMeta.spilled" class="recorder-safety-item">
             <q-icon name="save" size="16px" aria-hidden="true" />
@@ -530,34 +533,34 @@ export default {
               <div class="recorder-help-section">
                 <h3 class="recorder-help-heading">Start recording</h3>
                 <p>Select Start recording to begin.</p>
-                <p>Keep this page open while recording. On a computer, prevent it from going to sleep. On a phone or tablet, keep the screen on. {{ serviceName }} asks the device to stay awake, but some devices may still turn the screen off.</p>
+                <p>Keep this page open while recording. On a computer, prevent it from going to sleep. On a phone or tablet, keep the screen on. {{ serviceShortName }} asks the device to stay awake, but some devices may still turn the screen off.</p>
                 <p>The timer shows how long you have been recording.</p>
               </div>
               <div class="recorder-help-section">
                 <h3 class="recorder-help-heading">Stop recording</h3>
                 <p>Select Stop recording when you are finished.</p>
-                <p>{{ serviceName }} completes the upload and saves the recording to My files. You can then transcribe it in the same way as any other audio file.</p>
-                <p>Do not close the page until {{ serviceName }} confirms that the recording has been saved.</p>
+                <p>{{ serviceShortName }} completes the upload and saves the recording to My files. You can then transcribe it in the same way as any other audio file.</p>
+                <p>Do not close the page until {{ serviceShortName }} confirms that the recording has been saved.</p>
               </div>
               <div class="recorder-help-section">
                 <h3 class="recorder-help-heading">If something goes wrong</h3>
                 <p>If your connection is lost, you can continue recording. Return to this page as soon as you are back online so that any locally stored audio can be uploaded.</p>
-                <p>If the browser or device crashes, open the recording page again. If possible, use the same browser and device. This gives {{ serviceName }} the best chance of recovering the complete recording.</p>
-                <p>While you are online, recorded audio is sent to {{ serviceName }} every few seconds. Anything that had already reached {{ serviceName }} can be recovered for up to 7 days, even from a different browser or device. Audio that had not yet been uploaded can also be recovered if it is still available in the same browser.</p>
+                <p>If the browser or device crashes, open the recording page again. If possible, use the same browser and device. This gives {{ serviceShortName }} the best chance of recovering the complete recording.</p>
+                <p>While you are online, recorded audio is sent to {{ serviceShortName }} every few seconds. Anything that had already reached {{ serviceShortName }} can be recovered for up to 7 days, even from a different browser or device. Audio that had not yet been uploaded can also be recovered if it is still available in the same browser.</p>
                 <p>An unfinished recording remains available on this page for 7 days. During that time, recover and finish it or delete it. After 7 days, it expires.</p>
               </div>
               <div class="recorder-help-section">
                 <h3 class="recorder-help-heading">Your original recording</h3>
                 <p>Once a recording has been completed, it appears in My files and is no longer listed on the recording page.</p>
-                <p>{{ serviceName }} keeps the original recording in My files for 7 days, just like other uploaded files. It is marked as a recording and can be downloaded or deleted from My files.</p>
+                <p>{{ serviceShortName }} keeps the original recording in My files for 7 days, just like other uploaded files. It is marked as a recording and can be downloaded or deleted from My files.</p>
               </div>
               <div class="recorder-help-section">
                 <h3 class="recorder-help-heading">Privacy and security</h3>
                 <p>Make sure everyone knows they are being recorded. Follow your organisation's requirements for permission, information and handling of recordings.</p>
-                <p>Recorded audio is sent to {{ serviceName }} over an encrypted connection and stored encrypted under your account.</p>
-                <p>If audio cannot be sent immediately, it is temporarily stored in this browser, encrypted using a key provided by {{ serviceName }}. Once the audio has been successfully sent, the local copy is removed.</p>
+                <p>Recorded audio is sent to {{ serviceShortName }} over an encrypted connection and stored encrypted under your account.</p>
+                <p>If audio cannot be sent immediately, it is temporarily stored in this browser, encrypted using a key provided by {{ serviceShortName }}. Once the audio has been successfully sent, the local copy is removed.</p>
                 <p>Locally stored audio can only be recovered using the same browser and device. If you clear the browser's cookies or site data before the audio has been sent, it can no longer be recovered.</p>
-                <p>Local audio that has not been sent within 7 days expires and is removed when this browser next connects to {{ serviceName }}. If the browser does not reconnect, the encrypted local data may remain until the browser's site data is cleared.</p>
+                <p>Local audio that has not been sent within 7 days expires and is removed when this browser next connects to {{ serviceShortName }}. If the browser does not reconnect, the encrypted local data may remain until the browser's site data is cleared.</p>
                 <p>Anyone who can use this browser may be able to access locally stored recordings while you are signed in. Avoid leaving unfinished recordings on a shared device.</p>
                 <p>A downloaded recording is an ordinary file on your device. Store and handle it according to your organisation's requirements.</p>
               </div>
@@ -664,10 +667,10 @@ export default {
       <section v-if="onScribe.length" class="recorder-list" aria-labelledby="recorder-onscribe-heading">
         <h2 id="recorder-onscribe-heading" class="recorder-list-heading">Unfinished recordings on {{ serviceName }}</h2>
         <p class="recorder-list-note">
-          These recordings reached {{ serviceName }} but were not completed, and no matching local recording
+          These recordings reached {{ serviceShortName }} but were not completed, and no matching local recording
           data is available in this browser. If local audio may still remain in the browser where
           the recording was made, return to that browser first. Otherwise, you can finish the
-          recording using the audio already received by {{ serviceName }}.
+          recording using the audio already received by {{ serviceShortName }}.
         </p>
 
         <article v-for="entry in onScribe" :key="entry.id" class="recorder-item">
@@ -679,7 +682,7 @@ export default {
               </div>
               <div v-if="entry.held > entry.parts" class="recorder-item-state is-warn">
                 <q-icon name="warning" size="16px" aria-hidden="true" />
-                Part of it never reached {{ serviceName }}, so it ends at the gap.
+                Part of it never reached {{ serviceShortName }}, so it ends at the gap.
               </div>
               <div v-if="onScribeError[entry.id]" class="recorder-item-state is-danger" role="alert">
                 <q-icon name="error" size="16px" aria-hidden="true" />
@@ -731,6 +734,7 @@ export default {
     return {
       // The service's name in the template, from the settings.
       serviceName: SERVICE_NAME,
+      serviceShortName: SERVICE_SHORT_NAME,
       engine: null,
       items: [],
       name: "",
@@ -964,9 +968,9 @@ export default {
       const sync = (mine && mine.sync) || {};
       if (["offline", "auth", "unavailable", "error"].includes(sync.phase)) {
         out.push(
-          "Not reaching " + SERVICE_NAME + " right now: " +
+          "Not reaching " + SERVICE_SHORT_NAME + " right now: " +
             (sync.message || "no answer") +
-            " The recording is still being saved in this browser and is sent as soon as " + SERVICE_NAME + " can be reached."
+            " The recording is still being saved in this browser and is sent as soon as " + SERVICE_SHORT_NAME + " can be reached."
         );
       }
       if (running.fellBack) {
@@ -1170,7 +1174,7 @@ export default {
         this.name = "";
         this.follow(running);
         this.listDevices();
-        this.status = "Recording. Audio is continuously sent to " + SERVICE_NAME + " while you record.";
+        this.status = "Recording. Audio is continuously sent to " + SERVICE_SHORT_NAME + " while you record.";
       } catch (e) {
         this.status = FAILURES[e && e.name] || "Could not start recording: " + ((e && (e.name || e.message)) || e);
       } finally {
@@ -1214,7 +1218,7 @@ export default {
             clock(result.meta.durationMs) +
             " is saved below.";
         } else if (result) {
-          this.status = "Stopped. It is going to My files in " + SERVICE_NAME + ", ready to transcribe.";
+          this.status = "Stopped. It is going to My files in " + SERVICE_SHORT_NAME + ", ready to transcribe.";
         }
         this.elapsed = 0;
         this.redraw();
@@ -1239,7 +1243,7 @@ export default {
         clearTimeout(this.stopTimer);
         this.stopTimer = setTimeout(() => {
           this.stopArmed = false;
-          this.status = "Recording. Audio is continuously sent to " + SERVICE_NAME + " while you record.";
+          this.status = "Recording. Audio is continuously sent to " + SERVICE_SHORT_NAME + " while you record.";
         }, 4000);
         return;
       }
@@ -1391,15 +1395,15 @@ export default {
       if (item.submit) {
         switch (sync.phase) {
           case "uploading":
-            return sync.total ? "Sending to " + SERVICE_NAME + " " + Math.round((100 * (sync.sent || 0)) / sync.total) + "%" : "Sending to " + SERVICE_NAME;
+            return sync.total ? "Sending to " + SERVICE_SHORT_NAME + " " + Math.round((100 * (sync.sent || 0)) / sync.total) + "%" : "Sending to " + SERVICE_SHORT_NAME;
           case "finishing":
-            return "Handing over to " + SERVICE_NAME;
+            return "Handing over to " + SERVICE_SHORT_NAME;
           case "offline":
             return "Waiting for a connection. Saved in this browser." + retry;
           case "auth":
             return "Signed out. Sign in again to send the rest – it is saved in this browser.";
           case "unavailable":
-            return (sync.message || SERVICE_NAME + " is not answering right now.") + " Saved in this browser." + retry;
+            return (sync.message || SERVICE_SHORT_NAME + " is not answering right now.") + " Saved in this browser." + retry;
           case "elsewhere":
             return "Being sent from another tab";
           default:

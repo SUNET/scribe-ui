@@ -46,7 +46,7 @@ from utils.drive import (
     drive_save_original,
     drive_status,
 )
-from utils.settings import get_settings
+from utils.settings import get_settings, short_service_name
 
 settings = get_settings()
 
@@ -159,7 +159,7 @@ async def ensure_connected(status: dict) -> bool:
             f"{settings.SERVICE_NAME} access. Then come back to this tab."
         ).classes("text-body2")
         ui.label(
-            f"{settings.SERVICE_NAME} will see the files you can see in {name}, and only while "
+            f"{short_service_name()} will see the files you can see in {name}, and only while "
             "you use it: access ends after an hour without use, or when you "
             "log out of it under User settings."
         ).classes("text-body2 text-theme-muted")
