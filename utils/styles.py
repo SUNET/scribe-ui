@@ -1226,6 +1226,100 @@ theme_styles = """
         background-color: var(--color-bg-surface-alt) !important;
     }
 
+    /* ── Admin: user provisioning (pages/admin/rules.py) ── */
+    /* The title and the actions: side by side, the actions under the title
+       on a phone and sharing its width. */
+    .rules-header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem 1rem;
+        width: 100%;
+    }
+    .rules-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+    .rules-actions .q-btn {
+        min-height: 44px;
+        min-width: 10rem;
+    }
+    @media (max-width: 600px) {
+        .rules-actions {
+            width: 100%;
+        }
+        .rules-actions .q-btn {
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+    }
+    /* A rule as a card on a phone: what it matches as a line of words,
+       the value set apart; Test and Delete sharing the card's width. */
+    /* The cards are used up to 900px for the rules, past the phone rules
+       that style the cards on /home, so they carry their own. */
+    .rule-card {
+        width: 100%;
+        /* A long name, description or example with no spaces breaks
+           rather than taking the card past the screen. */
+        overflow-wrap: anywhere;
+        padding: 0.75rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    .rule-card .jobs-card-name {
+        font-weight: 600;
+        overflow-wrap: anywhere;
+    }
+    .rule-card .jobs-card-meta {
+        font-size: 0.8rem;
+        color: var(--color-text-muted);
+    }
+    /* The rule's name opens it: the brand colour, underlined, rather than
+       Quasar's lighter text-primary (3:1 on white). */
+    .rule-name-link {
+        color: var(--color-brand-primary);
+        text-decoration: underline;
+    }
+    /* Long names and values wrap in the table, so all its columns fit. */
+    .rules-table td.rules-col-wrap {
+        white-space: normal;
+        overflow-wrap: anywhere;
+        min-width: 8rem;
+        max-width: 16rem;
+    }
+    .rules-table td.rules-col-match {
+        max-width: 24rem;
+    }
+    /* The search as wide as the card on a phone. */
+    @media (max-width: 700px) {
+        .rules-table .q-table__top .q-field {
+            width: 100%;
+        }
+    }
+    .rules-actions .q-btn {
+        flex: 1 1 auto;
+    }
+    .rule-card-match {
+        overflow-wrap: anywhere;
+    }
+    .rule-card-value,
+    .rule-card-claim {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.9375em;
+    }
+    .rule-card-actions {
+        display: flex;
+        gap: 0.5rem;
+    }
+    .rule-card-actions .q-btn {
+        flex: 1 1 0;
+        min-height: 44px;
+        border: 1px solid var(--color-border-subtle);
+    }
+
     /* ── Admin: stats page ── */
     .stats-container {
         max-width: 1500px;
