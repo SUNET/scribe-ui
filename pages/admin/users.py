@@ -73,9 +73,27 @@ async def users() -> None:
                 else "Auto"
             )
 
+            # Lists read as "a, b", in the table and on a phone's cards.
+            for field in ("groups", "admin_domains"):
+                if isinstance(user.get(field), (list, tuple)):
+                    user[field] = ", ".join(str(item) for item in user[field])
+
+            # One line on a phone's card for what are three columns here.
+            user["status"] = ", ".join(
+                part
+                for part in (
+                    "Admin" if user["admin"] == "Yes" else "",
+                    "Active" if user["active"] == "Yes" else "Disabled",
+                    f"{user['provisioning']} provisioning",
+                )
+                if part
+            )
+
     except httpx.HTTPError as e:
         ui.label(f"Error fetching users: {e}").classes("text-lg").style("color: var(--color-text-danger);")
         return
+
+    ui.label("Users").classes("text-3xl font-bold").props("role=heading aria-level=1")
 
     users_table = ui.table(
         columns=[
@@ -135,10 +153,38 @@ async def users() -> None:
         pagination=20,
         on_select=lambda e: None,
     )
-    users_table.style(
-        "width: 100%; height: calc(100vh - 100px - var(--banner-offset, 0px)); box-shadow: none; font-size: 18px;"
+    # The height and the type size are in utils/styles.py (.users-table):
+    # a height worked out from the window suits a wide table, not a phone's
+    # list of cards.
+    users_table.classes("table-style users-table")
+
+    # On a phone seven columns cannot be read; Quasar's grid mode draws each
+    # user as a card instead, in the look of the files on /home (the same
+    # breakpoint and the same reason: see pages/home.py).
+    users_table.props(':grid="window.innerWidth < 700"')
+    users_table.add_slot(
+        "item",
+        """
+        <div class="q-pa-xs col-12">
+            <q-card flat bordered class="jobs-card user-card">
+                <div class="row items-start no-wrap">
+                    <q-checkbox
+                        v-model="props.selected"
+                        :aria-label="'Select ' + props.row.username"
+                        class="q-mr-sm"
+                    />
+                    <div class="col">
+                        <div class="jobs-card-name">{{ props.row.username }}</div>
+                        <div class="jobs-card-meta">{{ props.row.realm }}</div>
+                        <div class="jobs-card-meta">{{ props.row.status }}</div>
+                        <div v-if="props.row.groups" class="jobs-card-meta">Groups: {{ props.row.groups }}</div>
+                        <div v-if="props.row.admin_domains" class="jobs-card-meta">Domains: {{ props.row.admin_domains }}</div>
+                    </div>
+                </div>
+            </q-card>
+        </div>
+        """,
     )
-    users_table.classes("table-style")
 
     # Quasar generates selection checkboxes from selection="multiple" with
     # no accessible name at all -- both the header "select all" and each
@@ -158,78 +204,79 @@ async def users() -> None:
         """,
     )
 
-    with users_table.add_slot("top-left"):
-        ui.label("Users").classes("text-3xl font-bold").props("role=heading aria-level=1")
+    # The actions and the search in one bar: side by side on a wide page,
+    # the search first and full width on a phone, where finding one user
+    # among thousands is what the page is mostly for.
+    with users_table.add_slot("top"):
+        with ui.element("div").classes("users-toolbar"):
+            with ui.element("div").classes("users-actions"):
+                ui.button("Enable").classes("button-close").props("color=black flat").on(
+                    "click", lambda: set_active_status(users_table.selected, True)
+                )
+                ui.button("Disable").classes("delete-style").props("color=black flat").on(
+                    "click", lambda: set_active_status(users_table.selected, False)
+                )
 
-    with users_table.add_slot("top-right"):
-        with ui.row().classes("items-center"):
-            ui.button("Enable").classes("button-close").props("color=black flat").style(
-                "width: 150px"
-            ).on("click", lambda: set_active_status(users_table.selected, True))
-            ui.button("Disable").classes("delete-style").props("color=black flat").on(
-                "click", lambda: set_active_status(users_table.selected, False)
-            )
+                def confirm_remove_user():
+                    selected = users_table.selected
+                    if not selected:
+                        ui.notify("No users selected", type="warning", timeout=None, close_button="Close")
+                        return
 
-            def confirm_remove_user():
-                selected = users_table.selected
-                if not selected:
-                    ui.notify("No users selected", type="warning", timeout=None, close_button="Close")
-                    return
+                    usernames = ", ".join(u["username"] for u in selected)
 
-                usernames = ", ".join(u["username"] for u in selected)
+                    with ui.dialog().props('aria-label="Remove users"') as dialog:
+                        with ui.card():
+                            ui.label("Remove users").classes("text-h6")
+                            ui.label(
+                                f"Are you sure you want to remove: {usernames}? "
+                                "Statistics will be preserved until all associated data has been cleaned up."
+                            ).classes("text-subtitle2").style("margin-bottom: 10px;")
 
-                with ui.dialog().props('aria-label="Remove users"') as dialog:
-                    with ui.card():
-                        ui.label("Remove users").classes("text-h6")
-                        ui.label(
-                            f"Are you sure you want to remove: {usernames}? "
-                            "Statistics will be preserved until all associated data has been cleaned up."
-                        ).classes("text-subtitle2").style("margin-bottom: 10px;")
+                            with ui.row().classes("justify-between w-full"):
+                                ui.button("Cancel", on_click=lambda: dialog.close()).props(
+                                    "color=black"
+                                )
+                                ui.button(
+                                    "Remove",
+                                    on_click=lambda: (
+                                        dialog.close(),
+                                        remove_user(selected),
+                                    ),
+                                ).props("color=red")
 
-                        with ui.row().classes("justify-between w-full"):
-                            ui.button("Cancel", on_click=lambda: dialog.close()).props(
-                                "color=black"
-                            )
-                            ui.button(
-                                "Remove",
-                                on_click=lambda: (
-                                    dialog.close(),
-                                    remove_user(selected),
-                                ),
-                            ).props("color=red")
+                    dialog.open()
 
-                dialog.open()
+                with ui.button("More").classes("button-close").props(
+                    "color=black flat icon-right=arrow_drop_down"
+                ):
+                    with ui.menu():
+                        ui.menu_item(
+                            "Domains",
+                            on_click=lambda: set_domains(users_table.selected, users),
+                        )
+                        ui.menu_item(
+                            "Make admin",
+                            on_click=lambda: open_make_admin_dialog(
+                                users_table.selected, users,
+                            ),
+                        )       
+                        ui.menu_item(
+                            "Remove admin",
+                            on_click=lambda: set_admin_status(
+                                users_table.selected, False, None, ""
+                            ),
+                        )
+                        ui.menu_item(
+                            "Reset to auto provisioning",
+                            on_click=lambda: reset_manual_override(users_table.selected),
+                        )
+                        ui.menu_item(
+                            "Remove user",
+                            on_click=confirm_remove_user,
+                        )
 
-            with ui.button("More").classes("button-close").props(
-                "color=black flat icon-right=arrow_drop_down"
-            ):
-                with ui.menu():
-                    ui.menu_item(
-                        "Domains",
-                        on_click=lambda: set_domains(users_table.selected, users),
-                    )
-                    ui.menu_item(
-                        "Make admin",
-                        on_click=lambda: open_make_admin_dialog(
-                            users_table.selected, users,
-                        ),
-                    )       
-                    ui.menu_item(
-                        "Remove admin",
-                        on_click=lambda: set_admin_status(
-                            users_table.selected, False, None, ""
-                        ),
-                    )
-                    ui.menu_item(
-                        "Reset to auto provisioning",
-                        on_click=lambda: reset_manual_override(users_table.selected),
-                    )
-                    ui.menu_item(
-                        "Remove user",
-                        on_click=confirm_remove_user,
-                    )
-
-            with ui.input(placeholder="Search").props('type=search aria-label="Search users"').bind_value(
-                users_table, "filter"
-            ).add_slot("append"):
+            with ui.input(placeholder="Search").props('type=search aria-label="Search users"').classes(
+                "users-search"
+            ).bind_value(users_table, "filter").add_slot("append"):
                 ui.icon("search")

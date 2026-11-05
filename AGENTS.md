@@ -306,6 +306,10 @@ Tunables belong here; wire-format constants do not. `WORDS_FORMAT_VERSION` in `u
 
 Access via `get_settings()` (cached).
 
+## Users page (`pages/admin/users.py`)
+
+Under 700px the table is Quasar's grid mode, each user a card in the look of the files on /home (`jobs-card`): a checkbox named "Select <user>", the user name, the realm, one status line for the Admin / Active / Provisioning columns ("Admin, Active, Manual provisioning"), and Groups and Domains when there are any (lists joined with ", " for the table too). No select-all and no sorting there (grid mode has no header): with thousands of users the search, which comes first and full width on a phone, is the way in. The title is above the table; the actions and the search share one bar (`.users-toolbar`, wrapping); the table's height and type size are in `utils/styles.py` (`.users-table`), the height only on a wide page.
+
 ## Admin hierarchy
 
 - **BOFH** (`bofh=True`): sees everything, manages all realms and onboarding attributes

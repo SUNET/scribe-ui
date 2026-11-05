@@ -1226,6 +1226,55 @@ theme_styles = """
         background-color: var(--color-bg-surface-alt) !important;
     }
 
+    /* ── Admin: users ── */
+    .users-table {
+        width: 100%;
+        height: calc(100vh - 160px - var(--banner-offset, 0px));
+        box-shadow: none;
+        font-size: 18px;
+    }
+    .users-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem 1rem;
+        width: 100%;
+    }
+    .users-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+    .users-actions .q-btn {
+        min-width: 9rem;
+        min-height: 44px;
+    }
+    .users-search {
+        flex: 0 1 18rem;
+    }
+    /* A phone: the users as cards (grid mode, pages/admin/users.py), the
+       list as long as it is rather than a box of its own to scroll in;
+       the search first and full width, the actions sharing a line. */
+    @media (max-width: 700px) {
+        .users-table {
+            height: auto;
+            font-size: 1rem;
+        }
+        .users-search {
+            order: -1;
+            flex: 1 1 100%;
+        }
+        .users-actions {
+            width: 100%;
+            flex-wrap: nowrap;
+        }
+        .users-actions .q-btn {
+            flex: 1 1 0;
+            min-width: 0;
+        }
+    }
+
     /* ── Admin: stats page ── */
     .stats-container {
         max-width: 1500px;
