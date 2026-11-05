@@ -343,6 +343,7 @@ Under 700px the table is Quasar's grid mode, each user a card in the look of the
 - Onboarding attributes section hidden for non-BOFH users
 - Help dialog explains rule matching, actions, scoping, and manual override
 - "Attributes" terminology used throughout (not "JWT claims")
+- Layout: the title and its actions wrap (`.rules-header`, the actions sharing the width on a phone); "Attributes (BOFH)" is an `h2`. The rules table has one "Matches" column (attribute, condition and value as words: affiliation equals "employee@gu.se") rather than three, so it fits with Test and Delete from about 840px; under 900px (`:grid="window.innerWidth < 900"`) each rule is a card -- the name to edit it, what it matches, its actions and realm (always set: a rule cannot reach users its admin cannot administer), the Enabled switch, and Test / Delete named for the rule. The attributes are cards under 700px. The `.rule-card` styles are the page's own, since the cards are used past the phone rules that style /home's. The rule names are links in the brand colour (`.rule-name-link`), not Quasar's lighter `text-primary`. The overview says "Group" for a rule that assigns one, not which: that is in the rule.
 
 ## Testing
 
