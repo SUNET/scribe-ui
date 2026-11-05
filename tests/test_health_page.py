@@ -24,7 +24,7 @@ from datetime import timezone
 import pytest
 
 from utils import worker_health as wh
-from utils.line_chart import LINE_CHART_STYLES, STYLES, line_chart, runs, time_marks
+from utils.line_chart import LINE_CHART_STYLES, STYLES, line_chart, runs, sparkline, time_marks
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 PAGE = (ROOT / "pages" / "admin" / "health.py").read_text()
@@ -156,6 +156,20 @@ class TestTheChart:
 
         assert "<b>" not in chart and "<i>" not in chart
 
+    def test_a_trend_line_is_a_picture_broken_where_readings_are_missing(self):
+        line = sparkline([(NOW - 600, 10), (NOW - 590, 20), (NOW - 100, 30), (NOW - 90, None)], NOW - wh.WINDOW, NOW)
+
+        assert line.startswith('<svg class="sparkline" aria-hidden="true"')
+        assert line.count("<polyline") == 2
+        assert "is-quiet" not in line
+        assert 'class="is-quiet"' in sparkline([(NOW - 600, 10)], NOW - wh.WINDOW, NOW, quiet_from=NOW - 600)
+
+    def test_the_colours_reach_the_trend_lines_too(self):
+        # The custom properties were on .line-chart only, and a trend line
+        # outside one had no colour at all.
+        assert ".line-chart,\n    .sparkline {\n        --line-s1:" in LINE_CHART_STYLES
+        assert ".body--dark .line-chart,\n    .body--dark .sparkline {" in LINE_CHART_STYLES
+
     def test_high_contrast_and_text_in_rem(self):
         assert "@media (forced-colors: active)" in LINE_CHART_STYLES
         assert "font-size: 0.75rem;" in LINE_CHART_STYLES
@@ -180,6 +194,31 @@ class TestThePage:
         assert 'ui.element("details").classes("chart-data")' in PAGE
         assert "self.table = ui.html(" in PAGE
         assert "if order != shown_order:" in PAGE
+
+    def test_compact_the_charts_behind_a_disclosure_shut_at_each_opening(self):
+        assert 'ui.label("Show the charts and the readings")' in PAGE
+        assert 'self.more = ui.element("details").classes("chart-data health-more")' in PAGE
+        # Kept while the page is open, so a card built again opens as it was.
+        assert "opened: dict = {}" in PAGE and "if opened.get(worker_id):" in PAGE
+        assert 'js_handler="(event) => emit(event.target.open)"' in PAGE
+        assert "app.storage" not in PAGE[PAGE.index("opened: dict = {}") - 200 : PAGE.index("opened: dict = {}")]
+
+    def test_the_figures_with_their_trend_lines(self):
+        assert "f\"{sparkline(points, start, now, colour, quiet)}</li>\"" in PAGE
+        assert '("CPU", latest.cpu,' in PAGE and '("Memory", latest.memory,' in PAGE
+        assert "grid-template-columns: repeat(4, minmax(0, 1fr));" in STYLESHEET
+
+    def test_expand_all_and_collapse_all_in_the_browser(self):
+        assert 'ui.button("Expand all", color=None)' in PAGE
+        assert 'ui.button("Collapse all", color=None)' in PAGE
+        assert "document.querySelectorAll('details.health-more').forEach(d => d.open = true)" in PAGE
+        assert "document.querySelectorAll('details.health-more').forEach(d => d.open = false)" in PAGE
+
+    def test_the_sentence_is_read_out_always_and_seen_with_the_charts(self):
+        assert '"health-sentence chart-summary text-body1 text-theme-secondary"' in PAGE
+        hidden = STYLESHEET[STYLESHEET.index("    .health-sentence {") :][:250]
+        assert "clip: rect(0 0 0 0);" in hidden and "display: none" not in hidden
+        assert ".health-card:has(> details.health-more[open]) .health-sentence {" in STYLESHEET
 
     def test_the_count_is_said_once_when_it_changes(self):
         assert 'count = ui.label("").classes("health-count").props("role=status")' in PAGE
@@ -209,4 +248,5 @@ class TestThePage:
         assert "border-radius: 999px;" in rule[:300]
         assert ".health-state.is-offline .health-dot {\n        border: 2px solid #b91c1c;" in STYLESHEET
         assert ".health-card.is-offline {\n        border-color: var(--color-status-error-border);" in STYLESHEET
-        assert "grid-template-columns: repeat(auto-fit, minmax(min(36rem, 100%), 1fr));" in STYLESHEET
+        assert "grid-template-columns: repeat(auto-fit, minmax(min(26rem, 100%), 1fr));" in STYLESHEET
+        assert "align-items: start;" in STYLESHEET[STYLESHEET.index("    .health-grid {") :][:300]

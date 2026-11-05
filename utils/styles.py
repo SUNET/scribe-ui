@@ -2294,18 +2294,21 @@ theme_styles = """
         font-size: 0.875rem;
         color: var(--color-text-secondary);
     }
+    /* Compact cards, three side by side on a wide screen; an opened one
+       grows alone, its neighbours keep their height. */
     .health-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(min(36rem, 100%), 1fr));
-        gap: 1.5rem;
+        grid-template-columns: repeat(auto-fit, minmax(min(26rem, 100%), 1fr));
+        align-items: start;
+        gap: 1rem;
         width: 100%;
     }
     .health-card {
         min-width: 0;
         display: flex;
         flex-direction: column;
-        gap: 1rem;
-        padding: 1.25rem 1.5rem;
+        gap: 0.75rem;
+        padding: 1rem 1.25rem;
         background-color: var(--color-bg-surface);
         border: 1px solid color-mix(in srgb, var(--color-border-subtle) 35%, transparent);
         border-radius: 1rem;
@@ -2329,7 +2332,7 @@ theme_styles = """
     }
     .health-head h2 {
         margin: 0;
-        font-size: 1.25rem;
+        font-size: 1.125rem;
         font-weight: 600;
         line-height: 1.3;
         overflow-wrap: anywhere;
@@ -2391,7 +2394,7 @@ theme_styles = """
         }
     }
     .health-last {
-        margin-top: -0.5rem;
+        margin-top: -0.375rem;
         font-weight: 500;
         color: var(--color-text-primary);
     }
@@ -2399,6 +2402,33 @@ theme_styles = """
         display: flex;
         flex-direction: column;
         gap: 1.25rem;
+        margin-top: 0.5rem;
+    }
+    /* What the charts show, in a sentence: always read out, seen only with
+       the charts open, as the trend lines say it at a glance. */
+    .health-sentence {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+    }
+    .health-card:has(> details.health-more[open]) .health-sentence {
+        position: static;
+        width: auto;
+        height: auto;
+        overflow: visible;
+        clip: auto;
+        white-space: normal;
+    }
+    .health-all {
+        display: flex;
+        gap: 0.25rem;
+    }
+    .health-all-button {
+        min-height: 40px;
+        color: var(--color-text-primary);
     }
     .health-group {
         display: flex;
@@ -2420,28 +2450,38 @@ theme_styles = """
         font-size: 0.875rem;
         color: var(--color-text-secondary);
     }
+    /* The figures in a row of four, each with its trend line; two by two
+       in a narrow card. */
     .health-figures {
         list-style: none;
         margin: 0;
         padding: 0;
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(min(9rem, 100%), 1fr));
+        grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 0.5rem;
+    }
+    @container (max-width: 24rem) {
+        .health-figures {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
     }
     .health-figures li {
         display: flex;
         flex-direction: column;
-        padding: 0.5rem 0.75rem;
+        min-width: 0;
+        padding: 0.375rem 0.5rem;
         border: 1px solid color-mix(in srgb, var(--color-border-subtle) 45%, transparent);
         border-radius: 0.5rem;
     }
     .health-figure-label {
-        font-size: 0.875rem;
+        font-size: 0.75rem;
         font-weight: 600;
         color: var(--color-text-secondary);
+        overflow-wrap: anywhere;
     }
     .health-figure-value {
-        font-size: 1.5rem;
+        font-size: 1.25rem;
+        line-height: 1.2;
         font-weight: 700;
         font-variant-numeric: tabular-nums;
         color: var(--color-text-primary);

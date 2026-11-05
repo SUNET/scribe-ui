@@ -55,7 +55,9 @@ GAP = 35
 
 LINE_CHART_STYLES = """
 <style>
-    .line-chart {
+    /* The colours, for the charts and the tiles' trend lines alike. */
+    .line-chart,
+    .sparkline {
         --line-s1: #2a78d6;
         --line-s2: #eb6834;
         --line-s3: #1baf7a;
@@ -64,7 +66,8 @@ LINE_CHART_STYLES = """
         --line-grid: #e5e7eb;
         min-width: 0;
     }
-    .body--dark .line-chart {
+    .body--dark .line-chart,
+    .body--dark .sparkline {
         --line-s1: #3987e5;
         --line-s2: #d95926;
         --line-s3: #199e70;
@@ -191,11 +194,29 @@ LINE_CHART_STYLES = """
         color: var(--color-text-secondary);
         font-size: 0.875rem;
     }
+    /* A trend line in a figure's tile: the same 30 minutes, no scale, no
+       times; the time after a quiet worker's last reading toned. */
+    .sparkline {
+        display: block;
+        width: 100%;
+        height: 1.75rem;
+        margin-top: 0.25rem;
+        overflow: visible;
+    }
+    .sparkline polyline {
+        fill: none;
+        stroke-width: 1.75;
+        stroke-linejoin: round;
+    }
+    .sparkline .is-quiet {
+        fill: color-mix(in srgb, var(--color-text-secondary) 16%, transparent);
+    }
     /* Windows high contrast: the lines in the system's colours; the
        dashes still tell them apart. */
     @media (forced-colors: active) {
         .line-chart-area polyline,
-        .line-chart-legend line {
+        .line-chart-legend line,
+        .sparkline polyline {
             stroke: CanvasText !important;
         }
         .line-chart-offline {
@@ -326,4 +347,40 @@ def line_chart(
         f'<svg viewBox="0 0 100 100" preserveAspectRatio="none">{lines}</svg></div>'
         f'<div class="line-chart-times">{times}</div>'
         f"</div>{legend}</div>"
+    )
+
+
+def sparkline(
+    points: Sequence,
+    start: float,
+    end: float,
+    colour: str = SINGLE[0],
+    quiet_from: Optional[float] = None,
+) -> str:
+    """
+    A trend line for a figure's tile: (time, per cent) pairs from `start` to
+    `end`, 0 to 100 %, broken where readings are missing, with the time
+    after `quiet_from` toned. A picture only (aria-hidden): the figure and
+    the charts behind it say the same in words and numbers.
+    """
+
+    span = max(end - start, 1)
+
+    def x(moment: float) -> float:
+        return max(0.0, min(100.0, 100 * (moment - start) / span))
+
+    shown = [(t, v) for t, v in points if start <= t <= end and v is not None]
+    lines = "".join(
+        f'<polyline points="{" ".join(f"{x(t):.2f},{100 - max(0.0, min(100.0, float(v))):.2f}" for t, v in run)}"'
+        f' stroke="{colour}" vector-effect="non-scaling-stroke"/>'
+        for run in runs(shown)
+    )
+    quiet = ""
+
+    if quiet_from is not None and quiet_from < end:
+        quiet = f'<rect class="is-quiet" x="{x(quiet_from):.2f}" y="0" width="{100 - x(quiet_from):.2f}" height="100"/>'
+
+    return (
+        '<svg class="sparkline" aria-hidden="true" viewBox="0 0 100 100" preserveAspectRatio="none">'
+        f"{quiet}{lines}</svg>"
     )

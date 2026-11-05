@@ -42,7 +42,7 @@ from nicegui import app, ui
 from utils import worker_health as wh
 from utils.chart_tables import head_html as chart_head, phrased, table_region
 from utils.common import page_init
-from utils.line_chart import LINE_CHART_STYLES, STYLES, clock, line_chart
+from utils.line_chart import LINE_CHART_STYLES, SINGLE, STYLES, clock, line_chart, sparkline
 from utils.styles import default_styles
 from utils.settings import get_settings
 from utils.token import (
@@ -96,32 +96,50 @@ def summary_sentence(worker: wh.Worker, now: float, zone) -> str:
     return f"{lead}: {', '.join(parts)}."
 
 
-def figures(items: list) -> str:
-    """The latest figures as a list: (label, value, line under it or None)."""
+def tiles(worker: wh.Worker, now: float, zone) -> str:
+    """
+    The latest figures as a list of tiles, each with a trend line of the
+    last 30 minutes: CPU and Memory, then use and memory for each GPU.
+    An offline worker's figures are "–": what it is doing now is not known.
+    """
+
+    readings = wh.in_window(worker, now)
+    latest = worker.readings[-1]
+    start, quiet = now - wh.WINDOW, None if worker.online else worker.last_seen
+    indexes = worker.gpu_indexes
+    items = [
+        ("CPU", latest.cpu, [(r.seen, r.cpu) for r in readings], SINGLE[0]),
+        ("Memory", latest.memory, [(r.seen, r.memory) for r in readings], SINGLE[0]),
+    ]
+
+    for index in indexes:
+        label = wh.gpu_label(index, indexes)
+        items += [
+            (label, wh.gpu_value(latest, index, "use"),
+             [(r.seen, wh.gpu_value(r, index, "use")) for r in readings], STYLES[0][0]),
+            (f"{label} memory", wh.gpu_value(latest, index, "memory"),
+             [(r.seen, wh.gpu_value(r, index, "memory")) for r in readings], STYLES[0][0]),
+        ]
 
     return (
         '<ul class="health-figures" role="list">'
         + "".join(
             f'<li><span class="health-figure-label">{html.escape(label)}</span>'
-            f'<span class="health-figure-value">{html.escape(value)}</span>'
-            + (f'<span class="health-figure-sub">{html.escape(sub)}</span>' if sub is not None else "")
-            + "</li>"
-            for label, value, sub in items
+            f'<span class="health-figure-value">{html.escape(wh.percent(value) if worker.online else "–")}</span>'
+            f"{sparkline(points, start, now, colour, quiet)}</li>"
+            for label, value, points, colour in items
         )
         + "</ul>"
     )
 
 
 def cpu_group(worker: wh.Worker, now: float, zone) -> str:
-    latest = worker.readings[-1]
     readings = wh.in_window(worker, now)
     start, quiet = now - wh.WINDOW, None if worker.online else worker.last_seen
-    shown = (lambda v: wh.percent(v)) if worker.online else (lambda v: "–")
 
     return (
         '<h3 class="health-group-title">CPU</h3>'
-        + figures([("CPU", shown(latest.cpu), None), ("Memory", shown(latest.memory), None)])
-        + '<div class="health-charts">'
+        '<div class="health-charts">'
         + line_chart("CPU, %", [("CPU", [(r.seen, r.cpu) for r in readings])], start, now, zone, quiet)
         + line_chart("Memory, %", [("Memory", [(r.seen, r.memory) for r in readings])], start, now, zone, quiet)
         + "</div>"
@@ -130,13 +148,9 @@ def cpu_group(worker: wh.Worker, now: float, zone) -> str:
 
 def gpu_group(worker: wh.Worker, now: float, zone) -> str:
     indexes = worker.gpu_indexes
-    latest = worker.readings[-1]
     readings = wh.in_window(worker, now)
     start, quiet = now - wh.WINDOW, None if worker.online else worker.last_seen
     name = worker.gpu_name()
-
-    def shown(index, what):
-        return wh.percent(wh.gpu_value(latest, index, what)) if worker.online else "–"
 
     def series(what):
         return [
@@ -147,10 +161,6 @@ def gpu_group(worker: wh.Worker, now: float, zone) -> str:
     return (
         '<h3 class="health-group-title">GPU</h3>'
         + (f'<p class="health-group-sub">{html.escape(name)}</p>' if name else "")
-        + figures([
-            (wh.gpu_label(index, indexes), shown(index, "use"), f"memory {shown(index, 'memory')}")
-            for index in indexes
-        ])
         + '<div class="health-charts">'
         # The GPU's lines in the first colours (blue, then orange), the
         # CPU's in the green of a lone series: the two groups read apart.
@@ -185,30 +195,56 @@ def readings_table(worker: wh.Worker, now: float, zone) -> str:
 
 
 class WorkerCard:
-    """One worker's card, built once and then only changed."""
+    """
+    One worker's card, built once and then only changed. Compact: the name,
+    the state, and the figures with their trend lines; the charts and the
+    readings behind "Show the charts and the readings", shut each time the
+    page is opened (and kept as they are while it is open).
+    """
 
     count = 0
 
-    def __init__(self, worker: wh.Worker, now: float, zone) -> None:
+    def __init__(self, worker: wh.Worker, now: float, zone, opened: dict) -> None:
         WorkerCard.count += 1
         heading = f"health-worker-{WorkerCard.count}"
+        worker_id = worker.worker_id
 
         with ui.element("section").classes("health-card").props(f'aria-labelledby="{heading}"') as self.card:
             self.head = ui.html("", sanitize=False)
             self.heading = heading
             self.last = ui.html("", sanitize=False).classes("health-last")
-            self.sentence = ui.html("", sanitize=False).classes("chart-summary text-body1 text-theme-secondary")
+            self.tiles = ui.html("", sanitize=False)
+            # What the charts show, in words: read out always, seen with the
+            # charts (utils/styles.py, .health-sentence).
+            self.sentence = ui.html("", sanitize=False).classes(
+                "health-sentence chart-summary text-body1 text-theme-secondary"
+            )
 
-            with ui.element("div").classes("health-groups"):
-                self.cpu = ui.html("", sanitize=False).classes("health-group")
-                self.gpu = ui.html("", sanitize=False).classes("health-group")
+            # Built once, and its open state told to the server, so a card
+            # built again (the workers' order changed) opens as it was.
+            self.more = ui.element("details").classes("chart-data health-more")
+            if opened.get(worker_id):
+                self.more.props("open")
+            self.more.on(
+                "toggle",
+                lambda e: opened.__setitem__(worker_id, bool(e.args)),
+                js_handler="(event) => emit(event.target.open)",
+            )
 
-            # The disclosure is built once: only the table inside it is
-            # changed, so it stays open while the figures come in.
-            with ui.element("details").classes("chart-data"):
+            with self.more:
                 with ui.element("summary"):
-                    ui.label("Show the readings as a table")
-                self.table = ui.html("", sanitize=False).classes("w-full")
+                    ui.label("Show the charts and the readings")
+
+                with ui.element("div").classes("health-groups"):
+                    self.cpu = ui.html("", sanitize=False).classes("health-group")
+                    self.gpu = ui.html("", sanitize=False).classes("health-group")
+
+                # Only the table inside is changed, so it stays open while
+                # the figures come in.
+                with ui.element("details").classes("chart-data"):
+                    with ui.element("summary"):
+                        ui.label("Show the readings as a table")
+                    self.table = ui.html("", sanitize=False).classes("w-full")
 
         self.update(worker, now, zone)
 
@@ -228,6 +264,7 @@ class WorkerCard:
             f"Last heard from {when(worker.last_seen, now, zone)}, {wh.ago(now - worker.last_seen)}.",
         )
         self.last.set_visibility(not worker.online)
+        self.set(self.tiles, tiles(worker, now, zone))
         self.set(self.sentence, phrased(summary_sentence(worker, now, zone)))
         self.set(self.cpu, cpu_group(worker, now, zone))
         self.set(self.gpu, gpu_group(worker, now, zone) if worker.gpu_indexes else "")
@@ -284,6 +321,15 @@ async def health() -> None:
                 )
                 # color=None: the theme's text colour (utils/styles.py), not
                 # Quasar's primary, which is 3:1 on the dark card.
+                # Every card's charts at once, in the browser: each card tells
+                # the server its own (WorkerCard, "toggle").
+                with ui.element("div").classes("health-all"):
+                    ui.button("Expand all", color=None).props("flat no-caps").classes("health-all-button").on(
+                        "click", js_handler="() => document.querySelectorAll('details.health-more').forEach(d => d.open = true)"
+                    )
+                    ui.button("Collapse all", color=None).props("flat no-caps").classes("health-all-button").on(
+                        "click", js_handler="() => document.querySelectorAll('details.health-more').forEach(d => d.open = false)"
+                    )
                 update_now = ui.button("Update now", icon="refresh", color=None).props("flat no-caps").classes(
                     "health-update-now"
                 )
@@ -303,6 +349,8 @@ async def health() -> None:
         ).classes("health-note")
 
     cards: dict = {}
+    # Which cards' charts are open, while the page is: shut at each opening.
+    opened: dict = {}
     shown_order: list = []
     away_order: list = []
 
@@ -346,7 +394,7 @@ async def health() -> None:
 
             with grid:
                 for worker in shown:
-                    cards[worker.worker_id] = WorkerCard(worker, now, zone)
+                    cards[worker.worker_id] = WorkerCard(worker, now, zone, opened)
 
             shown_order = order
         else:
