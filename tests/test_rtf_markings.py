@@ -35,12 +35,19 @@ from utils.caption import SRTCaption
 from utils.settings import get_settings
 from utils.srt import SRTEditor
 from utils.srt_export import (
+    RTF_COMMENT_AUTHOR,
     RTF_LANGUAGES,
     RTF_UNCERTAIN_OPTIONS,
     rtf_language,
+    rtf_text,
 )
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+
+# The styles are named for the service, as the comments' author is: in the
+# file as RTF writes it, and as a word processor shows it.
+SERVICE = RTF_COMMENT_AUTHOR
+SERVICE_RTF = rtf_text(RTF_COMMENT_AUTHOR)
 
 # Whisper's own names for the languages it transcribes (whisper/tokenizer.py,
 # LANGUAGES, openai-whisper 20250625), and the six of them Windows has no
@@ -129,7 +136,7 @@ class TestUncertainWords:
 
         assert r"ett {\cs12\cf3\uld tv\u229?} tre" in rtf
         assert r"\red109\green81\blue201;" in rtf
-        assert r"{\*\cs12\additive\sbasedon10\f0\fs20\cf3\uld Scribe: Uncertain word;}" in rtf
+        assert r"{\*\cs12\additive\sbasedon10\f0\fs20\cf3\uld " + SERVICE_RTF + ": Uncertain word;}" in rtf
 
     def test_the_editors_own_level_is_not_what_decides(self, editor):
         editor.review_sensitivity = "high"
@@ -253,7 +260,7 @@ class TestTheKey:
         assert at < rtf.index("ett")
         assert key(rtf).endswith(r"\par")
         assert r"\brdrb\brdrs" in key(rtf)
-        assert r"{\s1\sbasedon0\f0\fs18\cf4\lang2057 Scribe: Export key;}" in rtf
+        assert r"{\s1\sbasedon0\f0\fs18\cf4\lang2057 " + SERVICE_RTF + ": Export key;}" in rtf
 
     def test_it_is_english_and_marked_so(self, editor):
         editor.captions[0].highlighted_words = {1}
@@ -264,8 +271,8 @@ class TestTheKey:
         "marks, says, says_not",
         [
             ({"highlights": True}, ["Yellow highlight"], ["Teal", "Violet", "Comments", "character style can"]),
-            ({"edits": True}, ["Teal, underlined", "Scribe: My edit", "character style can"], ["Yellow", "Violet", "Comments"]),
-            ({"uncertain": "medium"}, ["Violet, dotted underline", "sensitivity Medium", "Scribe: Uncertain word"], ["Yellow", "Teal", "Comments"]),
+            ({"edits": True}, ["Teal, underlined", f"{SERVICE_RTF}: My edit", "character style can"], ["Yellow", "Violet", "Comments"]),
+            ({"uncertain": "medium"}, ["Violet, dotted underline", "sensitivity Medium", f"{SERVICE_RTF}: Uncertain word"], ["Yellow", "Teal", "Comments"]),
             ({"comments": True}, ["Comments in the margin"], ["Yellow", "Teal", "Violet", "character style can"]),
         ],
     )
@@ -313,9 +320,22 @@ class TestTheKey:
 
         rtf = export(editor, highlights=True)
 
-        assert "Scribe: My edit" not in rtf
-        assert "Scribe: Uncertain word" not in rtf
-        assert "Scribe: Highlight" not in rtf
+        assert f"{SERVICE_RTF}: My edit" not in rtf
+        assert f"{SERVICE_RTF}: Uncertain word" not in rtf
+        assert f"{SERVICE_RTF}: Highlight" not in rtf
+
+    def test_the_styles_are_named_for_the_service_and_escaped(self, editor, monkeypatch):
+        import utils.srt_export as module
+
+        monkeypatch.setattr(module, "RTF_COMMENT_AUTHOR", "Tjänsten {Nord}")
+        editor.captions[0].edited_words = {2}
+
+        rtf = export(editor, edits=True, uncertain="low")
+
+        assert r"Tj\u228?nsten \{Nord\}: My edit;}" in rtf
+        assert r"Tj\u228?nsten \{Nord\}: Uncertain word;}" in rtf
+        assert r"Tj\u228?nsten \{Nord\}: Export key;}" in rtf
+        assert "{Nord}" not in rtf
 
     def test_each_style_gives_its_font_and_size(self, editor):
         editor.captions[0].edited_words = {2}
@@ -323,7 +343,7 @@ class TestTheKey:
         rtf = export(editor, edits=True, uncertain="low")
 
         for name in ("My edit", "Uncertain word"):
-            definition = re.search(r"\{\\\*\\cs1\d[^}]*Scribe: " + name, rtf).group(0)
+            definition = re.search(r"\{\\\*\\cs1\d[^}]*" + re.escape(f"{SERVICE_RTF}: {name}"), rtf).group(0)
             assert r"\f0\fs20" in definition, name
 
 
@@ -437,7 +457,7 @@ class TestTheLanguage:
 def test_a_word_processor_reads_the_styles_the_languages_and_the_comment(tmp_path):
     """
     What LibreOffice makes of it, as .docx: the styles by name, the text in
-    Swedish, the key in British English, and the comment by Scribe.
+    Swedish, the key in British English, and the comment by the service.
     """
 
     from utils.caption import WordComment
@@ -464,10 +484,10 @@ def test_a_word_processor_reads_the_styles_the_languages_and_the_comment(tmp_pat
         document = docx.read("word/document.xml").decode()
         comments = docx.read("word/comments.xml").decode()
 
-    for name in ("Scribe: My edit", "Scribe: Uncertain word", "Scribe: Export key"):
+    for name in (f"{SERVICE}: My edit", f"{SERVICE}: Uncertain word", f"{SERVICE}: Export key"):
         assert f'w:val="{name}"' in styles, name
 
     assert 'w:val="sv-SE"' in styles
     assert 'w:val="en-GB"' in styles
     assert 'w:highlight w:val="yellow"' in document
-    assert 'w:author="Scribe"' in comments
+    assert f'w:author="{SERVICE}"' in comments

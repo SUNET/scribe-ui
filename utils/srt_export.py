@@ -42,13 +42,6 @@ from utils.recording_api import ORIGINAL_PREFIX
 from utils.settings import get_settings
 from utils.styles import default_styles
 
-# Who a comment in an exported document is from. It is "Scribe" on purpose, not
-# the reader's username: the editor could get that (utils/token.get_user_info),
-# but it would put a personal identifier into every exported file, and the
-# document is only ever the reader's own, so there is no one to tell apart.
-RTF_COMMENT_AUTHOR = "Scribe"
-RTF_COMMENT_INITIALS = "SC"
-
 # The languages a recording can be transcribed in, as the Windows language ids
 # RTF marks text with, so a word processor checks the spelling in the right
 # language whatever its own is set to, and a screen reader reads it with the
@@ -282,7 +275,7 @@ def rtf_key(found: dict, sensitivity: Optional[str]) -> str:
         lines.append(
             r"{\cf2\ul Teal, underlined}"
             + rtf_text(
-                " \u2013 words you changed (character style \u201cScribe: My edit\u201d)."
+                f" \u2013 words you changed (character style \u201c{RTF_COMMENT_AUTHOR}: My edit\u201d)."
             )
         )
 
@@ -292,7 +285,7 @@ def rtf_key(found: dict, sensitivity: Optional[str]) -> str:
             r"{\cf3\uld Violet, dotted underline}"
             + rtf_text(
                 " \u2013 words the speech recognition was less sure of, at "
-                f"sensitivity {level} (character style \u201cScribe: Uncertain "
+                f"sensitivity {level} (character style \u201c{RTF_COMMENT_AUTHOR}: Uncertain "
                 "word\u201d)."
             )
         )
@@ -327,19 +320,29 @@ def rtf_stylesheet(found: dict, language: Optional[int]) -> str:
     """
 
     lang = rf"\lang{language}" if language else ""
+    # The styles are the service's, named for it as the comments' author is.
+    service = rtf_text(RTF_COMMENT_AUTHOR)
     styles = [
         rf"{{\s0\f0\fs20{lang} Normal;}}",
-        rf"{{\s1\sbasedon0\f0\fs18\cf4\lang{RTF_ENGLISH} Scribe: Export key;}}",
+        rf"{{\s1\sbasedon0\f0\fs18\cf4\lang{RTF_ENGLISH} {service}: Export key;}}",
         r"{\*\cs10\additive Default Paragraph Font;}",
     ]
 
     if found["edit"]:
-        styles.append(r"{\*\cs11\additive\sbasedon10\f0\fs20\cf2\ul Scribe: My edit;}")
+        styles.append(rf"{{\*\cs11\additive\sbasedon10\f0\fs20\cf2\ul {service}: My edit;}}")
 
     if found["uncertain"]:
-        styles.append(r"{\*\cs12\additive\sbasedon10\f0\fs20\cf3\uld Scribe: Uncertain word;}")
+        styles.append(rf"{{\*\cs12\additive\sbasedon10\f0\fs20\cf3\uld {service}: Uncertain word;}}")
 
     return r"{\stylesheet" + "".join(styles) + "}"
+
+
+# Who a comment in an exported document is from. It is "Scribe" on purpose, not
+# the reader's username: the editor could get that (utils/token.get_user_info),
+# but it would put a personal identifier into every exported file, and the
+# document is only ever the reader's own, so there is no one to tell apart.
+RTF_COMMENT_AUTHOR = "Scribe"
+RTF_COMMENT_INITIALS = "SC"
 
 settings = get_settings()
 
