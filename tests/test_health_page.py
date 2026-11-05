@@ -232,11 +232,14 @@ class TestThePage:
 
     def test_offline_in_words_and_figures_not_guessed(self):
         assert "Last heard from" in PAGE
-        assert 'class="health-last-offline"' in PAGE and ".health-last-offline {" in STYLESHEET
 
-    def test_the_last_heartbeat_shown_online_too(self):
+    def test_the_heartbeat_line_keeps_its_height_online(self):
+        # Empty on an online worker, not hidden: the figures sit as far
+        # below the name on every card.
         assert "self.last.set_visibility" not in PAGE
-        assert 'f"Last heard {when(worker.last_seen, now, zone)}" if worker.online else' in PAGE
+        assert '"" if worker.online else' in PAGE
+        rule = STYLESHEET.split(".health-last {", 1)[1].split("}", 1)[0]
+        assert "min-height: 1.5em" in rule and "line-height: 1.5" in rule
         assert 'if worker.online else "–"' in PAGE
         assert ">Offline</span>" in PAGE and ">Online</span>" in PAGE
 
