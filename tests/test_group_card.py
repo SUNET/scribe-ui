@@ -152,7 +152,7 @@ class TestTheLayout:
         assert "font-weight: 400;" in rule(".group-card")
 
     def test_the_two_months_share_their_column(self):
-        assert "grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));" in rule(".group-card .stats-tiles")
+        assert "grid-template-columns: repeat(auto-fit, minmax(min(13rem, 100%), 1fr));" in rule(".group-card .stats-tiles")
 
 
 class TestNoReloadWithoutCharts:

@@ -1235,7 +1235,9 @@ theme_styles = """
         margin: 0;
         padding: 0;
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+        /* Never wider than the card: 13rem is more than a phone has at
+           a larger text size. */
+        grid-template-columns: repeat(auto-fit, minmax(min(13rem, 100%), 1fr));
         gap: 0.75rem;
         text-align: left;
     }
@@ -1355,7 +1357,7 @@ theme_styles = """
     }
     /* The two months share their column, the same in every card. */
     .group-card .stats-tiles {
-        grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(min(13rem, 100%), 1fr));
     }
     /* One above the other, all the same width: the card's full width on a
        narrow card, a column of its own on the right on a wide one. */

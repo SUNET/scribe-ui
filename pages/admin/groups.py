@@ -28,7 +28,13 @@ from nicegui import ui
 from utils.common import add_timezone_to_timestamp, page_init
 from utils.styles import default_styles
 from utils.bar_chart import NBSP, amount, bar_chart, decimals_for, month_days, month_name, rounded
-from utils.chart_tables import chart_section, head_html as chart_head, minutes_summary, summary_cards
+from utils.chart_tables import (
+    chart_section,
+    days_so_far,
+    head_html as chart_head,
+    minutes_summary,
+    summary_cards,
+)
 from utils.helpers import (
     groups_get,
     save_group,
@@ -459,6 +465,9 @@ async def statistics(group_id: str) -> None:
             (per_day_previous_month, previous_month, previous_name, False),
         ):
             heading = f"Transcribed minutes per day, {name}"
+            # This month: the days that have come; the backend's noughts for
+            # the days to come are not figures (utils/chart_tables.py).
+            shown = days_so_far(minutes, today.isoformat()) if under_way else minutes
 
             with ui.element("div").classes("chart-container"):
                 chart_section(
@@ -466,7 +475,7 @@ async def statistics(group_id: str) -> None:
                     minutes_summary(minutes, decimals, so_far=under_way),
                     bar_chart(
                         days,
-                        [{"name": heading, "values": [minutes.get(day) for day in days]}],
+                        [{"name": heading, "values": [shown.get(day) for day in days]}],
                         highest=highest,
                         decimals=decimals,
                         # The days still to come, toned, this month only.
@@ -475,7 +484,7 @@ async def statistics(group_id: str) -> None:
                     table_summary=f"Show the minutes per day for {name} as a table",
                     caption=heading,
                     headers=("Date", "Minutes"),
-                    rows=[(day, rounded(value, decimals)) for day, value in minutes.items()],
+                    rows=[(day, rounded(value, decimals)) for day, value in shown.items()],
                     numeric=(1,),
                     empty=not any(value and value > 0 for value in minutes.values()),
                 )

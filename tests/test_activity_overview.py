@@ -228,12 +228,13 @@ class TestThePage:
     def test_the_days_table_scrolls_in_a_region_of_its_own_on_a_phone(self):
         from utils.chart_tables import data_table
 
-        table = data_table("Show", "Actions per day", ("Date", "Uploads"), [("2026-11-01", 3)], (1,), wide=True)
+        # Every table behind a disclosure is in such a region (#179); this
+        # one's figures stay on one line, so it is the one that scrolls.
+        table = data_table("Show", "Actions per day", ("Date", "Uploads"), [("2026-11-01", 3)], (1,))
         assert '<div class="chart-scroll" role="region" tabindex="0" aria-label="Actions per day">' in table
         assert "overflow-x: auto;" in CHART_STYLES
-        assert "wide=True," in PAGE
-        # Others as they were.
-        assert "chart-scroll" not in data_table("Show", "Minutes", ("Date", "Minutes"), [], (1,))
+        assert ".chart-scroll th,\n    .chart-scroll td {\n        white-space: nowrap;" in CHART_STYLES
+        assert CHART_STYLES.count("    .chart-scroll {") == 1
 
     def test_the_days_table_has_the_days_counted_only(self):
         assert "if not (counted and day < counted)" in PAGE
