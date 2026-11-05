@@ -17,6 +17,7 @@
 
 import httpx
 import pytz
+import weakref
 
 
 from datetime import datetime, timedelta
@@ -503,6 +504,30 @@ def _anonymous_header(header_text: str, cycle_dark_mode: Callable) -> None:
                 ui.tooltip("Help")
 
 
+
+# The page's one dark mode element, per client: page_init makes it, and
+# the header's button and User settings both change it. A second
+# ui.dark_mode on the page would be a second element, and the two would
+# disagree -- going back to light from dark then did nothing until the
+# page was loaded again.
+_DARK_MODE: "weakref.WeakKeyDictionary" = weakref.WeakKeyDictionary()
+
+
+def _remember_dark_mode(element) -> None:
+    try:
+        _DARK_MODE[ui.context.client] = element
+    except (RuntimeError, TypeError):
+        pass
+
+
+def page_dark_mode():
+    """The dark mode element page_init made for this page, or None."""
+
+    try:
+        return _DARK_MODE.get(ui.context.client)
+    except (RuntimeError, TypeError):
+        return None
+
 async def page_init(
     header_text: Optional[str] = "",
     use_drawer: bool = False,
@@ -603,6 +628,7 @@ async def page_init(
     ui.add_head_html(default_styles)
     dark_pref = app.storage.user.get("dark_mode", None)
     dark_mode_el = ui.dark_mode(dark_pref)
+    _remember_dark_mode(dark_mode_el)
 
     # Store resolved dark mode state for components like Plotly
     if dark_pref is not None:

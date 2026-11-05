@@ -18,7 +18,7 @@
 from typing import Callable
 
 from nicegui import app, ui
-from utils.common import page_init
+from utils.common import page_dark_mode, page_init
 from utils.styles import default_styles
 from utils.helpers import (
     dark_mode_save,
@@ -324,22 +324,34 @@ def create() -> None:
                     else:
                         current_dark = "off"
 
+                    def apply(dark) -> None:
+                        # The page's own dark mode element, the one the
+                        # header's button changes too: a new ui.dark_mode
+                        # each time made several, and from dark back to
+                        # light the page stayed dark.
+                        element = page_dark_mode()
+
+                        if element is not None:
+                            element.value = dark
+                        else:
+                            ui.dark_mode(dark)
+
                     def set_dark_mode(value: str) -> None:
                         if value == "on":
                             app.storage.user["dark_mode"] = True
                             app.storage.user["_resolved_dark"] = True
-                            ui.dark_mode(True)
+                            apply(True)
                             dark_mode_save(True)
                             icon_name = "dark_mode"
                         elif value == "off":
                             app.storage.user["dark_mode"] = False
                             app.storage.user["_resolved_dark"] = False
-                            ui.dark_mode(False)
+                            apply(False)
                             dark_mode_save(False)
                             icon_name = "light_mode"
                         else:
                             app.storage.user["dark_mode"] = None
-                            ui.dark_mode(None)
+                            apply(None)
                             dark_mode_save(None)
                             icon_name = "brightness_auto"
                         # Update header dark mode icon without reload

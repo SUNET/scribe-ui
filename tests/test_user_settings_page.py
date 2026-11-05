@@ -111,6 +111,16 @@ class TestTheTheme:
         assert 'f"type=radio name=theme value={key}"' in PAGE
         assert '("auto", "brightness_auto", "Match system")' in PAGE
 
+    def test_one_dark_mode_element_for_the_page(self):
+        """A new ui.dark_mode each time left the page dark from dark back to light."""
+
+        theme = PAGE[PAGE.index("def apply(dark)") : PAGE.index("# Real radio buttons")]
+        assert "element = page_dark_mode()" in theme and "element.value = dark" in theme
+        assert theme.count("ui.dark_mode(") == 1  # only where page_init made none
+        common = (ROOT / "utils" / "common.py").read_text()
+        assert "_remember_dark_mode(dark_mode_el)" in common
+        assert "def page_dark_mode():" in common
+
     def test_the_chosen_tile_is_framed_and_the_focus_seen(self):
         assert ".settings-theme-choice:has(input:checked)" in STYLES
         assert ".settings-theme-choice:has(input:focus-visible)" in STYLES
