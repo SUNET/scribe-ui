@@ -1211,10 +1211,10 @@ theme_styles = """
 
     /* ── User settings (pages/user.py) ── */
     /* Cards: one column on a phone, two from 52rem -- Account, Theme and
-       Connected services on the left, Email notifications on the right.
-       Two real columns, each read top to bottom, so the page, the
-       keyboard and a phone all go Account, Theme, Connected services,
-       Email notifications. */
+       Sunet Drive on the left, Email notifications on the right. Two
+       real columns, each read top to bottom, so the page, the keyboard
+       and a phone all go Account, Theme, Sunet Drive, Email
+       notifications. */
     .settings {
         width: 100%;
         max-width: 72rem;
@@ -1360,13 +1360,9 @@ theme_styles = """
     .settings-button {
         min-height: 44px;
     }
-    .settings-service {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        gap: 0.25rem 0.5rem;
-    }
+    /* Signed in or not, above what logging out does. */
     .settings-status {
+        margin-bottom: 0.375rem;
         display: inline-flex;
         align-items: center;
         gap: 0.375rem;

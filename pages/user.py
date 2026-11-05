@@ -59,10 +59,11 @@ def card(icon: str, title: str, summary: str) -> ui.element:
 async def draw_drive_section(section: ui.element) -> None:
     """
     Whether Scribe is signed in to the reader's Sunet Drive, and a way to
-    log out of it, in the Connected services card. Drawn only when their
+    log out of it, in a card named for the service. Drawn only when their
     organisation offers Drive -- which Drive that is, and what it is called,
     is the organisation's setting, not the reader's; without it the card is
-    not shown at all.
+    not shown at all. Drive is the only service so far; with a second one,
+    the card becomes "Connected services" with a row for each.
 
     Logging out revokes Scribe's access in Drive as well; the next Get from
     or Save to asks the reader to sign in again.
@@ -82,21 +83,19 @@ async def draw_drive_section(section: ui.element) -> None:
             ui.icon("cloud").props("aria-hidden=true")
 
             with ui.element("div"):
-                ui.label("Connected services").classes("settings-card-title").props(
+                ui.label(name).classes("settings-card-title").props(
                     "role=heading aria-level=2"
                 )
-                ui.label("Services Scribe can get files from and save files to.").classes(
+                ui.label(f"Get files from and save files to {name}.").classes(
                     "settings-card-summary"
                 )
 
         with ui.element("div").classes("settings-row settings-row-first"):
             with ui.element("div").classes("settings-row-text"):
-                with ui.element("div").classes("settings-service"):
-                    ui.label(name).classes("settings-row-title")
-                    # Said when it changes: signed in, or not after logging out.
-                    state = ui.label("").classes("settings-status").props(
-                        "role=status aria-live=polite"
-                    )
+                # Said when it changes: signed in, or not after logging out.
+                state = ui.label("").classes("settings-status").props(
+                    "role=status aria-live=polite"
+                )
                 hint = ui.label("").classes("settings-row-summary")
 
             logout = ui.button(f"Log out from {name}", icon="logout")
@@ -170,7 +169,7 @@ def create() -> None:
         Scribe looks, and the services it is connected to -- as cards, two
         columns on a wide page and one on a phone (utils/styles.py,
         .settings-grid). In the page they come as the columns are read:
-        Account, Theme, Connected services, then Email notifications.
+        Account, Theme, Sunet Drive, then Email notifications.
         """
         user_data = await page_init(use_drawer=True, title="User settings")
         userdata = user_data
@@ -197,7 +196,7 @@ def create() -> None:
             with ui.element("div").classes("settings-grid"):
                 # Two columns on a wide page, each read top to bottom, the left one
                 # first -- the order of the page, of the keyboard and of a phone:
-                # Account, Theme, Connected services, then Email notifications.
+                # Account, Theme, Sunet Drive, then Email notifications.
                 with ui.element("div").classes("settings-column"):
                     # ── Account ──
                     with card("account_circle", "Account", "Who you are signed in as, and your use of Scribe.").classes(
@@ -315,7 +314,7 @@ def create() -> None:
                             "settings-hint"
                         )
 
-                    # ── Connected services, when the organisation offers Drive ──
+                    # ── Sunet Drive, when the organisation offers it ──
                     drive_section = ui.element("section").classes("settings-card settings-services")
                     drive_section.set_visibility(False)
                     ui.timer(

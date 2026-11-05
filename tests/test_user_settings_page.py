@@ -40,7 +40,7 @@ class TestTheCards:
     def test_four_cards_each_with_a_heading(self):
         for title in ("Account", "Email notifications", "Theme"):
             assert f'card("' in PAGE and f'"{title}",' in PAGE, title
-        assert 'ui.label("Connected services").classes("settings-card-title").props(' in PAGE
+        assert 'ui.label(name).classes("settings-card-title").props(' in PAGE
         assert 'ui.label(title).classes("settings-card-title").props("role=heading aria-level=2")' in PAGE
 
     def test_in_the_page_as_the_columns_are_read(self):
@@ -140,8 +140,17 @@ class TestTheServices:
         assert "drive_section.set_visibility(False)" in PAGE
         assert "section.set_visibility(True)" in PAGE
 
+    def test_the_card_is_named_for_the_service(self):
+        # Drive is the only service so far; "Connected services" would
+        # promise more than there is.
+        assert 'ui.label("Connected services")' not in PAGE
+        assert 'ui.label(name).classes("settings-card-title")' in PAGE
+        assert 'f"Get files from and save files to {name}."' in PAGE
+        # The name once, in the heading, not again in the row.
+        assert 'ui.label(name).classes("settings-row-title")' not in PAGE
+
     def test_the_state_is_said_when_it_changes(self):
-        assert 'state = ui.label("").classes("settings-status").props(\n                        "role=status aria-live=polite"' in PAGE
+        assert 'state = ui.label("").classes("settings-status").props(\n                    "role=status aria-live=polite"' in PAGE
         assert 'f"Log out from {name}"' in PAGE
 
 
