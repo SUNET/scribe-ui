@@ -59,7 +59,7 @@ def drive_fields(customer: dict | None = None, title: bool = True) -> tuple:
     customer = customer or {}
 
     if title:
-        ui.label("Sunet Drive").classes("text-lg font-semibold mt-2")
+        ui.label("Sunet Drive").classes("text-lg font-semibold mt-2").props("role=heading aria-level=3")
 
     instance = (
         ui.input(
@@ -101,7 +101,7 @@ def create_customer_dialog(page: callable) -> None:
 
     with ui.dialog().props('aria-label="Create new customer"') as create_customer_dialog:
         with ui.card().style("width: 600px; max-width: 90vw;"):
-            ui.label("Create new customer").classes("text-2xl font-bold")
+            ui.label("Create new customer").classes("text-2xl font-bold").props("role=heading aria-level=2")
 
             customer_abbr = (
                 ui.input("Customer abbreviation").classes("w-full").props("outlined")

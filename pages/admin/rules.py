@@ -84,7 +84,7 @@ def create_rule_dialog(page: callable, user_data: dict | None = None) -> None:
 
     with ui.dialog().props('aria-label="Create provisioning rule"') as dialog:
         with ui.card().style("width: 650px; max-width: 90vw;"):
-            ui.label("Create provisioning rule").classes("text-2xl font-bold")
+            ui.label("Create provisioning rule").classes("text-2xl font-bold").props("role=heading aria-level=2")
 
             name_input = ui.input("Rule name").classes("w-full").props("outlined")
 
@@ -103,7 +103,7 @@ def create_rule_dialog(page: callable, user_data: dict | None = None) -> None:
                 ui.input("Attribute value").classes("w-full").props("outlined")
             )
 
-            ui.label("Scope").classes("text-lg font-semibold mt-2")
+            ui.label("Scope").classes("text-lg font-semibold mt-2").props("role=heading aria-level=3")
             if is_bofh:
                 all_realms = _get_valid_realms()
                 realm_input = (
@@ -128,7 +128,7 @@ def create_rule_dialog(page: callable, user_data: dict | None = None) -> None:
                     .props("outlined use-chips")
                 )
 
-            ui.label("Actions").classes("text-lg font-semibold mt-2")
+            ui.label("Actions").classes("text-lg font-semibold mt-2").props("role=heading aria-level=3")
             with ui.row().classes("w-full gap-4"):
                 activate_cb = ui.checkbox("Activate user")
                 deny_cb = ui.checkbox("Deactivate user")
@@ -150,7 +150,7 @@ def create_rule_dialog(page: callable, user_data: dict | None = None) -> None:
                 .props("outlined")
             )
 
-            ui.label("Default personal notifications").classes("text-lg font-semibold mt-2")
+            ui.label("Default personal notifications").classes("text-lg font-semibold mt-2").props("role=heading aria-level=3")
             with ui.row().classes("w-full gap-4"):
                 notify_job_cb = ui.checkbox("Transcription completed")
                 notify_deletion_cb = ui.checkbox("Upcoming file deletions")
@@ -275,7 +275,7 @@ def edit_rule_dialog(
 
     with ui.dialog().props('aria-label="Edit provisioning rule"') as dialog:
         with ui.card().style("width: 650px; max-width: 90vw;"):
-            ui.label("Edit provisioning rule").classes("text-2xl font-bold")
+            ui.label("Edit provisioning rule").classes("text-2xl font-bold").props("role=heading aria-level=2")
 
             name_input = (
                 ui.input("Rule name", value=rule["name"])
@@ -309,7 +309,7 @@ def edit_rule_dialog(
                 .props("outlined")
             )
 
-            ui.label("Scope").classes("text-lg font-semibold mt-2")
+            ui.label("Scope").classes("text-lg font-semibold mt-2").props("role=heading aria-level=3")
             existing_realms = [
                 r.strip() for r in (rule.get("realm") or "").split(",") if r.strip()
             ]
@@ -341,7 +341,7 @@ def edit_rule_dialog(
                     .props("outlined use-chips")
                 )
 
-            ui.label("Actions").classes("text-lg font-semibold mt-2")
+            ui.label("Actions").classes("text-lg font-semibold mt-2").props("role=heading aria-level=3")
             with ui.row().classes("w-full gap-4"):
                 activate_cb = ui.checkbox(
                     "Activate user", value=rule.get("activate", False)
@@ -376,7 +376,7 @@ def edit_rule_dialog(
                 .props("outlined")
             )
 
-            ui.label("Default personal notifications").classes("text-lg font-semibold mt-2")
+            ui.label("Default personal notifications").classes("text-lg font-semibold mt-2").props("role=heading aria-level=3")
             with ui.row().classes("w-full gap-4"):
                 notify_job_cb = ui.checkbox(
                     "Transcription completed",
@@ -476,7 +476,7 @@ def delete_rule_dialog(rule: dict) -> None:
 
     with ui.dialog().props('aria-label="Delete rule"') as dialog:
         with ui.card().style("width: 400px; max-width: 90vw;"):
-            ui.label("Delete rule").classes("text-2xl font-bold")
+            ui.label("Delete rule").classes("text-2xl font-bold").props("role=heading aria-level=2")
             ui.label(f'Are you sure you want to delete rule "{rule["name"]}"?').classes(
                 "text-body1"
             )
@@ -515,7 +515,7 @@ def add_attribute_dialog() -> None:
 
     with ui.dialog().props('aria-label="Add provisioning attribute"') as dialog:
         with ui.card().style("width: 450px; max-width: 90vw;"):
-            ui.label("Add provisioning attribute").classes("text-2xl font-bold")
+            ui.label("Add provisioning attribute").classes("text-2xl font-bold").props("role=heading aria-level=2")
             name_input = ui.input("Attribute name").classes("w-full").props("outlined")
             desc_input = ui.input("Description").classes("w-full").props("outlined")
             example_input = (
@@ -604,7 +604,7 @@ def test_rules_dialog(selected_rules: list[dict]) -> None:
     cond_label = CONDITION_OPTIONS.get(condition.lower(), condition)
 
     with ui.dialog().props('aria-label="Test rule"') as dialog, ui.card().style("min-width: 600px; max-width: 800px;"):
-        ui.label("Test rule").classes("text-xl font-bold")
+        ui.label("Test rule").classes("text-xl font-bold").props("role=heading aria-level=2")
         ui.label(f"{rule.get('name', '')}").classes("text-theme-muted")
         ui.label(f'{attr_name} {cond_label} "{expected}"').classes(
             "text-theme-muted text-sm"
@@ -671,7 +671,7 @@ def test_all_rules_dialog() -> None:
         group_names = {g["id"]: g["name"] for g in all_groups}
 
     with ui.dialog().props('aria-label="Simulate provisioning"') as dialog, ui.card().style("min-width: 600px; max-width: 800px;"):
-        ui.label("Simulate provisioning").classes("text-xl font-bold")
+        ui.label("Simulate provisioning").classes("text-xl font-bold").props("role=heading aria-level=2")
         ui.label(
             "Enter attribute values to simulate what would happen when a user logs in."
         ).classes("text-theme-muted")
@@ -804,7 +804,7 @@ def test_all_rules_dialog() -> None:
 
                 # Final provisioning result summary
                 ui.separator().classes("my-2")
-                ui.label("Simulated result").classes("font-bold")
+                ui.label("Simulated result").classes("font-bold").props("role=heading aria-level=3")
                 if not matched_rules:
                     ui.label("None").classes("text-theme-muted")
                 else:
@@ -852,7 +852,7 @@ def _show_rules_help() -> None:
     with ui.dialog().props('aria-label="How provisioning rules work"') as dialog, ui.card().style(
         "min-width: 550px; max-width: 700px; padding: 32px;"
     ):
-        ui.label("How provisioning rules work").classes("text-2xl font-bold mb-4")
+        ui.label("How provisioning rules work").classes("text-2xl font-bold mb-4").props("role=heading aria-level=2")
 
         with ui.column().classes("gap-4"):
             ui.label(
@@ -864,7 +864,7 @@ def _show_rules_help() -> None:
             ui.separator()
 
             with ui.column().classes("gap-1"):
-                ui.label("Rule matching").classes("text-lg font-semibold")
+                ui.label("Rule matching").classes("text-lg font-semibold").props("role=heading aria-level=3")
                 ui.label(
                     "Each rule specifies an attribute name (for example "
                     "preferred_username, email, or domain), a condition (such as "
@@ -874,7 +874,7 @@ def _show_rules_help() -> None:
                 ).classes("text-body2 text-theme-secondary")
 
             with ui.column().classes("gap-1"):
-                ui.label("Available actions").classes("text-lg font-semibold")
+                ui.label("Available actions").classes("text-lg font-semibold").props("role=heading aria-level=3")
                 with ui.column().classes("gap-0 pl-2"):
                     for action, desc in [
                         ("Activate", "Automatically activate the user account."),
@@ -893,7 +893,7 @@ def _show_rules_help() -> None:
                             )
 
             with ui.column().classes("gap-1"):
-                ui.label("Scoping").classes("text-lg font-semibold")
+                ui.label("Scoping").classes("text-lg font-semibold").props("role=heading aria-level=3")
                 ui.label(
                     "The Realm field limits which login domains the rule applies to. "
                     "Local administrators can only create rules for the realms "
@@ -901,7 +901,7 @@ def _show_rules_help() -> None:
                 ).classes("text-body2 text-theme-secondary")
 
             with ui.column().classes("gap-1"):
-                ui.label("Rule evaluation").classes("text-lg font-semibold")
+                ui.label("Rule evaluation").classes("text-lg font-semibold").props("role=heading aria-level=3")
                 ui.label(
                     "All enabled rules are evaluated on every login. "
                     "If rules conflict:"
@@ -915,7 +915,7 @@ def _show_rules_help() -> None:
                         ui.label(f"• {line}").classes("text-body2 text-theme-secondary")
 
             with ui.column().classes("gap-1"):
-                ui.label("Manual override").classes("text-lg font-semibold")
+                ui.label("Manual override").classes("text-lg font-semibold").props("role=heading aria-level=3")
                 ui.label(
                     "If an administrator manually deactivates a user, provisioning "
                     "rules that would activate that user will not automatically "
@@ -925,7 +925,7 @@ def _show_rules_help() -> None:
                 ).classes("text-body2 text-theme-secondary")
 
             with ui.column().classes("gap-1"):
-                ui.label("Testing").classes("text-lg font-semibold")
+                ui.label("Testing").classes("text-lg font-semibold").props("role=heading aria-level=3")
                 ui.label(
                     "Use the Test button on each rule to check whether a value would "
                     "match the rule. Enter the value you want to test against the "
@@ -1341,7 +1341,7 @@ def delete_attribute_dialog(attr: dict) -> None:
 
     with ui.dialog().props('aria-label="Delete attribute"') as dialog:
         with ui.card().style("width: 400px; max-width: 90vw;"):
-            ui.label("Delete attribute").classes("text-2xl font-bold")
+            ui.label("Delete attribute").classes("text-2xl font-bold").props("role=heading aria-level=2")
             ui.label(
                 f'Are you sure you want to delete attribute "{attr["name"]}"?'
             ).classes("text-body1")

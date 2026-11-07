@@ -1817,7 +1817,10 @@ class TranscriptEditor:
         """
 
         with ui.dialog() as dialog, ui.card().classes("transcript-dialog"):
-            ui.label(title).classes("text-subtitle1 font-semibold")
+            # Named for its title (4.1.2). Set directly rather than through
+            # props(): a speaker's name in the title may hold quotes.
+            dialog._props["aria-label"] = title
+            ui.label(title).classes("text-subtitle1 font-semibold").props("role=heading aria-level=2")
 
             name = ui.input(label="Name", value=value).classes("w-full")
             name.props("autofocus")

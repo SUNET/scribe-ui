@@ -53,7 +53,7 @@ def _announcement_preview_dialog(message: str, severity: str = "info") -> None:
 
     with ui.dialog().props('aria-label="Banner preview"') as preview_dialog:
         with ui.card().style("width: 700px; max-width: 90vw; padding: 24px;"):
-            ui.label("Banner preview").classes("text-h6 font-bold mb-4")
+            ui.label("Banner preview").classes("text-h6 font-bold mb-4").props("role=heading aria-level=2")
             with ui.element("div").classes(
                 f"announcement-banner {style['css_class']}"
             ).style(
@@ -85,7 +85,7 @@ def _announcement_create_dialog() -> None:
 
     with ui.dialog().props('aria-label="Create announcement"') as dialog:
         with ui.card().style("width: 600px; max-width: 90vw; padding: 24px;"):
-            ui.label("Create announcement").classes("text-h6 font-bold mb-2")
+            ui.label("Create announcement").classes("text-h6 font-bold mb-2").props("role=heading aria-level=2")
 
             ui.label(
                 "The message supports HTML links, e.g. "
@@ -196,7 +196,7 @@ def _announcement_edit_dialog(ann: dict) -> None:
 
     with ui.dialog().props('aria-label="Edit announcement"') as dialog:
         with ui.card().style("width: 600px; max-width: 90vw; padding: 24px;"):
-            ui.label("Edit announcement").classes("text-h6 font-bold mb-2")
+            ui.label("Edit announcement").classes("text-h6 font-bold mb-2").props("role=heading aria-level=2")
 
             ui.label(
                 "The message supports HTML links, e.g. "
@@ -317,7 +317,7 @@ def _announcement_delete_confirm(ann: dict) -> None:
 
     with ui.dialog().props('aria-label="Delete announcement"') as dialog:
         with ui.card().style("width: 400px; max-width: 90vw; padding: 24px;"):
-            ui.label("Delete announcement").classes("text-h6 font-bold mb-2")
+            ui.label("Delete announcement").classes("text-h6 font-bold mb-2").props("role=heading aria-level=2")
             ui.label("Are you sure you want to delete this announcement?").classes(
                 "text-body1 mb-4"
             )

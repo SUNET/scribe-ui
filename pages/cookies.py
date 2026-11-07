@@ -92,7 +92,7 @@ def create() -> None:
                     "border: 1px solid var(--color-border); border-radius: 8px;"
                     " padding: 16px 20px;"
                 ):
-                    ui.label(cookie.name).classes("text-lg font-semibold mb-1")
+                    ui.label(cookie.name).classes("text-lg font-semibold mb-1").props("role=heading aria-level=2")
                     ui.separator()
 
                     with ui.column().classes("gap-1 mt-2 mb-3"):

@@ -167,7 +167,7 @@ def reset_password() -> None:
 
     with ui.dialog().props('aria-label="Reset encryption passphrase"') as dialog:
         with ui.card():
-            ui.label("Reset encryption passphrase").classes("text-h6")
+            ui.label("Reset encryption passphrase").classes("text-h6").props("role=heading aria-level=2")
             ui.label(
                 "Are you sure you want to reset your encryption passphrase? This will remove all your files and cannot be undone."
             ).classes("text-subtitle2").style("margin-bottom: 10px;")
@@ -639,7 +639,7 @@ def save_group(
 
         with ui.dialog().props('aria-label="Error saving group"') as dialog:
             with ui.card():
-                ui.label("Error saving group").classes("text-h6")
+                ui.label("Error saving group").classes("text-h6").props("role=heading aria-level=2")
                 ui.label(message)
                 ui.button("Close", on_click=lambda: dialog.close()).props(
                     "color=black"
@@ -755,9 +755,9 @@ def open_make_admin_dialog(selected_rows: list, all_users: list) -> None:
             if len(selected_rows) == 1:
                 ui.label(f"Make {selected_rows[0]['username']} admin").classes(
                     "text-2xl font-bold"
-                )
+                ).props("role=heading aria-level=2")
             else:
-                ui.label("Make users admin").classes("text-2xl font-bold")
+                ui.label("Make users admin").classes("text-2xl font-bold").props("role=heading aria-level=2")
 
             ui.label("Admins must have at least one assigned domain.")
 
@@ -926,7 +926,7 @@ def set_domains(selected_rows: list, all_users: list) -> None:
         with ui.card().style("width: 500px; max-width: 90vw;"):
             ui.label("Set domains the user can administer").classes(
                 "text-2xl font-bold"
-            )
+            ).props("role=heading aria-level=2")
             domains_select = (
                 ui.select(
                     realms,

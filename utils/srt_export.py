@@ -399,7 +399,7 @@ def show_originals_dialog(originals: list[tuple[str, str]]) -> None:
                     "Download original recording"
                     if len(originals) == 1
                     else "Download original recordings"
-                ).classes("text-h5 font-bold")
+                ).classes("text-h5 font-bold").props("role=heading aria-level=2")
                 ui.button(icon="close", on_click=_close_and_delete).props(
                     "flat round dense color=grey-7 aria-label='Close'"
                 )
@@ -862,7 +862,7 @@ class ExportMixin:
             with card:
                 # Header
                 with ui.row().classes("w-full items-center justify-between mb-4"):
-                    ui.label(title).classes("text-h5 font-bold")
+                    ui.label(title).classes("text-h5 font-bold").props("role=heading aria-level=2")
                     ui.button(icon="close", on_click=_close_and_delete).props(
                         "flat round dense color=grey-7 aria-label='Close export dialog'"
                     )
@@ -892,7 +892,7 @@ class ExportMixin:
                                 "Original recording"
                                 if len(originals) == 1
                                 else "Original recordings"
-                            ).classes("text-subtitle1 font-semibold")
+                            ).classes("text-subtitle1 font-semibold").props("role=heading aria-level=3")
                             include_originals = ui.checkbox(
                                 originals_label(originals), value=False
                             )
@@ -911,7 +911,7 @@ class ExportMixin:
                         # 4.1.2). The label says what the format applies to:
                         # the text only, never a recording's original, which
                         # is exported as it was recorded.
-                        ui.label("File format").classes("text-subtitle1 font-semibold")
+                        ui.label("File format").classes("text-subtitle1 font-semibold").props("role=heading aria-level=3")
                         if self.data_format == "srt":
                             format_opts = {
                                 "srt": "SubRip (.srt)",
@@ -951,7 +951,7 @@ class ExportMixin:
                             with ts_section:
                                 ui.label("Timestamps").classes(
                                     "text-subtitle1 font-semibold"
-                                )
+                                ).props("role=heading aria-level=3")
                                 ts_incl = ui.checkbox("Include timestamps", value=True)
 
                                 with ui.row().classes("w-full gap-2 items-center"):
@@ -1003,7 +1003,7 @@ class ExportMixin:
                             with txt_section:
                                 ui.label("Text options").classes(
                                     "text-subtitle1 font-semibold"
-                                )
+                                ).props("role=heading aria-level=3")
                                 txt_spk_incl = ui.checkbox(
                                     "Include speakers", value=True
                                 )
@@ -1043,7 +1043,7 @@ class ExportMixin:
                             with rtf_section:
                                 ui.label("RTF Options").classes(
                                     "text-subtitle1 font-semibold"
-                                )
+                                ).props("role=heading aria-level=3")
                                 rtf_spk_incl = ui.checkbox(
                                     "Include speakers", value=True
                                 )
@@ -1100,7 +1100,7 @@ class ExportMixin:
                             with csv_section:
                                 ui.label("CSV Options").classes(
                                     "text-subtitle1 font-semibold"
-                                )
+                                ).props("role=heading aria-level=3")
                                 csv_hdr = ui.checkbox("Include header row", value=True)
                                 csv_spk_incl = ui.checkbox(
                                     "Include speakers", value=True
@@ -1122,7 +1122,7 @@ class ExportMixin:
                             with tsv_section:
                                 ui.label("TSV Options").classes(
                                     "text-subtitle1 font-semibold"
-                                )
+                                ).props("role=heading aria-level=3")
                                 tsv_hdr = ui.checkbox("Include header row", value=True)
                                 tsv_spk_incl = ui.checkbox(
                                     "Include speakers", value=True
@@ -1163,7 +1163,7 @@ class ExportMixin:
                             with json_section:
                                 ui.label("JSON Options").classes(
                                     "text-subtitle1 font-semibold"
-                                )
+                                ).props("role=heading aria-level=3")
                                 json_indent = (
                                     ui.number(
                                         label="Indentation spaces",
@@ -1214,11 +1214,11 @@ class ExportMixin:
                                 )
                                 ui.label("Preview").classes(
                                     "text-subtitle1 font-semibold mb-2"
-                                ).tooltip(f"Showing: {first_fn}")
+                                ).tooltip(f"Showing: {first_fn}").props("role=heading aria-level=3")
                             else:
                                 ui.label("Preview").classes(
                                     "text-subtitle1 font-semibold mb-2"
-                                )
+                                ).props("role=heading aria-level=3")
                             with ui.card().classes("w-full bg-gray-900 p-4").style(
                                 "height: 550px; overflow-y: auto;"
                             ):

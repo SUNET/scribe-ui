@@ -89,7 +89,7 @@ def show_help_dialog() -> None:
             .classes("no-shadow help-dialog-card")
         ):
             with ui.row().classes("w-full items-center justify-between mb-6"):
-                ui.label("Help & Documentation").classes("text-h4 font-bold")
+                ui.label("Help & Documentation").classes("text-h4 font-bold").props("role=heading aria-level=2")
                 ui.button(icon="close", on_click=dialog.close).props(
                     "flat round dense color=grey-7 aria-label='Close help dialog'"
                 )
@@ -98,7 +98,7 @@ def show_help_dialog() -> None:
                 with ui.card().classes("help-about-card border-l-4").style(
                     "padding: 20px;"
                 ):
-                    ui.label(f"About {settings.SERVICE_NAME}").classes("text-h6 font-semibold mb-2")
+                    ui.label(f"About {settings.SERVICE_NAME}").classes("text-h6 font-semibold mb-2").props("role=heading aria-level=3")
                     ui.label(
                         "Turn audio and video into searchable text or subtitles. Built for research and education, with privacy and accuracy at its core."
                     ).classes("text-body1")
@@ -111,7 +111,7 @@ def show_help_dialog() -> None:
                                 new_tab=True,
                             ).classes("text-body2")
 
-                ui.label("Getting started").classes("text-h6 font-bold mt-2")
+                ui.label("Getting started").classes("text-h6 font-bold mt-2").props("role=heading aria-level=3")
 
                 with ui.grid(columns=2).classes("w-full gap-4"):
                     for step_num, step_title, step_desc, step_icon in [
@@ -145,7 +145,7 @@ def show_help_dialog() -> None:
                                 ui.icon(step_icon, size="md").classes("help-about-icon")
                                 ui.label(f"{step_num}. {step_title}").classes(
                                     "text-subtitle1 font-semibold"
-                                )
+                                ).props("role=heading aria-level=4")
                             ui.label(step_desc).classes(
                                 "text-body2 text-theme-secondary"
                             )
@@ -154,7 +154,7 @@ def show_help_dialog() -> None:
                     with ui.card().classes("flex-1 help-privacy-card p-4"):
                         with ui.row().classes("items-center gap-2 mb-2"):
                             ui.icon("security", size="sm").classes("help-privacy-icon")
-                            ui.label("Privacy").classes("text-subtitle1 font-semibold")
+                            ui.label("Privacy").classes("text-subtitle1 font-semibold").props("role=heading aria-level=3")
                         ui.label(
                             "Files are encrypted, accessible only to you, and automatically deleted after 7 days."
                         ).classes("text-body2")
@@ -162,7 +162,7 @@ def show_help_dialog() -> None:
                     with ui.card().classes("flex-1 help-support-card p-4"):
                         with ui.row().classes("items-center gap-2 mb-2"):
                             ui.icon("help", size="sm").classes("help-support-icon")
-                            ui.label("Support").classes("text-subtitle1 font-semibold")
+                            ui.label("Support").classes("text-subtitle1 font-semibold").props("role=heading aria-level=3")
 
                         ui.label(
                             "Contact your organisation’s local support for questions or technical support."
@@ -1518,7 +1518,7 @@ def table_upload(table) -> None:
             " padding: 28px 32px;"
         ):
             with ui.column().classes("w-full items-center") as status_column:
-                ui.label("Uploading files").classes("text-h6 q-mb-sm")
+                ui.label("Uploading files").classes("text-h6 q-mb-sm").props("role=heading aria-level=2")
                 # role=status so the byte counter is announced as it changes
                 # instead of updating silently. WCAG 4.1.3.
                 status_label = (
@@ -1536,7 +1536,7 @@ def table_upload(table) -> None:
                 status_column.visible = False
 
             with ui.column().classes("w-full gap-4") as upload_column:
-                ui.label("Upload files").classes("text-h6")
+                ui.label("Upload files").classes("text-h6").props("role=heading aria-level=2")
                 upload = (
                     ui.upload(
                         # The label is rendered into the uploader header, which
@@ -1872,7 +1872,7 @@ def table_transcribe(selected_row, on_complete=None) -> None:
             with ui.row().classes("w-full"):
                 ui.label("Transcription settings").style("width: 100%;").classes(
                     "text-h6 q-mb-xl"
-                )
+                ).props("role=heading aria-level=2")
 
                 # Hidden until start_transcription has something to report;
                 # role=alert means a screen reader hears it the moment
@@ -1995,7 +1995,7 @@ def table_bulk_transcribe(table: ui.table, on_complete=None) -> None:
             with ui.row().classes("w-full"):
                 ui.label("Transcription settings").style("width: 100%;").classes(
                     "text-h6 q-mb-xl"
-                )
+                ).props("role=heading aria-level=2")
 
                 # See table_transcribe's own copy of this element for why.
                 error_display = (
@@ -2107,7 +2107,7 @@ def table_delete(table: ui.table) -> None:
 
     with ui.dialog().props('aria-label="Delete files"') as dialog:
         with ui.card():
-            ui.label("Delete files").classes("text-h6")
+            ui.label("Delete files").classes("text-h6").props("role=heading aria-level=2")
             ui.label(
                 f"{str(count)} files will be permanently deleted. This action cannot be undone."
             ).classes("text-subtitle2").style("margin-bottom: 10px;")
@@ -2221,7 +2221,7 @@ def table_bulk_export(table: ui.table) -> None:
         with ui.card().classes("p-6 items-center").style(
             "min-width: 400px; background-color: var(--color-bg-surface);"
         ):
-            ui.label("Preparing export...").classes("text-h6 mb-2")
+            ui.label("Preparing export...").classes("text-h6 mb-2").props("role=heading aria-level=2")
             progress_label = ui.label(f"Fetching file 0 of {len(completed)}").classes(
                 "text-body2 mb-2"
             )

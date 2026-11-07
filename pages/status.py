@@ -44,7 +44,7 @@ def create() -> None:
                 with ui.row().classes("status-card status-ok items-center w-full"):
                     ui.icon("check_circle", color="green").classes("status-icon")
                     with ui.column():
-                        ui.label("Frontend").classes("text-h6")
+                        ui.label("Frontend").classes("text-h6").props("role=heading aria-level=2")
                         ui.label("Working").classes("text-body2 text-theme-muted")
 
                 backend_card = ui.row().classes("status-card items-center w-full")
@@ -56,7 +56,7 @@ def create() -> None:
                         "status-icon"
                     )
                     with ui.column():
-                        ui.label("Backend").classes("text-h6")
+                        ui.label("Backend").classes("text-h6").props("role=heading aria-level=2")
                         backend_status = ui.label("Checking...").classes(
                             "text-body2 text-theme-muted"
                         )
@@ -66,7 +66,7 @@ def create() -> None:
                         "status-icon"
                     )
                     with ui.column():
-                        ui.label("Database").classes("text-h6")
+                        ui.label("Database").classes("text-h6").props("role=heading aria-level=2")
                         database_status = ui.label("Checking...").classes(
                             "text-body2 text-theme-muted"
                         )
@@ -76,7 +76,7 @@ def create() -> None:
                         "status-icon"
                     )
                     with ui.column():
-                        ui.label("Workers").classes("text-h6")
+                        ui.label("Workers").classes("text-h6").props("role=heading aria-level=2")
                         workers_status = ui.label("Checking...").classes(
                             "text-body2 text-theme-muted"
                         )

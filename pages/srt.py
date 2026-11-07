@@ -321,10 +321,10 @@ def create() -> None:
                 # strip of the toolbar: it is read when a reader wonders,
                 # not while they work, and the figures are far easier to
                 # label properly with room to put the labels in.
-                with ui.dialog() as info_dialog, ui.card().classes(
+                with ui.dialog().props('aria-label="Information"') as info_dialog, ui.card().classes(
                     "editor-info-card"
                 ):
-                    ui.label("Information").classes("text-h6")
+                    ui.label("Information").classes("text-h6").props("role=heading aria-level=2")
                     ui.separator()
 
                     figures = {}

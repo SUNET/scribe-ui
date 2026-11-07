@@ -550,7 +550,7 @@ class RenderMixin:
             ):
                 # Header
                 with ui.row().classes("w-full items-center justify-between mb-4"):
-                    ui.label("Subtitle validation").classes("text-h5 font-bold")
+                    ui.label("Subtitle validation").classes("text-h5 font-bold").props("role=heading aria-level=2")
                     ui.button(icon="close", on_click=dialog.close).props(
                         "flat round dense color=grey-7 aria-label='Close validation dialog'"
                     )
@@ -568,7 +568,7 @@ class RenderMixin:
                             )
                             ui.label(
                                 self.validation_summary(error_count, warning_count)
-                            ).classes("text-h6 font-semibold")
+                            ).classes("text-h6 font-semibold").props("role=heading aria-level=3")
 
                     with ui.column().classes("w-full gap-2 max-h-96 overflow-y-auto"):
                         for entry in issues:
@@ -654,7 +654,7 @@ class RenderMixin:
             with ui.column().classes("gap-0"):
                 ui.label(f"Caption #{caption.index}").classes(
                     "text-body2 font-semibold"
-                )
+                ).props("role=heading aria-level=4")
 
                 for message in errors + entry["warnings"]:
                     ui.label(message).classes("text-body2 text-theme-secondary")
@@ -809,13 +809,13 @@ class RenderMixin:
             ):
                 ui.label(shortcut_title).classes(
                     "text-h5 mb-4 font-bold"
-                )
+                ).props("role=heading aria-level=2")
 
                 with ui.column().classes("w-full gap-4"):
                     for group_name, shortcuts in shortcut_groups:
                         ui.label(group_name).classes(
                             "text-subtitle1 font-semibold mt-2"
-                        )
+                        ).props("role=heading aria-level=3")
                         with ui.column().classes("w-full gap-1 ml-4"):
                             for action, keys in shortcuts:
                                 with ui.row().classes(

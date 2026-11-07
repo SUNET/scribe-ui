@@ -153,7 +153,7 @@ async def ensure_connected(status: dict) -> bool:
     with set_attribute(
         ui.dialog().props("persistent"), "aria-label", f"Connect to {name}"
     ) as dialog, ui.card().style("max-width: 480px;"):
-        ui.label(f"Connect to {name}").classes("text-h6")
+        ui.label(f"Connect to {name}").classes("text-h6").props("role=heading aria-level=2")
         ui.label(
             f"{name} opens in a new tab. Sign in there if asked, and grant "
             f"{settings.SERVICE_NAME} access. Then come back to this tab."
@@ -337,7 +337,7 @@ class DriveBrowser:
             "drive-browser"
         ):
             with ui.element("div").classes("drive-browser-head w-full"):
-                ui.label(title).classes("text-h6")
+                ui.label(title).classes("text-h6").props("role=heading aria-level=2")
                 if self.instance:
                     ui.label(self.instance).classes("text-sm text-theme-muted")
 
@@ -665,7 +665,7 @@ async def get_from_drive(on_imported: Callable[[], Awaitable[None]]) -> None:
         ui.dialog().props("persistent"), "aria-label", f"Importing from {name}"
     ) as progress, ui.card().classes("drive-progress"):
         with ui.element("div").classes("drive-progress-head"):
-            ui.label(f"Importing from {name}").classes("text-h6")
+            ui.label(f"Importing from {name}").classes("text-h6").props("role=heading aria-level=2")
             counter = ui.label("").classes("drive-progress-count").props(
                 "role=status aria-live=polite"
             )
@@ -771,7 +771,7 @@ async def _confirm_replace(name: str, filename: str) -> Optional[str]:
     with set_attribute(
         ui.dialog(), "aria-label", f"{filename} already exists"
     ) as dialog, ui.card():
-        ui.label(f"{filename} already exists in {name}").classes("text-h6")
+        ui.label(f"{filename} already exists in {name}").classes("text-h6").props("role=heading aria-level=2")
         ui.label("Replace it, or save this one under a new name?").classes("text-body2")
         with ui.row().classes("w-full justify-end gap-2"):
             ui.button("Skip", on_click=lambda: dialog.submit(None)).props("flat color=black")

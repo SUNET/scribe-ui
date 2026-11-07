@@ -58,7 +58,7 @@ def create_group_dialog(page: callable) -> None:
 
     with ui.dialog().props('aria-label="Create new group"') as create_group_dialog:
         with ui.card().style("width: 500px; max-width: 90vw;"):
-            ui.label("Create new group").classes("text-2xl font-bold")
+            ui.label("Create new group").classes("text-2xl font-bold").props("role=heading aria-level=2")
             name_input = ui.input("Group name").classes("w-full").props("outlined")
             description_input = (
                 ui.textarea("Group description").classes("w-full").props("outlined")
@@ -119,7 +119,7 @@ def admin_dialog(users: list, group_id: str) -> None:
 
     with ui.dialog().props('aria-label="Administrators"') as dialog:
         with ui.card().style("width: 600px; max-width: 90vw; "):
-            ui.label("Administrators").classes("text-2xl font-bold")
+            ui.label("Administrators").classes("text-2xl font-bold").props("role=heading aria-level=2")
             admin_table = ui.table(
                 columns=[
                     {

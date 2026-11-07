@@ -203,7 +203,7 @@ async def index(request: Request) -> None:
         if not user_data["encryption_settings"]:
             with ui.dialog().props('aria-label="Set your encryption passphrase"') as dialog:
                 with ui.card():
-                    ui.label("Set your encryption passphrase").classes("text-h6")
+                    ui.label("Set your encryption passphrase").classes("text-h6").props("role=heading aria-level=2")
                     ui.label(
                         "This passphrase will be used to encrypt your files. It cannot be recovered if lost."
                     ).classes("text-subtitle2").style("margin-bottom: 10px;")
@@ -281,7 +281,7 @@ async def index(request: Request) -> None:
         else:
             with ui.dialog().props('aria-label="Enter your encryption passphrase"') as dialog:
                 with ui.card():
-                    ui.label("Enter your encryption passphrase").classes("text-h6")
+                    ui.label("Enter your encryption passphrase").classes("text-h6").props("role=heading aria-level=2")
                     password_input = ui.input(
                         "Encryption Passphrase", password=True
                     ).style("width: 100%; margin-bottom: 10px;")
@@ -317,7 +317,7 @@ async def index(request: Request) -> None:
                             with ui.card():
                                 ui.label("Help with Encryption Passphrase").classes(
                                     "text-h6"
-                                )
+                                ).props("role=heading aria-level=2")
                                 ui.label(
                                     "Without the correct passphrase, you will not be able to access your encrypted files. You can reset your passphrase but all your previously encrypted files will be permanently deleted."
                                 ).classes("text-subtitle2").style(
@@ -395,7 +395,7 @@ async def index(request: Request) -> None:
                                 )
                                 ui.label("Account pending activation").classes(
                                     "text-h6"
-                                )
+                                ).props("role=heading aria-level=2")
                                 ui.label(
                                     "Your account has been created but is not yet activated. Please contact your administrator to enable access."
                                 ).classes("text-body2 text-center")

@@ -389,7 +389,7 @@ async def users() -> None:
 
                         with ui.dialog().props('aria-label="Remove users"') as dialog:
                             with ui.card():
-                                ui.label("Remove users").classes("text-h6")
+                                ui.label("Remove users").classes("text-h6").props("role=heading aria-level=2")
                                 ui.label(
                                     f"Are you sure you want to remove: {usernames}? "
                                     "Statistics will be preserved until all associated data has been cleaned up."

@@ -289,7 +289,7 @@ class Customer:
     def delete_customer_dialog(self) -> None:
         with ui.dialog().props('aria-label="Delete customer"') as delete_customer_dialog:
             with ui.card():
-                ui.label("Delete customer").classes("text-h6")
+                ui.label("Delete customer").classes("text-h6").props("role=heading aria-level=2")
                 ui.label(
                     "Are you sure you want to delete this customer? This action cannot be undone."
                 ).classes("text-subtitle2").style("margin-bottom: 10px;")
