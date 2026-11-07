@@ -22,6 +22,10 @@ reports back is handled here and can be tested directly.
 """
 
 
+import pathlib
+import shutil
+import subprocess
+
 import pytest
 
 from utils.caption import SRTCaption
@@ -2899,8 +2903,13 @@ class TestSpeakerMenuIcons:
         assert "renamespeaker" in icon
 
 
-# Quick jump works from anywhere; the Timeline's keys while the strip has focus.
-NAVIGATION = [
+# Quick jump works from anywhere; the Timeline's keys while the strip has
+# focus; Alt with the arrows in the text (F-65), worded for the format.
+def navigation(noun: str) -> list:
+    return [(f"Previous / next {noun}", "Alt/⌥ + ↑ / ↓")] + TIMELINE_AND_JUMP
+
+
+TIMELINE_AND_JUMP = [
     ("Quick jump to a time or block", "Ctrl/⌘ + G"),
     ("Timeline, when focused: move playhead a little", "← / →"),
     ("Timeline: move playhead a whole strip", "Page Up / Page Down"),
@@ -2996,7 +3005,7 @@ class TestTheShortcutsDialog:
                     ("Play paragraph with context", "Ctrl + Shift + Space"),
                 ],
             ),
-            ("Navigation", NAVIGATION),
+            ("Navigation", navigation("paragraph")),
             (
                 "History",
                 [
@@ -3059,7 +3068,7 @@ class TestTheShortcutsDialog:
                     ("Play caption with context", "Ctrl + Shift + Space"),
                 ],
             ),
-            ("Navigation", NAVIGATION),
+            ("Navigation", navigation("caption")),
             (
                 "History",
                 [
@@ -3142,7 +3151,9 @@ class TestTheShortcutsDialog:
         for data_format in ("srt", "txt"):
             groups = dict(self.editor(data_format).keyboard_shortcut_groups())
 
-            assert groups["Navigation"] == NAVIGATION
+            noun = "caption" if data_format == "srt" else "paragraph"
+
+            assert groups["Navigation"] == navigation(noun)
 
     def test_the_keys_that_both_formats_share_agree(self):
         captions = self.actions("srt")
@@ -3311,3 +3322,67 @@ class TestMoveWordThatMerges:
         import pathlib
 
         assert "only word in the block" not in pathlib.Path("utils/srt.py").read_text()
+
+
+class TestWhereTheCaretIs:
+    """
+    F-65 (1.3.1): the text stays one text, and a screen reader is told where
+    in it the caret is -- the block's number and times, or its speaker -- and
+    can step from block to block, which the margin shows to the eye.
+    """
+
+    def source(self) -> str:
+        return pathlib.Path("utils/transcript_editor.js").read_text()
+
+    def body(self) -> str:
+        source = self.source()
+        start = source.index('class="transcript-body"')
+
+        return source[start : source.index("ref=\"body\"", start)]
+
+    def test_the_text_says_what_its_keys_do(self):
+        body = self.body()
+
+        assert 'aria-describedby="transcript-editor-keys"' in body
+        assert 'aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"' in body
+        assert '<span id="transcript-editor-keys" class="sr-only">{{ keysText() }}</span>' in self.source()
+
+    def test_the_live_region_is_outside_the_text(self):
+        """Inside, it would be read as part of the text, and typed into."""
+
+        source = self.source()
+        region = '<span class="sr-only" role="status" aria-live="polite" aria-atomic="true">{{ where }}</span>'
+
+        assert region in source
+        # After the contenteditable has closed: the template's blocks end
+        # with </template></div>, and the region comes after that.
+        assert source.index(region) > source.index("</template></div>")
+
+    def test_it_is_said_once_the_caret_has_come_to_rest(self):
+        source = self.source()
+        watcher = source[source.index("    caretId(id) {") :]
+        watcher = watcher[: watcher.index("\n    },")]
+
+        assert "}, 300);" in watcher
+        assert "this.sayWhere(id);" in watcher
+
+    def test_alt_and_the_arrows_step_between_blocks_ahead_of_ctrl(self):
+        source = self.source()
+        alt = source.index("this.stepBlock(at.id, event.key === \"ArrowUp\" ? -1 : 1);")
+        ctrl = source.index("? this.subtitleShortcut(event, at)")
+
+        assert alt < ctrl
+        assert "event.altKey &&\n        !event.ctrlKey &&\n        !event.metaKey &&\n        !event.shiftKey" in source
+
+    @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+    def test_what_is_said_on_made_up_blocks(self):
+        """The methods themselves, run in node (tests/js/transcript_where.test.js)."""
+
+        result = subprocess.run(
+            ["node", "--test", str(pathlib.Path(__file__).resolve().parent / "js" / "transcript_where.test.js")],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+
+        assert result.returncode == 0, result.stdout + result.stderr

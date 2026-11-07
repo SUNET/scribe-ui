@@ -712,7 +712,7 @@ class TestFollowingTheCaret:
         # and told as the event the Python side listens for.
         assert "if (id === null) return;" in watcher
         assert "setTimeout" in watcher
-        assert "this.caretId === id" in watcher
+        assert "if (this.caretId !== id) return;" in watcher
         assert '$emit("caretblock", { id })' in watcher
 
     def test_the_page_hands_the_caret_to_the_panel(self):

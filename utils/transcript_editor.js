@@ -42,6 +42,8 @@ export default {
         spellcheck="false"
         :aria-label="subtitleMode ? 'Captions' : 'Transcript'"
         aria-multiline="true"
+        aria-describedby="transcript-editor-keys"
+        aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
         @input="onInput"
         @keydown="onKeydown"
         @keyup="updateCaretBlock"
@@ -211,6 +213,12 @@ export default {
             :data-id="block.id"
           ><span v-for="(run, i) in block.runs" :key="i" :class="runClass(run)" :role="run.hl ? 'mark' : null" :data-review="run.flag ? reviewLabel : null" :data-edit="editLabel" :aria-label="run.flag ? reviewLabel : (run.edit ? editLabel : null)" :data-comment="run.cm" :data-comment-current="isCommentOnShow(run, block) ? '' : null" :aria-description="run.cf ? 'Comment: ' + run.ct : null" :data-s="run.s" :data-e="run.e">{{ run.t }}</span><br v-if="!block.runs || block.runs.length === 0"></div></div></template></div>
 
+      <!-- What the keys do and where the caret is, for a screen reader:
+           outside the contenteditable, or they would be read as part of the
+           text and could be typed into. -->
+      <span id="transcript-editor-keys" class="sr-only">{{ keysText() }}</span>
+      <span class="sr-only" role="status" aria-live="polite" aria-atomic="true">{{ where }}</span>
+
       <!-- Outside the contenteditable, or it would become editable content.
            Positioned against this component's own root rather than the
            viewport: the transcription sits in a Quasar scroll area, which sets
@@ -332,7 +340,13 @@ export default {
       clearTimeout(this.caretSync);
       if (id === null) return;
       this.caretSync = setTimeout(() => {
-        if (this.caretId === id) this.$emit("caretblock", { id });
+        if (this.caretId !== id) return;
+        this.$emit("caretblock", { id });
+        // And say which block it is, for whoever cannot see the margin:
+        // the number and the times, or the speaker (F-65, 1.3.1). Once the
+        // caret has come to rest, so stepping through several blocks says
+        // only the one it stops in.
+        this.sayWhere(id);
       }, 300);
     },
     // An update resends every prop, and an array arrives as a new reference
@@ -493,6 +507,8 @@ export default {
       // Where the caret last was ({id, offset}), kept after it leaves the
       // editor so a skip link can send the reader back to it.
       lastCaret: null,
+      // What the live region last said: where the caret is (sayWhere).
+      where: "",
       // Roving tabindex over the gutter and cell controls (speaker, the two
       // timings, and -- subtitles only -- the five action icons): exactly
       // one control across the *entire* transcript carries a real tabindex
@@ -2049,6 +2065,24 @@ export default {
       const at = this.caret();
       if (!at) return;
 
+      // Alt (Option) with the up or down arrow: to the previous or next
+      // block (stepBlock). Plain Alt only -- Ctrl/Cmd with the arrows moves
+      // words across the boundary, below -- and ahead of everything else
+      // that reads the arrows. On a Mac, Option with the arrow keys would
+      // otherwise move to the start or end of a paragraph of the text.
+      if (
+        event.altKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.shiftKey &&
+        (event.key === "ArrowUp" || event.key === "ArrowDown")
+      ) {
+        event.preventDefault();
+        this.flush();
+        this.stepBlock(at.id, event.key === "ArrowUp" ? -1 : 1);
+        return;
+      }
+
       // The block-scoped shortcuts: one list per format, in
       // subtitleShortcut and transcriptionShortcut below. They need to know
       // which block the caret is in, which is why they live here rather
@@ -2391,6 +2425,105 @@ export default {
           center ? { block: "center", behavior: "smooth" } : { block: "nearest" }
         );
       });
+    },
+
+    // ── where the caret is, for a screen reader (F-65) ─────────────────────
+
+    // The word for a block, as the shortcut list and the margin have it.
+    blockNoun() {
+      return this.subtitleMode ? "caption" : "paragraph";
+    },
+
+    // What the text's keys do, said with its name (aria-describedby). The
+    // editing keys are in the shortcut list; these are the ones for finding
+    // one's way, which is what cannot be seen.
+    keysText() {
+      const noun = this.blockNoun();
+      const control = this.subtitleMode ? "start time" : "speaker";
+
+      return (
+        `Alt or Option with the up or down arrow key goes to the previous ` +
+        `or next ${noun}. Tab goes to this ${noun}'s ${control}, Shift+Tab ` +
+        `back to the text.`
+      );
+    },
+
+    // A moment as it is said: 0:12.3, or 1:02:03.4 past the hour. The labels
+    // are HH:MM:SS.mmm, which is long to listen to: the same form as the
+    // Timeline's own value. Counted in whole tenths, so 9.96 s is 0:10.0 and
+    // never 0:9.10.
+    spokenTime(label) {
+      const found = /^(\d+):(\d{2}):(\d{2})[.,](\d{1,3})$/.exec(label || "");
+      if (!found) return label || "";
+
+      const seconds =
+        Number(found[1]) * 3600 +
+        Number(found[2]) * 60 +
+        Number(found[3]) +
+        Number(`0.${found[4]}`);
+      const tenths = Math.round(seconds * 10);
+      const hours = Math.floor(tenths / 36000);
+      const minutes = Math.floor((tenths % 36000) / 600);
+      const rest = tenths % 600;
+      const secs = `${String(Math.floor(rest / 10)).padStart(2, "0")}.${rest % 10}`;
+
+      return hours
+        ? `${hours}:${String(minutes).padStart(2, "0")}:${secs}`
+        : `${minutes}:${secs}`;
+    },
+
+    // Where a block is: "Caption 14, 0:12.3 to 0:15.0" -- the number and the
+    // times in the margin -- or "Paragraph 3, Anna, 1:02.0" in a
+    // transcription, whose margin has the speaker and the start.
+    whereText(block) {
+      if (!block) return "";
+
+      if (this.subtitleMode) {
+        return (
+          `Caption ${block.id}, ${this.spokenTime(block.start_label)} ` +
+          `to ${this.spokenTime(block.end_label)}`
+        );
+      }
+
+      return [`Paragraph ${block.id}`, block.speaker, this.spokenTime(block.start_label)]
+        .filter(Boolean)
+        .join(", ");
+    },
+
+    // Say where a block is, through the live region. A live region speaks
+    // when its text changes, so the same words again (the caret back in the
+    // block it left) are cleared first and put back a tick later.
+    sayWhere(id, before = "") {
+      const block = this.blocks.find((entry) => entry.id === id);
+      const text = before + this.whereText(block);
+      if (!block) return;
+
+      if (text !== this.where) {
+        this.where = text;
+        return;
+      }
+
+      this.where = "";
+      this.$nextTick(() => {
+        this.where = text;
+      });
+    },
+
+    // Alt+Up / Alt+Down: the caret to the start of the previous or next
+    // block, without opening or selecting anything -- the text stays one
+    // text. The caretId watcher then says where it is, once it has come to
+    // rest. At either end nothing moves, and the reader is told so.
+    stepBlock(id, step) {
+      const index = this.blocks.findIndex((entry) => entry.id === id);
+      const to = index < 0 ? null : this.blocks[index + step];
+
+      if (!to) {
+        const noun = this.blockNoun();
+        this.sayWhere(id, `${step < 0 ? "First" : "Last"} ${noun}. `);
+        return;
+      }
+
+      this.focusBlock(to.id, 0);
     },
 
     // Back to where the caret was last -- or, if it has not been in the text
