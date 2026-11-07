@@ -105,7 +105,7 @@ class CommentsPanel:
                     self.heading = self.fold.heading(
                         ui.label("")
                         .classes("validation-panel-heading")
-                        .props("id=comments-panel-heading tabindex=-1")
+                        .props("id=comments-panel-heading tabindex=-1 role=heading aria-level=2")
                     )
 
                     with ui.element("div").classes("validation-panel-nav"):

@@ -199,7 +199,7 @@ class ValidationPanel:
                     self.heading = self.fold.heading(
                         ui.label("")
                         .classes("validation-panel-heading")
-                        .props('id=validation-panel-heading tabindex=-1')
+                        .props('id=validation-panel-heading tabindex=-1 role=heading aria-level=2')
                     )
 
                     with ui.element("div").classes("validation-panel-nav") as self.foot:
