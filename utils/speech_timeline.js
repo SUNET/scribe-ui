@@ -194,7 +194,7 @@ export default {
         @gesturechange="onGesture"
         @gestureend="onGesture"
       >
-        <canvas ref="canvas" @click="onClick"></canvas>
+        <canvas ref="canvas" aria-hidden="true" @click="onClick"></canvas>
         <div
           v-if="readout"
           class="speech-timeline-readout"
@@ -263,7 +263,8 @@ export default {
         </span>
       </div>
       <span id="speech-timeline-keys" class="sr-only">
-        Left and right arrow keys move the playhead a little, Page Up and Page
+        Each position says whether there is speech there and which caption it
+        is in. Left and right arrow keys move the playhead a little, Page Up and Page
         Down a whole strip, Home and End to the start and the end of the
         recording. Shift with the up and down arrow keys, or plus and minus,
         zoom, and 0 resets the zoom. Pinching on a trackpad over the strip
@@ -526,7 +527,10 @@ export default {
       return found ? found.id : -1;
     },
     // What the slider says its value is, in words rather than a number of
-    // seconds: where in the recording, and which caption that is in.
+    // seconds: where in the recording, whether anyone is talking there, and
+    // which caption that is in -- what the strip shows in colour (1.1.1,
+    // 1.3.1). Speech that no caption covers is said as one thing, in the
+    // words of Validate's card for it, since that is the one to act on.
     ariaText() {
       const span = this.span();
       if (!span) return "";
@@ -535,11 +539,14 @@ export default {
       const caption = this.captions.find(
         (entry) => at >= entry.start && at < entry.end
       );
+      const where = caption ? `in caption ${caption.id}` : "no caption here";
+      const what = this.speakingAt(at)
+        ? caption
+          ? `speech, ${where}`
+          : "speech without a caption"
+        : `silence, ${where}`;
 
-      return (
-        `${this.moment(at)} of ${this.clock(span)}, ` +
-        (caption ? `in caption ${caption.id}` : "no caption here")
-      );
+      return `${this.moment(at)} of ${this.clock(span)}, ${what}`;
     },
   },
   methods: {
@@ -835,9 +842,7 @@ export default {
 
       const seconds = this.secondsAt(event.clientX);
       const found = this.captionAt(seconds);
-      const speaking = this.runs.some(
-        ([start, end]) => seconds >= start && seconds <= end
-      );
+      const speaking = this.speakingAt(seconds);
 
       // Hovering a caption here says nothing about which caption is being
       // edited -- the text editor keeps its own focus, and this state only
@@ -1214,6 +1219,13 @@ export default {
     // strip is around a fiftieth of a second per pixel, so a whole second
     // covers fifty of them: the readout said the same thing for a stretch
     // wide enough to hold a short word.
+    // Whether anyone is talking at a moment: inside one of the speech runs,
+    // ends included. The pointer's readout and the slider's value both ask
+    // this, so they cannot disagree.
+    speakingAt(seconds) {
+      return this.runs.some(([start, end]) => seconds >= start && seconds <= end);
+    },
+
     moment(seconds) {
       const whole = Math.max(0, seconds);
       const minutes = Math.floor(whole / 60);
