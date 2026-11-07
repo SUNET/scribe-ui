@@ -42,6 +42,7 @@ function editor(subtitleMode) {
   const self = {
     subtitleMode,
     where: "",
+    saidFor: null,
     focused: [],
     blocks: [
       { id: 1, speaker: "Anna", start_label: "00:00:01.000", end_label: "00:00:04.250" },
@@ -105,6 +106,13 @@ test("the same words again are said again", () => {
   e.sayWhere(2);
   assert.deepEqual(said, [""]);
   assert.equal(e.where, "Caption 2, 1:02.0 to 1:06.0");
+});
+
+test("a block said is noted, so the watcher does not say it again", () => {
+  const e = editor(true);
+
+  e.sayWhere(3, "Last caption. ");
+  assert.equal(e.saidFor, 3);
 });
 
 test("Alt with the arrows goes to the start of the block before or after", () => {

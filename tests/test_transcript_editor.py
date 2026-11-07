@@ -3364,7 +3364,9 @@ class TestWhereTheCaretIs:
         watcher = watcher[: watcher.index("\n    },")]
 
         assert "}, 300);" in watcher
-        assert "this.sayWhere(id);" in watcher
+        assert "if (this.saidFor !== id) this.sayWhere(id);" in watcher
+        # Out of the text and back: said again.
+        assert "this.saidFor = null;" in watcher
 
     def test_alt_and_the_arrows_step_between_blocks_ahead_of_ctrl(self):
         source = self.source()

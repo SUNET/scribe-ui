@@ -338,15 +338,20 @@ export default {
     // reader to speak, for every caption passed on the way.
     caretId(id) {
       clearTimeout(this.caretSync);
-      if (id === null) return;
+      if (id === null) {
+        // Out of the text: back in it, the block is said again.
+        this.saidFor = null;
+        return;
+      }
       this.caretSync = setTimeout(() => {
         if (this.caretId !== id) return;
         this.$emit("caretblock", { id });
         // And say which block it is, for whoever cannot see the margin:
         // the number and the times, or the speaker (F-65, 1.3.1). Once the
         // caret has come to rest, so stepping through several blocks says
-        // only the one it stops in.
-        this.sayWhere(id);
+        // only the one it stops in -- and not again if it has just been
+        // said, as "First caption." is by the step that found the end.
+        if (this.saidFor !== id) this.sayWhere(id);
       }, 300);
     },
     // An update resends every prop, and an array arrives as a new reference
@@ -507,8 +512,10 @@ export default {
       // Where the caret last was ({id, offset}), kept after it leaves the
       // editor so a skip link can send the reader back to it.
       lastCaret: null,
-      // What the live region last said: where the caret is (sayWhere).
+      // What the live region last said: where the caret is (sayWhere), and
+      // the block it was said for.
       where: "",
+      saidFor: null,
       // Roving tabindex over the gutter and cell controls (speaker, the two
       // timings, and -- subtitles only -- the five action icons): exactly
       // one control across the *entire* transcript carries a real tabindex
@@ -2497,6 +2504,8 @@ export default {
       const block = this.blocks.find((entry) => entry.id === id);
       const text = before + this.whereText(block);
       if (!block) return;
+
+      this.saidFor = id;
 
       if (text !== this.where) {
         this.where = text;

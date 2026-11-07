@@ -710,7 +710,7 @@ class TestFollowingTheCaret:
 
         # Only a caret that is in a caption, only when it has stayed there,
         # and told as the event the Python side listens for.
-        assert "if (id === null) return;" in watcher
+        assert "if (id === null) {" in watcher
         assert "setTimeout" in watcher
         assert "if (this.caretId !== id) return;" in watcher
         assert '$emit("caretblock", { id })' in watcher
