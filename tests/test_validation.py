@@ -431,10 +431,8 @@ class TestGoingToSpeech:
 
     def test_the_speech_is_sought_once(self):
         source = (pathlib.Path(__file__).resolve().parent.parent / "utils" / "validation_panel.py").read_text()
-        body = source[source.index("    def go_to_caption(self)") :]
-        body = body[: body.index("\n    def ", 10)]
 
-        assert body.count("seek_video(start)") == 1
+        assert source.count("seek_video(start)") == 1
 
 
 class TestGoingToACaption:
@@ -471,6 +469,75 @@ class TestGoingToACaption:
             ("focus", (3, 4), {"center": True}),
             ("seek", {"id": 3, "offset": 4}),
         ]
+
+
+class TestSteppingMovesTheRecording:
+    """
+    Previous and Next move the recording to the issue now shown, as Find
+    does when it steps -- but following the caret never does.
+    """
+
+    def panel(self):
+        from utils.validation_panel import ValidationPanel
+
+        panel = ValidationPanel.__new__(ValidationPanel)
+        panel.items = [
+            {"caption": caption(1, "00:00:01,000", "00:00:02,000", "Hello there"), "offset": 6},
+            {"caption": caption(2, "00:00:03,000", "00:00:04,000"), "offset": 0},
+            {"caption": caption(3, "00:00:05,000", "00:00:06,000"), "speech": {"start": 7.5, "end": 8, "until": 9}},
+        ]
+        panel.position = 0
+        panel.previous, panel.next = "previous", "next"
+        panel.draw = lambda: None
+        panel.focus = lambda element: None
+        panel.exists = lambda item: True
+
+        calls = []
+
+        class Transcript:
+            def __init__(self):
+                self.editor = self
+
+            def seek(self, args):
+                calls.append(("seek", args))
+
+            def seek_video(self, seconds):
+                calls.append(("video", seconds))
+
+            def moved_to(self, seconds):
+                pass
+
+        panel.transcript = Transcript()
+        panel.calls = calls
+        return panel
+
+    def test_next_and_previous_move_it(self):
+        panel = self.panel()
+
+        panel.go_next()
+        panel.go_next()
+        panel.go_previous()
+
+        assert panel.calls == [
+            ("seek", {"id": 2, "offset": 0}),
+            ("video", 7.5),
+            ("seek", {"id": 2, "offset": 0}),
+        ]
+
+    def test_an_issue_whose_caption_is_gone_does_not(self):
+        panel = self.panel()
+        panel.exists = lambda item: False
+
+        panel.go_next()
+
+        assert panel.calls == []
+
+    def test_following_the_caret_never_does(self):
+        source = (pathlib.Path(__file__).resolve().parent.parent / "utils" / "validation_panel.py").read_text()
+        follow = source[source.index("    def follow_caret(") :]
+        follow = follow[: follow.index("\n    def ", 10)]
+
+        assert "hear" not in follow and "seek" not in follow
 
 
 class TestCheckingAgain:
@@ -580,6 +647,7 @@ class TestStepping:
         panel.previous, panel.next = "previous", "next"
         panel.focused = []
         panel.draw = lambda: None
+        panel.hear_current = lambda: None
         panel.focus = lambda element: panel.focused.append(element)
         return panel
 

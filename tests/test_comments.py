@@ -1201,6 +1201,37 @@ class TestThePanel:
         panel.go_previous()
         assert panel.text.value == "b"
 
+    def test_stepping_moves_the_recording_to_the_words(self, panel, editor, view):
+        """As Find does when it steps: to the first of the comment's words."""
+
+        sought = []
+        view.seek = lambda args: sought.append(args)
+        editor.captions[0].comments = [comment({0}, "a"), comment({2}, "b")]
+        editor.captions[1].comments = [comment({1}, "c")]
+        panel.show(editor.captions[0], editor.captions[0].comments[0])
+
+        panel.go_next()
+        panel.go_next()
+        panel.go_previous()
+
+        start_b = panel.span_of(editor.captions[0], editor.captions[0].comments[1])[0]
+        start_c = panel.span_of(editor.captions[1], editor.captions[1].comments[0])[0]
+        assert sought == [
+            {"id": editor.captions[0].index, "offset": start_b},
+            {"id": editor.captions[1].index, "offset": start_c},
+            {"id": editor.captions[0].index, "offset": start_b},
+        ]
+
+    def test_the_words_button_moves_it_too(self, panel, editor, view):
+        sought = []
+        view.seek = lambda args: sought.append(args)
+        editor.captions[0].comments = [comment({2}, "b")]
+        panel.show(editor.captions[0], editor.captions[0].comments[0])
+
+        panel.go_to_words()
+
+        assert sought == [{"id": editor.captions[0].index, "offset": panel.shown_range()[1]}]
+
     def test_stepping_keeps_what_was_typed(self, panel, editor):
         editor.captions[0].comments = [comment({0}, "a"), comment({2}, "b")]
         panel.show(editor.captions[0], editor.captions[0].comments[0])
