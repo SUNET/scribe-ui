@@ -24,6 +24,8 @@ with everything found in it rather than once per finding, and that errors
 (the file is wrong) stay apart from warnings (a viewer will struggle).
 """
 
+import pathlib
+
 from utils.caption import SRTCaption
 from utils.settings import get_settings
 from utils.srt import SRTEditor
@@ -426,6 +428,49 @@ class TestGoingToSpeech:
         assert panel.transcript.focused == ((1, 2), {"center": True})
         assert panel.transcript.seeked == 2.5
         assert panel.transcript.moved_to_seconds == 2.5
+
+    def test_the_speech_is_sought_once(self):
+        source = (pathlib.Path(__file__).resolve().parent.parent / "utils" / "validation_panel.py").read_text()
+        body = source[source.index("    def go_to_caption(self)") :]
+        body = body[: body.index("\n    def ", 10)]
+
+        assert body.count("seek_video(start)") == 1
+
+
+class TestGoingToACaption:
+    """
+    "Caption N" on the card puts the caret where the problem is, and the
+    recording there too, as a click in the text does -- not only for speech
+    without a caption.
+    """
+
+    def test_the_recording_goes_where_the_caret_goes(self):
+        from utils.validation_panel import ValidationPanel
+
+        panel = ValidationPanel.__new__(ValidationPanel)
+        panel.items = [{"caption": caption(3, "00:00:05,000", "00:00:07,000", "Hello there"), "offset": 4}]
+        panel.position = 0
+        panel.exists = lambda item: True
+
+        calls = []
+
+        class Transcript:
+            editor = None
+
+            def focus(self, *args, **kwargs):
+                calls.append(("focus", args, kwargs))
+
+            def seek(self, args):
+                calls.append(("seek", args))
+
+        panel.transcript = Transcript()
+        panel.go_to_caption()
+
+        # The caret first, then the recording: the same place.
+        assert calls == [
+            ("focus", (3, 4), {"center": True}),
+            ("seek", {"id": 3, "offset": 4}),
+        ]
 
 
 class TestCheckingAgain:

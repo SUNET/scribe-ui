@@ -582,16 +582,21 @@ class ValidationPanel:
 
         caption = item["caption"]
         offset = min(item.get("offset", 0), len(caption.text))
-        if "speech" in item:
-            start = item["speech"]["start"]
-            self.transcript.editor.seek_video(start)
-            self.transcript.moved_to(start)
         # Centred, as stepping between issues shows a caption.
         self.transcript.focus(caption.index, offset, center=True)
+
         if "speech" in item:
+            # Speech no caption covers: the recording to the speech itself,
+            # not to the caption it follows.
             start = item["speech"]["start"]
             self.transcript.editor.seek_video(start)
             self.transcript.moved_to(start)
+        else:
+            # The recording to where the caret is put, as a click there does
+            # (TranscriptEditor.seek): the word at the problem, or the
+            # caption's start. Going to a caption is going to hear it too;
+            # the caret alone left the playhead somewhere else.
+            self.transcript.seek({"id": caption.index, "offset": offset})
 
     def reveal_hidden(self, caption_index: int) -> Optional[dict]:
         """
