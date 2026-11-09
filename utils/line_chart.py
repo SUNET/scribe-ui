@@ -31,9 +31,19 @@ the gap, and the time after the last reading of a worker that has gone
 quiet is toned and marked "Offline": no figures, not noughts. A nought
 would say the GPU stood idle; a worker that has hung may as well be at
 100 %.
+
+Under a pointer the chart shows the reading nearest it, as Grafana does:
+a line at the reading's time and, at the right of the chart's title, the
+time and the figure (READOUT). The figures travel with the plot as data
+(`data-readout`), so nothing is asked of the server while the pointer moves.
+It is a help for the eye only, hidden from assistive technology like the
+chart itself: the same figures are in the readings table. It stays while
+the pointer is over the chart or the readout, Esc puts it away, and it
+never covers the lines (1.4.13).
 """
 
 import html
+import json
 from datetime import datetime, timezone, tzinfo
 from typing import Optional, Sequence
 
@@ -211,9 +221,43 @@ LINE_CHART_STYLES = """
     .sparkline .is-quiet {
         fill: color-mix(in srgb, var(--color-text-secondary) 16%, transparent);
     }
+    /* The reading under the pointer (READOUT): a line at its time over the
+       plot, and the time and the figure at the right of the title -- on
+       the title's line, so it never covers the lines it reads. Fixed, in
+       a layer of the page's own, so an update of the chart does not take
+       it away under the pointer. */
+    .line-chart-guide {
+        position: fixed;
+        z-index: 10;
+        width: 0;
+        border-left: 1px solid var(--color-text-secondary);
+        pointer-events: none;
+    }
+    .line-chart-readout {
+        position: fixed;
+        z-index: 11;
+        padding: 0.0625rem 0.5rem;
+        border: 1px solid var(--color-border-subtle);
+        border-radius: 0.375rem;
+        background: var(--color-bg-surface);
+        color: var(--color-text-primary);
+        font-size: 0.8125rem;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+    }
+    .line-chart-guide[hidden],
+    .line-chart-readout[hidden] {
+        display: none;
+    }
     /* Windows high contrast: the lines in the system's colours; the
        dashes still tell them apart. */
     @media (forced-colors: active) {
+        .line-chart-guide {
+            border-left-color: CanvasText;
+        }
+        .line-chart-readout {
+            border-color: CanvasText;
+        }
         .line-chart-area polyline,
         .line-chart-legend line,
         .sparkline polyline {
@@ -268,6 +312,158 @@ def runs(points: Sequence, gap: float = GAP) -> list:
         out.append(run)
 
     return out
+
+
+# The reading under the pointer, for every chart on the page (see the
+# module's notes). One guide and one readout, in the page's own layer.
+READOUT = """<script>
+(() => {
+  if (window.scribeChartReadout) return;
+  window.scribeChartReadout = true;
+
+  // A reading further than this from the pointer is not shown: the line
+  // breaks there too (GAP).
+  const GAP = 35;
+
+  const guide = document.createElement('div');
+  guide.className = 'line-chart-guide';
+  const box = document.createElement('div');
+  box.className = 'line-chart-readout';
+
+  for (const el of [guide, box]) {
+    el.hidden = true;
+    el.setAttribute('aria-hidden', 'true');
+    document.body.append(el);
+  }
+
+  const data = new WeakMap();
+  // Where the plot was that the readout is for. Known by its place, not by
+  // the element: an update of the chart puts a new one in the same place.
+  let shownAt = null;
+  let putAway = false;
+
+  const hide = () => {
+    guide.hidden = true;
+    box.hidden = true;
+    shownAt = null;
+  };
+
+  const samePlace = (rect) =>
+    shownAt && Math.abs(rect.left - shownAt.left) < 1 && Math.abs(rect.top - shownAt.top) < 1;
+
+  const read = (area) => {
+    if (!data.has(area)) {
+      try {
+        data.set(area, JSON.parse(area.dataset.readout));
+      } catch (error) {
+        data.set(area, null);
+      }
+    }
+    return data.get(area);
+  };
+
+  const two = (n) => String(n).padStart(2, '0');
+  const clock = (moment, offset) => {
+    const at = new Date((moment + offset) * 1000);
+    return `${two(at.getUTCHours())}:${two(at.getUTCMinutes())}:${two(at.getUTCSeconds())}`;
+  };
+
+  // The reading nearest `seconds` into the window, by bisection: the
+  // readings are in order of time.
+  const nearest = (points, seconds) => {
+    let low = 0;
+    let high = points.length - 1;
+    if (high < 0) return null;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (points[middle][0] < seconds) low = middle + 1;
+      else high = middle;
+    }
+    const after = points[low];
+    const before = points[low - 1];
+    const found = before && Math.abs(before[0] - seconds) <= Math.abs(after[0] - seconds) ? before : after;
+    return Math.abs(found[0] - seconds) <= GAP ? found : null;
+  };
+
+  const show = (chart, area, event) => {
+    const chartData = read(area);
+    if (!chartData) return hide();
+
+    const box_ = area.getBoundingClientRect();
+    const span = Math.max(chartData.e - chartData.s, 1);
+    const seconds = ((event.clientX - box_.left) / box_.width) * span;
+    let at = seconds;
+    let text;
+
+    if (chartData.q !== null && chartData.s + seconds > chartData.q) {
+      text = `${clock(chartData.s + seconds, chartData.o)} · Offline`;
+    } else {
+      const found = chartData.p.map((points) => nearest(points, seconds));
+      const first = found.find(Boolean);
+      if (first) at = first[0];
+      const several = chartData.n.length > 1;
+      const figures = found.map((reading, index) => {
+        const figure = reading ? `${Math.round(reading[1])} %` : '–';
+        return several ? `${chartData.n[index]} ${figure}` : figure;
+      });
+      text = first
+        ? `${clock(chartData.s + at, chartData.o)} · ${figures.join(' · ')}`
+        : `${clock(chartData.s + seconds, chartData.o)} · no reading`;
+    }
+
+    guide.style.left = `${box_.left + (at / span) * box_.width}px`;
+    guide.style.top = `${box_.top}px`;
+    guide.style.height = `${box_.height}px`;
+    guide.hidden = false;
+
+    const title = chart.querySelector('.line-chart-title');
+    const line = (title || area).getBoundingClientRect();
+    box.textContent = text;
+    box.style.top = `${line.top}px`;
+    box.style.right = `${document.documentElement.clientWidth - box_.right}px`;
+    box.hidden = false;
+    shownAt = { left: box_.left, top: box_.top };
+  };
+
+  document.addEventListener('mousemove', (event) => {
+    // Over the readout itself, it stays where it is.
+    if (box.contains(event.target)) return;
+
+    const chart = event.target.closest && event.target.closest('.line-chart');
+    const area = chart && chart.querySelector('.line-chart-area[data-readout]');
+
+    if (!area) {
+      putAway = false;
+      hide();
+      return;
+    }
+
+    if (putAway) return;
+
+    // Over the title, the scale or the times: the readout stays as it is,
+    // so the pointer can go to it.
+    const box_ = area.getBoundingClientRect();
+    if (event.clientX < box_.left || event.clientX > box_.right || event.clientY < box_.top || event.clientY > box_.bottom) {
+      if (!samePlace(box_)) hide();
+      return;
+    }
+
+    show(chart, area, event);
+  });
+
+  // Esc puts it away until the pointer has left the chart.
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !box.hidden) {
+      putAway = true;
+      hide();
+    }
+  });
+
+  // Fixed to where the chart was: away as soon as anything scrolls.
+  window.addEventListener('scroll', hide, true);
+  window.addEventListener('resize', hide);
+})();
+</script>"""
 
 
 def line_chart(
@@ -339,11 +535,28 @@ def line_chart(
             for (name, _), (colour, dash) in zip(shown, styles)
         ) + "</ul>"
 
+    # The figures for the readout under the pointer (READOUT): seconds
+    # into the window and the figure, to a tenth, per series; the reader's
+    # time zone as an offset, so the time is shown as the table has it.
+    offset = datetime.fromtimestamp(end, zone).utcoffset()
+    readout = {
+        "s": round(start, 1),
+        "e": round(end, 1),
+        "o": int(offset.total_seconds()) if offset else 0,
+        "q": round(quiet_from, 1) if quiet_from is not None and quiet_from < end else None,
+        "n": [name for name, _ in shown],
+        "p": [
+            [[round(t - start, 1), round(float(v), 1)] for t, v in points if v is not None]
+            for _, points in shown
+        ],
+    }
+    data = html.escape(json.dumps(readout, separators=(",", ":")), quote=True)
+
     return (
         f'<div class="line-chart" aria-hidden="true">{heading}'
         '<div class="line-chart-plot">'
         f'<div class="line-chart-scale">{scale}</div>'
-        f'<div class="line-chart-area">{grid}{quiet}'
+        f'<div class="line-chart-area" data-readout="{data}">{grid}{quiet}'
         f'<svg viewBox="0 0 100 100" preserveAspectRatio="none">{lines}</svg></div>'
         f'<div class="line-chart-times">{times}</div>'
         f"</div>{legend}</div>"

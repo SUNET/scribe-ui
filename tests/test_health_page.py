@@ -24,7 +24,7 @@ from datetime import timezone
 import pytest
 
 from utils import worker_health as wh
-from utils.line_chart import LINE_CHART_STYLES, STYLES, line_chart, runs, sparkline, time_marks
+from utils.line_chart import GAP, LINE_CHART_STYLES, READOUT, STYLES, line_chart, runs, sparkline, time_marks
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 PAGE = (ROOT / "pages" / "admin" / "health.py").read_text()
@@ -190,6 +190,65 @@ class TestTheChart:
     def test_high_contrast_and_text_in_rem(self):
         assert "@media (forced-colors: active)" in LINE_CHART_STYLES
         assert "font-size: 0.75rem;" in LINE_CHART_STYLES
+
+
+class TestTheReadingUnderThePointer:
+    """
+    The chart shows the reading nearest the pointer (READOUT), from the
+    figures that travel with the plot as data -- a help for the eye, the
+    same figures as the table, and away with Esc (1.4.13).
+    """
+
+    def data(self, chart: str) -> dict:
+        import html as html_
+
+        found = chart.split('data-readout="', 1)[1].split('"', 1)[0]
+
+        return json.loads(html_.unescape(found))
+
+    def test_the_figures_travel_with_the_plot(self):
+        chart = line_chart("CPU, %", [("CPU", [(NOW - 100, 12.34), (NOW - 90, None), (NOW - 80, 40)])], NOW - 1800, NOW)
+        data = self.data(chart)
+
+        assert data["s"] == NOW - 1800 and data["e"] == NOW and data["o"] == 0
+        assert data["n"] == ["CPU"]
+        # Seconds into the window and the figure to a tenth; no figure, no point.
+        assert data["p"] == [[[1700.0, 12.3], [1720.0, 40.0]]]
+        assert data["q"] is None
+
+    def test_the_time_zone_and_the_quiet_go_along(self):
+        from zoneinfo import ZoneInfo
+
+        chart = line_chart("CPU, %", [("CPU", [(NOW - 100, 5)])], NOW - 1800, NOW, ZoneInfo("Europe/Stockholm"), NOW - 60)
+        data = self.data(chart)
+
+        assert data["o"] in (3600, 7200)
+        assert data["q"] == NOW - 60
+
+    def test_a_name_is_escaped_in_the_attribute(self):
+        chart = line_chart("x", [('GPU "0" <b>', [(NOW - 10, 1)])], NOW - 1800, NOW)
+
+        assert '<b>' not in chart.split("data-readout=", 1)[1].split(">", 1)[0]
+        assert self.data(chart)["n"] == ['GPU "0" <b>']
+
+    def test_an_empty_chart_has_none(self):
+        assert "data-readout" not in line_chart("CPU, %", [("CPU", [])], NOW - 1800, NOW)
+
+    def test_the_readout_is_for_the_eye_and_goes_away(self):
+        assert "el.setAttribute('aria-hidden', 'true')" in READOUT
+        assert "event.key === 'Escape'" in READOUT
+        assert "window.addEventListener('scroll', hide, true);" in READOUT
+        # It stays while the pointer is over it, so the pointer can go there.
+        assert "if (box.contains(event.target)) return;" in READOUT
+        # Known by its place: an update puts a new chart in the same place.
+        assert "if (!samePlace(box_)) hide();" in READOUT
+        assert "shownFor" not in READOUT
+        # The same break as the line's.
+        assert f"const GAP = {GAP};" in READOUT
+        assert "if (window.scribeChartReadout) return;" in READOUT
+
+    def test_the_page_has_it(self):
+        assert "ui.add_body_html(READOUT)" in PAGE
 
 
 class TestThePage:

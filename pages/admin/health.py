@@ -42,7 +42,7 @@ from nicegui import app, ui
 from utils import worker_health as wh
 from utils.chart_tables import head_html as chart_head, phrased, table_html
 from utils.common import page_init
-from utils.line_chart import LINE_CHART_STYLES, SINGLE, STYLES, clock, line_chart, sparkline
+from utils.line_chart import LINE_CHART_STYLES, READOUT, SINGLE, STYLES, clock, line_chart, sparkline
 from utils.styles import default_styles
 from utils.settings import get_settings
 from utils.token import (
@@ -376,6 +376,8 @@ async def health() -> None:
     ui.add_head_html(default_styles)
     ui.add_head_html(chart_head())
     ui.add_head_html(LINE_CHART_STYLES)
+    # The reading under the pointer, for every chart on the page.
+    ui.add_body_html(READOUT)
     ui.add_body_html(KEEP_FOCUS)
 
     zone_name = app.storage.user.get("timezone", "UTC")
