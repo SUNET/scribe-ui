@@ -109,8 +109,12 @@ class TestOnlineAndOffline:
         on, off = wh.Worker("a", [], True, NOW), wh.Worker("b", [], False, NOW)
 
         assert wh.count_line([off, on, on]) == "1 offline, 2 online."
-        assert wh.count_line([on, on]) == "All 2 workers online."
-        assert wh.count_line([off]) == "The worker is offline."
+        # Always the number, never "all" or "the worker": only the workers
+        # heard from in the last 24 hours are known, not all there are.
+        assert wh.count_line([on]) == "1 worker online."
+        assert wh.count_line([off]) == "1 worker offline."
+        assert wh.count_line([on, on, on]) == "3 workers online."
+        assert wh.count_line([off, off]) == "2 workers offline."
         assert wh.count_line([]) == "No worker has been heard from in the last 24 hours."
 
     def test_how_long_ago(self):

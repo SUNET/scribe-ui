@@ -225,7 +225,12 @@ def arranged(workers: list, now: float) -> tuple:
 
 
 def count_line(shown: list) -> str:
-    """How many are offline and online, the offline first."""
+    """
+    How many are offline and online, the offline first, always with the
+    number: "1 worker online.", "3 workers offline.", "1 offline, 2 online."
+    Never "all" or "the worker": the page knows only the workers heard from
+    in the last 24 hours, which need not be all there are.
+    """
 
     if not shown:
         return "No worker has been heard from in the last 24 hours."
@@ -233,11 +238,14 @@ def count_line(shown: list) -> str:
     offline = sum(1 for w in shown if not w.online)
     online = len(shown) - offline
 
+    def workers(n: int) -> str:
+        return f"{n} worker{'' if n == 1 else 's'}"
+
     if not offline:
-        return f"All {online} workers online." if online > 1 else "The worker is online."
+        return f"{workers(online)} online."
 
     if not online:
-        return f"All {offline} workers offline." if offline > 1 else "The worker is offline."
+        return f"{workers(offline)} offline."
 
     return f"{offline} offline, {online} online."
 
