@@ -21,11 +21,12 @@ describe one: a single Tab stop, the arrow keys between its buttons.
 
 Without it every button of the editor's toolbar was a Tab stop of its own,
 and getting from the top of the page to the text took a press for each. With
-it, Tab goes into the bar -- to the button last used there, if it was entered
-with Tab before -- and the next Tab goes on past it; Left and Right move
-between the buttons, wrapping round, and Home and End go to the first and
-the last. A screen reader says "toolbar" and its name on the way in, which
-is what tells the reader the arrows work there (role=toolbar promises it).
+it, Tab goes into the bar -- to its first button from the left that is not
+greyed out, from either side and whatever was used last -- and the next Tab
+goes on past it; Left and Right move between the buttons, wrapping round,
+and Home and End go to the first and the last. A screen reader says
+"toolbar" and its name on the way in, which is what tells the reader the
+arrows work there (role=toolbar promises it).
 
 The buttons' own tabindex is left alone. Quasar sets it on every q-btn and
 sets it again whenever a button changes (Undo being enabled, say), so a
@@ -55,30 +56,27 @@ KEYS = """<script>
   // The button focus is in. A click gives focus to a span inside Quasar's
   // button rather than to the button, and the arrows should still work.
   const itemOf = (items, target) => items.find((el) => el === target || el.contains(target));
-  const kept = new WeakMap();
   let byTab = false;
 
   document.addEventListener('keydown', (event) => { byTab = event.key === 'Tab'; }, true);
   document.addEventListener('mousedown', () => { byTab = false; }, true);
 
-  // Into the bar with Tab, from outside it: to the button last used there.
+  // Into the bar with Tab or Shift+Tab, from outside it: to its first
+  // button that can be used -- the first from the left that is not greyed
+  // out -- whichever side it is entered from, and whichever button was used
+  // last. The same place every time, as the toolbar pattern has it, rather
+  // than one that depends on what was clicked earlier. Focus put on a
+  // button any other way (a click, or a card closing and handing focus
+  // back to the button that opened it) is left where it is.
   document.addEventListener('focusin', (event) => {
     const bar = event.target.closest && event.target.closest(BAR);
-    if (!bar) return;
+    if (!bar || !byTab) return;
 
-    const items = itemsOf(bar);
     const from = event.relatedTarget;
+    if (from && bar.contains(from)) return;
 
-    if (byTab && !(from && bar.contains(from))) {
-      const back = kept.get(bar);
-      if (back && back !== event.target && items.includes(back)) {
-        back.focus();
-        return;
-      }
-    }
-
-    const item = itemOf(items, event.target);
-    if (item) kept.set(bar, item);
+    const first = itemsOf(bar)[0];
+    if (first && first !== event.target && !first.contains(event.target)) first.focus();
   });
 
   document.addEventListener('keydown', (event) => {

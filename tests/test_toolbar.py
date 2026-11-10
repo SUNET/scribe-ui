@@ -50,8 +50,11 @@ def test_the_keys_are_the_toolbar_pattern():
     # Wrapping round at either end.
     assert "items[(at + 1) % items.length]" in keys
     assert "items[(at - 1 + items.length) % items.length]" in keys
-    # Into the bar with Tab: to the button last used there.
-    assert "kept.get(bar)" in keys
+    # Into the bar with Tab, from either side: to the first button that can
+    # be used, never to one remembered from earlier.
+    assert "const first = itemsOf(bar)[0];" in keys
+    assert "first.focus()" in keys
+    assert "kept" not in keys
     # The keys of other shortcuts are left to them.
     assert "event.ctrlKey || event.metaKey || event.altKey" in keys
 
