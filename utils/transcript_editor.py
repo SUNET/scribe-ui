@@ -1948,7 +1948,7 @@ class TranscriptEditor:
         ) as dialog:
             with ui.card().classes("quick-jump").style(
                 "min-width: min(28rem, 92vw); padding: 12px 16px;"
-            ):
+            ) as card:
                 label = ui.label("Jump to").classes("text-subtitle2")
                 field = ui.input().props("outlined dense autofocus").classes("w-full")
                 hint = ui.label(HINT).classes("text-caption text-theme-secondary")
@@ -1980,6 +1980,37 @@ class TranscriptEditor:
 
         field.on("keydown.enter", submit)
         field.on("keydown.escape", close)
+
+        # Tab closes it as Escape does. The prompt is put at the very end of
+        # the page, so Tab from it would land on nothing, and the prompt
+        # would be left open with nothing in it to close it from.
+        field.on(
+            "keydown",
+            close,
+            js_handler=(
+                "(e) => { if (e.key === 'Tab') { e.preventDefault(); emit(); } }"
+            ),
+        )
+
+        # Put away when the reader goes on to something else -- a click in
+        # the text, on a button -- since a prompt with no backdrop holds
+        # nobody, and one left open is in the way of what they went to.
+        # The caret is not put back: the reader has just put it, or focus,
+        # where they want it. Focus going nowhere is not leaving it, and a
+        # click on the prompt's own words keeps focus in the field rather
+        # than handing it to the dialog around it.
+        card.on(
+            "mousedown",
+            js_handler="(e) => { if (!e.target.closest('input')) e.preventDefault(); }",
+        )
+        card.on(
+            "focusout",
+            lambda: dialog.close(),
+            js_handler=(
+                "(e) => { if (e.relatedTarget"
+                " && !e.currentTarget.contains(e.relatedTarget)) emit(); }"
+            ),
+        )
         # Typing again withdraws the message about the last attempt.
         field.on_value_change(lambda: setattr(error, "text", ""))
 

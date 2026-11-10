@@ -485,3 +485,32 @@ class TestThePrompt:
         close = body[body.index("def close"):body.index('field.on("keydown.enter"')]
 
         assert "self.return_to_text()" in close
+
+    def test_going_elsewhere_closes_it_without_moving_the_caret(self):
+        body = self.build_body()
+        leave = body[body.index('card.on(\n            "focusout"'):]
+        leave = leave[: leave.index("\n        )\n") ]
+
+        # Only when focus lands on something outside the prompt: a click
+        # on the prompt's own words, or on nothing, keeps it open.
+        assert "e.relatedTarget" in leave
+        assert "!e.currentTarget.contains(e.relatedTarget)" in leave
+        assert "dialog.close()" in leave
+        # The reader has just put the caret where they want it.
+        assert "return_to_text" not in leave
+
+    def test_a_click_on_the_prompts_own_words_keeps_focus_in_the_field(self):
+        body = self.build_body()
+
+        assert 'card.on(\n            "mousedown"' in body
+        assert "closest('input')" in body
+
+    def test_tab_closes_it_as_escape_does(self):
+        body = self.build_body()
+        tab = body[body.index('field.on(\n            "keydown",'):]
+        tab = tab[: tab.index("\n        )\n")]
+
+        assert "close," in tab
+        assert "e.key === 'Tab'" in tab
+        assert "e.preventDefault()" in tab
+
