@@ -1553,6 +1553,7 @@ class TestKeepingUpWithTheText:
         calls = []
         panel.sync = lambda: calls.append(1)
         view.body.set_blocks = lambda blocks: None
+        view.body.set_muted = lambda ids: None
         view.body.set_speakers = lambda *a: None
         view.refresh_overlay = lambda: None
         view.refresh_timeline = lambda: None

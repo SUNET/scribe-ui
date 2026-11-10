@@ -123,6 +123,7 @@ class TranscriptBody(
         self._props["blocks"] = []
         self._props["activeId"] = -1
         self._props["reviewId"] = -1
+        self._props["mutedIds"] = []
         self._props["commentId"] = -1
         self._props["commentIndex"] = -1
         self._props["findMarks"] = []
@@ -167,6 +168,22 @@ class TranscriptBody(
         """
 
         self._props["reviewId"] = block_id
+        self.update()
+
+    def set_muted(self, block_ids: List[int]) -> None:
+        """
+        The marked captions whose every issue is of a kind the validation
+        panel hides: drawn with a dashed rule and no tint (see
+        TranscriptEditor.set_hidden_rules). A prop of its own rather than a
+        field of each block, so a checkbox in the panel restyles the
+        captions without rebuilding them -- a rebuild puts the caret back,
+        and with it focus, which has to stay on the checkbox.
+        """
+
+        if self._props["mutedIds"] == block_ids:
+            return
+
+        self._props["mutedIds"] = block_ids
         self.update()
 
     def set_comment_mark(self, block_id: int, comment_index: int = -1) -> None:
@@ -282,6 +299,9 @@ class TranscriptEditor:
         # next one. Cleared when the caret settles in another block; the
         # player says whether the stretch is still current (context_state).
         self.last_context: Optional[tuple] = None
+        # The kinds of issue the validation panel hides; a caption marked
+        # only for those is drawn quieter (see set_hidden_rules).
+        self.hidden_rules: set = set()
         # Built the first time it is wanted -- see open_quick_jump.
         self.quick_jump_dialog = None
         self.quick_jump_input = None
@@ -735,6 +755,37 @@ class TranscriptEditor:
 
         return blocks
 
+    def muted_ids(self) -> List[int]:
+        """
+        The marked captions whose every issue is of a hidden kind. A caption
+        with one issue of a kind that is shown is marked as before: what the
+        reader asked to see is in it.
+        """
+
+        hidden = self.hidden_rules
+
+        return [
+            caption.index
+            for caption in self.editor.captions
+            if not caption.is_valid
+            and caption.issue_rules
+            and caption.issue_rules <= hidden
+        ]
+
+    def set_hidden_rules(self, rules) -> None:
+        """
+        The validation panel's filter changed (a checkbox, or a kind shown
+        again by reveal_hidden). A caption marked only for hidden kinds keeps
+        its rule, dashed and with no tint, so it still says something is
+        there -- the caret in it opens the card and shows the kind again --
+        without competing with the kinds the reader is working on.
+        """
+
+        self.hidden_rules = set(rules)
+
+        if self.body is not None:
+            self.body.set_muted(self.muted_ids())
+
     def refresh(self) -> None:
         """
         Send the current captions to the component.
@@ -744,6 +795,9 @@ class TranscriptEditor:
             return
 
         self.body.set_blocks(self.blocks())
+        # Which captions are marked only for hidden kinds: a Validate, a
+        # split or an undo can change that as well as the blocks.
+        self.body.set_muted(self.muted_ids())
         # Captions added, removed, moved or changed under Find: its matches
         # are looked for again, so the marks are on the right captions
         # whoever asked for the redraw.

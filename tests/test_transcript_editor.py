@@ -506,6 +506,11 @@ class TestSplitFocus:
             def focus_block(self, block_id, offset=0):
                 calls.append((block_id, offset))
 
+            def set_muted(self, block_ids):
+
+                pass
+
+
             def set_blocks(self, blocks):
                 pass
 
@@ -1864,6 +1869,11 @@ class TestMergeFocus:
             def focus_block(self, block_id, offset=0):
                 calls.append((block_id, offset))
 
+            def set_muted(self, block_ids):
+
+                pass
+
+
             def set_blocks(self, blocks):
                 pass
 
@@ -1996,6 +2006,11 @@ class TestDeleteCaption:
         class FakeBody:
             def focus_block(self, block_id, offset=0):
                 calls.append((block_id, offset))
+
+            def set_muted(self, block_ids):
+
+                pass
+
 
             def set_blocks(self, blocks):
                 pass
@@ -2353,6 +2368,7 @@ class TestFollowVideoOverlay:
         editor.captions[1].text = "grew backwards"
         del editor.captions[0]
         view.body.set_blocks = lambda *a, **k: None
+        view.body.set_muted = lambda *a, **k: None
         view.body.set_speakers = lambda *a, **k: None
         view.refresh()
 

@@ -183,6 +183,7 @@ class RenderMixin:
             if mark:
                 caption.is_valid = False
                 caption.has_error = caption.has_error or error
+                caption.issue_rules.add(rule)
 
         for caption in self.captions:
             if not caption.text.strip():
@@ -501,6 +502,7 @@ class RenderMixin:
         for caption in self.captions:
             caption.is_valid = True
             caption.has_error = False
+            caption.issue_rules = set()
 
         issues = self.collect_validation_issues()
         changed_indices |= {entry["caption"].index for entry in issues}

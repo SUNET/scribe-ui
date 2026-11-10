@@ -86,7 +86,7 @@ export default {
             @keydown="onControlKeydown($event, block.id, 'speaker')"
           >{{ block.speaker }}</span><span v-if="!subtitleMode" class="transcript-colon">:</span></div><div
           class="transcript-cell"
-          :class="{ 'transcript-cell-active': block.id === activeId, 'transcript-cell-editing': block.id === caretId, 'transcript-cell-invalid': block.invalid, 'transcript-cell-warning': block.warning, 'transcript-cell-reviewing': block.id === reviewId, 'transcript-cell-commenting': block.id === commentId }"
+          :class="{ 'transcript-cell-active': block.id === activeId, 'transcript-cell-editing': block.id === caretId, 'transcript-cell-invalid': block.invalid, 'transcript-cell-warning': block.warning, 'transcript-cell-reviewing': block.id === reviewId, 'transcript-cell-muted': mutedIds.includes(block.id), 'transcript-cell-commenting': block.id === commentId }"
           :data-id="block.id"
         ><div
             v-if="!subtitleMode"
@@ -290,6 +290,10 @@ export default {
     // The caption whose validation issue the panel under the video is
     // showing (utils/validation_panel.py); -1 when none is.
     reviewId: { type: Number, default: -1 },
+    // Marked captions whose every issue is of a kind the validation panel
+    // hides: drawn with a dashed rule and no tint. A prop of its own, so a
+    // change restyles the captions without rebuilding them.
+    mutedIds: { type: Array, default: () => [] },
     // The caption, and the comment in it, that the comments card under the
     // video is showing (utils/comments_panel.py); -1 when none is. A comment
     // being written has a caption but no comment yet.
