@@ -40,7 +40,8 @@ from nicegui import ui
 from utils.caption import SRTCaption
 from utils.common import focus_element
 from utils.quick_jump import (
-    HINT,
+    NOT_IN_A_TRANSCRIPTION,
+    hint as quick_jump_hint,
     KIND_BLOCK,
     KIND_RELATIVE,
     JumpError,
@@ -1951,7 +1952,9 @@ class TranscriptEditor:
             ):
                 label = ui.label("Jump to").classes("text-subtitle2")
                 field = ui.input().props("outlined dense autofocus").classes("w-full")
-                hint = ui.label(HINT).classes("text-caption text-theme-secondary")
+                hint = ui.label(
+                    quick_jump_hint(self.editor.data_format == "srt")
+                ).classes("text-caption text-theme-secondary")
                 # Always in the page, so that what is put in it is announced;
                 # the colour is not what says it went wrong, the words are.
                 error = ui.label("").props('role="alert"').classes("text-caption")
@@ -2009,7 +2012,7 @@ class TranscriptEditor:
         """
 
         try:
-            kind, value = parse_jump(text)
+            kind, value = parse_jump(text, self.editor.data_format == "srt")
         except JumpError as problem:
             return str(problem)
 
@@ -2052,7 +2055,7 @@ class TranscriptEditor:
         """
 
         if self.editor.data_format != "srt":
-            return "Block numbers are only shown in subtitles. Use a time instead"
+            return NOT_IN_A_TRANSCRIPTION
 
         captions = self.editor.captions
 

@@ -24,6 +24,9 @@ import pytest
 from utils.caption import SRTCaption
 from utils.quick_jump import (
     HINT,
+    HINT_TIMES,
+    NOT_IN_A_TRANSCRIPTION,
+    hint,
     KIND_BLOCK,
     KIND_RELATIVE,
     KIND_TIME,
@@ -147,6 +150,45 @@ WORDS = {
         {"t": "sju", "s": 10.0, "e": 10.5},
     ],
 }
+
+
+class TestOnlyWhatTheFormatHas:
+    """
+    A transcription shows no numbers, so Quick Jump never offers one there:
+    not in its hint, not in what it says when nothing is typed.
+    """
+
+    def test_the_hint_has_caption_numbers_in_subtitles_only(self):
+        assert hint(True) == HINT
+        assert "#" in hint(True)
+        assert hint(False) == HINT_TIMES
+        assert "#" not in hint(False)
+
+    def test_every_example_in_the_transcription_hint_parses_there(self):
+        for example in re.findall(r"[#+-]?[\d:]+", HINT_TIMES):
+            parse_jump(example, subtitles=False)
+
+    def test_nothing_typed_asks_for_a_time_only_in_a_transcription(self):
+        with pytest.raises(JumpError) as raised:
+            parse_jump("", subtitles=False)
+
+        assert "number" not in str(raised.value)
+
+        with pytest.raises(JumpError, match="caption number"):
+            parse_jump("")
+
+    def test_a_number_typed_in_a_transcription_says_why_not(self):
+        for text in ("#2", "#x"):
+            with pytest.raises(JumpError, match="only shown in subtitles"):
+                parse_jump(text, subtitles=False)
+
+        assert NOT_IN_A_TRANSCRIPTION.startswith("Numbers are only shown in subtitles")
+
+    def test_the_prompt_takes_the_hint_for_the_format(self):
+        source = pathlib.Path("utils/transcript_editor.py").read_text()
+
+        assert 'quick_jump_hint(self.editor.data_format == "srt")' in source
+        assert 'parse_jump(text, self.editor.data_format == "srt")' in source
 
 
 def build(data_format="srt"):

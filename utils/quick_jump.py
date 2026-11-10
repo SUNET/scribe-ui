@@ -45,8 +45,22 @@ KIND_TIME = "time"
 KIND_RELATIVE = "relative"
 
 # What the dialog shows under the field. One place, so it is tested against
-# the parser rather than trusted to stay right.
-HINT = "Time: 1:15:23, 1:15, 90 or 123. Relative: +30 or -1:05. Block: #12."
+# the parser rather than trusted to stay right. A transcription shows no
+# numbers to type, so its hint has times only.
+HINT_TIMES = "Time: 1:15:23, 1:15, 90 or 123. Relative: +30 or -1:05."
+HINT = f"{HINT_TIMES} Caption: #12."
+
+
+# Said in a transcription to a number typed anyway.
+NOT_IN_A_TRANSCRIPTION = "Numbers are only shown in subtitles. Use a time instead"
+
+
+def hint(subtitles: bool) -> str:
+    """
+    The hint for the editor that is open: caption numbers in subtitles only.
+    """
+
+    return HINT if subtitles else HINT_TIMES
 
 _DIGITS = re.compile(r"\d+")
 _SECONDS = re.compile(r"(\d+)(?:[.,](\d+))?")
@@ -59,23 +73,32 @@ class JumpError(ValueError):
     """
 
 
-def parse_jump(text: str) -> Tuple[str, float]:
+def parse_jump(text: str, subtitles: bool = True) -> Tuple[str, float]:
     """
     Read the input. Returns (kind, value): a block number, a number of
     seconds from the start of the recording, or a signed number of seconds
     to move by. Raises JumpError, with something to say to the reader.
+    `subtitles` is False in a transcription, which shows no numbers, so what
+    is said there never suggests one.
     """
 
     text = (text or "").strip()
 
     if not text:
-        raise JumpError("Type a time, like 1:15, or a block number, like #12")
+        raise JumpError(
+            "Type a time, like 1:15, or a caption number, like #12"
+            if subtitles
+            else "Type a time, like 1:15"
+        )
 
     if text.startswith("#"):
+        if not subtitles:
+            raise JumpError(NOT_IN_A_TRANSCRIPTION)
+
         digits = text[1:].strip()
 
         if not _DIGITS.fullmatch(digits) or int(digits) < 1:
-            raise JumpError("A block number is # and a number from 1, like #12")
+            raise JumpError("A caption number is # and a number from 1, like #12")
 
         return (KIND_BLOCK, int(digits))
 
