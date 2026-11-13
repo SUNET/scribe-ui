@@ -99,7 +99,8 @@ def test_error_label_is_an_alert(path, text):
 
 def test_health_alert_is_persistent_and_only_changes_with_reachability():
     source = (ROOT / "pages/admin/health.py").read_text()
-    assert source.index("reachability_alert = ui.label") < source.index("@ui.refreshable")
+    # Made once, before the function the timer calls, not inside it.
+    assert source.index("reachability_alert = ui.label") < source.index("async def render_health")
     assert "if backend_reachable != last_backend_reachable:" in source
     assert '"" if backend_reachable else "Backend is not reachable"' in source
     assert "reachability_alert.set_visibility(not backend_reachable)" in source

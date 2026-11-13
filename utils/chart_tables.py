@@ -301,17 +301,51 @@ def data_table(
     numeric: Sequence[int] = (),
 ) -> str:
     """
-    The numbers behind a chart as a table behind a native disclosure.
+    The numbers behind a chart as a table behind a native disclosure, the
+    table as table_region() draws it.
+    """
 
-    The table is in a region of its own, named by its caption, that scrolls
-    sideways if the table is ever wider than its card, rather than taking
-    the page with it (1.4.10); tabindex, so the keyboard can reach and
-    scroll it.
+    return (
+        '<details class="chart-data">'
+        f"<summary>{html.escape(summary)}</summary>"
+        f"{table_region(caption, headers, rows, numeric)}"
+        "</details>"
+    )
+
+
+def table_region(
+    caption: str,
+    headers: Sequence[str],
+    rows: Iterable[Sequence],
+    numeric: Sequence[int] = (),
+) -> str:
+    """
+    The numbers behind a chart as a table, in a region of its own, named by
+    its caption, that scrolls sideways if the table is ever wider than its
+    card, rather than taking the page with it (1.4.10); tabindex, so the
+    keyboard can reach and scroll it. On its own for a page that redraws
+    the table inside a disclosure it keeps (the health page).
 
     The first column heads each row (th scope=row): a date, a name. Columns
     whose index is in `numeric` are set right and in figures of one width,
     so they line up. Everything is escaped: dates and names come from the
     backend.
+    """
+
+    name = html.escape(caption, quote=True)
+
+    return f'<div class="chart-scroll" role="region" tabindex="0" aria-label="{name}">{table_html(caption, headers, rows, numeric)}</div>'
+
+
+def table_html(
+    caption: str,
+    headers: Sequence[str],
+    rows: Iterable[Sequence],
+    numeric: Sequence[int] = (),
+) -> str:
+    """
+    The table of table_region() without its region: for a page that keeps
+    the region, so that focus on it stays while the table is changed.
     """
 
     def cell(at: int, value) -> str:
@@ -333,16 +367,10 @@ def data_table(
         for row in rows
     )
 
-    name = html.escape(caption, quote=True)
-
     return (
-        '<details class="chart-data">'
-        f"<summary>{html.escape(summary)}</summary>"
-        f'<div class="chart-scroll" role="region" tabindex="0" aria-label="{name}">'
         f"<table><caption>{html.escape(caption)}</caption>"
         f"<thead><tr>{head}</tr></thead>"
         f"<tbody>{body}</tbody></table>"
-        "</div></details>"
     )
 
 
