@@ -748,6 +748,12 @@ class RenderMixin:
         # the rest follow it. They are navigation in time, apart from the
         # zoom, which belongs with them rather than on a row of its own.
         navigation = [
+            # The text's own: the caret to the start of the previous or next
+            # block, nothing opened or selected (F-65).
+            (
+                f"Previous / next {'caption' if subtitles else 'paragraph'}",
+                "Alt/⌥ + ↑ / ↓",
+            ),
             ("Quick jump to a time or block", "Ctrl/⌘ + G"),
             ("Timeline, when focused: move playhead a little", "← / →"),
             ("Timeline: move playhead a whole strip", "Page Up / Page Down"),

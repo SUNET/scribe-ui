@@ -126,7 +126,7 @@ class FindPanel:
                     self.heading = self.fold.heading(
                         ui.label("Find and replace")
                         .classes("validation-panel-heading")
-                        .props("id=find-panel-heading tabindex=-1")
+                        .props("id=find-panel-heading tabindex=-1 role=heading aria-level=2")
                     )
 
                     with ui.element("div").classes("validation-panel-nav"):

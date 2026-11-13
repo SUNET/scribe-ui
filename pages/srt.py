@@ -23,6 +23,7 @@ from nicegui import app, ui
 from utils.common import focus_element, get_auth_header
 from utils.styles import default_styles
 from utils.common import hidden_page_heading, job_has_original, page_init
+from utils.toolbar import roving_toolbar
 from utils.helpers import storage_decrypt
 from utils.settings import get_settings
 from utils.srt import (
@@ -250,10 +251,13 @@ def create() -> None:
         # are looked up rather than used while working, so they are icons.
         # Export and Save are the two outlined buttons, and closing is the
         # usual x at the end of the row.
+        # Two toolbars, as the row is two groups to the eye: what works on the
+        # text, and the document as a whole. Each is one Tab stop, the arrows
+        # between its buttons (utils/toolbar.py).
         with ui.row().classes(
             "editor-toolbar justify-between w-full gap-2 items-center"
         ):
-            with ui.row().classes("editor-toolbar-group"):
+            with roving_toolbar(ui.row().classes("editor-toolbar-group"), "Text tools"):
                 editor.create_undo_redo_panel()
 
                 ui.separator().props("vertical")
@@ -314,7 +318,7 @@ def create() -> None:
                             "click", lambda: transcript.comment_selection()
                         )
 
-            with ui.row().classes("editor-toolbar-group"):
+            with roving_toolbar(ui.row().classes("editor-toolbar-group"), "File and settings"):
                 editor.show_keyboard_shortcuts()
 
                 # What is open and what is in it. A dialog rather than a
@@ -559,6 +563,12 @@ def create() -> None:
                         "position: absolute; width: 0; height: 0;"
                         " overflow: hidden; outline: none;"
                     )
+                    # The text's own heading, unseen, so a screen reader's
+                    # heading keys reach it as they reach the cards beside it
+                    # (Validation, Find, Comments: h2 as well) -- F-65.
+                    ui.label(
+                        "Captions" if data_format == "srt" else "Transcript"
+                    ).classes("sr-only").props("role=heading aria-level=2")
                     with ui.scroll_area().style("height: calc(90vh - 100px);"):
                         if data_format == "srt":
                             editor.parse_srt(data["result"])
