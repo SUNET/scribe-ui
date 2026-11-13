@@ -40,6 +40,17 @@ settings = get_settings()
 CHARACTER_LIMIT_EXCEEDED_COLOR = "text-red"
 
 
+# The Timeline's own keys, for the shortcuts dialog. They work while the strip
+# has focus, so the first row says so.
+TIMELINE_KEYS = [
+    ("Timeline, when focused: move playhead a little", "← / →"),
+    ("Timeline: move playhead a whole strip", "Page Up / Page Down"),
+    ("Timeline: playhead to start / end", "Home / End"),
+    ("Timeline: zoom in / out", "Shift + ↑ / ↓, + / −"),
+    ("Timeline: reset zoom", "0"),
+]
+
+
 class RenderMixin:
     """
     Caption list bookkeeping, validation and the shortcut help.
@@ -749,6 +760,13 @@ class RenderMixin:
         # Quick jump, which works from anywhere; the first row says so and
         # the rest follow it. They are navigation in time, apart from the
         # zoom, which belongs with them rather than on a row of its own.
+        # Listed only where there is a strip to focus: subtitles with word
+        # timings, while the Timeline is switched on. The dialog is drawn
+        # afresh each time it opens, so it follows the switch.
+        timeline = (
+            subtitles and bool(getattr(self, "words", None)) and self.show_timeline
+        )
+
         navigation = [
             # The text's own: the caret to the start of the previous or next
             # block, nothing opened or selected (F-65).
@@ -756,13 +774,11 @@ class RenderMixin:
                 f"Previous / next {'caption' if subtitles else 'paragraph'}",
                 "Alt/⌥ + ↑ / ↓",
             ),
-            ("Quick jump to a time or block", "Ctrl/⌘ + G"),
-            ("Timeline, when focused: move playhead a little", "← / →"),
-            ("Timeline: move playhead a whole strip", "Page Up / Page Down"),
-            ("Timeline: playhead to start / end", "Home / End"),
-            ("Timeline: zoom in / out", "Shift + ↑ / ↓, + / −"),
-            ("Timeline: reset zoom", "0"),
-        ]
+            (
+                "Quick jump to a time or caption" if subtitles else "Quick jump to a time",
+                "Ctrl/⌘ + G",
+            ),
+        ] + (TIMELINE_KEYS if timeline else [])
 
         # In the order of the work, which is also the toolbar's from left to
         # right: what is done to the text; playing it and getting around in

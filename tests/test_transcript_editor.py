@@ -2919,14 +2919,20 @@ class TestSpeakerMenuIcons:
         assert "renamespeaker" in icon
 
 
-# Quick jump works from anywhere; the Timeline's keys while the strip has
-# focus; Alt with the arrows in the text (F-65), worded for the format.
-def navigation(noun: str) -> list:
-    return [(f"Previous / next {noun}", "Alt/⌥ + ↑ / ↓")] + TIMELINE_AND_JUMP
+# Alt with the arrows in the text (F-65) and Quick jump, worded for the
+# format; the Timeline's keys only where there is a Timeline.
+def navigation(noun: str, timeline: bool = False) -> list:
+    jump = (
+        "Quick jump to a time or caption" if noun == "caption" else "Quick jump to a time"
+    )
+
+    return [
+        (f"Previous / next {noun}", "Alt/⌥ + ↑ / ↓"),
+        (jump, "Ctrl/⌘ + G"),
+    ] + (TIMELINE_KEYS if timeline else [])
 
 
-TIMELINE_AND_JUMP = [
-    ("Quick jump to a time or block", "Ctrl/⌘ + G"),
+TIMELINE_KEYS = [
     ("Timeline, when focused: move playhead a little", "← / →"),
     ("Timeline: move playhead a whole strip", "Page Up / Page Down"),
     ("Timeline: playhead to start / end", "Home / End"),
@@ -3163,13 +3169,48 @@ class TestTheShortcutsDialog:
         assert paragraphs["Save the comment you are writing"] == "Ctrl/⌘ + Enter"
         assert "Esc" not in paragraphs.values()
 
-    def test_the_timeline_keys_are_listed_for_both(self):
+    def timed(self, data_format: str) -> SRTEditor:
+        """
+        An editor with word timings, which is what gives subtitles a Timeline.
+        """
+
+        editor = self.editor(data_format)
+        editor.load_words({"version": 1, "words": [{"t": "Hej", "s": 0.0, "e": 0.5}]})
+
+        return editor
+
+    def navigation_of(self, editor: SRTEditor) -> list:
+        return dict(editor.keyboard_shortcut_groups())["Navigation"]
+
+    def test_the_timeline_keys_are_listed_where_there_is_a_timeline(self):
+        assert self.navigation_of(self.timed("srt")) == navigation("caption", timeline=True)
+
+    def test_not_in_a_transcription_which_has_no_timeline(self):
+        assert self.navigation_of(self.timed("txt")) == navigation("paragraph")
+        assert not any(
+            action.startswith("Timeline")
+            for action, _ in self.navigation_of(self.timed("txt"))
+        )
+
+    def test_not_in_subtitles_without_word_timings_or_with_it_switched_off(self):
+        assert self.navigation_of(self.editor("srt")) == navigation("caption")
+
+        switched_off = self.timed("srt")
+        switched_off.show_timeline = False
+        assert self.navigation_of(switched_off) == navigation("caption")
+
+    def test_quick_jump_offers_caption_numbers_in_subtitles_only(self):
+        assert ("Quick jump to a time or caption", "Ctrl/⌘ + G") in self.navigation_of(
+            self.editor("srt")
+        )
+        assert ("Quick jump to a time", "Ctrl/⌘ + G") in self.navigation_of(
+            self.editor("txt")
+        )
+
+    def test_no_row_says_block(self):
         for data_format in ("srt", "txt"):
-            groups = dict(self.editor(data_format).keyboard_shortcut_groups())
-
-            noun = "caption" if data_format == "srt" else "paragraph"
-
-            assert groups["Navigation"] == navigation(noun)
+            for _, rows in self.timed(data_format).keyboard_shortcut_groups():
+                assert not any("block" in action.lower() for action, _ in rows)
 
     def test_the_keys_that_both_formats_share_agree(self):
         captions = self.actions("srt")
