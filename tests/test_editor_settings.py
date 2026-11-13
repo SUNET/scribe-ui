@@ -141,7 +141,7 @@ class TestWhatIsInTheMenu:
         group = source[source.index("def settings_group") :]
         group = group[: group.index("return group")]
 
-        assert '"editor-settings-group items-start gap-1"' in group
+        assert '"editor-settings-group items-stretch gap-1 w-full"' in group
         assert 'with ui.column().classes("items-start gap-1"):' not in source
 
     def test_uncertain_words_still_reads_as_one_row(self):
@@ -153,7 +153,7 @@ class TestWhatIsInTheMenu:
         source = page()[self.menu_start() :]
         row = source[source.index('uncertain_label = ui.label("Uncertain words:")') :]
 
-        assert 'with ui.row().classes("items-center gap-2 no-wrap"):' in source
+        assert '"items-center justify-between gap-4 no-wrap w-full"' in source
         for choice in (
             '"off": "Off"',
             '"low": "Low"',
@@ -335,7 +335,7 @@ class TestTheLook:
         rule = css[css.index("\n    .editor-settings {") :]
         rule = rule[: rule.index("}")]
 
-        assert "padding: 0.75rem 1rem;" in rule
+        assert "padding: 1rem 1.25rem;" in rule
         assert "flex-direction: column" in rule
 
     def test_a_group_title_is_small_and_quiet(self):

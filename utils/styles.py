@@ -2849,6 +2849,18 @@ theme_styles = """
     .q-toggle.editor-switch .q-toggle__label {
         font-size: 0.875rem;
     }
+    /* One row per setting: name at the left, switch at the right edge, so the
+       switches line up in a column whatever the labels' lengths. */
+    .editor-settings .q-toggle.editor-switch {
+        width: 100%;
+        min-height: 2.5rem;
+        justify-content: space-between;
+    }
+    .editor-settings .q-toggle.editor-switch .q-toggle__label {
+        flex: 1;
+        padding-left: 0;
+        padding-right: 1rem;
+    }
     .q-toggle.editor-switch .q-toggle__inner--truthy {
         color: var(--color-brand-primary);
     }
@@ -4539,8 +4551,20 @@ theme_styles = """
     .editor-settings {
         display: flex;
         flex-direction: column;
-        gap: 0.75rem;
-        padding: 0.75rem 1rem;
+        gap: 1.25rem;
+        padding: 1rem 1.25rem;
+    }
+    .editor-settings .editor-settings-group {
+        gap: 0.5rem;
+    }
+    /* The count's reserved place sits right under the row, and the menu's own
+       bottom padding is cut to match, so the reserved height does not read
+       as a gap. */
+    .editor-settings .editor-settings-uncertain {
+        gap: 0;
+    }
+    .editor-settings {
+        padding-bottom: 0.5rem;
     }
     /* The flagged count's place, under the Uncertain words row. It keeps its
        height while the marking is off (the count is hidden then), so the menu

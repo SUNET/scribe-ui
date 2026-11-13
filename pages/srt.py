@@ -736,7 +736,7 @@ def create() -> None:
                             """
 
                             group = ui.column().classes(
-                                "editor-settings-group items-start gap-1"
+                                "editor-settings-group items-stretch gap-1 w-full"
                             )
                             if title:
                                 with group:
@@ -791,7 +791,7 @@ def create() -> None:
                                 follow = ui.switch(
                                     "Follow audio" if following_words else "Autoscroll",
                                     value=editor.autoscroll,
-                                ).props("dense data-autofocus").classes("editor-switch")
+                                ).props("dense left-label data-autofocus").classes("editor-switch")
                                 # Click only fires from a mouse. Quasar's
                                 # QToggle answers Enter/Space with its own
                                 # internal onClick(), which only emits
@@ -833,7 +833,7 @@ def create() -> None:
                                     timeline_switch = ui.switch(
                                         "Timeline",
                                         value=editor.show_timeline,
-                                    ).props("dense").classes("editor-switch")
+                                    ).props("dense left-label").classes("editor-switch")
                                     # Same reason as the switches above:
                                     # "click" is mouse-only on a QToggle,
                                     # and update:model-value fires for a
@@ -867,7 +867,7 @@ def create() -> None:
                                     edits_switch = ui.switch(
                                         "My edits",
                                         value=editor.show_my_edits,
-                                    ).props("dense").classes("editor-switch edits-switch")
+                                    ).props("dense left-label").classes("editor-switch edits-switch")
                                     # Same reason as the switches above:
                                     # "click" is mouse-only on a QToggle,
                                     # and update:model-value fires for a
@@ -904,7 +904,7 @@ def create() -> None:
                                     highlights_switch = ui.switch(
                                         "Highlights",
                                         value=editor.show_highlights,
-                                    ).props("dense").classes(
+                                    ).props("dense left-label").classes(
                                         "editor-switch highlights-switch"
                                     )
                                     # Same reason as the switches above:
@@ -948,7 +948,7 @@ def create() -> None:
                                     comments_switch = ui.switch(
                                         "Comments",
                                         value=editor.show_comments,
-                                    ).props("dense").classes(
+                                    ).props("dense left-label").classes(
                                         "editor-switch comments-switch"
                                     )
                                     # Same reason as the switches above:
@@ -983,9 +983,11 @@ def create() -> None:
                                     # the menu wider when it showed and then wrapped it onto a line of
                                     # its own.)
                                     with ui.column().classes(
-                                        "editor-settings-uncertain items-start gap-1"
+                                        "editor-settings-uncertain items-stretch gap-1 w-full"
                                     ):
-                                        with ui.row().classes("items-center gap-2 no-wrap"):
+                                        with ui.row().classes(
+                                            "items-center justify-between gap-4 no-wrap w-full"
+                                        ):
                                             uncertain_label = ui.label("Uncertain words:")
                                             uncertain_label.classes(
                                                 "text-sm text-theme-secondary"
