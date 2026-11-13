@@ -614,6 +614,7 @@ class CommentsPanel:
 
         caption, comment = entries[at]
         self.show(caption, comment, scroll=True)
+        self.hear()
 
         # At either end the button just used is disabled; keep focus on
         # something that can still take it.
@@ -637,6 +638,19 @@ class CommentsPanel:
             self.transcript.body.scroll_to_block(shown[0].index)
 
         self.select_words(*shown)
+        self.hear()
+
+    def hear(self) -> None:
+        """
+        The recording to the words the card is about, so they can be heard
+        -- what Find does as it steps from match to match. As a click in the
+        text does (TranscriptEditor.seek): to the first of the words.
+        """
+
+        shown = self.shown_range()
+
+        if shown is not None:
+            self.transcript.seek({"id": shown[0].index, "offset": shown[1]})
 
     # -- Keeping up with the text ------------------------------------------------------
 

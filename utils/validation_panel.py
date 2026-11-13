@@ -558,6 +558,7 @@ class ValidationPanel:
         if self.position < len(self.items) - 1:
             self.position += 1
             self.draw()
+            self.hear_current()
         # At the end Next is disabled; keep focus on something that can
         # still take it.
         if self.position == len(self.items) - 1:
@@ -567,6 +568,7 @@ class ValidationPanel:
         if self.position > 0:
             self.position -= 1
             self.draw()
+            self.hear_current()
         if self.position == 0:
             self.focus(self.next)
 
@@ -582,16 +584,39 @@ class ValidationPanel:
 
         caption = item["caption"]
         offset = min(item.get("offset", 0), len(caption.text))
-        if "speech" in item:
-            start = item["speech"]["start"]
-            self.transcript.editor.seek_video(start)
-            self.transcript.moved_to(start)
         # Centred, as stepping between issues shows a caption.
         self.transcript.focus(caption.index, offset, center=True)
+        self.hear(item)
+
+    def hear_current(self) -> None:
+        """After Previous or Next: the recording to the issue now shown."""
+
+        item = self.current()
+        if item is not None and self.exists(item):
+            self.hear(item)
+
+    def hear(self, item: dict) -> None:
+        """
+        The recording to an issue, so it can be heard where it is -- what
+        Find does as it steps from match to match. Only for what the reader
+        asks of the card (Previous, Next, "Caption N"); never when the panel
+        follows the caret, which would move the recording under someone
+        typing.
+        """
+
         if "speech" in item:
+            # Speech no caption covers: to the speech itself, not to the
+            # caption it follows.
             start = item["speech"]["start"]
             self.transcript.editor.seek_video(start)
             self.transcript.moved_to(start)
+            return
+
+        # As a click in the text does (TranscriptEditor.seek): the word at
+        # the problem, or the caption's start.
+        caption = item["caption"]
+        offset = min(item.get("offset", 0), len(caption.text))
+        self.transcript.seek({"id": caption.index, "offset": offset})
 
     def reveal_hidden(self, caption_index: int) -> Optional[dict]:
         """
