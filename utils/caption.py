@@ -63,6 +63,12 @@ class SRTCaption:
         # decides the colour the caption is marked in. Only means anything
         # while is_valid is False.
         self.has_error = False
+        # The kinds of issue (validation_panel.RULE_LABELS) the caption is
+        # marked for, so the text can draw a caption whose kinds are all
+        # hidden in the panel differently from one the reader is looking at.
+        # Set with is_valid, and like it only means anything while is_valid
+        # is False.
+        self.issue_rules: set = set()
         self.speaker = speaker if speaker else "UNKNOWN"
 
         # Word positions the reader has changed, counted in whitespace
@@ -99,6 +105,7 @@ class SRTCaption:
         new_caption.is_selected = self.is_selected
         new_caption.is_valid = self.is_valid
         new_caption.has_error = self.has_error
+        new_caption.issue_rules = set(self.issue_rules)
         # Copied rather than shared: the undo stack holds these snapshots, so
         # undoing a change has to take its marks back with it.
         new_caption.edited_words = set(self.edited_words)

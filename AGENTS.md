@@ -204,6 +204,8 @@ Replace (`replace_in_current_match`, `replace_all` in `utils/srt_search.py`) car
 - **While folded, Validate says where the reader is** ("Issue 2 of 5.") in `folded_spoken`, because its body, which is the live region for the issue, is not there. Find's and Comments' live regions were already outside their bodies.
 - Folded state is not remembered between sessions or between openings.
 
+**In the text, a caption marked only for kinds the validation panel hides is quieter**: its rule keeps the caption's own colour (red or amber) but is dashed and 2px, with no tint (`.transcript-cell-muted`), so it still says something is there without competing with the kinds being worked on, and the difference is a shape, not only a lighter colour. A caption with one shown issue among hidden ones is marked as before. Validate records the kinds each caption is marked for in `caption.issue_rules` (set with `is_valid`, reset by `run_validation()`, carried by `copy()`; speech filed under a caption with `mark=False` adds nothing); the panel tells the text whenever `hidden` changes (`hidden_changed()` -> `TranscriptEditor.set_hidden_rules()`, from `toggle()` and `reveal_hidden()`), and `refresh()` works the list out again (`muted_ids()`). It is a prop of its own (`mutedIds`), not a field of the blocks: `set_blocks()` bumps `revision`, whose rebuild puts the caret back and focus with it, and focus has to stay on the checkbox. While muted it takes the active and editing tints an unmarked caption would.
+
 ## Editor keyboard shortcuts
 
 Two handlers, split by what each needs to know:

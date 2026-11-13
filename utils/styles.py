@@ -3129,6 +3129,42 @@ theme_styles = """
             in srgb, var(--color-warning-border) 18%, transparent
         );
     }
+    /* A caption marked only for kinds of issue the validation panel hides
+       (TranscriptEditor.set_hidden_rules): the rule stays, in the caption's
+       own colour, but dashed and with no tint. It still says something is
+       there -- the caret in it opens the card and shows the kind again --
+       without competing with the kinds being worked on; dashed against solid
+       is a shape, so the difference is not only a lighter colour, and the
+       rule keeps the full colour and its contrast. A caption with one shown
+       issue among hidden ones is never muted. After the dark rules, and one
+       class more specific, so it wins over every tint above. */
+    .transcript-cell.transcript-cell-invalid.transcript-cell-muted {
+        border-left-style: dashed;
+        border-left-width: 2px;
+        padding-left: calc(1rem - 1px);
+        background-color: transparent;
+    }
+    /* With no tint of its own, it takes the tints that say where the
+       recording and the caret are, as an unmarked caption does. */
+    .transcript-cell.transcript-cell-invalid.transcript-cell-muted.transcript-cell-active {
+        background-color: color-mix(
+            in srgb, var(--color-brand-primary) 7%, transparent
+        );
+    }
+    .transcript-cell.transcript-cell-invalid.transcript-cell-muted.transcript-cell-editing {
+        background-color: var(--color-bg-surface-alt);
+    }
+    .body--dark .transcript-cell.transcript-cell-invalid.transcript-cell-muted {
+        background-color: transparent;
+    }
+    .body--dark .transcript-cell.transcript-cell-invalid.transcript-cell-muted.transcript-cell-active {
+        background-color: color-mix(
+            in srgb, var(--color-brand-primary) 14%, transparent
+        );
+    }
+    .body--dark .transcript-cell.transcript-cell-invalid.transcript-cell-muted.transcript-cell-editing {
+        background-color: var(--color-bg-surface);
+    }
     /* The words Find found, painted over the text by the browser's highlight
        registry (paintFind in transcript_editor.js): a heavy dashed underline
        in the card's colour, which is a shape and not only a colour. The

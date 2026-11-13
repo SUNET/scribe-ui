@@ -397,11 +397,23 @@ class ValidationPanel:
             self.hidden.add(rule)
 
         self.items = shown_items(self.all_items, self.hidden)
+        self.hidden_changed()
         self.position = next(
             (n for n, item in enumerate(self.items) if item is current), 0
         )
 
         self.draw()
+
+    def hidden_changed(self) -> None:
+        """
+        Tell the text which kinds are hidden, so a caption marked only for
+        those is drawn quieter there (TranscriptEditor.set_hidden_rules).
+        """
+
+        tell = getattr(getattr(self, "transcript", None), "set_hidden_rules", None)
+
+        if tell is not None:
+            tell(self.hidden)
 
     def set_shown(self, rule: str, shown: bool) -> None:
         """
@@ -647,6 +659,7 @@ class ValidationPanel:
         self.hidden.discard(item["rule"])
         self.items = shown_items(self.all_items, self.hidden)
         self.draw_filters()
+        self.hidden_changed()
 
         return item
 

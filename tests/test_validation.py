@@ -1598,3 +1598,168 @@ class TestMediaLength:
         assert page.index("editor.set_video_player(video)") < page.index(
             "editor.look_up_media_seconds(video)"
         )
+
+
+class TestHiddenKindsInTheText:
+    """
+    A caption marked only for kinds of issue the panel hides is drawn quieter
+    in the text: its rule dashed and with no tint. It is still marked, since
+    the caret in it opens the card and shows the kind again.
+    """
+
+    def subject(self):
+        long_line = "x" * (settings.CHARACTER_LIMIT + 6)
+
+        # 1 has a long line and overlaps 2; 2 only overlaps; 3 is fine.
+        return editor(
+            caption(1, "00:00:00,000", "00:00:03,000", long_line),
+            caption(2, "00:00:02,000", "00:00:05,000"),
+            caption(3, "00:00:10,000", "00:00:12,000"),
+        )
+
+    def view(self, subject):
+        from utils.transcript_editor import TranscriptEditor
+
+        view = TranscriptEditor(subject)
+
+        class Body:
+            def __init__(self):
+                self.muted = []
+
+            def set_muted(self, block_ids):
+                self.muted.append(block_ids)
+
+        view.body = Body()
+
+        return view
+
+    def test_validating_records_what_each_caption_is_marked_for(self):
+        subject = self.subject()
+        subject.collect_validation_issues()
+
+        assert [c.issue_rules for c in subject.captions] == [
+            {"length", "overlap"},
+            {"overlap"},
+            set(),
+        ]
+
+    def test_validating_again_starts_afresh(self, monkeypatch):
+        subject = self.subject()
+        monkeypatch.setattr(subject, "refresh_display", lambda **kwargs: None)
+        subject.run_validation()
+
+        subject.captions[1].start_time = "00:00:03,000"
+        subject.run_validation()
+
+        assert [c.issue_rules for c in subject.captions] == [{"length"}, set(), set()]
+
+    def test_speech_filed_under_a_caption_is_not_what_it_is_marked_for(self):
+        subject = speaking(
+            editor(caption(1, "00:00:00,000", "00:00:01,000")), (3.0, 6.0)
+        )
+
+        assert speech_items(subject)
+        assert subject.captions[0].issue_rules == set()
+
+    def test_an_undo_snapshot_keeps_them(self):
+        original = caption(1, "00:00:00,000", "00:00:01,000")
+        original.is_valid = False
+        original.issue_rules = {"speed"}
+        copied = original.copy()
+
+        assert copied.issue_rules == {"speed"}
+        copied.issue_rules.add("length")
+        assert original.issue_rules == {"speed"}
+
+    def test_only_captions_with_nothing_shown_are_quieter(self):
+        subject = self.subject()
+        subject.collect_validation_issues()
+        view = self.view(subject)
+
+        # Overlaps hidden: 2 has nothing else; 1 still has its long line.
+        view.set_hidden_rules({"overlap"})
+        assert view.body.muted[-1] == [2]
+
+        view.set_hidden_rules({"overlap", "length"})
+        assert view.body.muted[-1] == [1, 2]
+
+        view.set_hidden_rules(set())
+        assert view.body.muted[-1] == []
+
+    def test_an_unmarked_caption_is_never_quieter(self):
+        subject = self.subject()
+        view = self.view(subject)
+
+        # Not validated: nothing is marked, whatever is hidden.
+        view.set_hidden_rules({"overlap", "length"})
+        assert view.body.muted[-1] == []
+
+    def test_every_redraw_works_it_out_again(self):
+        source = pathlib.Path("utils/transcript_editor.py").read_text()
+        refresh = source[source.index("    def refresh(self) -> None:"):]
+        refresh = refresh[: refresh.index("\n    def ", 10)]
+
+        assert "self.body.set_muted(self.muted_ids())" in refresh
+
+    def test_the_panel_says_when_the_hidden_kinds_change(self):
+        from utils.validation_panel import ValidationPanel
+
+        told = []
+
+        class Transcript:
+            def set_hidden_rules(self, rules):
+                told.append(set(rules))
+
+        subject = self.subject()
+        panel = ValidationPanel.__new__(ValidationPanel)
+        panel.transcript = Transcript()
+        panel.all_items = subject.validation_items(
+            subject.collect_validation_issues()
+        )
+        panel.hidden = set()
+        panel.items = list(panel.all_items)
+        panel.position = 0
+        panel.checkboxes = {}
+        panel.draw = lambda: None
+        panel.draw_filters = lambda: None
+        panel.exists = lambda item: True
+
+        panel.toggle("overlap")
+        assert told[-1] == {"overlap"}
+
+        # A caption marked only for a hidden kind brings the kind back.
+        assert panel.reveal_hidden(2) is not None
+        assert told[-1] == set()
+
+    def test_it_restyles_without_rebuilding(self):
+        source = pathlib.Path("utils/transcript_editor.py").read_text()
+        set_muted = source[source.index("    def set_muted(self"):]
+        set_muted = set_muted[: set_muted.index("\n    def ")]
+
+        # A prop of its own: a rebuild (set_blocks, revision) would put the
+        # caret back, and focus with it, away from the checkbox.
+        assert '"mutedIds"' in set_muted
+        assert "revision" not in set_muted
+
+        script = pathlib.Path("utils/transcript_editor.js").read_text()
+        assert "'transcript-cell-muted': mutedIds.includes(block.id)" in script
+        assert "mutedIds: { type: Array" in script
+
+    def test_the_rule_is_dashed_in_its_own_colour_with_no_tint(self):
+        from utils.styles import default_styles
+
+        rule = default_styles[
+            default_styles.index(
+                ".transcript-cell.transcript-cell-invalid.transcript-cell-muted {"
+            ):
+        ]
+        rule = rule[: rule.index("}")]
+
+        assert "border-left-style: dashed" in rule
+        assert "background-color: transparent" in rule
+        # The colour is left to the error or warning rule: red or amber.
+        assert "border-left-color" not in rule
+        # After the tints it has to win over.
+        assert default_styles.index(rule) > default_styles.index(
+            ".body--dark .transcript-cell-invalid.transcript-cell-warning {"
+        )
