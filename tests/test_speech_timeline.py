@@ -21,6 +21,8 @@ the word timings rather than from the audio.
 """
 
 import pathlib
+import shutil
+import subprocess
 
 import pytest
 
@@ -1826,6 +1828,38 @@ class TestTheStripIsASlider:
         assert "of ${this.clock(span)}" in body
         assert "in caption ${caption.id}" in body
         assert "no caption here" in body
+
+    def test_the_value_says_whether_anyone_is_talking(self):
+        """
+        What the strip shows in colour, said at the playhead (F-84, 1.1.1 and
+        1.3.1): speech or silence, and speech no caption covers in the words
+        of Validate's card for it. The canvas itself is a picture only.
+        """
+
+        source = self.source()
+        body = source[source.index("    ariaText() {"):]
+        body = body[: body.index("\n    },")]
+
+        assert "this.speakingAt(at)" in body
+        assert '"speech without a caption"' in body
+        assert "`silence, ${where}`" in body
+        assert '<canvas ref="canvas" aria-hidden="true"' in source
+        assert "Each position says whether there is speech there" in source
+        # The pointer's readout asks the same question, so the two agree.
+        assert "const speaking = this.speakingAt(seconds);" in source
+
+    @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+    def test_the_value_on_a_made_up_strip(self):
+        """ariaText run in node (tests/js/speech_timeline_value.test.js)."""
+
+        result = subprocess.run(
+            ["node", "--test", str(pathlib.Path(__file__).resolve().parent / "js" / "speech_timeline_value.test.js")],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+
+        assert result.returncode == 0, result.stdout + result.stderr
 
     def test_it_does_not_say_a_new_value_every_frame(self):
         """
