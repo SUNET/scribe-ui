@@ -581,7 +581,12 @@ class TestCheckingAgain:
         subject.update_flagged_count = lambda: None
         return subject
 
-    def test_a_fixed_caption_moves_on_to_the_next_issue(self):
+    def test_a_fixed_caption_moves_on_to_the_next_issue(self, monkeypatch):
+        notified = []
+        monkeypatch.setattr(
+            "utils.validation_panel.ui.notify",
+            lambda message, type=None, **kw: notified.append((message, type)),
+        )
         subject = self.subject()
         panel = self.panel(subject)
 
@@ -589,7 +594,8 @@ class TestCheckingAgain:
         panel.check_again()
 
         assert panel.current()["caption"].index == 2
-        assert panel.note.text == "Caption 1 passes now."
+        assert ("Caption 1 passes now.", "positive") in notified
+        assert panel.note.text == ""
         assert subject.captions[0].is_valid
 
     def test_a_caption_still_wrong_stays(self):
@@ -1328,7 +1334,12 @@ class TestCheckingSpeechAgain:
         assert panel.current()["rule"] == "speech"
         assert panel.note.text == "This speech still has no caption."
 
-    def test_covered_now_moves_on(self):
+    def test_covered_now_moves_on(self, monkeypatch):
+        notified = []
+        monkeypatch.setattr(
+            "utils.validation_panel.ui.notify",
+            lambda message, type=None, **kw: notified.append((message, type)),
+        )
         subject = self.subject()
         panel = self.panel(subject)
 
@@ -1336,7 +1347,8 @@ class TestCheckingSpeechAgain:
         subject.renumber_captions()
         panel.check_again()
 
-        assert panel.note.text == "This speech has a caption now."
+        assert ("This speech has a caption now.", "positive") in notified
+        assert panel.note.text == ""
         assert panel.current()["caption"].index == 3
 
 

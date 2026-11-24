@@ -484,15 +484,30 @@ class ValidationPanel:
                 (n for n, i in enumerate(self.items) if i["caption"].index > index),
                 max(len(self.items) - 1, 0),
             )
-            note = f"Caption {index} passes now."
+            note = None
+            resolved = f"Caption {index} passes now."
 
         self.draw()
-        self.note.set_text(note)
-        self.note.set_visibility(True)
+        if note is None:
+            self.resolved(resolved)
+        else:
+            self.note.set_text(note)
+            self.note.set_visibility(True)
 
         # The button goes with the last issue; focus goes to the heading.
         if not self.items:
             self.focus(self.heading)
+
+    @staticmethod
+    def resolved(message: str) -> None:
+        """
+        A fix confirmed. A toast, not a line on the card: the card has
+        already moved on to the next issue, and a "passes now" above another
+        issue reads as being about that one. Quasar gives a toast
+        role="alert", so it is announced.
+        """
+
+        ui.notify(message, type="positive")
 
     def check_speech_again(self, item: dict, index: int) -> None:
         """
@@ -525,11 +540,14 @@ class ValidationPanel:
                     max(len(self.items) - 1, 0),
                 ),
             )
-            note = "This speech has a caption now."
+            note = None
 
         self.draw()
-        self.note.set_text(note)
-        self.note.set_visibility(True)
+        if note is None:
+            self.resolved("This speech has a caption now.")
+        else:
+            self.note.set_text(note)
+            self.note.set_visibility(True)
 
         if not self.items:
             self.focus(self.heading)
