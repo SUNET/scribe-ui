@@ -40,6 +40,17 @@ settings = get_settings()
 CHARACTER_LIMIT_EXCEEDED_COLOR = "text-red"
 
 
+# The Timeline's own keys, for the shortcuts dialog. They work while the strip
+# has focus, so the first row says so.
+TIMELINE_KEYS = [
+    ("Timeline, when focused: move playhead a little", "← / →"),
+    ("Timeline: move playhead a whole strip", "Page Up / Page Down"),
+    ("Timeline: playhead to start / end", "Home / End"),
+    ("Timeline: zoom in / out", "Shift + ↑ / ↓, + / −"),
+    ("Timeline: reset zoom", "0"),
+]
+
+
 class RenderMixin:
     """
     Caption list bookkeeping, validation and the shortcut help.
@@ -99,8 +110,16 @@ class RenderMixin:
         keeps that cheap, not this distinction.
         """
 
+        # While something is being looked for, an edit can make a match or
+        # take one away: look again before drawing, so the captions are drawn
+        # with the right ones marked.
+        if self.search_term:
+            self.rebuild_matches()
+
         if self.render_override is not None:
             self.render_override()
+
+        self.mark_found()
 
         # Splits, merges and deletions all land here, and each of them can
         # change how many words are flagged.
@@ -175,6 +194,7 @@ class RenderMixin:
             if mark:
                 caption.is_valid = False
                 caption.has_error = caption.has_error or error
+                caption.issue_rules.add(rule)
 
         for caption in self.captions:
             if not caption.text.strip():
@@ -493,6 +513,7 @@ class RenderMixin:
         for caption in self.captions:
             caption.is_valid = True
             caption.has_error = False
+            caption.issue_rules = set()
 
         issues = self.collect_validation_issues()
         changed_indices |= {entry["caption"].index for entry in issues}
@@ -542,7 +563,7 @@ class RenderMixin:
             ):
                 # Header
                 with ui.row().classes("w-full items-center justify-between mb-4"):
-                    ui.label("Subtitle validation").classes("text-h5 font-bold")
+                    ui.label("Subtitle validation").classes("text-h5 font-bold").props("role=heading aria-level=2")
                     ui.button(icon="close", on_click=dialog.close).props(
                         "flat round dense color=grey-7 aria-label='Close validation dialog'"
                     )
@@ -560,7 +581,7 @@ class RenderMixin:
                             )
                             ui.label(
                                 self.validation_summary(error_count, warning_count)
-                            ).classes("text-h6 font-semibold")
+                            ).classes("text-h6 font-semibold").props("role=heading aria-level=3")
 
                     with ui.column().classes("w-full gap-2 max-h-96 overflow-y-auto"):
                         for entry in issues:
@@ -646,7 +667,7 @@ class RenderMixin:
             with ui.column().classes("gap-0"):
                 ui.label(f"Caption #{caption.index}").classes(
                     "text-body2 font-semibold"
-                )
+                ).props("role=heading aria-level=4")
 
                 for message in errors + entry["warnings"]:
                     ui.label(message).classes("text-body2 text-theme-secondary")
@@ -697,6 +718,10 @@ class RenderMixin:
                 ("New line", "Shift + Enter"),
                 ("Move first word to previous caption", "Ctrl/⌘ + ↑"),
                 ("Move last word to next caption", "Ctrl/⌘ + ↓"),
+                ("Move text before cursor to previous caption", "Ctrl/⌘ + Shift + ↑"),
+                ("Move text after cursor to next caption", "Ctrl/⌘ + Shift + ↓"),
+                ("Nudge start earlier / later (0.1 s)", "Ctrl + , / Ctrl + ."),
+                ("Nudge end earlier / later (0.1 s)", "Ctrl + Shift + , / Ctrl + Shift + ."),
                 ("Merge with next", "Ctrl + M"),
                 ("Add caption after", "Ctrl/⌘ + Shift + Enter"),
                 ("Delete caption", "Ctrl + D"),
@@ -707,24 +732,74 @@ class RenderMixin:
                 ("New line", "Shift + Enter"),
                 ("Move first word to previous paragraph", "Ctrl/⌘ + ↑"),
                 ("Move last word to next paragraph", "Ctrl/⌘ + ↓"),
+                ("Move text before cursor to previous paragraph", "Ctrl/⌘ + Shift + ↑"),
+                ("Move text after cursor to next paragraph", "Ctrl/⌘ + Shift + ↓"),
                 ("Merge with next", "Ctrl + M"),
                 ("Delete paragraph", "Ctrl + D"),
             ]
         )
 
+        # What is specific to the format, in Tools beside Find. A set of
+        # subtitles is checked against guidelines only subtitles are held to
+        # (the toolbar's Validate sits in this group too). A transcription
+        # has the selection's own highlight and its comments, which a set of
+        # subtitles cannot keep: plain SRT has nowhere to put them. Saving a
+        # comment is listed because Ctrl/⌘ + Enter is not what a reader would
+        # try; Esc, which closes it, is what Esc does everywhere, and is not.
+        tools = [("Find", "Ctrl/⌘ + F"), ("Replace", "Ctrl + H")] + (
+            [("Validate captions", "Ctrl + Shift + V")]
+            if subtitles
+            else [
+                ("Toggle highlight on selected text", "Ctrl + Shift + H"),
+                ("Add or open comment", "Ctrl + Shift + K"),
+                ("Save the comment you are writing", "Ctrl/⌘ + Enter"),
+            ]
+        )
+
+        # The Timeline's keys work while the strip itself has focus, unlike
+        # Quick jump, which works from anywhere; the first row says so and
+        # the rest follow it. They are navigation in time, apart from the
+        # zoom, which belongs with them rather than on a row of its own.
+        # Listed only where there is a strip to focus: subtitles with word
+        # timings, while the Timeline is switched on. The dialog is drawn
+        # afresh each time it opens, so it follows the switch.
+        timeline = (
+            subtitles and bool(getattr(self, "words", None)) and self.show_timeline
+        )
+
+        navigation = [
+            # The text's own: the caret to the start of the previous or next
+            # block, nothing opened or selected (F-65).
+            (
+                f"Previous / next {'caption' if subtitles else 'paragraph'}",
+                "Alt/⌥ + ↑ / ↓",
+            ),
+            (
+                "Quick jump to a time or caption" if subtitles else "Quick jump to a time",
+                "Ctrl/⌘ + G",
+            ),
+        ] + (TIMELINE_KEYS if timeline else [])
+
+        # In the order of the work, which is also the toolbar's from left to
+        # right: what is done to the text; playing it and getting around in
+        # it; then undo, the tools and, last, the file. Playback, not
+        # "transport": the term is a sound engineer's, and the reader looks
+        # for what plays the recording.
         shortcut_groups = [
             ("Editing", editing),
             (
-                "File operations",
+                "Playback",
                 [
-                    ("Save file", "Ctrl/⌘ + S"),
-                    ("Export file", "Ctrl/⌘ + E"),
-                    ("Find", "Ctrl/⌘ + F"),
-                ]
-                # Validate is a subtitle's alone: it checks the line-length
-                # and line-count guidelines only subtitles are held to.
-                + ([("Validate captions", "Ctrl + Shift + V")] if subtitles else []),
+                    ("Play/Pause", "Ctrl + Space"),
+                    (
+                        "Play caption with context"
+                        if subtitles
+                        else "Play paragraph with context",
+                        "Ctrl + Shift + Space",
+                    ),
+                ],
             ),
+            ("Navigation", navigation),
             (
                 "History",
                 [
@@ -732,10 +807,12 @@ class RenderMixin:
                     ("Redo", "Ctrl + Y / ⌘ + Shift + Z"),
                 ],
             ),
+            ("Tools", tools),
             (
-                "Transport",
+                "File operations",
                 [
-                    ("Play/Pause", "Ctrl + Space"),
+                    ("Save file", "Ctrl/⌘ + S"),
+                    ("Export file", "Ctrl/⌘ + E"),
                 ],
             ),
         ]
@@ -756,13 +833,13 @@ class RenderMixin:
             ):
                 ui.label(shortcut_title).classes(
                     "text-h5 mb-4 font-bold"
-                )
+                ).props("role=heading aria-level=2")
 
                 with ui.column().classes("w-full gap-4"):
                     for group_name, shortcuts in shortcut_groups:
                         ui.label(group_name).classes(
                             "text-subtitle1 font-semibold mt-2"
-                        )
+                        ).props("role=heading aria-level=3")
                         with ui.column().classes("w-full gap-1 ml-4"):
                             for action, keys in shortcuts:
                                 with ui.row().classes(

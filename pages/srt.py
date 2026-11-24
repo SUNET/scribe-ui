@@ -22,7 +22,8 @@ from uuid import UUID
 from nicegui import app, ui
 from utils.common import focus_element, get_auth_header
 from utils.styles import default_styles
-from utils.common import job_has_original, page_init
+from utils.common import hidden_page_heading, job_has_original, page_init
+from utils.toolbar import roving_toolbar
 from utils.helpers import storage_decrypt
 from utils.settings import get_settings
 from utils.srt import (
@@ -36,7 +37,10 @@ from utils.srt import (
     TIMELINE_DOCK_KEY,
     TIMELINE_SHOW_KEY,
 )
+from utils.player_controls import PlayerControls
 from utils.speech_timeline import SpeechTimeline
+from utils.comments_panel import CommentsPanel
+from utils.find_panel import FindPanel
 from utils.validation_panel import ValidationPanel
 from utils.transcript_editor import TranscriptEditor
 from utils.video import create_video_proxy
@@ -44,6 +48,15 @@ from utils.video import create_video_proxy
 create_video_proxy()
 
 settings = get_settings()
+
+
+def editor_title(data_format: str) -> str:
+    """
+    What the page is called, in the tab and to a screen reader: the same
+    words the file list uses for the two kinds of file.
+    """
+
+    return "Subtitle editor" if data_format == "srt" else "Transcript editor"
 
 
 def create() -> None:
@@ -61,7 +74,9 @@ def create() -> None:
         """
         Display the result of the transcription job.
         """
-        await page_init(use_drawer=True, title="Editor")
+        title = editor_title(data_format)
+
+        await page_init(use_drawer=True, title=title)
 
         try:
             UUID(uuid)
@@ -69,7 +84,12 @@ def create() -> None:
             ui.label("Invalid job identifier.").classes("text-h6")
             return
 
+        hidden_page_heading(title)
+
         editor = SRTEditor(uuid, data_format, filename)
+        # What the recording was transcribed in, for the RTF export to mark
+        # the text with.
+        editor.language = language
         editor.setup_beforeunload_warning()
 
         ui.add_head_html(
@@ -79,8 +99,15 @@ def create() -> None:
             """
         <script>
         window.addEventListener('keydown', function(e) {
+            // The fields in the cards under the video (Find, Replace, a
+            // comment) keep their own undo: this listener runs first, in the
+            // capture phase, and what it cancels is cancelled for them too.
+            // The page's undo is the transcript's, and those fields do not
+            // pass their keys on to it.
+            const inCard = !!(e.target && e.target.closest && e.target.closest('.validation-panel'));
+
             // Block Cmd + z / Ctrl + z for undo
-            if ((e.metaKey || e.ctrlKey) && ! e.shiftKey && e.key.toLowerCase() === 'z') {
+            if (!inCard && (e.metaKey || e.ctrlKey) && ! e.shiftKey && e.key.toLowerCase() === 'z') {
                 e.preventDefault();
             }
 
@@ -90,12 +117,12 @@ def create() -> None:
             }
 
             // Block Cmd + y / Ctrl + y for redo
-            if ((e.metaKey || e.ctrlKey) && ! e.shiftKey && e.key.toLowerCase() === 'y') {
+            if (!inCard && (e.metaKey || e.ctrlKey) && ! e.shiftKey && e.key.toLowerCase() === 'y') {
                 e.preventDefault();
             }
 
             // Block Cmd + Shift + z / Ctrl + Shift + z for redo
-            if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'z') {
+            if (!inCard && (e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'z') {
                 e.preventDefault();
             }
 
@@ -104,45 +131,32 @@ def create() -> None:
                 e.preventDefault();
             }
 
+            // Block Ctrl + h (history in a browser): Find with Replace. Ctrl
+            // only -- Cmd + h hides the application and never gets here.
+            if (e.ctrlKey && ! e.metaKey && ! e.shiftKey && ! e.altKey && e.key.toLowerCase() === 'h') {
+                e.preventDefault();
+            }
+
+            // Block Ctrl + g / Cmd + g (find next in a browser): Quick Jump
+            if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'g') {
+                e.preventDefault();
+            }
+
             // Block Ctrl + e / Cmd + e for search
             if ((e.metaKey || e.ctrlKey) && ! e.shiftKey && e.key.toLowerCase() === 'e') {
                 e.preventDefault();
             }
 
-            // Space plays and pauses, unless something is being typed into.
-            // Handled here rather than through the page's keyboard handler
-            // so that the player answers immediately, with no round trip --
-            // and so the check for "is the reader typing" can be made
-            // against the real focus, which only the browser knows.
-            //
-            // A button keeps its own space: a focused button is activated by
-            // it, and taking that would break every dialog on the page. The
-            // same goes for anything else Space means something to: Quasar's
-            // switches and checkboxes are a div with a role, not an INPUT or
-            // a BUTTON, so the tag names alone let Space toggle "Follow
-            // audio" and start the video as well.
-            if (e.key === ' ' && !e.metaKey && !e.ctrlKey && !e.altKey) {
-                const active = document.activeElement;
-                const typing = active && (
-                    active.isContentEditable
-                    || ['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON', 'SUMMARY'].includes(active.tagName)
-                    || active.closest(
-                        '[role="switch"], [role="checkbox"], [role="radio"],'
-                        + ' [role="button"], [role="tab"], [role="menuitem"],'
-                        + ' [role="option"], [role="slider"], [role="combobox"],'
-                        + ' [role="textbox"], [role="listbox"]'
-                    )
-                );
-
-                if (!typing) {
-                    const video = document.querySelector('video');
-
-                    if (video) {
-                        e.preventDefault();
-                        video.paused ? video.play() : video.pause();
-                    }
-                }
-            }
+            // Space never plays or pauses the recording from here. It used to,
+            // whenever nothing was being typed into, and it was the source of
+            // the page's one inconsistency: Space played and paused with one
+            // thing focused and typed or pressed with another, and the native
+            // player added its own rules on top. Now the recording has no
+            // controls of its own to land on (see PlayerControls), so Space
+            // means what it means on whatever has focus -- a space in the
+            // text, a press on a button -- and the keyboard's way to play and
+            // pause is Ctrl+Space (see SRTEditor.handle_key_event), which works
+            // wherever focus is.
 
             // There used to be a global Escape handler here that
             // unconditionally blurred document.activeElement (2.4.3: it
@@ -237,10 +251,13 @@ def create() -> None:
         # are looked up rather than used while working, so they are icons.
         # Export and Save are the two outlined buttons, and closing is the
         # usual x at the end of the row.
+        # Two toolbars, as the row is two groups to the eye: what works on the
+        # text, and the document as a whole. Each is one Tab stop, the arrows
+        # between its buttons (utils/toolbar.py).
         with ui.row().classes(
             "editor-toolbar justify-between w-full gap-2 items-center"
         ):
-            with ui.row().classes("editor-toolbar-group"):
+            with roving_toolbar(ui.row().classes("editor-toolbar-group"), "Text tools"):
                 editor.create_undo_redo_panel()
 
                 ui.separator().props("vertical")
@@ -256,18 +273,62 @@ def create() -> None:
                             "click",
                             lambda: editor.validate_captions(),
                         )
+                else:
+                    # Where Validate is in the subtitle editor: the one thing
+                    # about the text that is not history or finding. The same
+                    # as Ctrl+Shift+H. Transcriptions only, for now.
+                    #
+                    # A mouse press must not take focus, or the selection it
+                    # is meant to act on is the first thing it would lose --
+                    # the same reason the caption row's music-note icon
+                    # prevents the default on mousedown.
+                    # sym_o_ is Quasar's prefix for Material Symbols Outlined, which
+                    # ships with NiceGUI and has the marker pen the plain
+                    # Material Icons "highlight" (a torch) does not.
+                    with ui.button("Highlight", icon="sym_o_format_ink_highlighter").props(
+                        "flat aria-keyshortcuts=Control+Shift+H"
+                    ).classes(
+                        "editor-btn editor-toolbar-btn editor-quiet"
+                    ) as highlight_button:
+                        highlight_button.tooltip(
+                            "Toggle highlight on selected text (Ctrl + Shift + H)"
+                        )
+                        highlight_button.on(
+                            "mousedown", js_handler="(event) => event.preventDefault()"
+                        )
+                        highlight_button.on(
+                            "click", lambda: transcript.highlight_selection()
+                        )
 
-            with ui.row().classes("editor-toolbar-group"):
+                    # Beside it: a note on the selected words. The same as
+                    # Ctrl+Shift+K, and for the same reason it does not take
+                    # focus on a mouse press.
+                    with ui.button("Comment", icon="sym_o_add_comment").props(
+                        "flat aria-keyshortcuts=Control+Shift+K"
+                    ).classes(
+                        "editor-btn editor-toolbar-btn editor-quiet"
+                    ) as comment_button:
+                        comment_button.tooltip(
+                            "Add or open comment (Ctrl + Shift + K)"
+                        )
+                        comment_button.on(
+                            "mousedown", js_handler="(event) => event.preventDefault()"
+                        )
+                        comment_button.on(
+                            "click", lambda: transcript.comment_selection()
+                        )
+
+            with roving_toolbar(ui.row().classes("editor-toolbar-group"), "File and settings"):
                 editor.show_keyboard_shortcuts()
 
                 # What is open and what is in it. A dialog rather than a
                 # strip of the toolbar: it is read when a reader wonders,
                 # not while they work, and the figures are far easier to
                 # label properly with room to put the labels in.
-                with ui.dialog() as info_dialog, ui.card().classes(
+                with ui.dialog().props('aria-label="Information"') as info_dialog, ui.card().classes(
                     "editor-info-card"
                 ):
-                    ui.label("Information").classes("text-h6")
+                    ui.label("Information").classes("text-h6").props("role=heading aria-level=2")
                     ui.separator()
 
                     figures = {}
@@ -354,6 +415,61 @@ def create() -> None:
                 ).classes("editor-btn editor-icon").on(
                     "click", info_dialog.open
                 ).tooltip("Information")
+
+                # The settings that change how the editor behaves while it is
+                # worked in: what follows the recording, the timeline, what is
+                # marked in the text. They are set now and then rather than
+                # used all the time, so like Shortcuts and Info they are an
+                # icon, and what used to be a row of switches under the video
+                # is the menu it opens. The menu is filled in further down,
+                # where what the switches act on exists.
+                with ui.button(icon="settings").props(
+                    'flat aria-label="Editor settings" aria-haspopup=dialog '
+                    "aria-expanded=false"
+                ).classes("editor-btn editor-icon") as settings_button:
+                    # Where the other icons' tooltips are (below). The menu
+                    # opens below too, and the pointer is still on the button
+                    # when it does, so the tooltip is put away when the menu
+                    # opens and kept off while it is open.
+                    settings_tip = ui.tooltip("Editor settings")
+
+                    # Quasar gives a menu role="menu", which promises a list
+                    # of menu items; this holds switches, so it says what it
+                    # is. It stays open until Esc or a click outside, so a
+                    # few settings cost one opening, and focus goes into it
+                    # and comes back to the button.
+                    settings_menu = ui.menu().props(
+                        'role=dialog aria-label="Editor settings"'
+                    ).classes("editor-settings-menu")
+
+                def settings_menu_toggled(event) -> None:
+                    settings_button.props(
+                        "aria-expanded=" + ("true" if event.value else "false")
+                    )
+                    if event.value:
+                        settings_tip.props("disable")
+                        settings_tip.run_method("hide")
+                        return
+
+                    settings_tip.props(remove="disable")
+
+                    # Esc hands focus back to the button, but Quasar gives it
+                    # to the button's own presentational span, which does not
+                    # take a Space the way the button does (F-74). Moved on
+                    # to the button itself -- and only from there, so a click
+                    # that closed the menu on something else is left alone.
+                    ui.run_javascript(
+                        "(function () {"
+                        f' const gear = document.getElementById("{settings_button.html_id}");'
+                        " const check = function () {"
+                        "  const here = document.activeElement;"
+                        "  if (gear && here !== gear && gear.contains(here)) gear.focus();"
+                        " };"
+                        " setTimeout(check, 60); setTimeout(check, 350);"
+                        "})();"
+                    )
+
+                settings_menu.on_value_change(settings_menu_toggled)
 
                 ui.separator().props("vertical")
 
@@ -447,6 +563,12 @@ def create() -> None:
                         "position: absolute; width: 0; height: 0;"
                         " overflow: hidden; outline: none;"
                     )
+                    # The text's own heading, unseen, so a screen reader's
+                    # heading keys reach it as they reach the cards beside it
+                    # (Validation, Find, Comments: h2 as well) -- F-65.
+                    ui.label(
+                        "Captions" if data_format == "srt" else "Transcript"
+                    ).classes("sr-only").props("role=heading aria-level=2")
                     with ui.scroll_area().style("height: calc(90vh - 100px);"):
                         if data_format == "srt":
                             editor.parse_srt(data["result"])
@@ -480,7 +602,7 @@ def create() -> None:
                         with ui.element("div").classes("video-frame w-full h-full"):
                             video = ui.video(
                                 f"/video/{uuid}",
-                                controls=True,
+                                controls=False,
                                 autoplay=False,
                                 loop=False,
                             ).classes("w-full h-full")
@@ -523,79 +645,44 @@ def create() -> None:
                                 overlay.set_visibility(False)
                                 transcript.set_overlay(overlay)
 
-                                # The overlay clears the player's own control
-                                # bar while that bar is up, and drops to the
-                                # bottom of the frame -- where a viewer would
-                                # actually see it -- once it goes away.
-                                #
-                                # A browser offers no signal for that, so the
-                                # same rules it draws the bar by are followed
-                                # here: controls are up while the recording
-                                # is paused, and while the pointer has moved
-                                # over the frame within the last few seconds.
-                                ui.add_head_html(
-                                    """
-                                    <script>
-                                    (function () {
-                                      const HIDE_AFTER = 2600;
-
-                                      function wire() {
-                                        const frame =
-                                          document.querySelector(".video-frame");
-                                        const video =
-                                          frame && frame.querySelector("video");
-
-                                        if (!video) return false;
-
-                                        let idle = null;
-
-                                        const show = () => {
-                                          frame.classList.add(
-                                            "video-controls-visible"
-                                          );
-                                        };
-                                        const hide = () => {
-                                          if (video.paused) return;
-                                          frame.classList.remove(
-                                            "video-controls-visible"
-                                          );
-                                        };
-
-                                        const stir = () => {
-                                          show();
-                                          clearTimeout(idle);
-                                          idle = setTimeout(hide, HIDE_AFTER);
-                                        };
-
-                                        frame.addEventListener("mousemove", stir);
-                                        frame.addEventListener("mouseleave", hide);
-                                        video.addEventListener("pause", show);
-                                        video.addEventListener("play", stir);
-
-                                        // Paused when the page opens, so the
-                                        // bar is up.
-                                        show();
-
-                                        return true;
-                                      }
-
-                                      if (!wire()) {
-                                        // The player is drawn after this
-                                        // script arrives.
-                                        const waiting = setInterval(() => {
-                                          if (wire()) clearInterval(waiting);
-                                        }, 200);
-                                        setTimeout(
-                                          () => clearInterval(waiting), 10000
-                                        );
-                                      }
-                                    })();
-                                    </script>
-                                    """
-                                )
                                 transcript.set_overlay_enabled(
                                     editor.show_subtitle_overlay
                                 )
+
+                            # The player's own controls, in place of the
+                            # browser's bar: play and pause, "play with
+                            # context", speed, a position bar and the volume.
+                            # Over the foot of the picture, as the browser's
+                            # were, and in the frame so they share its
+                            # rounded corners; a recording with no picture
+                            # turns the frame into the player's own surface
+                            # instead (see PlayerControls). Everything they
+                            # show they read from the video; the one thing
+                            # that needs the editor is the stretch around the
+                            # caption the caret was last in.
+                            player_controls = PlayerControls(
+                                filename,
+                                captions=data_format == "srt",
+                                captions_on=editor.show_subtitle_overlay,
+                            )
+                            player_controls.on(
+                                "playcontext", transcript.play_with_context_here
+                            )
+
+                            # The CC button: the subtitles on the picture, on
+                            # or off. It shows what a viewer sees while the
+                            # recording plays, so it belongs with the player
+                            # rather than among the editor's own markings.
+                            # Subtitles only, the same as the overlay itself.
+                            if data_format == "srt":
+
+                                def save_show_overlay(event) -> None:
+                                    value = bool(event.args)
+                                    editor.show_subtitle_overlay = value
+                                    app.storage.user[OVERLAY_SHOW_KEY] = value
+                                    transcript.set_overlay_enabled(value)
+
+                                player_controls.on("captions", save_show_overlay)
 
                         # Where speech is, under the video: drawn from the
                         # word timings rather than from the audio, so it
@@ -638,13 +725,41 @@ def create() -> None:
                         # a preview of what a viewer sees, not tied to it.
                         video.on("timeupdate", transcript.follow_video)
 
-                        # The controls under the video are grouped by what
-                        # each one affects -- following the recording, and
-                        # what the editor marks in the text -- rather than
-                        # left as one undifferentiated row of switches with
-                        # the sensitivity selector orphaned below them.
-                        with ui.column().classes("editor-settings w-full"):
-                            with ui.row().classes("items-center gap-4"):
+                        def settings_group(title: str = "") -> ui.column:
+                            """
+                            A group of settings, one to a row. With a title it
+                            is a group for a screen reader too, named by it, so
+                            "Review tools, group" is heard before the switches
+                            in it. Without one it is only a column: the first
+                            group has none, being what is left when what has a
+                            name of its own is taken away.
+                            """
+
+                            group = ui.column().classes(
+                                "editor-settings-group items-stretch gap-1 w-full"
+                            )
+                            if title:
+                                with group:
+                                    title_label = ui.label(title).classes(
+                                        "editor-settings-title"
+                                    )
+                                group.props(
+                                    f"role=group aria-labelledby={title_label.html_id}"
+                                )
+
+                            return group
+
+                        # The settings, in the menu the gear in the toolbar
+                        # opens (see settings_menu), in two groups by what
+                        # they are about: how the editor follows the recording
+                        # and the strip that shows where its speech is, with no
+                        # title, and the review tools (what is marked in the
+                        # text, with the sensitivity selector last) under
+                        # theirs. "Review tools" is what the manual calls them.
+                        with settings_menu, ui.column().classes(
+                            "editor-settings"
+                        ) as settings_content:
+                            with settings_group():
 
                                 def save_follow(event) -> None:
                                     value = bool(event.sender.value)
@@ -676,7 +791,7 @@ def create() -> None:
                                 follow = ui.switch(
                                     "Follow audio" if following_words else "Autoscroll",
                                     value=editor.autoscroll,
-                                ).props("dense").classes("editor-switch")
+                                ).props("dense left-label data-autofocus").classes("editor-switch")
                                 # Click only fires from a mouse. Quasar's
                                 # QToggle answers Enter/Space with its own
                                 # internal onClick(), which only emits
@@ -701,39 +816,6 @@ def create() -> None:
                                             "current word."
                                         )
 
-                                # Subtitles only, the same as the overlay
-                                # itself. It shows what a viewer sees while
-                                # the recording plays, so it belongs here
-                                # rather than with the editor's own marking.
-                                if data_format == "srt":
-
-                                    def save_show_overlay(event) -> None:
-                                        value = bool(event.sender.value)
-                                        editor.show_subtitle_overlay = value
-                                        app.storage.user[OVERLAY_SHOW_KEY] = value
-                                        transcript.set_overlay_enabled(value)
-
-                                        # See save_follow above (F-74).
-                                        focus_element(event.sender)
-
-                                    overlay_switch = ui.switch(
-                                        "Subtitle overlay",
-                                        value=editor.show_subtitle_overlay,
-                                    ).props("dense").classes("editor-switch")
-                                    # Same reason as the Follow audio /
-                                    # Autoscroll switch above: "click" is
-                                    # mouse-only on a QToggle, and
-                                    # update:model-value fires for a
-                                    # keyboard activation too.
-                                    overlay_switch.on(
-                                        "update:model-value", save_show_overlay
-                                    )
-                                    with overlay_switch:
-                                        ui.tooltip(
-                                            "Show captions as an overlay on the "
-                                            "video."
-                                        )
-
                                 # Only when there is a strip to hide: it is
                                 # drawn from word timings, and subtitles
                                 # only.
@@ -751,7 +833,7 @@ def create() -> None:
                                     timeline_switch = ui.switch(
                                         "Timeline",
                                         value=editor.show_timeline,
-                                    ).props("dense").classes("editor-switch")
+                                    ).props("dense left-label").classes("editor-switch")
                                     # Same reason as the switches above:
                                     # "click" is mouse-only on a QToggle,
                                     # and update:model-value fires for a
@@ -765,6 +847,8 @@ def create() -> None:
                                             "the video."
                                         )
 
+                            review_group = settings_group("Review tools")
+                            with review_group:
                                 # Offered wherever there are transcribed
                                 # words to compare against, with or without
                                 # confidence scores: knowing which words came
@@ -783,7 +867,7 @@ def create() -> None:
                                     edits_switch = ui.switch(
                                         "My edits",
                                         value=editor.show_my_edits,
-                                    ).props("dense").classes("editor-switch edits-switch")
+                                    ).props("dense left-label").classes("editor-switch edits-switch")
                                     # Same reason as the switches above:
                                     # "click" is mouse-only on a QToggle,
                                     # and update:model-value fires for a
@@ -797,121 +881,251 @@ def create() -> None:
                                             "changed"
                                         )
 
-                            # One control rather than a switch plus a level:
-                            # "off" is just the lowest setting of the same
-                            # thing, and splitting them meant two places to
-                            # look to find out whether anything was being
-                            # flagged at all. Only offered when the result
-                            # carries confidence scores; older jobs have none
-                            # to show.
-                            if editor.has_confidence:
-                                ui.separator().classes("my-1")
+                                # Only a transcription can hold highlights;
+                                # a set of subtitles is saved as plain SRT.
+                                if data_format != "srt":
 
-                                with ui.row().classes("items-center gap-2"):
-                                    uncertain_label = ui.label("Uncertain words:")
-                                    uncertain_label.classes(
-                                        "text-sm text-theme-secondary"
+                                    def save_show_highlights(event) -> None:
+                                        value = bool(event.sender.value)
+
+                                        # The highlight command turns this on
+                                        # itself and moves the switch to
+                                        # match, which lands here too.
+                                        if value != editor.show_highlights:
+                                            transcript.set_show_highlights(value)
+
+                                        # Not saved: hiding them is a way of
+                                        # looking at the text for a while, and
+                                        # every editor opens with them shown.
+
+                                        # See save_follow above (F-74).
+                                        focus_element(event.sender)
+
+                                    highlights_switch = ui.switch(
+                                        "Highlights",
+                                        value=editor.show_highlights,
+                                    ).props("dense left-label").classes(
+                                        "editor-switch highlights-switch"
                                     )
-
-                                    def paint_sensitivity(choice) -> None:
-                                        """
-                                        The review violet belongs to the
-                                        levels, not to "Off" -- one
-                                        toggle-color paints whichever
-                                        segment is selected, which made the
-                                        loudest thing in the panel the
-                                        setting that marks nothing at all.
-                                        """
-
-                                        off = choice == "off"
-
-                                        sensitivity.props(
-                                            remove=(
-                                                "toggle-color=toggle-off "
-                                                "toggle-text-color=toggle-off-fg"
-                                                if not off
-                                                else "toggle-color=review-accent "
-                                                "toggle-text-color=review-accent-fg"
-                                            )
-                                        )
-                                        sensitivity.props(
-                                            "toggle-color=toggle-off "
-                                            "toggle-text-color=toggle-off-fg"
-                                            if off
-                                            else "toggle-color=review-accent "
-                                            "toggle-text-color=review-accent-fg"
-                                        )
-
-                                    def save_sensitivity(event) -> None:
-                                        choice = event.sender.value
-
-                                        paint_sensitivity(choice)
-
-                                        # "off" is not one of the editor's own
-                                        # sensitivities -- it is the marking
-                                        # turned off, with whatever level was
-                                        # last chosen left untouched underneath
-                                        # so that coming back lands where the
-                                        # reader left it.
-                                        editor.set_show_uncertain_words(
-                                            choice != "off"
-                                        )
-                                        app.storage.user[REVIEW_SHOW_KEY] = (
-                                            choice != "off"
-                                        )
-
-                                        if choice == "off":
-                                            return
-
-                                        editor.set_review_sensitivity(choice)
-                                        # Persist what the editor accepted, so
-                                        # an unrecognised value cannot be
-                                        # stored.
-                                        app.storage.user[REVIEW_SENSITIVITY_KEY] = (
-                                            editor.review_sensitivity
-                                        )
-
-                                    sensitivity = ui.toggle(
-                                        {
-                                            "off": "Off",
-                                            "low": "Low",
-                                            "medium": "Medium",
-                                            "high": "High",
-                                        },
-                                        value=(
-                                            editor.review_sensitivity
-                                            if editor.show_uncertain_words
-                                            else "off"
-                                        ),
-                                    ).props(
-                                        "dense unelevated no-caps role=group "
-                                        f"aria-labelledby={uncertain_label.html_id}"
+                                    # Same reason as the switches above:
+                                    # "click" is mouse-only on a QToggle,
+                                    # and update:model-value fires for a
+                                    # keyboard activation too.
+                                    highlights_switch.on(
+                                        "update:model-value", save_show_highlights
                                     )
-                                    paint_sensitivity(
-                                        editor.review_sensitivity
-                                        if editor.show_uncertain_words
-                                        else "off"
-                                    )
-                                    sensitivity.on(
-                                        "update:model-value", save_sensitivity
-                                    )
-                                    with sensitivity:
+                                    with highlights_switch:
                                         ui.tooltip(
-                                            "Higher levels also highlight words "
-                                            "the model is more certain about."
+                                            "Show the words you have "
+                                            "highlighted. Hiding them keeps "
+                                            "them."
                                         )
 
-                                    flagged = ui.label().classes(
-                                        "text-sm text-theme-muted review-count"
-                                    )
-                                    # The count changes when the level does;
-                                    # say so without moving focus (WCAG 4.1.3).
-                                    flagged.props("role=status aria-live=polite")
-                                    editor.set_flagged_count_element(flagged)
+                                    def highlights_shown() -> None:
+                                        highlights_switch.value = True
 
-                        # Validation results (issue #138), below the settings
-                        # under the video -- "Uncertain words" last among
-                        # them: one issue at a time with Previous and Next,
+                                    editor.on_highlights_shown = highlights_shown
+                                # Only a transcription can hold comments; a
+                                # set of subtitles is saved as plain SRT.
+                                if data_format != "srt":
+
+                                    def save_show_comments(event) -> None:
+                                        value = bool(event.sender.value)
+
+                                        # The comment command turns this on
+                                        # itself and moves the switch to
+                                        # match, which lands here too.
+                                        if value != editor.show_comments:
+                                            transcript.set_show_comments(value)
+
+                                        # Not saved: hiding them is a way of
+                                        # looking at the text for a while, and
+                                        # every editor opens with them shown.
+
+                                        # See save_follow above (F-74).
+                                        focus_element(event.sender)
+
+                                    comments_switch = ui.switch(
+                                        "Comments",
+                                        value=editor.show_comments,
+                                    ).props("dense left-label").classes(
+                                        "editor-switch comments-switch"
+                                    )
+                                    # Same reason as the switches above:
+                                    # "click" is mouse-only on a QToggle,
+                                    # and update:model-value fires for a
+                                    # keyboard activation too.
+                                    comments_switch.on(
+                                        "update:model-value", save_show_comments
+                                    )
+                                    with comments_switch:
+                                        ui.tooltip(
+                                            "Show the comments on words. "
+                                            "Hiding them keeps them."
+                                        )
+
+                                    def comments_shown() -> None:
+                                        comments_switch.value = True
+
+                                    editor.on_comments_shown = comments_shown
+
+                                # One control rather than a switch plus a level:
+                                # "off" is just the lowest setting of the same
+                                # thing, and splitting them meant two places to
+                                # look to find out whether anything was being
+                                # flagged at all. Only offered when the result
+                                # carries confidence scores; older jobs have none
+                                # to show.
+                                if editor.has_confidence:
+                                    # The count is under the row, in a place of its own, and the row does
+                                    # not wrap, so the menu is as wide and as tall with the marking off as
+                                    # with it on. (The count used to be a third item in the row, which made
+                                    # the menu wider when it showed and then wrapped it onto a line of
+                                    # its own.)
+                                    with ui.column().classes(
+                                        "editor-settings-uncertain items-stretch gap-1 w-full"
+                                    ):
+                                        with ui.row().classes(
+                                            "items-center justify-between gap-4 no-wrap w-full"
+                                        ):
+                                            uncertain_label = ui.label("Uncertain words:")
+                                            uncertain_label.classes(
+                                                "text-sm text-theme-secondary"
+                                            )
+
+                                            def paint_sensitivity(choice) -> None:
+                                                """
+                                                The review violet belongs to the
+                                                levels, not to "Off" -- one
+                                                toggle-color paints whichever
+                                                segment is selected, which made the
+                                                loudest thing in the panel the
+                                                setting that marks nothing at all.
+                                                """
+
+                                                off = choice == "off"
+
+                                                sensitivity.props(
+                                                    remove=(
+                                                        "toggle-color=toggle-off "
+                                                        "toggle-text-color=toggle-off-fg"
+                                                        if not off
+                                                        else "toggle-color=review-accent "
+                                                        "toggle-text-color=review-accent-fg"
+                                                    )
+                                                )
+                                                sensitivity.props(
+                                                    "toggle-color=toggle-off "
+                                                    "toggle-text-color=toggle-off-fg"
+                                                    if off
+                                                    else "toggle-color=review-accent "
+                                                    "toggle-text-color=review-accent-fg"
+                                                )
+
+                                            def save_sensitivity(event) -> None:
+                                                choice = event.sender.value
+
+                                                paint_sensitivity(choice)
+
+                                                # "off" is not one of the editor's own
+                                                # sensitivities -- it is the marking
+                                                # turned off, with whatever level was
+                                                # last chosen left untouched underneath
+                                                # so that coming back lands where the
+                                                # reader left it.
+                                                editor.set_show_uncertain_words(
+                                                    choice != "off"
+                                                )
+                                                app.storage.user[REVIEW_SHOW_KEY] = (
+                                                    choice != "off"
+                                                )
+
+                                                if choice == "off":
+                                                    return
+
+                                                editor.set_review_sensitivity(choice)
+                                                # Persist what the editor accepted, so
+                                                # an unrecognised value cannot be
+                                                # stored.
+                                                app.storage.user[REVIEW_SENSITIVITY_KEY] = (
+                                                    editor.review_sensitivity
+                                                )
+
+                                            sensitivity = ui.toggle(
+                                                {
+                                                    "off": "Off",
+                                                    "low": "Low",
+                                                    "medium": "Medium",
+                                                    "high": "High",
+                                                },
+                                                value=(
+                                                    editor.review_sensitivity
+                                                    if editor.show_uncertain_words
+                                                    else "off"
+                                                ),
+                                            ).props(
+                                                "dense unelevated no-caps role=group "
+                                                f"aria-labelledby={uncertain_label.html_id}"
+                                            )
+                                            paint_sensitivity(
+                                                editor.review_sensitivity
+                                                if editor.show_uncertain_words
+                                                else "off"
+                                            )
+                                            sensitivity.on(
+                                                "update:model-value", save_sensitivity
+                                            )
+                                            with sensitivity:
+                                                ui.tooltip(
+                                                    "Higher levels also highlight words "
+                                                    "the model is more certain about."
+                                                )
+
+                                        with ui.element("div").classes("editor-settings-count"):
+                                                flagged = ui.label().classes(
+                                                    "text-sm text-theme-muted review-count"
+                                                )
+                                                # The count changes when the level does;
+                                                # say so without moving focus (WCAG 4.1.3).
+                                                flagged.props("role=status aria-live=polite")
+                                                editor.set_flagged_count_element(flagged)
+
+                            # The menu is drawn at the end of the page, so Tab
+                            # past its last row (or Shift+Tab before its first)
+                            # would drop focus on the page behind it with the menu
+                            # still open. Leaving it that way closes it and puts
+                            # focus on the gear, which is where it came from.
+                            settings_content.on(
+                                "keydown",
+                                settings_menu.close,
+                                js_handler=(
+                                    "(event) => {"
+                                    " if (event.key !== 'Tab') return;"
+                                    " const stops = [...event.currentTarget"
+                                    ".querySelectorAll('button, [tabindex]')]"
+                                    ".filter((e) => e.tabIndex >= 0 && !e.disabled"
+                                    " && e.offsetParent !== null);"
+                                    " if (!stops.length) return;"
+                                    " const here = document.activeElement;"
+                                    " const leaving = event.shiftKey"
+                                    " ? here === stops[0]"
+                                    " : here === stops[stops.length - 1];"
+                                    " if (!leaving) return;"
+                                    " event.preventDefault();"
+                                    f" document.getElementById('{settings_button.html_id}')?.focus();"
+                                    " emit();"
+                                    "}"
+                                ),
+                            )
+
+                            # A title with nothing under it is not shown (a set of
+                            # subtitles with no words has no review tools).
+                            review_group.set_visibility(
+                                len(review_group.default_slot.children) > 1
+                            )
+
+                        # Validation results (issue #138), under the video:
+                        # one issue at a time with Previous and Next,
                         # rather than a dialog over the work. Built hidden;
                         # Validate opens and refills it. Subtitles only, like
                         # Validate itself.
@@ -928,3 +1142,20 @@ def create() -> None:
                             transcript.on_caret = (
                                 editor.validation_panel.follow_caret
                             )
+                        else:
+                            # Its counterpart in a transcription: the card
+                            # where comments are written and read, drawn like
+                            # the validation card and following the caret the
+                            # same way. Shut until needed -- except in a file
+                            # that already has comments, which opens on the
+                            # first.
+                            transcript.comments_panel = CommentsPanel(transcript)
+                            transcript.comments_panel.open_first()
+
+                        # Find, a deck of its own under the first one -- the
+                        # validation card or the comments card, when that is
+                        # open. Shut until it is asked for; closing it takes
+                        # its marks off the text.
+                        editor.find_panel = FindPanel(
+                            editor, return_focus=lambda: editor.find_button
+                        )

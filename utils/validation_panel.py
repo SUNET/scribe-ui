@@ -45,6 +45,7 @@ from typing import Callable, Optional
 
 from nicegui import ui
 
+from utils.card_fold import CardFold
 from utils.settings import get_settings
 
 settings = get_settings()
@@ -166,6 +167,9 @@ class ValidationPanel:
         self.all_items: list = []
         self.items: list = []
         self.hidden: set[str] = set()
+        # Said by the next speak(): a kind of issue that came back as the
+        # panel opened (reveal_hidden).
+        self.pending_speech = ""
         self.checkboxes: dict = {}
         self.position = 0
         self.checked = 0
@@ -186,10 +190,16 @@ class ValidationPanel:
                 'aria-labelledby="validation-panel-heading"'
             ) as self.panel:
                 with ui.element("div").classes("validation-panel-head"):
-                    self.heading = (
+                    self.fold = CardFold(
+                        self.container,
+                        "Validation",
+                        "validation-panel-body",
+                        on_change=self.folded_changed,
+                    )
+                    self.heading = self.fold.heading(
                         ui.label("")
                         .classes("validation-panel-heading")
-                        .props('id=validation-panel-heading tabindex=-1')
+                        .props('id=validation-panel-heading tabindex=-1 role=heading aria-level=2')
                     )
 
                     with ui.element("div").classes("validation-panel-nav") as self.foot:
@@ -217,8 +227,15 @@ class ValidationPanel:
                 # a screen reader hears the new issue as Next moves to it, while
                 # focus stays on Next. The position is said inside it too, since
                 # the visible "2 of 5" sits up in the header beside the arrows.
-                with ui.element("div").classes("validation-panel-body").props(
+                # While the card is folded the body is gone, and with it what is
+                # said as the issue changes; this says only where the reader
+                # is. It sits outside the body so folding does not take it.
+                self.folded_spoken = ui.label("").classes("sr-only").props(
                     "role=status aria-live=polite aria-atomic=true"
+                )
+
+                with ui.element("div").classes("validation-panel-body").props(
+                    "id=validation-panel-body role=status aria-live=polite aria-atomic=true"
                 ):
                     self.spoken_position = ui.label("").classes("sr-only")
 
@@ -301,6 +318,7 @@ class ValidationPanel:
         self.position = 0
         self.checked = checked
         self.container.set_visibility(True)
+        self.fold.unfold()
         self.draw_filters()
         self.draw()
 
@@ -309,6 +327,14 @@ class ValidationPanel:
         else:
             self.focus(self.heading)
 
+    def folded_changed(self, folded: bool) -> None:
+        """
+        What was said while folded does not outlive the fold.
+        """
+
+        if not folded:
+            self.folded_spoken.set_text("")
+
     def close(self) -> None:
         """
         Put the panel away. The captions keep their validation markings;
@@ -316,6 +342,7 @@ class ValidationPanel:
         """
 
         self.container.set_visibility(False)
+        self.fold.unfold()
         self.update_skip_link()
         self.transcript.review(None)
 
@@ -370,11 +397,23 @@ class ValidationPanel:
             self.hidden.add(rule)
 
         self.items = shown_items(self.all_items, self.hidden)
+        self.hidden_changed()
         self.position = next(
             (n for n, item in enumerate(self.items) if item is current), 0
         )
 
         self.draw()
+
+    def hidden_changed(self) -> None:
+        """
+        Tell the text which kinds are hidden, so a caption marked only for
+        those is drawn quieter there (TranscriptEditor.set_hidden_rules).
+        """
+
+        tell = getattr(getattr(self, "transcript", None), "set_hidden_rules", None)
+
+        if tell is not None:
+            tell(self.hidden)
 
     def set_shown(self, rule: str, shown: bool) -> None:
         """
@@ -445,15 +484,30 @@ class ValidationPanel:
                 (n for n, i in enumerate(self.items) if i["caption"].index > index),
                 max(len(self.items) - 1, 0),
             )
-            note = f"Caption {index} passes now."
+            note = None
+            resolved = f"Caption {index} passes now."
 
         self.draw()
-        self.note.set_text(note)
-        self.note.set_visibility(True)
+        if note is None:
+            self.resolved(resolved)
+        else:
+            self.note.set_text(note)
+            self.note.set_visibility(True)
 
         # The button goes with the last issue; focus goes to the heading.
         if not self.items:
             self.focus(self.heading)
+
+    @staticmethod
+    def resolved(message: str) -> None:
+        """
+        A fix confirmed. A toast, not a line on the card: the card has
+        already moved on to the next issue, and a "passes now" above another
+        issue reads as being about that one. Quasar gives a toast
+        role="alert", so it is announced.
+        """
+
+        ui.notify(message, type="positive")
 
     def check_speech_again(self, item: dict, index: int) -> None:
         """
@@ -486,11 +540,14 @@ class ValidationPanel:
                     max(len(self.items) - 1, 0),
                 ),
             )
-            note = "This speech has a caption now."
+            note = None
 
         self.draw()
-        self.note.set_text(note)
-        self.note.set_visibility(True)
+        if note is None:
+            self.resolved("This speech has a caption now.")
+        else:
+            self.note.set_text(note)
+            self.note.set_visibility(True)
 
         if not self.items:
             self.focus(self.heading)
@@ -531,6 +588,7 @@ class ValidationPanel:
         if self.position < len(self.items) - 1:
             self.position += 1
             self.draw()
+            self.hear_current()
         # At the end Next is disabled; keep focus on something that can
         # still take it.
         if self.position == len(self.items) - 1:
@@ -540,6 +598,7 @@ class ValidationPanel:
         if self.position > 0:
             self.position -= 1
             self.draw()
+            self.hear_current()
         if self.position == 0:
             self.focus(self.next)
 
@@ -555,16 +614,91 @@ class ValidationPanel:
 
         caption = item["caption"]
         offset = min(item.get("offset", 0), len(caption.text))
-        if "speech" in item:
-            start = item["speech"]["start"]
-            self.transcript.editor.seek_video(start)
-            self.transcript.moved_to(start)
         # Centred, as stepping between issues shows a caption.
         self.transcript.focus(caption.index, offset, center=True)
+        self.hear(item)
+
+    def hear_current(self) -> None:
+        """After Previous or Next: the recording to the issue now shown."""
+
+        item = self.current()
+        if item is not None and self.exists(item):
+            self.hear(item)
+
+    def hear(self, item: dict) -> None:
+        """
+        The recording to an issue, so it can be heard where it is -- what
+        Find does as it steps from match to match. Only for what the reader
+        asks of the card (Previous, Next, "Caption N"); never when the panel
+        follows the caret, which would move the recording under someone
+        typing.
+        """
+
         if "speech" in item:
+            # Speech no caption covers: to the speech itself, not to the
+            # caption it follows.
             start = item["speech"]["start"]
             self.transcript.editor.seek_video(start)
             self.transcript.moved_to(start)
+            return
+
+        # As a click in the text does (TranscriptEditor.seek): the word at
+        # the problem, or the caption's start.
+        caption = item["caption"]
+        offset = min(item.get("offset", 0), len(caption.text))
+        self.transcript.seek({"id": caption.index, "offset": offset})
+
+    def reveal_hidden(self, caption_index: int) -> Optional[dict]:
+        """
+        A marked caption must never refuse to open its card because of a
+        filter. When the caret comes to rest in one whose issues are all of
+        kinds that are hidden, the kind of its first issue is shown again, and
+        that issue is the one to show. (A caption with an issue of a kind
+        that is shown opens on that, and its hidden kinds stay hidden: that
+        is what the reader chose.) Speech without a caption marks no caption,
+        so it never brings a kind back.
+        """
+
+        item = next(
+            (
+                i
+                for i in self.all_items
+                if i["caption"].index == caption_index
+                and "speech" not in i
+                and i["rule"] in self.hidden
+                and self.exists(i)
+            ),
+            None,
+        )
+
+        if item is None:
+            return None
+
+        self.hidden.discard(item["rule"])
+        self.items = shown_items(self.all_items, self.hidden)
+        self.draw_filters()
+        self.hidden_changed()
+
+        return item
+
+    def say_revealed(self, item: dict, spoken: bool = True) -> None:
+        """
+        Say that a kind of issue came back because the caret went to a
+        caption that has one: on the card, and to a screen reader.
+        """
+
+        text = f"Showing \u201c{RULE_LABELS[item['rule']]}\u201d again \u2014 it was hidden."
+
+        self.note.set_text(text)
+        self.note.set_visibility(True)
+
+        if spoken:
+            self.spoken_position.set_text(
+                f"{text} Issue {position_text(self.position, len(self.items))}."
+            )
+        else:
+            # The panel has only just opened; speak() says it a moment later.
+            self.pending_speech = text
 
     def follow_caret(self, caption_index: int) -> None:
         """
@@ -575,7 +709,8 @@ class ValidationPanel:
         what keeps "Caption 17", which puts the caret there itself, from
         redrawing what it was just pressed on. Closed panel, after a
         Validate: open it on that issue. A caption with no issue, or a
-        Validate not yet run, changes nothing.
+        Validate not yet run, changes nothing. A caption marked only for
+        kinds that are hidden shows one of them again (reveal_hidden).
         """
 
         current = self.current()
@@ -596,6 +731,11 @@ class ValidationPanel:
                 None,
             )
 
+        revealed = None
+
+        if target is None:
+            revealed = target = self.reveal_hidden(caption_index)
+
         if target is None:
             return
 
@@ -608,6 +748,10 @@ class ValidationPanel:
 
         if was_open:
             self.draw(scroll=False)
+
+            if revealed is not None:
+                self.say_revealed(revealed)
+
             return
 
         # A live region that appears with its text already in it is often not
@@ -615,6 +759,10 @@ class ValidationPanel:
         # first and say the issue a moment later.
         self.container.set_visibility(True)
         self.draw(scroll=False, speak=False)
+
+        if revealed is not None:
+            self.say_revealed(revealed, spoken=False)
+
         with self.container:
             ui.timer(0.2, self.speak, once=True)
 
@@ -627,7 +775,10 @@ class ValidationPanel:
         item = self.current()
 
         if item is not None:
+            said = getattr(self, "pending_speech", "")
+            self.pending_speech = ""
             self.spoken_position.set_text(
+                f"{said + ' ' if said else ''}"
                 f"Issue {position_text(self.position, len(self.items))}."
             )
 
@@ -678,6 +829,7 @@ class ValidationPanel:
                     f"All {self.checked} {noun} follow the subtitle guidelines."
                 )
             self.spoken_position.set_text("")
+            self.folded_spoken.set_text("")
             self.transcript.review(None)
             self.update_skip_link()
             return
@@ -690,6 +842,11 @@ class ValidationPanel:
         self.position_label.set_text(position_text(self.position, total))
         self.spoken_position.set_text(
             f"Issue {position_text(self.position, total)}." if speak else ""
+        )
+        self.folded_spoken.set_text(
+            f"Issue {position_text(self.position, total)}."
+            if speak and self.fold.folded
+            else ""
         )
         self.kind.set_text("Error" if item["error"] else "Warning")
         self.title.set_text(item["title"])

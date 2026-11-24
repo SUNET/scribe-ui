@@ -17,6 +17,7 @@
 
 import httpx
 import pytz
+import weakref
 
 
 from datetime import datetime, timedelta
@@ -88,7 +89,7 @@ def show_help_dialog() -> None:
             .classes("no-shadow help-dialog-card")
         ):
             with ui.row().classes("w-full items-center justify-between mb-6"):
-                ui.label("Help & Documentation").classes("text-h4 font-bold")
+                ui.label("Help & Documentation").classes("text-h4 font-bold").props("role=heading aria-level=2")
                 ui.button(icon="close", on_click=dialog.close).props(
                     "flat round dense color=grey-7 aria-label='Close help dialog'"
                 )
@@ -97,7 +98,7 @@ def show_help_dialog() -> None:
                 with ui.card().classes("help-about-card border-l-4").style(
                     "padding: 20px;"
                 ):
-                    ui.label("About Sunet Scribe").classes("text-h6 font-semibold mb-2")
+                    ui.label(f"About {settings.SERVICE_NAME}").classes("text-h6 font-semibold mb-2").props("role=heading aria-level=3")
                     ui.label(
                         "Turn audio and video into searchable text or subtitles. Built for research and education, with privacy and accuracy at its core."
                     ).classes("text-body1")
@@ -110,7 +111,7 @@ def show_help_dialog() -> None:
                                 new_tab=True,
                             ).classes("text-body2")
 
-                ui.label("Getting started").classes("text-h6 font-bold mt-2")
+                ui.label("Getting started").classes("text-h6 font-bold mt-2").props("role=heading aria-level=3")
 
                 with ui.grid(columns=2).classes("w-full gap-4"):
                     for step_num, step_title, step_desc, step_icon in [
@@ -144,7 +145,7 @@ def show_help_dialog() -> None:
                                 ui.icon(step_icon, size="md").classes("help-about-icon")
                                 ui.label(f"{step_num}. {step_title}").classes(
                                     "text-subtitle1 font-semibold"
-                                )
+                                ).props("role=heading aria-level=4")
                             ui.label(step_desc).classes(
                                 "text-body2 text-theme-secondary"
                             )
@@ -153,7 +154,7 @@ def show_help_dialog() -> None:
                     with ui.card().classes("flex-1 help-privacy-card p-4"):
                         with ui.row().classes("items-center gap-2 mb-2"):
                             ui.icon("security", size="sm").classes("help-privacy-icon")
-                            ui.label("Privacy").classes("text-subtitle1 font-semibold")
+                            ui.label("Privacy").classes("text-subtitle1 font-semibold").props("role=heading aria-level=3")
                         ui.label(
                             "Files are encrypted, accessible only to you, and automatically deleted after 7 days."
                         ).classes("text-body2")
@@ -161,7 +162,7 @@ def show_help_dialog() -> None:
                     with ui.card().classes("flex-1 help-support-card p-4"):
                         with ui.row().classes("items-center gap-2 mb-2"):
                             ui.icon("help", size="sm").classes("help-support-icon")
-                            ui.label("Support").classes("text-subtitle1 font-semibold")
+                            ui.label("Support").classes("text-subtitle1 font-semibold").props("role=heading aria-level=3")
 
                         ui.label(
                             "Contact your organisation’s local support for questions or technical support."
@@ -503,6 +504,52 @@ def _anonymous_header(header_text: str, cycle_dark_mode: Callable) -> None:
                 ui.tooltip("Help")
 
 
+def hidden_page_heading(text: str) -> None:
+    """
+    The page's h1, for a page that shows no title of its own: read by a
+    screen reader, invisible to everyone else, and the same words as the
+    document title so the two agree. A person who sees the page knows from
+    its look which one they are on; a person who does not has only this.
+    WCAG 1.3.1, 2.4.6.
+
+    .sr-only takes the label out of the flow, so it adds no room and
+    changes nothing on the page. role=heading on a label is how the other
+    pages already make their visible title an h1.
+    """
+
+    ui.label(text).classes("sr-only").props("role=heading aria-level=1")
+
+
+
+# The page's one dark mode element, per client: page_init makes it, and
+# the header's button and User settings both change it. A second
+# ui.dark_mode on the page would be a second element, and the two would
+# disagree -- going back to light from dark then did nothing until the
+# page was loaded again.
+_DARK_MODE: "weakref.WeakKeyDictionary" = weakref.WeakKeyDictionary()
+
+
+def _remember_dark_mode(element) -> None:
+    # Both held weakly: the client as the key, and the element too, so
+    # nothing here keeps a page alive once it is closed. (NiceGUI's
+    # elements hold their client weakly as well, so a strong value did
+    # not keep it in 3.7 or 3.18; this does not depend on that.)
+    try:
+        _DARK_MODE[ui.context.client] = weakref.ref(element)
+    except (RuntimeError, TypeError):
+        pass
+
+
+def page_dark_mode():
+    """The dark mode element page_init made for this page, or None."""
+
+    try:
+        element = _DARK_MODE.get(ui.context.client)
+    except (RuntimeError, TypeError):
+        return None
+
+    return element() if element is not None else None
+
 async def page_init(
     header_text: Optional[str] = "",
     use_drawer: bool = False,
@@ -603,6 +650,7 @@ async def page_init(
     ui.add_head_html(default_styles)
     dark_pref = app.storage.user.get("dark_mode", None)
     dark_mode_el = ui.dark_mode(dark_pref)
+    _remember_dark_mode(dark_mode_el)
 
     # Store resolved dark mode state for components like Plotly
     if dark_pref is not None:
@@ -732,6 +780,19 @@ async def page_init(
             active = current_path == path
             return menu_item_style + (menu_active_style if active else "")
 
+        def menu_tooltip(text: str) -> ui.tooltip:
+            """
+            A menu entry's tooltip in mini mode: beside the rail, level with
+            its icon, not under it. Centred under a 56px icon, a tooltip
+            wider than the rail reached the window's left edge, where Quasar
+            pulls it in and caps its width at the width it measured, rounded
+            to whole pixels; rounded down, the last word broke onto a line
+            of its own ("Customer" / "s"). Beside the rail it never reaches
+            the edge, and it no longer covers the entries below.
+            """
+
+            return ui.tooltip(text).props('anchor="center right" self="center left" :offset="[8, 0]"')
+
         def menu_link(path: str, icon: str, label: str) -> None:
             """
             A menu entry rendered as a real link.
@@ -770,7 +831,7 @@ async def page_init(
                 # The tooltip is a visual aid in mini mode, where the label is
                 # clipped for the eye but still present for screen readers. It is
                 # not the link's accessible name; the label is.
-                t = ui.tooltip(label)
+                t = menu_tooltip(label)
                 t.set_visibility(not app.storage.user.get("drawer_open", False))
                 menu_tooltips.append(t)
 
@@ -850,7 +911,7 @@ async def page_init(
                                     # (WCAG 2.4.4 / good practice 3.2.5)
                                     with ui.element("span").classes("sr-only"):
                                         ui.label(" (opens in a new tab)")
-                                    t = ui.tooltip("API documentation")
+                                    t = menu_tooltip("API documentation")
                                     t.set_visibility(
                                         not app.storage.user.get("drawer_open", False)
                                     )
@@ -1457,7 +1518,7 @@ def table_upload(table) -> None:
             " padding: 28px 32px;"
         ):
             with ui.column().classes("w-full items-center") as status_column:
-                ui.label("Uploading files").classes("text-h6 q-mb-sm")
+                ui.label("Uploading files").classes("text-h6 q-mb-sm").props("role=heading aria-level=2")
                 # role=status so the byte counter is announced as it changes
                 # instead of updating silently. WCAG 4.1.3.
                 status_label = (
@@ -1475,7 +1536,7 @@ def table_upload(table) -> None:
                 status_column.visible = False
 
             with ui.column().classes("w-full gap-4") as upload_column:
-                ui.label("Upload files").classes("text-h6")
+                ui.label("Upload files").classes("text-h6").props("role=heading aria-level=2")
                 upload = (
                     ui.upload(
                         # The label is rendered into the uploader header, which
@@ -1811,7 +1872,7 @@ def table_transcribe(selected_row, on_complete=None) -> None:
             with ui.row().classes("w-full"):
                 ui.label("Transcription settings").style("width: 100%;").classes(
                     "text-h6 q-mb-xl"
-                )
+                ).props("role=heading aria-level=2")
 
                 # Hidden until start_transcription has something to report;
                 # role=alert means a screen reader hears it the moment
@@ -1934,7 +1995,7 @@ def table_bulk_transcribe(table: ui.table, on_complete=None) -> None:
             with ui.row().classes("w-full"):
                 ui.label("Transcription settings").style("width: 100%;").classes(
                     "text-h6 q-mb-xl"
-                )
+                ).props("role=heading aria-level=2")
 
                 # See table_transcribe's own copy of this element for why.
                 error_display = (
@@ -2046,7 +2107,7 @@ def table_delete(table: ui.table) -> None:
 
     with ui.dialog().props('aria-label="Delete files"') as dialog:
         with ui.card():
-            ui.label("Delete files").classes("text-h6")
+            ui.label("Delete files").classes("text-h6").props("role=heading aria-level=2")
             ui.label(
                 f"{str(count)} files will be permanently deleted. This action cannot be undone."
             ).classes("text-subtitle2").style("margin-bottom: 10px;")
@@ -2160,7 +2221,7 @@ def table_bulk_export(table: ui.table) -> None:
         with ui.card().classes("p-6 items-center").style(
             "min-width: 400px; background-color: var(--color-bg-surface);"
         ):
-            ui.label("Preparing export...").classes("text-h6 mb-2")
+            ui.label("Preparing export...").classes("text-h6 mb-2").props("role=heading aria-level=2")
             progress_label = ui.label(f"Fetching file 0 of {len(completed)}").classes(
                 "text-body2 mb-2"
             )
@@ -2204,6 +2265,7 @@ def table_bulk_export(table: ui.table) -> None:
                 data = response.json()
 
                 editor = SRTEditor(uuid, data_format, filename)
+                editor.language = row.get("language")
                 if data_format == "srt":
                     editor.parse_srt(data["result"])
                 else:

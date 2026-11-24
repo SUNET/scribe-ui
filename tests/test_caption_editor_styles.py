@@ -130,17 +130,16 @@ class TestSubtitleGuidelineColouring:
 
 class TestTranscriptCellStates:
     """
-    A block's left rule marks its state: invalid (failed "Validate") and
-    highlighted (a search match) each get their own colour, distinct from
-    active (currently playing).
+    A block's left rule marks its state: invalid (failed "Validate") gets its
+    own colour, distinct from active (currently playing). A search match does
+    not mark the block at all -- only its words, so Validate has the block.
     """
 
-    def test_invalid_and_highlighted_are_distinct_colours(self):
+    def test_invalid_and_active_are_distinct_colours(self):
         invalid = effective(".transcript-cell-invalid")["border-left-color"]
-        highlighted = effective(".transcript-cell-highlighted")["border-left-color"]
         active = effective(".transcript-cell-active")["border-left-color"]
 
-        assert len({invalid, highlighted, active}) == 3
+        assert len({invalid, active}) == 2
 
     def test_warnings_are_amber_as_in_the_validation_panel(self):
         warning = effective(".transcript-cell-invalid.transcript-cell-warning")
@@ -212,6 +211,70 @@ class TestCaptionActions:
 
     def test_revealed_on_keyboard_focus(self):
         assert effective(".transcript-cell-actions:focus-within")["opacity"] == "1"
+
+    def test_revealed_where_the_caret_is_for_a_keyboard_reader(self):
+        """
+        The whole transcript is one contenteditable, so the caret in a
+        caption's text never makes that caption's cell :focus-within. The
+        editor marks the caption the caret is in instead, and the tray follows
+        the mark -- otherwise it is a control that only someone who already
+        knows to press Tab from the text will ever find.
+        """
+
+        assert effective(
+            "body.scribe-user-is-tabbing .transcript-cell-editing "
+            ".transcript-cell-actions"
+        )["opacity"] == "1"
+
+    def test_revealed_on_focus_anywhere_in_the_cell_for_a_keyboard_reader(self):
+        """
+        A timestamp is a control inside the cell, so focus on it is
+        :focus-within the cell.
+        """
+
+        assert effective(
+            "body.scribe-user-is-tabbing .transcript-cell:focus-within "
+            ".transcript-cell-actions"
+        )["opacity"] == "1"
+
+    def test_a_pointer_still_gets_only_the_caption_under_it(self):
+        """
+        With a mouse the tray follows the pointer -- quicker, since it is
+        there before the caption has been clicked -- and the caption the
+        caret is in does not get one as well, or two would be on screen
+        whenever the pointer is over another caption.
+        """
+
+        for selector in (
+            ".transcript-cell-editing .transcript-cell-actions",
+            ".transcript-cell:focus-within .transcript-cell-actions",
+        ):
+            with pytest.raises(AssertionError):
+                effective(selector)
+
+    def test_revealing_only_changes_opacity(self):
+        """
+        Hidden by opacity and nothing else: the tray stays in the tab order
+        and the accessibility tree, and its space is reserved, so showing it
+        moves nothing.
+        """
+
+        for selector in (
+            "body.scribe-user-is-tabbing .transcript-cell-editing "
+            ".transcript-cell-actions",
+            "body.scribe-user-is-tabbing .transcript-cell:focus-within "
+            ".transcript-cell-actions",
+        ):
+            assert list(effective(selector)) == ["opacity"]
+
+    def test_the_playing_caption_does_not_reveal_it(self):
+        """
+        Every caption the recording passes through would flash its tray up
+        and away again while someone is only listening.
+        """
+
+        with pytest.raises(AssertionError):
+            effective(".transcript-cell-active .transcript-cell-actions")
 
     def test_the_tray_costs_the_row_no_height(self):
         """
@@ -405,27 +468,47 @@ class TestSubtitleTextOffset:
 
 class TestVideoSubtitleOverlay:
     """
-    The overlay sits above the video's own native controls, not over them --
-    a percentage offset once put it there on a short or wide video, since
-    the control bar's own height is fixed while a percentage of the frame's
-    height is not, and shrinks below it.
+    The overlay is a preview of what a viewer sees, at the foot of the frame.
+    The player's controls (see PlayerControls) are laid over that foot while
+    they are up, and it rises clear of them for as long as they are.
     """
 
     def test_it_sits_at_the_foot_of_the_frame(self):
         """
-        Where a viewer would see it. It only moves up while the player's own
-        control bar is up, so the rest of the time the preview is where the
-        real thing is.
+        Where a viewer would see it, and where it is whenever the controls
+        are not over it.
         """
 
         assert rem(effective(".video-subtitle-overlay")["bottom"]) == 1
 
-    def test_it_clears_the_control_bar_while_that_is_up(self):
-        raised = effective(".video-controls-visible .video-subtitle-overlay")
+    def test_it_rises_clear_of_the_controls_while_they_are_up(self):
+        """
+        The controls are over the foot of the picture, where it would have
+        sat; it rises above them while they are up and comes back down when
+        they go, which they do while the recording plays and nothing is being
+        done to them. Not for a recording with no picture (no preview there).
+        """
 
-        assert rem(raised["bottom"]) > rem(
-            effective(".video-subtitle-overlay")["bottom"]
-        )
+        from utils.styles import default_styles
+
+        start = default_styles.index(".video-frame:has(.player-controls:not(")
+        rule = default_styles[start : default_styles.index("}", start)]
+
+        assert "not(.player-controls-asleep)" in rule
+        assert "not(.player-controls-audio)" in rule
+        assert "bottom: 6.25rem;" in rule
+        # Kept up by the keyboard as well, whatever the timer says.
+        assert ".player-controls-asleep:focus-within" in rule
+
+    def test_it_moves_gently_and_not_at_all_for_those_who_ask(self):
+        from utils.styles import default_styles
+
+        assert "transition: bottom 0.2s ease-in-out;" in default_styles
+        reduced = default_styles[
+            default_styles.index("@media (prefers-reduced-motion: reduce) {\n        .video-subtitle-overlay")
+        :]
+
+        assert "transition: none;" in reduced[: reduced.index("}\n    }") + 1]
 
     def test_the_offset_is_fixed_not_a_percentage(self):
         bottom = effective(".video-subtitle-overlay")["bottom"]
@@ -434,9 +517,8 @@ class TestVideoSubtitleOverlay:
 
     def test_it_never_captures_a_click(self):
         """
-        Belt and suspenders alongside the fixed offset above -- clicks (the
-        seek bar, a click-to-pause) always reach the video underneath, even
-        if the two ever end up overlapping regardless.
+        A preview, not a control: clicks anywhere on the frame go to the video
+        underneath, as they would on a viewer's own screen.
         """
 
         assert effective(".video-subtitle-overlay")["pointer-events"] == "none"

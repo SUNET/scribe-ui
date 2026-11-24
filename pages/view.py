@@ -20,7 +20,7 @@ import httpx
 from uuid import UUID
 
 from nicegui import app, ui
-from utils.common import get_auth_header, page_init
+from utils.common import get_auth_header, hidden_page_heading, page_init
 from utils.helpers import storage_decrypt
 from utils.settings import get_settings
 from utils.srt import SRTEditor
@@ -159,7 +159,7 @@ def create() -> None:
         no save.
         """
 
-        await page_init(use_drawer=True, title="View transcription")
+        await page_init(use_drawer=True, title="Viewer")
 
         try:
             UUID(uuid)
@@ -197,6 +197,8 @@ def create() -> None:
         else:
             reader.parse_txt(data["result"])
 
+        hidden_page_heading("Viewer")
+
         with ui.column().classes("view-page w-full"):
             with ui.row().classes("view-header w-full items-center"):
                 ui.button(
@@ -204,7 +206,11 @@ def create() -> None:
                 ).props(
                     'flat round color=black aria-label="Back to my files"'
                 ).tooltip("Back to my files")
-                ui.label(filename).classes("view-title")
+                # The file's name is what the page shows as its title, so it
+                # is a heading too, under the page's own (hidden) h1.
+                ui.label(filename).classes("view-title").props(
+                    "role=heading aria-level=2"
+                )
 
             with ui.element("div").classes("view-video w-full"):
                 # playsinline, or iOS plays every video fullscreen --

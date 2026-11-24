@@ -24,6 +24,8 @@ with everything found in it rather than once per finding, and that errors
 (the file is wrong) stay apart from warnings (a viewer will struggle).
 """
 
+import pathlib
+
 from utils.caption import SRTCaption
 from utils.settings import get_settings
 from utils.srt import SRTEditor
@@ -427,6 +429,116 @@ class TestGoingToSpeech:
         assert panel.transcript.seeked == 2.5
         assert panel.transcript.moved_to_seconds == 2.5
 
+    def test_the_speech_is_sought_once(self):
+        source = (pathlib.Path(__file__).resolve().parent.parent / "utils" / "validation_panel.py").read_text()
+
+        assert source.count("seek_video(start)") == 1
+
+
+class TestGoingToACaption:
+    """
+    "Caption N" on the card puts the caret where the problem is, and the
+    recording there too, as a click in the text does -- not only for speech
+    without a caption.
+    """
+
+    def test_the_recording_goes_where_the_caret_goes(self):
+        from utils.validation_panel import ValidationPanel
+
+        panel = ValidationPanel.__new__(ValidationPanel)
+        panel.items = [{"caption": caption(3, "00:00:05,000", "00:00:07,000", "Hello there"), "offset": 4}]
+        panel.position = 0
+        panel.exists = lambda item: True
+
+        calls = []
+
+        class Transcript:
+            editor = None
+
+            def focus(self, *args, **kwargs):
+                calls.append(("focus", args, kwargs))
+
+            def seek(self, args):
+                calls.append(("seek", args))
+
+        panel.transcript = Transcript()
+        panel.go_to_caption()
+
+        # The caret first, then the recording: the same place.
+        assert calls == [
+            ("focus", (3, 4), {"center": True}),
+            ("seek", {"id": 3, "offset": 4}),
+        ]
+
+
+class TestSteppingMovesTheRecording:
+    """
+    Previous and Next move the recording to the issue now shown, as Find
+    does when it steps -- but following the caret never does.
+    """
+
+    def panel(self):
+        from utils.validation_panel import ValidationPanel
+
+        panel = ValidationPanel.__new__(ValidationPanel)
+        panel.items = [
+            {"caption": caption(1, "00:00:01,000", "00:00:02,000", "Hello there"), "offset": 6},
+            {"caption": caption(2, "00:00:03,000", "00:00:04,000"), "offset": 0},
+            {"caption": caption(3, "00:00:05,000", "00:00:06,000"), "speech": {"start": 7.5, "end": 8, "until": 9}},
+        ]
+        panel.position = 0
+        panel.previous, panel.next = "previous", "next"
+        panel.draw = lambda: None
+        panel.focus = lambda element: None
+        panel.exists = lambda item: True
+
+        calls = []
+
+        class Transcript:
+            def __init__(self):
+                self.editor = self
+
+            def seek(self, args):
+                calls.append(("seek", args))
+
+            def seek_video(self, seconds):
+                calls.append(("video", seconds))
+
+            def moved_to(self, seconds):
+                pass
+
+        panel.transcript = Transcript()
+        panel.calls = calls
+        return panel
+
+    def test_next_and_previous_move_it(self):
+        panel = self.panel()
+
+        panel.go_next()
+        panel.go_next()
+        panel.go_previous()
+
+        assert panel.calls == [
+            ("seek", {"id": 2, "offset": 0}),
+            ("video", 7.5),
+            ("seek", {"id": 2, "offset": 0}),
+        ]
+
+    def test_an_issue_whose_caption_is_gone_does_not(self):
+        panel = self.panel()
+        panel.exists = lambda item: False
+
+        panel.go_next()
+
+        assert panel.calls == []
+
+    def test_following_the_caret_never_does(self):
+        source = (pathlib.Path(__file__).resolve().parent.parent / "utils" / "validation_panel.py").read_text()
+        follow = source[source.index("    def follow_caret(") :]
+        follow = follow[: follow.index("\n    def ", 10)]
+
+        assert "hear" not in follow and "seek" not in follow
+
 
 class TestCheckingAgain:
     """
@@ -469,7 +581,12 @@ class TestCheckingAgain:
         subject.update_flagged_count = lambda: None
         return subject
 
-    def test_a_fixed_caption_moves_on_to_the_next_issue(self):
+    def test_a_fixed_caption_moves_on_to_the_next_issue(self, monkeypatch):
+        notified = []
+        monkeypatch.setattr(
+            "utils.validation_panel.ui.notify",
+            lambda message, type=None, **kw: notified.append((message, type)),
+        )
         subject = self.subject()
         panel = self.panel(subject)
 
@@ -477,7 +594,8 @@ class TestCheckingAgain:
         panel.check_again()
 
         assert panel.current()["caption"].index == 2
-        assert panel.note.text == "Caption 1 passes now."
+        assert ("Caption 1 passes now.", "positive") in notified
+        assert panel.note.text == ""
         assert subject.captions[0].is_valid
 
     def test_a_caption_still_wrong_stays(self):
@@ -535,6 +653,7 @@ class TestStepping:
         panel.previous, panel.next = "previous", "next"
         panel.focused = []
         panel.draw = lambda: None
+        panel.hear_current = lambda: None
         panel.focus = lambda element: panel.focused.append(element)
         return panel
 
@@ -692,18 +811,6 @@ class TestFollowingTheCaret:
         assert panel.container.visible is False
         assert panel.draws == []
 
-    def test_a_hidden_kind_is_not_followed(self, monkeypatch):
-        from utils.validation_panel import shown_items
-
-        panel = self.panel(monkeypatch, visible=False)
-        panel.hidden = {"overlap", "length"}
-        panel.items = shown_items(panel.all_items, panel.hidden)
-
-        panel.follow_caret(3)
-
-        assert panel.container.visible is False
-        assert panel.draws == []
-
     def test_an_issue_whose_caption_is_gone_is_not_followed(self, monkeypatch):
         panel = self.panel(monkeypatch)
         stale = panel.items[2]["caption"]
@@ -722,9 +829,9 @@ class TestFollowingTheCaret:
 
         # Only a caret that is in a caption, only when it has stayed there,
         # and told as the event the Python side listens for.
-        assert "if (id === null) return;" in watcher
+        assert "if (id === null) {" in watcher
         assert "setTimeout" in watcher
-        assert "this.caretId === id" in watcher
+        assert "if (this.caretId !== id) return;" in watcher
         assert '$emit("caretblock", { id })' in watcher
 
     def test_the_page_hands_the_caret_to_the_panel(self):
@@ -760,6 +867,163 @@ def speech_items(subject: SRTEditor) -> list:
         for item in subject.validation_items(subject.collect_validation_issues())
         if item["rule"] == "speech"
     ]
+
+
+class TestAMarkedCaptionNeverRefusesToOpen:
+    """
+    A caption marked in the text always opens its card, whatever the filters
+    say. The caret landing in one whose issues are all of hidden kinds shows
+    the kind of its first issue again; a caption with an issue of a shown kind
+    opens on that, and its hidden kinds stay hidden.
+    """
+
+    def panel(self, monkeypatch, visible=True):
+        panel = TestFollowingTheCaret().panel(monkeypatch, visible=visible)
+        panel.drawn_filters = 0
+        panel.draw_filters = lambda: setattr(
+            panel, "drawn_filters", panel.drawn_filters + 1
+        )
+
+        class Label:
+            def __init__(self):
+                self.text = ""
+                self.shown = False
+
+            def set_text(self, text):
+                self.text = text
+
+            def set_visibility(self, shown):
+                self.shown = shown
+
+        panel.note = Label()
+        panel.spoken_position = Label()
+        panel.pending_speech = ""
+
+        return panel
+
+    def hide(self, panel, *rules):
+        from utils.validation_panel import shown_items
+
+        panel.hidden = set(rules)
+        panel.items = shown_items(panel.all_items, panel.hidden)
+        panel.position = 0
+
+    def test_a_caption_with_only_hidden_issues_shows_its_kind_again(
+        self, monkeypatch
+    ):
+        panel = self.panel(monkeypatch)
+        self.hide(panel, "overlap", "length")
+
+        # Caption 3 is marked for an overlap, which is hidden.
+        panel.follow_caret(3)
+
+        assert panel.hidden == {"length"}
+        assert panel.current()["caption"].index == 3
+        assert panel.current()["rule"] == "overlap"
+        assert panel.drawn_filters == 1
+        assert panel.draws == [{"scroll": False}]
+
+    def test_only_the_kind_of_its_first_issue_comes_back(self, monkeypatch):
+        panel = self.panel(monkeypatch)
+        self.hide(panel, "overlap", "length")
+
+        # Caption 2 has both an overlap and a long line, both hidden.
+        panel.follow_caret(2)
+
+        assert len(panel.hidden) == 1
+        assert panel.current()["caption"].index == 2
+
+    def test_a_caption_with_a_shown_kind_opens_on_that_and_keeps_the_rest_hidden(
+        self, monkeypatch
+    ):
+        panel = self.panel(monkeypatch)
+        self.hide(panel, "overlap")
+
+        # Caption 2: overlap (hidden) and length (shown).
+        panel.follow_caret(2)
+
+        assert panel.hidden == {"overlap"}
+        assert panel.current()["rule"] == "length"
+        assert panel.drawn_filters == 0
+
+    def test_it_is_said_on_the_card_and_to_a_screen_reader(self, monkeypatch):
+        panel = self.panel(monkeypatch)
+        self.hide(panel, "overlap", "length")
+
+        panel.follow_caret(3)
+
+        said = "Showing \u201cOverlaps\u201d again \u2014 it was hidden."
+
+        assert panel.note.text == said and panel.note.shown
+        assert panel.spoken_position.text.startswith(said)
+        assert "Issue" in panel.spoken_position.text
+
+    def test_nothing_is_said_when_nothing_came_back(self, monkeypatch):
+        panel = self.panel(monkeypatch)
+
+        panel.follow_caret(3)
+
+        assert panel.note.text == ""
+        assert panel.spoken_position.text == ""
+
+    def test_a_closed_panel_opens_and_says_it_a_moment_later(self, monkeypatch):
+        panel = self.panel(monkeypatch, visible=False)
+        self.hide(panel, "overlap", "length")
+
+        panel.follow_caret(3)
+
+        assert panel.container.visible is True
+        assert panel.note.shown
+        assert panel.spoken_position.text == ""
+        assert panel.timers
+
+        panel.speak()
+
+        assert panel.spoken_position.text.startswith("Showing")
+        assert panel.pending_speech == ""
+
+        panel.speak()
+
+        assert panel.spoken_position.text.startswith("Issue")
+
+    def test_a_caption_with_no_issue_still_changes_nothing(self, monkeypatch):
+        panel = self.panel(monkeypatch, visible=False)
+        self.hide(panel, "overlap", "length")
+
+        panel.follow_caret(1)
+
+        assert panel.container.visible is False
+        assert panel.hidden == {"overlap", "length"}
+        assert panel.draws == []
+
+    def test_a_gone_caption_does_not_bring_a_kind_back(self, monkeypatch):
+        panel = self.panel(monkeypatch)
+        self.hide(panel, "overlap", "length")
+        panel.captions = lambda: []
+
+        panel.follow_caret(3)
+
+        assert panel.hidden == {"overlap", "length"}
+        assert panel.draws == []
+
+    def test_speech_without_a_caption_never_brings_its_kind_back(self, monkeypatch):
+        panel = self.panel(monkeypatch)
+        panel.all_items = [
+            {
+                "caption": panel.all_items[0]["caption"],
+                "error": False,
+                "rule": "speech",
+                "speech": {"start": 0.0, "end": 1.0, "until": None},
+            }
+        ]
+        panel.items = []
+        panel.hidden = {"speech"}
+        index = panel.all_items[0]["caption"].index
+
+        panel.follow_caret(index)
+
+        assert panel.hidden == {"speech"}
+        assert panel.draws == []
 
 
 class TestSpeechOutsideCaptions:
@@ -1070,7 +1334,12 @@ class TestCheckingSpeechAgain:
         assert panel.current()["rule"] == "speech"
         assert panel.note.text == "This speech still has no caption."
 
-    def test_covered_now_moves_on(self):
+    def test_covered_now_moves_on(self, monkeypatch):
+        notified = []
+        monkeypatch.setattr(
+            "utils.validation_panel.ui.notify",
+            lambda message, type=None, **kw: notified.append((message, type)),
+        )
         subject = self.subject()
         panel = self.panel(subject)
 
@@ -1078,7 +1347,8 @@ class TestCheckingSpeechAgain:
         subject.renumber_captions()
         panel.check_again()
 
-        assert panel.note.text == "This speech has a caption now."
+        assert ("This speech has a caption now.", "positive") in notified
+        assert panel.note.text == ""
         assert panel.current()["caption"].index == 3
 
 
@@ -1339,4 +1609,169 @@ class TestMediaLength:
         assert "editor.look_up_media_seconds(video)" in page
         assert page.index("editor.set_video_player(video)") < page.index(
             "editor.look_up_media_seconds(video)"
+        )
+
+
+class TestHiddenKindsInTheText:
+    """
+    A caption marked only for kinds of issue the panel hides is drawn quieter
+    in the text: its rule dashed and with no tint. It is still marked, since
+    the caret in it opens the card and shows the kind again.
+    """
+
+    def subject(self):
+        long_line = "x" * (settings.CHARACTER_LIMIT + 6)
+
+        # 1 has a long line and overlaps 2; 2 only overlaps; 3 is fine.
+        return editor(
+            caption(1, "00:00:00,000", "00:00:03,000", long_line),
+            caption(2, "00:00:02,000", "00:00:05,000"),
+            caption(3, "00:00:10,000", "00:00:12,000"),
+        )
+
+    def view(self, subject):
+        from utils.transcript_editor import TranscriptEditor
+
+        view = TranscriptEditor(subject)
+
+        class Body:
+            def __init__(self):
+                self.muted = []
+
+            def set_muted(self, block_ids):
+                self.muted.append(block_ids)
+
+        view.body = Body()
+
+        return view
+
+    def test_validating_records_what_each_caption_is_marked_for(self):
+        subject = self.subject()
+        subject.collect_validation_issues()
+
+        assert [c.issue_rules for c in subject.captions] == [
+            {"length", "overlap"},
+            {"overlap"},
+            set(),
+        ]
+
+    def test_validating_again_starts_afresh(self, monkeypatch):
+        subject = self.subject()
+        monkeypatch.setattr(subject, "refresh_display", lambda **kwargs: None)
+        subject.run_validation()
+
+        subject.captions[1].start_time = "00:00:03,000"
+        subject.run_validation()
+
+        assert [c.issue_rules for c in subject.captions] == [{"length"}, set(), set()]
+
+    def test_speech_filed_under_a_caption_is_not_what_it_is_marked_for(self):
+        subject = speaking(
+            editor(caption(1, "00:00:00,000", "00:00:01,000")), (3.0, 6.0)
+        )
+
+        assert speech_items(subject)
+        assert subject.captions[0].issue_rules == set()
+
+    def test_an_undo_snapshot_keeps_them(self):
+        original = caption(1, "00:00:00,000", "00:00:01,000")
+        original.is_valid = False
+        original.issue_rules = {"speed"}
+        copied = original.copy()
+
+        assert copied.issue_rules == {"speed"}
+        copied.issue_rules.add("length")
+        assert original.issue_rules == {"speed"}
+
+    def test_only_captions_with_nothing_shown_are_quieter(self):
+        subject = self.subject()
+        subject.collect_validation_issues()
+        view = self.view(subject)
+
+        # Overlaps hidden: 2 has nothing else; 1 still has its long line.
+        view.set_hidden_rules({"overlap"})
+        assert view.body.muted[-1] == [2]
+
+        view.set_hidden_rules({"overlap", "length"})
+        assert view.body.muted[-1] == [1, 2]
+
+        view.set_hidden_rules(set())
+        assert view.body.muted[-1] == []
+
+    def test_an_unmarked_caption_is_never_quieter(self):
+        subject = self.subject()
+        view = self.view(subject)
+
+        # Not validated: nothing is marked, whatever is hidden.
+        view.set_hidden_rules({"overlap", "length"})
+        assert view.body.muted[-1] == []
+
+    def test_every_redraw_works_it_out_again(self):
+        source = pathlib.Path("utils/transcript_editor.py").read_text()
+        refresh = source[source.index("    def refresh(self) -> None:"):]
+        refresh = refresh[: refresh.index("\n    def ", 10)]
+
+        assert "self.body.set_muted(self.muted_ids())" in refresh
+
+    def test_the_panel_says_when_the_hidden_kinds_change(self):
+        from utils.validation_panel import ValidationPanel
+
+        told = []
+
+        class Transcript:
+            def set_hidden_rules(self, rules):
+                told.append(set(rules))
+
+        subject = self.subject()
+        panel = ValidationPanel.__new__(ValidationPanel)
+        panel.transcript = Transcript()
+        panel.all_items = subject.validation_items(
+            subject.collect_validation_issues()
+        )
+        panel.hidden = set()
+        panel.items = list(panel.all_items)
+        panel.position = 0
+        panel.checkboxes = {}
+        panel.draw = lambda: None
+        panel.draw_filters = lambda: None
+        panel.exists = lambda item: True
+
+        panel.toggle("overlap")
+        assert told[-1] == {"overlap"}
+
+        # A caption marked only for a hidden kind brings the kind back.
+        assert panel.reveal_hidden(2) is not None
+        assert told[-1] == set()
+
+    def test_it_restyles_without_rebuilding(self):
+        source = pathlib.Path("utils/transcript_editor.py").read_text()
+        set_muted = source[source.index("    def set_muted(self"):]
+        set_muted = set_muted[: set_muted.index("\n    def ")]
+
+        # A prop of its own: a rebuild (set_blocks, revision) would put the
+        # caret back, and focus with it, away from the checkbox.
+        assert '"mutedIds"' in set_muted
+        assert "revision" not in set_muted
+
+        script = pathlib.Path("utils/transcript_editor.js").read_text()
+        assert "'transcript-cell-muted': mutedIds.includes(block.id)" in script
+        assert "mutedIds: { type: Array" in script
+
+    def test_the_rule_is_dashed_in_its_own_colour_with_no_tint(self):
+        from utils.styles import default_styles
+
+        rule = default_styles[
+            default_styles.index(
+                ".transcript-cell.transcript-cell-invalid.transcript-cell-muted {"
+            ):
+        ]
+        rule = rule[: rule.index("}")]
+
+        assert "border-left-style: dashed" in rule
+        assert "background-color: transparent" in rule
+        # The colour is left to the error or warning rule: red or amber.
+        assert "border-left-color" not in rule
+        # After the tints it has to win over.
+        assert default_styles.index(rule) > default_styles.index(
+            ".body--dark .transcript-cell-invalid.transcript-cell-warning {"
         )

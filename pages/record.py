@@ -18,7 +18,7 @@
 from nicegui import ui
 
 import utils.recording_api  # noqa: F401 -- registers the upload routes
-from utils.common import page_init
+from utils.common import hidden_page_heading, page_init
 from utils.recorder import Recorder, current_owner, engine_script
 from utils.settings import get_settings
 from utils.styles import default_styles
@@ -76,6 +76,8 @@ def create() -> None:
 
         ui.add_head_html(default_styles)
         engine_script()
+
+        hidden_page_heading("Recorder")
 
         with ui.column().classes("recorder-page w-full items-center"):
             recorder["element"] = Recorder(owner=owner)

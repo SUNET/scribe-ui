@@ -38,6 +38,15 @@ from typing import Callable, List, Optional
 from nicegui import ui
 
 from utils.caption import SRTCaption
+from utils.common import focus_element
+from utils.quick_jump import (
+    NOT_IN_A_TRANSCRIPTION,
+    hint as quick_jump_hint,
+    KIND_BLOCK,
+    KIND_RELATIVE,
+    JumpError,
+    parse_jump,
+)
 from utils.settings import get_settings
 from utils.srt_review import EDIT_TOOLTIP, REVIEW_TOOLTIP
 
@@ -110,6 +119,11 @@ class TranscriptBody(
         self._props["blocks"] = []
         self._props["activeId"] = -1
         self._props["reviewId"] = -1
+        self._props["mutedIds"] = []
+        self._props["commentId"] = -1
+        self._props["commentIndex"] = -1
+        self._props["findMarks"] = []
+        self._props["findCurrent"] = -1
         self._props["reviewLabel"] = REVIEW_TOOLTIP
         self._props["editLabel"] = EDIT_TOOLTIP
         self._props["showEdits"] = False
@@ -152,6 +166,54 @@ class TranscriptBody(
         self._props["reviewId"] = block_id
         self.update()
 
+    def set_muted(self, block_ids: List[int]) -> None:
+        """
+        The marked captions whose every issue is of a kind the validation
+        panel hides: drawn with a dashed rule and no tint (see
+        TranscriptEditor.set_hidden_rules). A prop of its own rather than a
+        field of each block, so a checkbox in the panel restyles the
+        captions without rebuilding them -- a rebuild puts the caret back,
+        and with it focus, which has to stay on the checkbox.
+        """
+
+        if self._props["mutedIds"] == block_ids:
+            return
+
+        self._props["mutedIds"] = block_ids
+        self.update()
+
+    def set_comment_mark(self, block_id: int, comment_index: int = -1) -> None:
+        """
+        Mark the caption, and the comment in it, that the comments card is
+        showing, or none (-1). A comment still being written has a caption
+        and no comment index.
+        """
+
+        if (
+            self._props["commentId"] == block_id
+            and self._props["commentIndex"] == comment_index
+        ):
+            return
+
+        self._props["commentId"] = block_id
+        self._props["commentIndex"] = comment_index
+        self.update()
+
+    def set_find(self, marks: list, current: int) -> None:
+        """
+        The words the Find card has found, as {id, s, e} (the caption and
+        where in its text, as the browser counts), and which of them is the
+        current one (an index into the list, or -1). Drawn by the component
+        over the words themselves, so the text is not touched.
+        """
+
+        if self._props["findMarks"] == marks and self._props["findCurrent"] == current:
+            return
+
+        self._props["findMarks"] = marks
+        self._props["findCurrent"] = current
+        self.update()
+
     def set_follow(self, follow: bool) -> None:
         self._props["follow"] = follow
         self.update()
@@ -178,6 +240,17 @@ class TranscriptBody(
     def scroll_to_block(self, block_id: int) -> None:
         self.run_method("scrollToBlock", block_id)
 
+    def highlight_selection(self) -> None:
+        self.run_method("highlightSelection")
+
+    def select_range(
+        self, start_id: int, start_offset: int, end_id: int, end_offset: int
+    ) -> None:
+        self.run_method("selectRange", start_id, start_offset, end_id, end_offset)
+
+    def comment_selection(self) -> None:
+        self.run_method("commentSelection")
+
     def focus_caret(self) -> None:
         self.run_method("focusCaret")
 
@@ -198,6 +271,9 @@ class TranscriptEditor:
         # Called with the index of the caption the caret has come to rest
         # in -- the validation panel follows it (see caret_moved).
         self.on_caret: Optional[Callable[[int], None]] = None
+        # The panel under the video where comments are written and read
+        # (utils/comments_panel.py), set by the page; transcriptions only.
+        self.comments_panel = None
         self.overlay: Optional[ui.element] = None
         # The speech strip under the video, when there are word timings to
         # draw one from -- see set_timeline.
@@ -210,6 +286,22 @@ class TranscriptEditor:
         # Where the player last reported itself to be, so the overlay's own
         # caption can be worked out again after an edit -- see refresh_overlay.
         self.overlay_seconds: Optional[float] = None
+        # The caption the caret last settled in, for Quick Jump's relative
+        # times when there is no player to ask.
+        self.caret_block: Optional[int] = None
+        # What "Play with context" last played, as an anchor -- ("block",
+        # index) or ("time", seconds) -- so a press while it is still the
+        # reader's current stretch plays that stretch again rather than the
+        # next one. Cleared when the caret settles in another block; the
+        # player says whether the stretch is still current (context_state).
+        self.last_context: Optional[tuple] = None
+        # The kinds of issue the validation panel hides; a caption marked
+        # only for those is drawn quieter (see set_hidden_rules).
+        self.hidden_rules: set = set()
+        # Built the first time it is wanted -- see open_quick_jump.
+        self.quick_jump_dialog = None
+        self.quick_jump_input = None
+        self.quick_jump_error = None
 
     def set_timeline(self, timeline) -> None:
         """
@@ -300,6 +392,23 @@ class TranscriptEditor:
             self.body.scroll_to_block(caption_index)
         self.mark_current(caption_index)
 
+    def mark_comment(
+        self, caption_index: Optional[int], comment_index: int = -1
+    ) -> None:
+        """
+        Mark where the comments card is: the caption with a rule and an
+        outline, and the words of the comment with a tint. None clears it.
+        """
+
+        if self.body is None:
+            return
+
+        if caption_index is None:
+            self.body.set_comment_mark(-1, -1)
+            return
+
+        self.body.set_comment_mark(caption_index, comment_index)
+
     def caret_moved(self, args) -> None:
         """
         The caret has settled in a caption (the client waits a moment, and
@@ -311,6 +420,11 @@ class TranscriptEditor:
 
         if block_id is None or self.caption(block_id) is None:
             return
+
+        self.caret_block = block_id
+        # The reader has moved on to something else.
+        self.last_context = None
+        self.editor.caret_index = block_id
 
         if self.on_caret is not None:
             self.on_caret(block_id)
@@ -488,12 +602,24 @@ class TranscriptEditor:
         # And this is what refresh_display's caller, select_caption, uses to
         # say which caption search or autoscroll just moved to.
         self.editor.on_select = self.scroll_to
+        # The words Find has found, to be drawn over the text.
+        self.editor.on_find_marks = self.set_find_marks
+        # Ctrl/Cmd+G is the page's key, so the editor tells us to open it.
+        self.editor.on_quick_jump = self.open_quick_jump
 
         self.body.on("blocktext", lambda event: self.set_text(event.args))
         self.body.on("splitblock", lambda event: self.split(event.args))
         self.body.on("mergeblock", lambda event: self.merge(event.args))
         self.body.on("deleterange", lambda event: self.delete_range(event.args))
         self.body.on("moveword", lambda event: self.move_word(event.args))
+        self.body.on(
+            "togglehighlight", lambda event: self.toggle_highlight(event.args)
+        )
+        self.body.on("opencomment", lambda event: self.open_comment(event.args))
+        self.body.on("caretcomment", lambda event: self.caret_comment(event.args))
+        self.body.on("movetext", lambda event: self.move_text(event.args))
+        self.body.on("nudge", lambda event: self.nudge(event.args))
+        self.body.on("playcontext", lambda event: self.play_with_context(event.args))
         self.body.on("addblock", lambda event: self.add_after(event.args))
         self.body.on("deleteblock", lambda event: self.delete(event.args))
         self.body.on("blockclick", lambda event: self.seek(event.args))
@@ -533,7 +659,6 @@ class TranscriptEditor:
                 # a warning, rather than an error's red. One error among them
                 # and the caption is red -- the highest severity decides.
                 "warning": not caption.is_valid and not caption.has_error,
-                "highlighted": caption.is_highlighted,
             }
 
             if subtitles:
@@ -542,6 +667,37 @@ class TranscriptEditor:
             blocks.append(block)
 
         return blocks
+
+    def muted_ids(self) -> List[int]:
+        """
+        The marked captions whose every issue is of a hidden kind. A caption
+        with one issue of a kind that is shown is marked as before: what the
+        reader asked to see is in it.
+        """
+
+        hidden = self.hidden_rules
+
+        return [
+            caption.index
+            for caption in self.editor.captions
+            if not caption.is_valid
+            and caption.issue_rules
+            and caption.issue_rules <= hidden
+        ]
+
+    def set_hidden_rules(self, rules) -> None:
+        """
+        The validation panel's filter changed (a checkbox, or a kind shown
+        again by reveal_hidden). A caption marked only for hidden kinds keeps
+        its rule, dashed and with no tint, so it still says something is
+        there -- the caret in it opens the card and shows the kind again --
+        without competing with the kinds the reader is working on.
+        """
+
+        self.hidden_rules = set(rules)
+
+        if self.body is not None:
+            self.body.set_muted(self.muted_ids())
 
     def refresh(self) -> None:
         """
@@ -552,6 +708,13 @@ class TranscriptEditor:
             return
 
         self.body.set_blocks(self.blocks())
+        # Which captions are marked only for hidden kinds: a Validate, a
+        # split or an undo can change that as well as the blocks.
+        self.body.set_muted(self.muted_ids())
+        # Captions added, removed, moved or changed under Find: its matches
+        # are looked for again, so the marks are on the right captions
+        # whoever asked for the redraw.
+        self.editor.look_again()
         self.body.set_speakers(
             sorted(self.editor.speakers),
             [name for name in sorted(self.editor.speakers)
@@ -563,6 +726,10 @@ class TranscriptEditor:
         # And where the captions divide the recording, which the strip under
         # the video draws.
         self.refresh_timeline()
+        # And the comment the panel is showing, which an undo, a merge or a
+        # delete may have replaced or taken away.
+        if self.comments_panel is not None:
+            self.comments_panel.sync()
 
     # ── lookup ──────────────────────────────────────────────────────────────
 
@@ -577,6 +744,22 @@ class TranscriptEditor:
         for caption in self.editor.captions:
             if caption.index == block_id:
                 return caption
+
+        return None
+
+    def still_there(self, caption) -> Optional[SRTCaption]:
+        """
+        The caption itself if it is still one of the editor's, else None.
+
+        For something that remembers a caption across edits. Its number will
+        not do for that -- renumber_captions hands the numbers out again by
+        position, so a number kept from before can name a different caption
+        after a retime that reorders, or a merge or delete before it.
+        """
+
+        for candidate in self.editor.captions:
+            if candidate is caption:
+                return candidate
 
         return None
 
@@ -611,6 +794,17 @@ class TranscriptEditor:
 
         self.editor.update_caption_text(caption, text)
         self.changed()
+
+        # Not drawn again, so Find's count and marks are brought up to date
+        # here: what was typed can make a match or take one away.
+        self.editor.look_again()
+
+        # The block being typed into is not drawn again (that would move the
+        # caret), so the refresh that tells the comments card about a change
+        # does not come. Tell it here: the comment it shows may have grown,
+        # moved or lost all its words by what was just typed.
+        if self.comments_panel is not None:
+            self.comments_panel.sync()
 
     def split(self, args) -> None:
         """
@@ -835,14 +1029,191 @@ class TranscriptEditor:
         self.changed()
         self.focus(first.index, seam)
 
+    def highlight_selection(self) -> None:
+        """
+        What the toolbar's Highlight button does: ask the component for the
+        selection, which it reports as it does for the key.
+        """
+
+        if self.body is not None:
+            self.body.highlight_selection()
+
+    def toggle_highlight(self, args) -> None:
+        """
+        Highlight the words the reader has selected, or take it off.
+
+        The editor does the work and says whether it did anything; this only
+        turns the ranges the component measured into captions and puts the
+        selection back, since drawing the highlight rebuilds the blocks it
+        sits in and a selection does not survive that. Selecting it again is
+        what lets the same key undo what it just did.
+        """
+
+        raw = args.get("spans") if isinstance(args, dict) else None
+
+        if not isinstance(raw, list):
+            return
+
+        # Nothing selected, from the button: the editor says so.
+        if not raw:
+            self.editor.toggle_highlight([])
+            return
+
+        selections = []
+        spans = []
+
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+
+            caption = self.caption(self.block_id(item))
+            start, end = item.get("start"), item.get("end")
+
+            if (
+                caption is None
+                or isinstance(start, bool)
+                or isinstance(end, bool)
+                or not isinstance(start, int)
+                or not isinstance(end, int)
+            ):
+                continue
+
+            selections.append((caption, start, end))
+            spans.append((caption.index, start, end))
+
+        if not selections:
+            return
+
+        result = self.editor.toggle_highlight(selections)
+
+        if not result:
+            return
+
+        self.refresh()
+
+        # Showing hidden highlights again changes nothing worth saving.
+        if result != "shown":
+            self.changed()
+
+        # Offsets are in the text, which a highlight does not change, so the
+        # selection can be put back exactly as it was.
+        if self.body is not None:
+            first, last = spans[0], spans[-1]
+            self.body.select_range(first[0], first[1], last[0], last[2])
+
+    def comment_selection(self) -> None:
+        """
+        What the toolbar's Comment button does: ask the component for the
+        selection, which it reports as it does for the key.
+        """
+
+        if self.body is not None:
+            self.body.comment_selection()
+
+    def tell_to_select_words(self) -> None:
+        ui.notify(
+            "Select the words to comment on first",
+            type="warning",
+            timeout=None,
+            close_button="Close",
+        )
+
+    def open_comment(self, args) -> None:
+        """
+        The key or the button: comment on the selected words, or open the
+        comment they already have -- in the comments panel, which is where a
+        comment is written, read and changed.
+
+        A comment belongs to one block, so a selection reaching across blocks
+        is refused. A selection that merely ends at the very edge of the next
+        block, taking none of it, is still within one.
+        """
+
+        if self.editor.data_format == "srt" or self.comments_panel is None:
+            return
+
+        raw = args.get("spans") if isinstance(args, dict) else None
+
+        if not isinstance(raw, list):
+            return
+
+        if not raw:
+            self.tell_to_select_words()
+            return
+
+        taken = []
+
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+
+            caption = self.caption(self.block_id(item))
+            start, end = item.get("start"), item.get("end")
+
+            if (
+                caption is None
+                or isinstance(start, bool)
+                or isinstance(end, bool)
+                or not isinstance(start, int)
+                or not isinstance(end, int)
+            ):
+                continue
+
+            taken.append((caption, start, end))
+
+        # Blocks the selection only brushes, with nothing taken from them, do
+        # not count -- unless that is all there is, which is a caret.
+        reaching = [entry for entry in taken if entry[1] != entry[2]]
+
+        if len(reaching) > 1:
+            ui.notify(
+                "A comment has to stay within one paragraph",
+                type="warning",
+                timeout=None,
+                close_button="Close",
+            )
+            return
+
+        if not taken:
+            return
+
+        caption, start, end = (reaching or taken)[0]
+
+        if not self.comments_panel.open_for(caption, start, end):
+            self.tell_to_select_words()
+
+    def caret_comment(self, args) -> None:
+        """
+        The caret has come into a comment's words (or a click has landed on
+        them): the panel shows that comment.
+        """
+
+        if self.editor.data_format == "srt" or self.comments_panel is None:
+            return
+
+        caption = self.caption(self.block_id(args))
+        number = args.get("cm") if isinstance(args, dict) else None
+
+        if (
+            caption is None
+            or isinstance(number, bool)
+            or not isinstance(number, int)
+            or not 0 <= number < len(caption.comments)
+        ):
+            return
+
+        self.comments_panel.follow(
+            caption, caption.comments[number], click=args.get("click") is True
+        )
+
     def move_word(self, args) -> None:
         """
         Hand one word across the boundary to the caption either side.
 
         The editor's own methods refuse the cases that have nowhere to go --
-        the first caption has no previous, the last has no next, and neither
-        will empty a caption outright -- so this only has to say which way,
-        and re-render whatever came back. Both captions are re-timed from the
+        the first caption has no previous, the last has no next -- and turn a
+        move that would empty a caption into a merge, so this only has to say
+        which way, and re-render whatever came back. Both captions are re-timed from the
         word data by those methods, not here.
 
         The caret is put back in the caption the reader is working in rather
@@ -857,16 +1228,240 @@ class TranscriptEditor:
         if caption is None:
             return
 
+        position = self.editor.captions.index(caption)
+        landing = (caption, 0)
+
         if direction == "previous":
-            self.editor.move_first_word_to_previous(caption)
+            # Worked out before the call, which changes the texts: where the
+            # two will meet, should this turn out to be a merge.
+            if position > 0:
+                survivor = self.editor.captions[position - 1]
+                seam = len(survivor.text) + (len("\n") if caption.text else 0)
+            else:
+                survivor, seam = caption, 0
+
+            outcome = self.editor.move_first_word_to_previous(caption)
+
+            if outcome == "merged":
+                landing = (survivor, seam)
         elif direction == "next":
-            self.editor.move_last_word_to_next(caption)
+            seam = len(caption.text)
+            outcome = self.editor.move_last_word_to_next(caption)
+
+            if outcome == "merged":
+                landing = (caption, seam)
         else:
             return
 
         self.refresh()
         self.changed()
-        self.focus(caption.index)
+
+        # A move leaves the caret in the caption being trimmed; a merge, which
+        # takes a caption away, puts it at the seam, as every merge does.
+        if landing[0] is caption and landing[1] == 0:
+            self.focus(caption.index)
+        else:
+            self.focus(landing[0].index, landing[1])
+
+    def move_text(self, args) -> None:
+        """
+        Hand everything before the caret to the previous caption, or
+        everything after it to the next.
+
+        The editor's methods do the work -- including turning a move that
+        would empty this caption into a merge -- and say which they did, so
+        the caret can be put where the reader is going to want it: after
+        a move it stays in this caption, at the edge the text left (the
+        start for "previous", the end for "next"), so a second press has
+        nothing to move and does not mean something different; after a
+        merge it lands at the seam, as it does for any merge. The seam
+        offsets are worked out before the call, which changes the texts.
+        """
+
+        if not isinstance(args, dict):
+            return
+
+        caption = self.caption(self.block_id(args))
+        direction = args.get("direction")
+        offset = args.get("offset")
+
+        if caption is None or not isinstance(offset, (int, float)):
+            return
+
+        offset = int(offset)
+        position = self.editor.captions.index(caption)
+
+        if direction == "previous":
+            if position > 0:
+                survivor = self.editor.captions[position - 1]
+                seam = len(survivor.text) + (len("\n") if caption.text else 0)
+            else:
+                survivor, seam = caption, 0
+
+            outcome = self.editor.move_text_before_cursor_to_previous(caption, offset)
+            landing = (caption, 0) if outcome == "moved" else (survivor, seam)
+        elif direction == "next":
+            seam = len(caption.text)
+            outcome = self.editor.move_text_after_cursor_to_next(caption, offset)
+            landing = (caption, seam if outcome == "merged" else len(caption.text))
+        else:
+            return
+
+        if not outcome:
+            return
+
+        self.refresh()
+        self.changed()
+        self.focus(landing[0].index, landing[1])
+
+    def nudge(self, args) -> None:
+        """
+        Move a caption's start or end one step, from the keyboard.
+
+        The same re-render as any retime -- the times beside the text and
+        the brackets on the strip follow -- and the caret goes back where it
+        was in the text: the reader is listening for the right spot and
+        about to carry on typing, so the key must not take them anywhere.
+        The caption is found again by its own number afterwards, since an
+        earlier start can move it up the list.
+        """
+
+        if not isinstance(args, dict):
+            return
+
+        caption = self.caption(self.block_id(args))
+        offset = args.get("offset")
+
+        if caption is None:
+            return
+
+        if not self.editor.nudge_caption_time(
+            caption, args.get("edge"), args.get("direction")
+        ):
+            return
+
+        self.refresh()
+        self.changed()
+        self.focus(
+            caption.index,
+            int(offset) if isinstance(offset, (int, float)) else 0,
+        )
+
+    def play_with_context(self, args) -> Optional[tuple]:
+        """
+        Play the block the caret is in, with a few words of speech either
+        side of it, once.
+
+        Nothing is moved or re-rendered and the caret is not touched: the
+        reader is checking where a boundary falls by ear, and is about to
+        carry on typing. The stretch is worked out from the block's times as
+        they are now, edited or not (see context_range).
+
+        Returns the stretch played, or None if nothing was.
+        """
+
+        caption = self.caption(self.block_id(args))
+
+        if caption is None:
+            return None
+
+        stretch = self.editor.context_range(caption)
+
+        if stretch is None:
+            ui.notify(
+                "There is nothing to play: the block does not end after it starts",
+                type="warning",
+                timeout=None,
+                close_button="Close",
+            )
+            return None
+
+        if not self.editor.words:
+            ui.notify(
+                "No word timings for this recording, so only the block itself is played",
+                type="info",
+                timeout=None,
+                close_button="Close",
+            )
+
+        self.editor.play_range(*stretch)
+        # The caption itself, not its number: a number is its place in the
+        # list and moves when a retime or a merge renumbers the others.
+        self.last_context = ("block", caption)
+
+        return stretch
+
+    async def play_with_context_here(self) -> None:
+        """
+        Play with context from the player's own button: around where the
+        recording is now, wherever the caret is.
+
+        The playhead is what the button is about, so that is what it goes on.
+        Under it there is a caption or there is not:
+
+        - Inside a caption it is that caption with its context, exactly what
+          Ctrl+Shift+Space plays for it (context_range).
+        - Anywhere else -- a pause, a stretch not marked as speech, a
+          recording with no word timings -- it is the words around that
+          moment, or failing words the plain window of CONTEXT_SECONDS either
+          side (context_range_at). The button never has nothing to play: a
+          reader who wants to hear a part that was not identified as speech
+          is let.
+
+        Playing leaves the playhead where the stretch ends, so a second press
+        would take whatever is under *that* and the stretch would walk
+        forward a caption at a time. The same stretch is therefore played
+        again if the last one is still the reader's current one: it is
+        running, or it has stopped and the reader has since moved neither the
+        playhead nor the caret (the player knows the first, caret_moved the
+        second). Otherwise the press starts afresh from the playhead.
+
+        The caret plays no other part. Ctrl+Shift+Space is the key for "the
+        caption I am in"; this is the button for "here", and it is pressed
+        from outside the text, where the caret may long since have been left
+        behind.
+        """
+
+        anchor = None
+
+        if self.last_context is not None:
+            if await self.editor.context_state() is not None:
+                anchor = self.last_context
+
+        playhead = None
+
+        if anchor is None:
+            playhead = await self.playhead()
+            caption = self.caption_at(playhead)
+
+            if caption is None:
+                anchor = ("time", playhead)
+            else:
+                anchor = ("block", caption)
+
+        stretch = None
+
+        if anchor[0] == "block":
+            caption = self.still_there(anchor[1])
+
+            if caption is not None and self.editor.context_range(caption):
+                stretch = self.play_with_context({"id": caption.index})
+            elif caption is not None:
+                # Timed to nothing: there is no block to play, but there is a
+                # moment, and the button does not turn the reader away.
+                anchor = ("time", caption.get_start_seconds())
+            else:
+                # The block went (an undo, a merge) since it was played.
+                if playhead is None:
+                    playhead = await self.playhead()
+
+                anchor = ("time", playhead)
+
+        if stretch is None:
+            stretch = self.editor.context_range_at(anchor[1])
+            self.editor.play_range(*stretch)
+
+        self.last_context = anchor
 
     def delete(self, args) -> None:
         """
@@ -1030,6 +1625,14 @@ class TranscriptEditor:
         if self.on_change:
             self.on_change()
 
+    def set_find_marks(self, marks: list, current: int) -> None:
+        """
+        Draw the matches the Find card found, or none.
+        """
+
+        if self.body is not None:
+            self.body.set_find(marks, current)
+
     def scroll_to(self, caption: SRTCaption) -> None:
         """
         Bring a caption into view -- what search and autoscroll ask for via
@@ -1181,7 +1784,10 @@ class TranscriptEditor:
         """
 
         with ui.dialog() as dialog, ui.card().classes("transcript-dialog"):
-            ui.label(title).classes("text-subtitle1 font-semibold")
+            # Named for its title (4.1.2). Set directly rather than through
+            # props(): a speaker's name in the title may hold quotes.
+            dialog._props["aria-label"] = title
+            ui.label(title).classes("text-subtitle1 font-semibold").props("role=heading aria-level=2")
 
             name = ui.input(label="Name", value=value).classes("w-full")
             name.props("autofocus")
@@ -1285,6 +1891,268 @@ class TranscriptEditor:
         # saved.
         self.refresh()
 
+    # ── quick jump ──────────────────────────────────────────────────────────
+
+    def open_quick_jump(self) -> None:
+        """
+        Ctrl/Cmd+G: a small field to type where to go -- a time, a time
+        relative to the playhead, or a block number (see utils.quick_jump).
+
+        Built once and reopened, like the search dialog: a new one per press
+        would leave the old ones, and their ids, in the page. Seamless, so
+        there is no backdrop and nothing is dimmed or locked -- a prompt
+        rather than a dialog over the work -- and with no OK or Cancel:
+        Enter goes, Escape closes, and a successful jump closes it.
+        """
+
+        if self.quick_jump_dialog is None:
+            self.build_quick_jump()
+
+        self.quick_jump_input.value = ""
+        self.quick_jump_error.text = ""
+        self.quick_jump_dialog.open()
+
+    def build_quick_jump(self) -> None:
+        with ui.dialog().props(
+            'seamless position=top no-refocus aria-label="Quick Jump"'
+        ) as dialog:
+            with ui.card().classes("quick-jump").style(
+                "min-width: min(28rem, 92vw); padding: 12px 16px;"
+            ) as card:
+                label = ui.label("Jump to").classes("text-subtitle2")
+                field = ui.input().props("outlined dense autofocus").classes("w-full")
+                hint = ui.label(
+                    quick_jump_hint(self.editor.data_format == "srt")
+                ).classes("text-caption text-theme-secondary")
+                # Always in the page, so that what is put in it is announced;
+                # the colour is not what says it went wrong, the words are.
+                error = ui.label("").props('role="alert"').classes("text-caption")
+                error.style("color: var(--color-text-danger);")
+
+        field.props(
+            f'aria-labelledby="{label.html_id}" '
+            f'aria-describedby="{hint.html_id} {error.html_id}"'
+        )
+
+        async def submit() -> None:
+            problem = await self.quick_jump(field.value)
+
+            if problem:
+                error.text = problem
+                # Still open, and still where the reader is typing.
+                focus_element(field)
+                return
+
+            error.text = ""
+            dialog.close()
+
+        def close() -> None:
+            dialog.close()
+            self.return_to_text()
+
+        field.on("keydown.enter", submit)
+        field.on("keydown.escape", close)
+
+        # Tab closes it as Escape does. The prompt is put at the very end of
+        # the page, so Tab from it would land on nothing, and the prompt
+        # would be left open with nothing in it to close it from.
+        field.on(
+            "keydown",
+            close,
+            js_handler=(
+                "(e) => { if (e.key === 'Tab') { e.preventDefault(); emit(); } }"
+            ),
+        )
+
+        # Put away when the reader goes on to something else -- a click in
+        # the text, on a button -- since a prompt with no backdrop holds
+        # nobody, and one left open is in the way of what they went to.
+        # The caret is not put back: the reader has just put it, or focus,
+        # where they want it. Focus going nowhere is not leaving it, and a
+        # click on the prompt's own words keeps focus in the field rather
+        # than handing it to the dialog around it.
+        card.on(
+            "mousedown",
+            js_handler="(e) => { if (!e.target.closest('input')) e.preventDefault(); }",
+        )
+        card.on(
+            "focusout",
+            lambda: dialog.close(),
+            js_handler=(
+                "(e) => { if (e.relatedTarget"
+                " && !e.currentTarget.contains(e.relatedTarget)) emit(); }"
+            ),
+        )
+        # Typing again withdraws the message about the last attempt.
+        field.on_value_change(lambda: setattr(error, "text", ""))
+
+        def focus_field_on_open(event) -> None:
+            if event.sender.value:
+                focus_element(field)
+
+        dialog.on_value_change(focus_field_on_open)
+
+        self.quick_jump_dialog = dialog
+        self.quick_jump_input = field
+        self.quick_jump_error = error
+
+    def return_to_text(self) -> None:
+        """
+        Put the caret back where it was in the text -- what closing without
+        a jump has to do now that the prompt had the focus.
+        """
+
+        if self.body is not None:
+            self.body.focus_caret()
+
+    async def quick_jump(self, text: str) -> Optional[str]:
+        """
+        Go where the reader typed. None when it went, or a sentence saying
+        why it did not -- which stays on the prompt for them to correct.
+        """
+
+        try:
+            kind, value = parse_jump(text, self.editor.data_format == "srt")
+        except JumpError as problem:
+            return str(problem)
+
+        if kind == KIND_BLOCK:
+            return self.go_to_block(int(value))
+
+        if kind == KIND_RELATIVE:
+            return self.go_to_time(await self.playhead() + value)
+
+        return self.go_to_time(value)
+
+    async def playhead(self) -> float:
+        """
+        Where the recording is now: the player's position, or -- with no
+        player, or one that cannot say -- the start of the caption the caret
+        is in, or the start of the recording.
+        """
+
+        seconds = await ui.run_javascript(
+            '(() => { const v = document.querySelector("video");'
+            " return v ? v.currentTime : null; })()"
+        )
+
+        if isinstance(seconds, (int, float)):
+            return float(seconds)
+
+        caption = self.caption(self.caret_block)
+
+        return caption.get_start_seconds() if caption is not None else 0.0
+
+    def go_to_block(self, number: int) -> Optional[str]:
+        """
+        Block number `number`, as numbered on screen. Only a subtitle editor
+        shows numbers, so only there is one a reader could have read off the
+        screen to type.
+
+        A number past the last block goes to the last one, as a time past the
+        end goes to the end (go_to_time): "#900" means "far ahead" as "+9999"
+        does, and an error would make the two ways of asking disagree.
+        """
+
+        if self.editor.data_format != "srt":
+            return NOT_IN_A_TRANSCRIPTION
+
+        captions = self.editor.captions
+
+        if not captions:
+            return "There are no captions to jump to"
+
+        # The nearest number there is, and the later one if two are equally
+        # near. Numbers count from 1 and run without gaps, so in practice this
+        # is the last caption; it is stated as nearest so that it stays right
+        # if a number is ever missing.
+        caption = min(
+            captions, key=lambda held: (abs(held.index - number), -held.index)
+        )
+
+        self.arrive(caption, caption.get_start_seconds(), 0)
+
+        return None
+
+    def go_to_time(self, seconds: float) -> Optional[str]:
+        """
+        A moment in the recording: the player goes there, and the caret goes
+        to the nearest block, and in it to the nearest word. Out of range
+        is the nearest end rather than an error: "+9999" means "far ahead".
+        """
+
+        captions = self.editor.captions
+
+        if not captions:
+            return "There are no captions to jump to"
+
+        seconds = max(0.0, seconds)
+        limit = self.editor.media_seconds
+
+        if limit is None:
+            limit = max(caption.get_end_seconds() for caption in captions)
+
+        seconds = min(seconds, limit)
+        caption = self.caption_near(seconds)
+
+        self.arrive(caption, seconds, self.caret_offset_at(caption, seconds))
+
+        return None
+
+    def arrive(self, caption: SRTCaption, seconds: float, offset: int) -> None:
+        """
+        Move the player, the playing marker and the caret to where a jump
+        landed, the caret centred in view.
+        """
+
+        self.editor.seek_video(seconds)
+        self.moved_to(seconds)
+        self.focus(caption.index, offset, center=True)
+
+    def caption_near(self, seconds: float) -> SRTCaption:
+        """
+        The caption covering a moment or, in a gap or past either end, the
+        one nearest to it -- by the closer of its two edges, and the later
+        one when they are equally far, since that is the one about to start.
+        """
+
+        def distance(caption: SRTCaption) -> float:
+            start = caption.get_start_seconds()
+            end = caption.get_end_seconds()
+
+            if start <= seconds < end:
+                return 0.0
+
+            return min(abs(seconds - start), abs(seconds - end))
+
+        best = None
+        best_distance = None
+
+        for caption in self.editor.captions:
+            gap = distance(caption)
+
+            if best is None or gap <= best_distance:
+                best, best_distance = caption, gap
+
+        return best
+
+    def caret_offset_at(self, caption: SRTCaption, seconds: float) -> int:
+        """
+        The character offset of the word being spoken at a moment: the last
+        word that has started by then, or the first when none has. Without
+        word timings, the start of the caption.
+        """
+
+        spans = [match.span() for match in re.finditer(r"\S+", caption.text)]
+        words = self.editor.aligned_words(caption)
+        chosen = 0
+
+        for position, word in enumerate(words[: len(spans)]):
+            if word is not None and "s" in word and word["s"] <= seconds:
+                chosen = position
+
+        return spans[chosen][0] if spans else 0
+
     # ── following the video ─────────────────────────────────────────────────
 
     def set_follow(self, follow: bool) -> None:
@@ -1303,6 +2171,31 @@ class TranscriptEditor:
 
         if self.body is not None:
             self.body.set_show_edits(bool(show))
+
+    def set_show_highlights(self, show: bool) -> None:
+        """
+        Show or hide the reader's highlights.
+
+        Re-renders, because which words are marked up is worked out on the
+        server.
+        """
+
+        self.editor.set_show_highlights(show)
+
+    def set_show_comments(self, show: bool) -> None:
+        """
+        Show or hide the reader's comments.
+
+        Hiding puts the comments card away first, keeping what was typed in
+        it: its Previous, Next and Remove would otherwise act on comments the
+        reader cannot see. Re-renders, because which words are marked up is
+        worked out on the server.
+        """
+
+        if not show and self.comments_panel is not None:
+            self.comments_panel.put_away()
+
+        self.editor.set_show_comments(show)
 
     def set_highlight_word(self, highlight: bool) -> None:
         """

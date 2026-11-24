@@ -1145,7 +1145,7 @@ class TestShortcutScope:
 
     def test_find_works_whichever_format_is_open(self, live):
         opened = []
-        live.create_search_panel = lambda **kwargs: opened.append(True)
+        live.open_find = lambda **kwargs: opened.append(True)
 
         self.press(live, "f", ctrl=True)
         live.render_override = lambda: None
@@ -1156,7 +1156,7 @@ class TestShortcutScope:
     def test_no_selection_does_not_raise(self, live, monkeypatch):
         # Escape reaches for the browser, which is not here.
         monkeypatch.setattr("utils.srt.ui.run_javascript", lambda *a, **k: None)
-        live.create_search_panel = lambda **kwargs: None
+        live.open_find = lambda **kwargs: None
         live.save_srt_changes = lambda: None
         live.selected_caption = None
 

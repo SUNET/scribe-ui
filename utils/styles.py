@@ -127,6 +127,26 @@ theme_styles = """
         --color-edit-accent: #12796a;
         --color-edit-text: #10453d;
 
+        /* Words the reader has highlighted for themselves. The one marking
+           that is yellow, as a highlighter is. Yellow on white is barely
+           brighter than the page (1.14:1) so the colour cannot carry it
+           alone: the frame lines carry it, 4.9:1 against the page (1.4.1,
+           1.4.11), and the text on the yellow measures 13.6:1. */
+        --color-highlight-bg: #fff1a3;
+        --color-highlight-frame: #8a6d00;
+        --color-highlight-text: #2b2400;
+        /* A comment's dotted underline: 7.5:1 on white and at least 6.3:1 on
+           every wash a word can have. */
+        --color-comment-line: #a1136a;
+        /* What Find marks with: the card's stripe and the words found (a heavy
+           dashed underline). Only the words: the caption's own tint belongs to
+           Validate, and the two must not fight over it. A steel blue, the one
+           tone nothing else in the editor has: amber is a warning, red an
+           error, violet review, teal the reader's own edits, pink comments,
+           and the pale blue-grey is what is playing. 5.9:1 on white. */
+        --color-find-line: #2f6690;
+        --color-find-bg: #cfe0ef;
+
         /* The word currently being spoken. A pale tint of the brand
            navy, so it reads as "you are here" rather than as a status. */
         --color-playing-bg: #dbe4f0;
@@ -251,6 +271,18 @@ theme_styles = """
         --color-edit-bg: #1d3b37;
         --color-edit-accent: #6fd3c1;
         --color-edit-text: #dff5f0;
+
+        /* Dark mode keeps the yellow as a dark gold. Text on it 8.0:1, the
+           frame 12.6:1 against the surface. */
+        --color-highlight-bg: #5a4a00;
+        --color-highlight-frame: #ffd54f;
+        --color-highlight-text: #fff6cc;
+        /* 4.6:1 on the dark highlight, at least 6.4:1 on the other washes. */
+        --color-comment-line: #ff9fd2;
+        /* 7.6:1 on the dark page; the wash behind the current match keeps
+           the text above 7:1. */
+        --color-find-line: #8fb8de;
+        --color-find-bg: #26425c;
 
         --color-playing-bg: #1c3252;
 
@@ -498,23 +530,6 @@ theme_styles = """
         color: var(--color-btn-edit-text) !important;
         border: 1px solid var(--color-btn-edit-border) !important;
         min-width: 150px;
-    }
-
-    /* ── Username "view API token" control ── */
-    /* Was a plain underlined ui.label; is now a ui.button so it is
-       reachable and activatable from the keyboard (see pages/user.py). A
-       flat QBtn carries its own padding and minimum height, and in dark
-       mode -- from the global override just below -- its own border too.
-       Reset here so the control still looks like the underlined username
-       it replaces rather than a boxed button. */
-    .user-token-btn {
-        padding: 0 !important;
-        min-height: 0 !important;
-        font-weight: normal !important;
-        text-decoration: underline;
-    }
-    .body--dark .q-btn--flat.user-token-btn {
-        border: none !important;
     }
 
     /* ── Upload dropzone ── */
@@ -957,11 +972,17 @@ theme_styles = """
     /* A tooltip is as wide as its text up to a limit, then wraps. The old
        white-space: nowrap kept every tip on one line, so a long one ran off
        the edge of a narrow screen or a text-zoomed page (WCAG 1.4.10).
-       width: max-content keeps a short tip exactly as it was. */
+       width: max-content keeps a short tip exactly as it was.
+       The limit is ours, over Quasar's own: where a tip reaches the
+       window's edge, Quasar pulls it in and sets its max-width to the width
+       it measured, rounded to whole pixels. Rounded down (a text 72.05px
+       wide given 72px), the last word broke onto a line of its own, in a
+       tip that fitted on one; which tips broke depended on how the browser
+       measured the font. Ours still keeps a tip inside the window. */
     .q-tooltip {
         font-size: 14px;
         width: max-content;
-        max-width: min(320px, calc(100vw - 32px));
+        max-width: min(320px, calc(100vw - 32px)) !important;
         white-space: normal;
         overflow-wrap: break-word;
     }
@@ -1206,6 +1227,960 @@ theme_styles = """
         background-color: var(--color-bg-surface-alt) !important;
     }
 
+    /* ── User settings (pages/user.py) ── */
+    /* Cards: one column on a phone, two from 52rem -- Account, Theme and
+       Sunet Drive on the left, Email notifications on the right. Two
+       real columns, each read top to bottom, so the page, the keyboard
+       and a phone all go Account, Theme, Sunet Drive, Email
+       notifications. */
+    .settings {
+        width: 100%;
+        max-width: 72rem;
+        container-type: inline-size;
+    }
+    .settings-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 1.5rem;
+        align-items: start;
+    }
+    .settings-column {
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+        min-width: 0;
+    }
+    @container (min-width: 52rem) {
+        .settings-grid {
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        }
+    }
+    .settings-card {
+        width: 100%;
+        min-width: 0;
+        background: var(--color-bg-surface);
+        border-radius: 1rem;
+        box-shadow: 0 2px 10px var(--color-shadow-light);
+        border: 1px solid color-mix(in srgb, var(--color-border-subtle) 35%, transparent);
+        padding: 1.25rem 1.5rem;
+        container-type: inline-size;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+    .settings-card-head {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.75rem;
+    }
+    .settings-card-head > .q-icon {
+        font-size: 1.5rem;
+        color: var(--color-brand-primary);
+        margin-top: 0.125rem;
+    }
+    .settings-card-title {
+        font-size: 1.25rem;
+        font-weight: 600;
+        line-height: 1.3;
+        color: var(--color-text-primary);
+    }
+    .settings-card-summary,
+    .settings-row-summary,
+    .settings-group-summary,
+    .settings-option-summary,
+    .settings-hint {
+        font-size: 0.9375rem;
+        color: var(--color-text-secondary);
+    }
+    /* Who: a box of its own, the name large, the role beside it. */
+    .settings-identity {
+        display: flex;
+        flex-direction: column;
+        gap: 0.125rem;
+        padding: 0.875rem 1rem;
+        border-radius: 0.75rem;
+        background: var(--color-bg-surface-alt);
+        border-left: 4px solid var(--color-brand-primary);
+    }
+    .settings-identity-summary {
+        font-size: 0.875rem;
+        color: var(--color-text-secondary);
+    }
+    .settings-identity-line {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.25rem 0.625rem;
+    }
+    .settings-identity-name {
+        font-size: 1.125rem;
+        font-weight: 600;
+        overflow-wrap: anywhere;
+    }
+    .settings-role {
+        font-size: 0.8125rem;
+        font-weight: 600;
+        padding: 0.0625rem 0.5rem;
+        border-radius: 999px;
+        border: 1px solid var(--color-brand-primary);
+        color: var(--color-brand-primary);
+    }
+    /* Name and value side by side; the value under its name on a narrow card. */
+    .settings-list {
+        display: grid;
+        grid-template-columns: max-content minmax(0, 1fr);
+        gap: 0.625rem 1.5rem;
+        margin: 0;
+    }
+    .settings-list dt {
+        color: var(--color-text-secondary);
+    }
+    .settings-list dd {
+        margin: 0;
+        color: var(--color-text-primary);
+        overflow-wrap: anywhere;
+        min-width: 0;
+    }
+    .settings-mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.875rem;
+    }
+    @container (max-width: 26rem) {
+        .settings-list {
+            grid-template-columns: minmax(0, 1fr);
+            gap: 0.125rem;
+        }
+        .settings-list dd {
+            margin-bottom: 0.5rem;
+        }
+    }
+    /* A line of its own: what it is, and its button beside it or under it. */
+    .settings-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid color-mix(in srgb, var(--color-border-subtle) 35%, transparent);
+    }
+    .settings-row-first {
+        padding-top: 0;
+        border-top: none;
+    }
+    .settings-row-text {
+        flex: 1 1 14rem;
+        min-width: 0;
+    }
+    .settings-row-title {
+        font-weight: 600;
+    }
+    .settings-button {
+        min-height: 44px;
+    }
+    /* Signed in or not, above what logging out does. */
+    .settings-status {
+        margin-bottom: 0.375rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.375rem;
+        font-size: 0.875rem;
+        padding: 0.125rem 0.625rem;
+        border-radius: 999px;
+        background: var(--color-bg-surface-alt);
+        color: var(--color-text-secondary);
+    }
+    .settings-status::before {
+        content: "";
+        width: 0.5rem;
+        height: 0.5rem;
+        border-radius: 50%;
+        background: currentColor;
+    }
+    .settings-status.is-on {
+        color: #166534;
+        background: #dcfce7;
+    }
+    .body--dark .settings-status.is-on {
+        color: #86efac;
+        background: #14532d;
+    }
+    /* The address and its button side by side; the button under it on a
+       narrow card. */
+    .settings-email {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 0.5rem 0.75rem;
+        align-items: start;
+    }
+    @container (max-width: 26rem) {
+        .settings-email {
+            grid-template-columns: minmax(0, 1fr);
+        }
+        .settings-email .q-btn {
+            justify-self: start;
+        }
+    }
+    .settings-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        padding-top: 1rem;
+        border-top: 1px solid color-mix(in srgb, var(--color-border-subtle) 35%, transparent);
+    }
+    .settings-group-title {
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--color-text-primary);
+    }
+    .settings-group-summary {
+        margin-bottom: 0.25rem;
+    }
+    /* A checkbox with its name, and what it is for under the name. */
+    .settings-option {
+        display: flex;
+        flex-direction: column;
+        padding: 0.125rem 0;
+    }
+    .settings-option-box {
+        margin-left: -0.5rem;
+        font-weight: 500;
+    }
+    .settings-option-summary {
+        margin-left: 2rem;
+        margin-top: -0.375rem;
+    }
+    /* The theme: three tiles, each a real radio button kept for the keyboard
+       and screen readers but drawn as the tile; the chosen tile framed. */
+    .settings-theme {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.5rem;
+    }
+    .settings-theme-choice {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.375rem;
+        padding: 0.75rem 0.5rem;
+        min-height: 44px;
+        border-radius: 0.75rem;
+        border: 1px solid color-mix(in srgb, var(--color-border-subtle) 60%, transparent);
+        text-align: center;
+        cursor: pointer;
+    }
+    .settings-theme-choice input {
+        position: absolute;
+        opacity: 0;
+        width: 1px;
+        height: 1px;
+        margin: 0;
+    }
+    .settings-theme-choice .q-icon {
+        font-size: 1.5rem;
+    }
+    .settings-theme-choice:has(input:checked) {
+        border: 2px solid var(--color-brand-primary);
+        background: color-mix(in srgb, var(--color-brand-primary) 8%, transparent);
+        font-weight: 600;
+    }
+    .settings-theme-choice:has(input:focus-visible) {
+        outline: 2px solid var(--color-brand-primary);
+        outline-offset: 2px;
+    }
+    .user-token-card {
+        width: min(32rem, 100%);
+        max-width: 100%;
+    }
+
+    /* ── Admin: user provisioning (pages/admin/rules.py) ── */
+    /* The title and the actions: side by side, the actions under the title
+       on a phone and sharing its width. */
+    .rules-header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem 1rem;
+        width: 100%;
+    }
+    .rules-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+    .rules-actions .q-btn {
+        min-height: 44px;
+        min-width: 10rem;
+    }
+    @media (max-width: 600px) {
+        .rules-actions {
+            width: 100%;
+        }
+        .rules-actions .q-btn {
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+    }
+    /* A rule as a card on a phone: what it matches as a line of words,
+       the value set apart; Test and Delete sharing the card's width. */
+    /* The cards are used up to 900px for the rules, past the phone rules
+       that style the cards on /home, so they carry their own. */
+    .rule-card {
+        width: 100%;
+        /* A long name, description or example with no spaces breaks
+           rather than taking the card past the screen. */
+        overflow-wrap: anywhere;
+        padding: 0.75rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    .rule-card .jobs-card-name {
+        font-weight: 600;
+        overflow-wrap: anywhere;
+    }
+    .rule-card .jobs-card-meta {
+        font-size: 0.8rem;
+        color: var(--color-text-muted);
+    }
+    /* The rule's name opens it: the brand colour, underlined, rather than
+       Quasar's lighter text-primary (3:1 on white). */
+    .rule-name-link {
+        color: var(--color-brand-primary);
+        text-decoration: underline;
+    }
+    /* Long names and values wrap in the table, so all its columns fit. */
+    .rules-table td.rules-col-wrap {
+        white-space: normal;
+        overflow-wrap: anywhere;
+        min-width: 8rem;
+        max-width: 16rem;
+    }
+    .rules-table td.rules-col-match {
+        max-width: 24rem;
+    }
+    /* The search as wide as the card on a phone. */
+    @media (max-width: 700px) {
+        .rules-table .q-table__top .q-field {
+            width: 100%;
+        }
+    }
+    .rules-actions .q-btn {
+        flex: 1 1 auto;
+    }
+    .rule-card-match {
+        overflow-wrap: anywhere;
+    }
+    .rule-card-value,
+    .rule-card-claim {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.9375em;
+    }
+    .rule-card-actions {
+        display: flex;
+        gap: 0.5rem;
+    }
+    .rule-card-actions .q-btn {
+        flex: 1 1 0;
+        min-height: 44px;
+        border: 1px solid var(--color-border-subtle);
+    }
+
+    /* ── Admin: users ── */
+    .users-table {
+        width: 100%;
+        height: calc(100vh - 160px - var(--banner-offset, 0px));
+        box-shadow: none;
+        font-size: 18px;
+    }
+    /* The title on the left, the controls together on the right (as
+       before): the search, then the actions level with it; the filters
+       open under the search. */
+    .users-header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 0.75rem 1rem;
+        width: 100%;
+    }
+    .users-title {
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+    }
+    .users-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        justify-content: flex-end;
+        gap: 0.75rem 1rem;
+        flex: 1 1 auto;
+    }
+    .users-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+    .users-actions .q-btn {
+        min-width: 9rem;
+        min-height: 44px;
+    }
+    /* The search, the filter button and the filters under them: one
+       group on the right, the filters in a box of their own under the
+       search, the same width, so they are seen to belong together. */
+    .users-find-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        flex: 0 1 26rem;
+        min-width: 0;
+    }
+    .users-find {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+    }
+    .users-search {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+    .users-filter-toggle {
+        min-width: 44px;
+        min-height: 44px;
+        color: var(--color-text-primary);
+    }
+    /* Open: a tint behind the funnel, as well as aria-expanded. */
+    .users-filter-toggle[aria-expanded="true"] {
+        background: color-mix(in srgb, currentColor 14%, transparent);
+    }
+    .users-filters {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.5rem;
+        padding: 0.75rem;
+        border: 1px solid var(--color-border-subtle);
+        border-radius: 4px;
+        background: var(--color-bg-surface);
+    }
+    .users-filter {
+        min-width: 0;
+    }
+    /* All filters one size, two to a line; Clear filters in the right-hand
+       cell after them, so an odd number of filters leaves no hole. */
+    .users-filter-clear {
+        grid-column: -2 / -1;
+        justify-self: end;
+        min-height: 44px;
+        margin-bottom: -0.5rem;
+        color: var(--color-brand-primary);
+        text-decoration: underline;
+    }
+    .users-count {
+        width: 100%;
+        font-size: 0.875rem;
+    }
+    /* A phone: the users as cards (grid mode, pages/admin/users.py), the
+       list as long as it is rather than a box of its own to scroll in;
+       the search first and full width (first in the page too), the
+       actions sharing the line under it. */
+    @media (max-width: 700px) {
+        .users-table {
+            height: auto;
+            font-size: 1rem;
+        }
+        .users-toolbar {
+            width: 100%;
+        }
+        .users-find-group {
+            flex: 1 1 100%;
+        }
+        .users-actions {
+            width: 100%;
+            flex-wrap: nowrap;
+        }
+        .users-actions .q-btn {
+            flex: 1 1 0;
+            min-width: 0;
+        }
+    }
+
+    /* ── Summary cards (group statistics, Groups) ── */
+    /* The summary as cards, as the files are on /home on a phone (the
+       jobs-card look): side by side as far as they fit, else one above
+       the other. */
+    .stats-tiles {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        /* Never wider than the card: 13rem is more than a phone has at
+           a larger text size. */
+        grid-template-columns: repeat(auto-fit, minmax(min(13rem, 100%), 1fr));
+        gap: 0.75rem;
+        text-align: left;
+    }
+    .stats-tile {
+        width: 100%;
+        height: 100%;
+        padding: 0.75rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+    /* The figures are what the card is for, so in the page's body size
+       (the size of the sentences under the charts), not the small print
+       of a file's details. */
+    .stats-tile-name {
+        font-size: 1.125rem;
+        font-weight: 600;
+        color: var(--color-text-primary);
+    }
+    .stats-tile-meta {
+        font-size: 1rem;
+        color: var(--color-text-secondary);
+    }
+
+    /* ── Admin: group cards (Groups page) ── */
+    /* Name, details and actions, and the months as summary cards: three
+       columns on a wide card, one above the other on a narrow one -- the
+       card's own width decides (a container query), so an open menu on a
+       middling screen counts too. */
+    .group-card {
+        width: 100%;
+        box-shadow: none;
+        border: 1px solid var(--color-border-subtle);
+        padding: 1rem;
+        container-type: inline-size;
+        /* The customer's expansion around the cards is text-bold. */
+        font-weight: 400;
+    }
+    .group-layout {
+        display: grid;
+        gap: 1rem;
+        width: 100%;
+    }
+    .group-info {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        min-width: 0;
+    }
+    .group-name {
+        font-size: 1.375rem;
+        font-weight: 700;
+        line-height: 1.3;
+        color: var(--color-text-primary);
+        overflow-wrap: anywhere;
+    }
+    .group-description {
+        color: var(--color-text-secondary);
+        overflow-wrap: anywhere;
+    }
+    /* A long name cut to two lines and a long description to three;
+       "Show more" opens them. */
+    .group-name.is-clamped,
+    .group-description.is-clamped {
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 3;
+        line-clamp: 3;
+        overflow: hidden;
+    }
+    .group-name.is-clamped {
+        -webkit-line-clamp: 2;
+        line-clamp: 2;
+    }
+    .group-description-toggle {
+        align-self: flex-start;
+        padding: 0 0.25rem;
+        margin-left: -0.25rem;
+        min-height: 44px;
+        color: var(--color-brand-primary);
+        text-decoration: underline;
+    }
+    .group-meta {
+        font-size: 0.875rem;
+        color: var(--color-text-muted);
+    }
+    /* Members, limit and date: one to a line on a narrow card; on a wider
+       one in a line with a dot between, wrapping where it must. Each dot
+       sits in front of its item, and the line is pulled left by a dot's
+       width inside a wrapper that clips, so the dot that would begin a
+       line is out of sight. The dot is drawn, not read out. */
+    .group-meta-wrap {
+        overflow: hidden;
+    }
+    .group-meta-line {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+    @container (min-width: 36rem) {
+        .group-meta-line {
+            flex-direction: row;
+            flex-wrap: wrap;
+            gap: 0.25rem 0;
+            margin-left: -1.25rem;
+        }
+        .group-meta-line > .group-meta {
+            white-space: nowrap;
+        }
+        .group-meta-line > .group-meta::before {
+            content: "\\00B7";
+            content: "\\00B7" / "";
+            display: inline-block;
+            width: 1.25rem;
+            text-align: center;
+        }
+    }
+    /* The two months share their column, the same in every card. */
+    .group-card .stats-tiles {
+        grid-template-columns: repeat(auto-fit, minmax(min(13rem, 100%), 1fr));
+    }
+    /* One above the other, all the same width: the card's full width on a
+       narrow card, a column of its own on the right on a wide one. */
+    .group-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    .group-actions .q-btn {
+        width: 100%;
+        min-width: 0;
+        min-height: 44px;
+    }
+    /* A middling card: the actions already on the right, the details and
+       the months above one another beside them. */
+    @container (min-width: 36rem) {
+        .group-layout {
+            grid-template-columns: minmax(0, 1fr) 10rem;
+            align-items: start;
+        }
+        .group-layout > .group-actions {
+            grid-column: 2;
+            grid-row: 1 / span 2;
+        }
+    }
+    @container (min-width: 52rem) {
+        .group-layout {
+            grid-template-columns: minmax(16rem, 1fr) minmax(0, 1fr) 10rem;
+        }
+        .group-layout > .group-actions {
+            grid-column: 3;
+            grid-row: 1;
+        }
+    }
+
+    /* ── Admin: customer cards (Customers page, utils/customer.py) ── */
+    /* The group cards' layout (above); a realm admin's card has no
+       actions, and then no column for them. */
+    .group-layout:not(:has(> .group-actions)) {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    @container (min-width: 52rem) {
+        .group-layout:not(:has(> .group-actions)) {
+            grid-template-columns: minmax(16rem, 1fr) minmax(0, 1fr);
+        }
+    }
+    /* The customer's three lines -- plan and blocks, fee and users, date
+       -- are lines on any card: on a narrow one too they wrap between
+       their items rather than going one to a line, so every customer has
+       the same lines. The dot that would begin a line is clipped, as
+       above. */
+    .customer-meta {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+    .customer-meta .group-meta-line {
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 0.25rem 0;
+        margin-left: -1.25rem;
+    }
+    .customer-meta .group-meta-line > .group-meta::before {
+        content: "\\00B7";
+        content: "\\00B7" / "";
+        display: inline-block;
+        width: 1.25rem;
+        text-align: center;
+    }
+    /* The month cards wide enough for "73845 minutes via" and the service's
+       name (SERVICE_NAME, by default two words) on one line, so the
+       customer's card takes its three columns only from 64rem; under that
+       the details and the months share the left column, the months side by
+       side where two fit. */
+    .customer-card .stats-tiles {
+        grid-template-columns: repeat(auto-fit, minmax(min(17.5rem, 100%), 1fr));
+    }
+    @container (min-width: 52rem) {
+        .customer-card .group-layout {
+            grid-template-columns: minmax(0, 1fr) 10rem;
+        }
+        .customer-card .group-layout > .group-actions {
+            grid-column: 2;
+            grid-row: 1 / span 2;
+        }
+        .customer-card .group-layout:not(:has(> .group-actions)) {
+            grid-template-columns: minmax(0, 1fr);
+        }
+    }
+    @container (min-width: 64rem) {
+        .customer-card .group-layout {
+            grid-template-columns: minmax(16rem, 1fr) minmax(35.75rem, 1.4fr) 10rem;
+        }
+        .customer-card .group-layout > .group-actions {
+            grid-column: 3;
+            grid-row: 1;
+        }
+        .customer-card .group-layout:not(:has(> .group-actions)) {
+            grid-template-columns: minmax(16rem, 1fr) minmax(35.75rem, 1.4fr);
+        }
+    }
+    /* Contact, realms, Drive and Kaltura: a name and its value side by
+       side, the value under its name on a narrow card. */
+    .customer-facts {
+        display: grid;
+        /* One width for the names on every card, so the values line up
+           from card to card whichever facts a customer has. */
+        grid-template-columns: 8.5rem minmax(0, 1fr);
+        gap: 0.25rem 1rem;
+        margin: 0.5rem 0 0;
+        font-size: 0.875rem;
+    }
+    .customer-facts dt {
+        color: var(--color-text-muted);
+    }
+    .customer-facts dd {
+        margin: 0;
+        color: var(--color-text-primary);
+        overflow-wrap: anywhere;
+        min-width: 0;
+    }
+    @container (max-width: 26rem) {
+        .customer-facts {
+            grid-template-columns: minmax(0, 1fr);
+            gap: 0;
+        }
+        .customer-facts dd {
+            margin-bottom: 0.375rem;
+        }
+    }
+    /* This month's blocks: used of bought, a bar, and what is left (green)
+       or over (amber: overage is billed, not an error). */
+    .customer-blocks {
+        align-self: stretch;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.375rem;
+        margin-top: 0.5rem;
+        padding-top: 0.625rem;
+        border-top: 1px solid color-mix(in srgb, var(--color-border-subtle) 35%, transparent);
+    }
+    .customer-blocks-used {
+        font-weight: 600;
+        color: var(--color-text-primary);
+    }
+    .customer-meter {
+        display: flex;
+        gap: 2px;
+        width: 100%;
+        height: 0.5rem;
+        border-radius: 999px;
+        background: var(--color-bg-surface-alt);
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-border-subtle) 60%, transparent);
+        overflow: hidden;
+    }
+    .customer-meter-fill {
+        height: 100%;
+        border-radius: 999px;
+        background: #16a34a;
+    }
+    /* The overage after the blocks, in amber: the blocks stay green as far
+       as they go, so the bar is in two colours once the month is over,
+       both of them used minutes. The 2px gap is where the blocks end. */
+    .customer-meter-over {
+        height: 100%;
+        border-radius: 999px;
+        background: #d97706;
+    }
+    .customer-missing {
+        color: var(--color-text-secondary);
+        font-style: italic;
+    }
+    .customer-blocks-state {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.375rem;
+        font-weight: 600;
+        padding: 0.125rem 0.625rem;
+        border-radius: 999px;
+    }
+    .customer-blocks-state::before {
+        content: "";
+        width: 0.5rem;
+        height: 0.5rem;
+        border-radius: 50%;
+        background: currentColor;
+    }
+    .customer-blocks-state.is-left {
+        color: #166534;
+        background: #dcfce7;
+    }
+    .customer-blocks-state.is-over {
+        color: #92400e;
+        background: #fef3c7;
+    }
+    .body--dark .customer-blocks-state.is-left {
+        color: #86efac;
+        background: #14532d;
+    }
+    .body--dark .customer-blocks-state.is-over {
+        color: #fcd34d;
+        background: #78350f;
+    }
+    @media (forced-colors: active) {
+        .customer-meter-fill {
+            background: CanvasText;
+        }
+        .customer-meter-over {
+            background: Highlight;
+        }
+    }
+    .customer-notes {
+        margin-top: 0.5rem;
+        white-space: pre-line;
+    }
+    /* The title on the left, the actions on the right; under it on a
+       phone, sharing its width. */
+    .customers-header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        width: 100%;
+    }
+    .customers-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+    .customers-actions .q-btn {
+        min-height: 44px;
+    }
+    @media (max-width: 600px) {
+        .customers-actions {
+            width: 100%;
+        }
+        .customers-actions .q-btn {
+            flex: 1 1 auto;
+        }
+    }
+    .customers-list {
+        width: 100%;
+    }
+
+    /* ── Admin: edit group ── */
+    .edit-group-header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        width: 100%;
+    }
+    .edit-group-title {
+        overflow-wrap: anywhere;
+    }
+    .edit-group-actions {
+        display: flex;
+        gap: 0.5rem;
+    }
+    .edit-group-actions .q-btn {
+        min-width: 9rem;
+        min-height: 44px;
+    }
+    /* On a phone the two actions share the width, side by side. */
+    @media (max-width: 600px) {
+        .edit-group-actions {
+            width: 100%;
+        }
+        .edit-group-actions .q-btn {
+            flex: 1 1 0;
+            min-width: 0;
+        }
+    }
+    .edit-group-card {
+        width: 100%;
+        box-shadow: none;
+        border: 1px solid var(--color-border-subtle);
+        padding: 1rem;
+        container-type: inline-size;
+        gap: 0.5rem;
+    }
+    /* One field under another on a narrow card; on a wide one the name and
+       the limit side by side, the description under them, full width. */
+    .edit-group-fields {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 1rem;
+        width: 100%;
+    }
+    @container (min-width: 40rem) {
+        .edit-group-fields {
+            grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+        }
+        .edit-group-description {
+            grid-column: 1 / -1;
+        }
+    }
+    .edit-group-members {
+        width: 100%;
+    }
+    /* On a narrow card the members' table fits instead of scrolling
+       sideways: closer cells, and a long user name wraps. */
+    @container (max-width: 36rem) {
+        .edit-group-members .q-table th,
+        .edit-group-members .q-table td {
+            padding: 0.5rem 0.375rem;
+            white-space: normal;
+            overflow-wrap: anywhere;
+        }
+        .edit-group-members .q-table th:first-child,
+        .edit-group-members .q-table td:first-child {
+            padding-left: 0;
+            width: 2.5rem;
+        }
+    }
+
+    /* ── Admin: edit customer ── */
+    /* Sections with headings in Edit group's card; in each, the fields
+       two to a line from 40rem of card and one to a line under it, with
+       realms and notes full width. */
+    .edit-customer-heading:not(:first-child) {
+        margin-top: 1.25rem;
+    }
+    .edit-customer-fields {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 1rem;
+        width: 100%;
+    }
+    @container (min-width: 40rem) {
+        .edit-customer-fields {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .edit-customer-wide {
+            grid-column: 1 / -1;
+        }
+    }
+
     /* ── Admin: stats page ── */
     .stats-container {
         max-width: 1500px;
@@ -1214,7 +2189,9 @@ theme_styles = """
         flex-direction: column;
         align-items: center;
         gap: 2rem;
-        padding: 2rem 1rem;
+        /* No room above: the title's own margin and the page's gap make
+           the same 2rem to the first card as between the cards. */
+        padding: 0 1rem 2rem;
     }
     .stats-card {
         width: 100%;
@@ -1250,41 +2227,279 @@ theme_styles = """
         padding: 1.5rem 2rem;
     }
 
-    /* ── Admin: health page ── */
-    .health-card {
-        background-color: var(--color-bg-surface);
-        border-radius: 1rem;
-        box-shadow: 0 2px 8px var(--color-shadow-medium);
-        padding: 1.25rem;
+    /* ── Admin: health page (pages/admin/health.py) ── */
+    /* The page's whole width, as the other admin pages: three cards side
+       by side on a wide screen. */
+    .health {
         width: 100%;
-        max-width: 100%;
         display: flex;
         flex-direction: column;
+        gap: 1.5rem;
+    }
+    .health-bar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
         justify-content: space-between;
+        gap: 0.75rem 1.5rem;
     }
-    .status-dot {
-        width: 12px;
-        height: 12px;
-        border-radius: 50%;
-        display: inline-block;
-        margin-right: 6px;
+    .health-count {
+        margin-top: 0.25rem;
+        color: var(--color-text-secondary);
     }
-    .status-dot-online {
-        background-color: var(--color-status-ok-border);
+    .health-controls {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.5rem 1rem;
     }
-    .status-dot-offline {
-        background-color: var(--color-status-error-border);
+    .health-refresh-label {
+        font-weight: 600;
     }
+    .health-refresh {
+        border: 1px solid var(--color-border-subtle);
+        border-radius: 0.5rem;
+        overflow: hidden;
+    }
+    .health-refresh .q-btn {
+        min-height: 40px;
+        padding: 0 0.75rem;
+        color: var(--color-text-primary);
+        background: transparent;
+    }
+    .health-refresh .q-btn + .q-btn {
+        border-left: 1px solid var(--color-border-subtle);
+    }
+    /* The one chosen is Quasar's primary with white text (14.4:1 on the
+       light theme's, 9.1:1 on the dark's), and aria-pressed says which. */
+    .health-refresh .q-btn[aria-pressed="true"] {
+        font-weight: 600;
+    }
+    .health-update-now {
+        min-height: 40px;
+        color: var(--color-text-primary);
+    }
+    .health-updated,
+    .health-note {
+        font-size: 0.875rem;
+        color: var(--color-text-secondary);
+    }
+    /* Compact cards, three side by side on a wide screen; an opened one
+       grows alone, its neighbours keep their height. */
     .health-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
-        gap: 1.25rem;
+        grid-template-columns: repeat(auto-fit, minmax(min(26rem, 100%), 1fr));
+        align-items: start;
+        gap: 1rem;
         width: 100%;
     }
-    @media (max-width: 768px) {
-        .health-grid {
-            grid-template-columns: 1fr;
+    .health-card {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        padding: 1rem 1.25rem;
+        background-color: var(--color-bg-surface);
+        border: 1px solid color-mix(in srgb, var(--color-border-subtle) 35%, transparent);
+        border-radius: 1rem;
+        box-shadow: 0 2px 10px var(--color-shadow-light);
+        container-type: inline-size;
+    }
+    @media (max-width: 600px) {
+        .health-card {
+            padding: 1rem;
         }
+    }
+    .health-card.is-offline {
+        border-color: var(--color-status-error-border);
+    }
+    .health-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem 1rem;
+    }
+    .health-head h2 {
+        margin: 0;
+        font-size: 1.125rem;
+        font-weight: 600;
+        line-height: 1.3;
+        overflow-wrap: anywhere;
+        color: var(--color-text-primary);
+    }
+    /* Online or offline in words, a shape and a colour: a filled dot, or
+       a ring. The words carry it; the colour is only a help. */
+    .health-state {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.25rem 0.75rem;
+        border-radius: 999px;
+        font-size: 0.9375rem;
+        font-weight: 600;
+    }
+    .health-dot {
+        width: 0.625rem;
+        height: 0.625rem;
+        border-radius: 50%;
+        flex: none;
+    }
+    .health-state.is-online {
+        background: color-mix(in srgb, #15803d 12%, transparent);
+        color: #166534;
+    }
+    .health-state.is-online .health-dot {
+        background: #15803d;
+    }
+    .health-state.is-offline {
+        background: color-mix(in srgb, #b91c1c 12%, transparent);
+        color: #991b1b;
+    }
+    .health-state.is-offline .health-dot {
+        border: 2px solid #b91c1c;
+    }
+    .body--dark .health-state.is-online {
+        color: #86efac;
+    }
+    .body--dark .health-state.is-online .health-dot {
+        background: #4ade80;
+    }
+    .body--dark .health-state.is-offline {
+        color: #fca5a5;
+    }
+    .body--dark .health-state.is-offline .health-dot {
+        border-color: #f87171;
+    }
+    @media (forced-colors: active) {
+        .health-state {
+            border: 1px solid CanvasText;
+        }
+        .health-state.is-online .health-dot {
+            background: CanvasText;
+            forced-color-adjust: none;
+        }
+        .health-state.is-offline .health-dot {
+            border-color: CanvasText;
+        }
+    }
+    .health-last {
+        margin-top: -0.375rem;
+        min-height: 1.5em;
+        line-height: 1.5;
+        font-weight: 500;
+        color: var(--color-text-primary);
+    }
+    .health-groups {
+        display: flex;
+        flex-direction: column;
+        gap: 1.25rem;
+        margin-top: 0.5rem;
+    }
+    /* What the charts show, in a sentence: always read out, seen only with
+       the charts open, as the trend lines say it at a glance. */
+    .health-sentence {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+    }
+    .health-card:has(> details.health-more[open]) .health-sentence {
+        position: static;
+        width: auto;
+        height: auto;
+        overflow: visible;
+        clip: auto;
+        white-space: normal;
+    }
+    .health-all {
+        display: flex;
+        gap: 0.25rem;
+    }
+    .health-all-button {
+        min-height: 40px;
+        color: var(--color-text-primary);
+    }
+    .health-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        padding-top: 1rem;
+        border-top: 1px solid color-mix(in srgb, var(--color-border-subtle) 35%, transparent);
+    }
+    .health-group-title {
+        margin: 0;
+        font-size: 1.0625rem;
+        font-weight: 700;
+        /* Quasar's h3 has a line of 3rem. */
+        line-height: 1.3;
+        color: var(--color-text-primary);
+    }
+    .health-group-sub {
+        margin: -0.5rem 0 0;
+        font-size: 0.875rem;
+        color: var(--color-text-secondary);
+    }
+    /* The figures in a row of four, each with its trend line; two by two
+       in a narrow card. */
+    .health-figures {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 0.5rem;
+    }
+    @container (max-width: 24rem) {
+        .health-figures {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+    .health-figures li {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        padding: 0.375rem 0.5rem;
+        border: 1px solid color-mix(in srgb, var(--color-border-subtle) 45%, transparent);
+        border-radius: 0.5rem;
+    }
+    .health-figure-label {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--color-text-secondary);
+        overflow-wrap: anywhere;
+    }
+    .health-figure-value {
+        font-size: 1.25rem;
+        line-height: 1.2;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        color: var(--color-text-primary);
+    }
+    .health-figure-sub {
+        font-size: 0.875rem;
+        color: var(--color-text-secondary);
+    }
+    .health-charts {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1.25rem 1.5rem;
+    }
+    @container (max-width: 34rem) {
+        .health-charts {
+            grid-template-columns: minmax(0, 1fr);
+        }
+    }
+    /* The disclosures' words are a label (a div): on the triangle's line. */
+    .health .chart-data summary > div {
+        display: inline;
+    }
+    .health-away-list {
+        margin: 0.5rem 0 0;
+        padding-left: 1.25rem;
+        color: var(--color-text-primary);
     }
 
     /* ── NiceGUI content padding ── */
@@ -1372,6 +2587,83 @@ theme_styles = """
         box-shadow: inset 0 -2px 0 var(--color-edit-accent);
     }
 
+    /* Words the reader has highlighted. Yellow, like a highlighter, with a
+       line above and below so it does not depend on the colour: it is a
+       different shape from the other two markings, which are a wash with a
+       bar underneath. No horizontal padding, unlike them, so highlighting
+       a passage does not move the text -- and a run of highlighted words
+       with the spaces between them reads as one stretch.
+
+       On a flagged or changed word the highlight takes the wash and the text
+       colour and keeps its own frame, line above and line below, exactly as
+       on any other highlighted word; the word's own bar is drawn outside it,
+       3px below. Letting the bar take the place of the frame's lower line
+       made a flagged highlight read as a flagged word on a yellow wash, and
+       was hard to tell from a plain highlight.
+       While the word is being played the playing tint wins the wash but the
+       lines stay, so the passage can still be seen under the playback. */
+    .highlight-word {
+        padding: 1px 0;
+        color: var(--color-highlight-text);
+        background-color: var(--color-highlight-bg);
+        box-shadow:
+            inset 0 2px 0 var(--color-highlight-frame),
+            inset 0 -2px 0 var(--color-highlight-frame);
+        box-decoration-break: clone;
+        -webkit-box-decoration-break: clone;
+    }
+    .highlight-word.review-word {
+        box-shadow:
+            inset 0 2px 0 var(--color-highlight-frame),
+            inset 0 -2px 0 var(--color-highlight-frame),
+            0 3px 0 var(--color-review-accent);
+    }
+    .highlight-word.edit-word {
+        box-shadow:
+            inset 0 2px 0 var(--color-highlight-frame),
+            inset 0 -2px 0 var(--color-highlight-frame),
+            0 3px 0 var(--color-edit-accent);
+    }
+    .transcript-text .highlight-word[data-current] {
+        background-color: var(--color-playing-bg);
+        color: inherit;
+        border-radius: 0;
+        box-shadow:
+            inset 0 2px 0 var(--color-highlight-frame),
+            inset 0 -2px 0 var(--color-highlight-frame);
+    }
+    .transcript-text .highlight-word.review-word[data-current] {
+        box-shadow:
+            inset 0 2px 0 var(--color-highlight-frame),
+            inset 0 -2px 0 var(--color-highlight-frame),
+            0 3px 0 var(--color-review-accent);
+    }
+    .transcript-text .highlight-word.edit-word[data-current] {
+        box-shadow:
+            inset 0 2px 0 var(--color-highlight-frame),
+            inset 0 -2px 0 var(--color-highlight-frame),
+            0 3px 0 var(--color-edit-accent);
+    }
+
+    /* A comment. The words it is on are underlined with a dotted line: a
+       pattern rather than a colour alone (1.4.1), and a different one from
+       the solid bars of the flagged and changed words. It is 3px thick and
+       sits 4px below the text, clear of the highlight's own frame lines:
+       a thinner line closer in was lost against them on words that are
+       both highlighted and commented. It is drawn with
+       text-decoration, so it needs no room of its own, shows on any wash a
+       word can have, and leaves the box-shadows that draw the other markings
+       alone. Nothing is added to the line: a marker after the last word
+       would sit where the caret goes. */
+    .comment-word {
+        text-decoration-line: underline;
+        text-decoration-style: dotted;
+        text-decoration-thickness: 3px;
+        text-decoration-color: var(--color-comment-line);
+        text-underline-offset: 4px;
+        text-decoration-skip-ink: none;
+    }
+
     /* Shared hover message. A CSS box rather than title=, which the browser
        draws itself and stylesheets cannot reach.
 
@@ -1451,6 +2743,30 @@ theme_styles = """
     .review-word[data-changed]::after {
         content: none;
     }
+
+    /* A word typed between two highlighted words, until the next render says
+       so itself (highlightNewWord in transcript_editor.js): drawn as a
+       highlight, with an attribute because Vue owns the class. Written as
+       span[...] so it outranks .transcript-show-edits [data-changed], which
+       comes later and would otherwise paint the word as a plain edit. */
+    .transcript-text span[data-highlighted] {
+        padding: 1px 0;
+        color: var(--color-highlight-text);
+        background-color: var(--color-highlight-bg);
+        border-radius: 0;
+        box-shadow:
+            inset 0 2px 0 var(--color-highlight-frame),
+            inset 0 -2px 0 var(--color-highlight-frame);
+        box-decoration-break: clone;
+        -webkit-box-decoration-break: clone;
+    }
+    .transcript-show-edits .transcript-text span[data-highlighted][data-changed] {
+        border-radius: 3px;
+        box-shadow:
+            inset 0 2px 0 var(--color-highlight-frame),
+            inset 0 -2px 0 var(--color-highlight-frame),
+            0 3px 0 var(--color-edit-accent);
+    }
     .transcript-show-edits [data-changed] {
         /* Stated here as well as on .edit-word: a word that was not flagged
            carries neither class, so it has none of the shared geometry. Not
@@ -1523,6 +2839,18 @@ theme_styles = """
     .q-toggle.editor-switch .q-toggle__label {
         font-size: 0.875rem;
     }
+    /* One row per setting: name at the left, switch at the right edge, so the
+       switches line up in a column whatever the labels' lengths. */
+    .editor-settings .q-toggle.editor-switch {
+        width: 100%;
+        min-height: 2.5rem;
+        justify-content: space-between;
+    }
+    .editor-settings .q-toggle.editor-switch .q-toggle__label {
+        flex: 1;
+        padding-left: 0;
+        padding-right: 1rem;
+    }
     .q-toggle.editor-switch .q-toggle__inner--truthy {
         color: var(--color-brand-primary);
     }
@@ -1573,11 +2901,11 @@ theme_styles = """
     .video-subtitle-overlay {
         position: absolute;
         left: 50%;
-        /* Where a viewer would see it: at the bottom of the frame. It only
-           moves up when the player's own control bar is up (see below), so
-           the rest of the time the preview is where the real thing is. */
+        /* Where a viewer would see it: at the bottom of the frame. The
+           player's controls are laid over that foot while they are up, and
+           the preview rises clear of them (see "The player's controls"
+           below). */
         bottom: 1rem;
-        transition: bottom 0.15s ease-in-out;
         transform: translateX(-50%);
         max-width: 90%;
         padding: 0.35rem 0.75rem;
@@ -1601,22 +2929,10 @@ theme_styles = """
            backstop for a line that still arrives carrying its own "\n". */
         white-space: pre-line;
         border-radius: 4px;
-        /* Belt and suspenders alongside the fixed offset above: never in
-           the way of the seek bar or a click-to-pause anywhere else on the
-           frame, even if the two ever end up overlapping regardless. */
+        /* A preview, not a control: a click anywhere on the frame goes to
+           the video underneath, as it would on a viewer's own screen. */
         pointer-events: none;
     }
-    /* Clear of the control bar while that bar is up. A fixed offset, not a
-       percentage of the frame's own height -- the bar's height is fixed too,
-       so a percentage shrinks below it on a short or wide video and the
-       overlay ends up drawn over the seek bar, hiding it rather than sitting
-       above it. The class is put on the frame by pages/srt.py, which follows
-       the same rules the browser draws the bar by: up while paused, and
-       while the pointer has moved over the frame in the last few seconds. */
-    .video-controls-visible .video-subtitle-overlay {
-        bottom: 4.25rem;
-    }
-
     .video-subtitle-line {
         /* Never break a line the editor did not break: draw_overlay gives
            each of the caption's own lines an element, and a wrap inside one
@@ -1797,12 +3113,6 @@ theme_styles = """
             in srgb, var(--color-warning-border) 10%, transparent
         );
     }
-    .transcript-cell-highlighted {
-        border-left-color: var(--color-warning-border);
-        background-color: color-mix(
-            in srgb, var(--color-warning-border) 14%, transparent
-        );
-    }
     /* The same mixes over a dark page land far fainter than over a light
        one -- the tint is being mixed into the page behind it, and there is
        much less of it there to lift. */
@@ -1821,10 +3131,52 @@ theme_styles = """
             in srgb, var(--color-warning-border) 18%, transparent
         );
     }
-    .body--dark .transcript-cell-highlighted {
+    /* A caption marked only for kinds of issue the validation panel hides
+       (TranscriptEditor.set_hidden_rules): the rule stays, in the caption's
+       own colour, but dashed and with no tint. It still says something is
+       there -- the caret in it opens the card and shows the kind again --
+       without competing with the kinds being worked on; dashed against solid
+       is a shape, so the difference is not only a lighter colour, and the
+       rule keeps the full colour and its contrast. A caption with one shown
+       issue among hidden ones is never muted. After the dark rules, and one
+       class more specific, so it wins over every tint above. */
+    .transcript-cell.transcript-cell-invalid.transcript-cell-muted {
+        border-left-style: dashed;
+        border-left-width: 2px;
+        padding-left: calc(1rem - 1px);
+        background-color: transparent;
+    }
+    /* With no tint of its own, it takes the tints that say where the
+       recording and the caret are, as an unmarked caption does. */
+    .transcript-cell.transcript-cell-invalid.transcript-cell-muted.transcript-cell-active {
         background-color: color-mix(
-            in srgb, var(--color-warning-border) 22%, transparent
+            in srgb, var(--color-brand-primary) 7%, transparent
         );
+    }
+    .transcript-cell.transcript-cell-invalid.transcript-cell-muted.transcript-cell-editing {
+        background-color: var(--color-bg-surface-alt);
+    }
+    .body--dark .transcript-cell.transcript-cell-invalid.transcript-cell-muted {
+        background-color: transparent;
+    }
+    .body--dark .transcript-cell.transcript-cell-invalid.transcript-cell-muted.transcript-cell-active {
+        background-color: color-mix(
+            in srgb, var(--color-brand-primary) 14%, transparent
+        );
+    }
+    .body--dark .transcript-cell.transcript-cell-invalid.transcript-cell-muted.transcript-cell-editing {
+        background-color: var(--color-bg-surface);
+    }
+    /* The words Find found, painted over the text by the browser's highlight
+       registry (paintFind in transcript_editor.js): a heavy dashed underline
+       in the card's colour, which is a shape and not only a colour. The
+       current match also has a wash. */
+    ::highlight(find-match) {
+        text-decoration: underline dashed var(--color-find-line) 3px;
+    }
+    ::highlight(find-current) {
+        background-color: var(--color-find-bg);
+        text-decoration: underline dashed var(--color-find-line) 3px;
     }
     /* The caption whose issue the validation panel is showing. After the
        invalid tint so it wins over it: every invalid caption is tinted,
@@ -1841,6 +3193,30 @@ theme_styles = """
     .transcript-cell-reviewing.transcript-cell-warning {
         border-left-color: var(--color-warning-border);
         box-shadow: inset 0 0 0 2px var(--color-warning-border);
+    }
+
+    /* The caption the comments card under the video is on, marked as the
+       validation panel marks its caption but in the comment colour: a
+       thicker rule and a full outline, so shape and not only colour say
+       which. After the editing and invalid rules, so it wins over them. */
+    .transcript-cell-commenting {
+        border-left-color: var(--color-comment-line);
+        border-left-width: 3px;
+        padding-left: calc(1rem - 2px);
+        box-shadow: inset 0 0 0 2px var(--color-comment-line);
+    }
+    /* And the words of the comment the card is showing: a tint of the comment
+       colour laid over whatever else the word has. It is a background-image,
+       which paints above background-color, so a highlight's or a flagged
+       word's own wash still shows through it and nothing is taken away. At
+       18% the text keeps at least 6.7:1 (light) and 5.9:1 (dark) on every
+       wash a word can have, and the comment line at least 4.3:1 and 3.4:1
+       against it. */
+    .comment-word[data-comment-current] {
+        background-image: linear-gradient(
+            color-mix(in srgb, var(--color-comment-line) 18%, transparent),
+            color-mix(in srgb, var(--color-comment-line) 18%, transparent)
+        );
     }
 
     /* ── Validation panel, under the video (issue #138) ── */
@@ -1868,6 +3244,47 @@ theme_styles = """
     .validation-panel.is-muted {
         --vp-tone: var(--color-border-subtle);
     }
+    /* The comments panel, a sibling of this one: the colour of the underline
+       on the words it is about, which is also the one colour in the editor
+       that means nothing else (blue is the playing word, and the
+       progress marks). */
+    .validation-panel.is-comment {
+        --vp-tone: var(--color-comment-line);
+    }
+    /* Find's card, a second deck under the first: the steel blue its
+       matches are marked with. */
+    .validation-panel.is-find {
+        --vp-tone: var(--color-find-line);
+    }
+    .comments-panel-words {
+        max-width: 100%;
+    }
+    .comments-panel-words .q-btn__content {
+        text-align: left;
+        white-space: normal;
+    }
+    .comments-panel-text {
+        margin-top: 8px;
+    }
+    .comments-panel-actions {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 4px;
+        margin-top: 4px;
+    }
+    .comments-panel-remove {
+        margin-right: auto;
+    }
+    /* Remove and Cancel are flat Quasar buttons, which take the primary
+       blue (#5898d4) for their text: 3.06:1 on the card's white, under the
+       4.5:1 that 14px text needs. They take the editor's own text colour
+       instead, the way the toolbar's quiet buttons do. Light mode only: in
+       dark mode the global flat-button rule already draws them white. */
+    .body--light .comments-panel-actions .q-btn--flat,
+    .body--light .comments-panel-actions .q-btn--flat .q-btn__content {
+        color: var(--color-brand-primary) !important;
+    }
     /* Which kinds of issue are stepped through: a row of checkboxes under
        the panel, ticked while that kind is shown. */
     .validation-panel-wrap {
@@ -1893,6 +3310,37 @@ theme_styles = """
         margin-top: 8px;
         font-size: 0.8125rem;
     }
+    /* The Find card: the field and "Aa" on a row, Replace unfolded under. */
+    .find-panel-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 6px;
+    }
+    .find-panel-input {
+        flex: 1 1 auto;
+    }
+    .find-panel-case {
+        min-width: 2.25rem;
+        margin-top: 2px;
+        font-weight: 600;
+        border: 1px solid var(--color-border-subtle);
+        color: var(--color-text-primary);
+    }
+    .find-panel-case-on {
+        background: var(--color-find-bg);
+        border-color: var(--color-find-line);
+    }
+    .find-panel-disclosure {
+        margin-top: 2px;
+        font-size: 0.8125rem;
+    }
+    .body--light .find-panel-disclosure,
+    .body--light .find-panel-disclosure .q-btn__content {
+        color: var(--color-brand-primary) !important;
+    }
+    .find-panel-replace {
+        margin-top: 4px;
+    }
     .body--dark .validation-panel {
         background: var(--color-bg-page);
     }
@@ -1914,6 +3362,30 @@ theme_styles = """
         display: flex;
         align-items: center;
         gap: 4px;
+    }
+    /* Folding a card to its header (utils/card_fold.py): the chevron comes
+       first, so the header gives it the room the heading's left padding
+       gave the text. A folded card keeps its header and the visually hidden
+       live regions and loses the rest -- including, for Validate, the filter
+       row below it. */
+    .validation-panel-head:has(.validation-panel-fold) {
+        padding-left: 4px;
+    }
+    .validation-panel .validation-panel-fold {
+        min-width: 0 !important;
+        width: 2rem;
+        height: 2rem;
+        padding: 0 !important;
+    }
+    .validation-panel-heading-fold {
+        cursor: pointer;
+    }
+    .validation-panel-wrap[data-folded] .validation-panel > :not(.validation-panel-head):not(.sr-only),
+    .validation-panel-wrap[data-folded] .validation-panel-filters {
+        display: none !important;
+    }
+    .validation-panel-wrap[data-folded] .validation-panel-head {
+        border-bottom: 0;
     }
     .validation-panel .validation-panel-step {
         min-width: 0 !important;
@@ -2189,7 +3661,28 @@ theme_styles = """
     }
     .transcript-cell:hover .transcript-cell-actions,
     .transcript-gutter:hover + .transcript-cell .transcript-cell-actions,
-    .transcript-cell-actions:focus-within {
+    .transcript-cell-actions:focus-within,
+    /* Also where a keyboard reader is, not only where the pointer is: the
+       caret in the caption's text (the whole transcript is one
+       contenteditable, so the caret never makes the cell itself
+       :focus-within -- the editor marks the caption with
+       .transcript-cell-editing instead, and clears it when the caret
+       leaves) and focus on one of the caption's timestamps. Without this the
+       tray was a control only someone who already knew to press Tab from the
+       text would ever find.
+
+       Only while the keyboard is what is being used (the body class the
+       focus-ring rules above use, set by a Tab and cleared by a click or a
+       tap). With a pointer the tray follows the pointer, which is quicker --
+       it is under the cursor before the caption has been clicked -- and
+       showing it for the caption the caret is in as well would put two on
+       screen whenever the pointer is over another caption.
+
+       Opacity only, as before: the tray stays in the tab order and the
+       accessibility tree, and its space is reserved, so nothing moves when
+       it appears. */
+    body.scribe-user-is-tabbing .transcript-cell-editing .transcript-cell-actions,
+    body.scribe-user-is-tabbing .transcript-cell:focus-within .transcript-cell-actions {
         opacity: 1;
     }
     .transcript-action {
@@ -2373,10 +3866,11 @@ theme_styles = """
        by the page because the strip is fixed and takes no space of its own;
        the component sets the class (see markDocked). */
     body.timeline-docked .nicegui-content {
-        padding-bottom: 9rem;
+        padding-bottom: calc(9rem + 16px);
     }
 
-    /* The grip that moves it, and what it says while it is being moved. */
+    /* The grip that moves it. What letting go will do is said by the
+       placeholder, not by the strip: see .speech-timeline-ghost. */
     .speech-timeline-grip {
         cursor: grab;
         user-select: none;
@@ -2390,9 +3884,39 @@ theme_styles = """
         outline: 2px dashed var(--color-brand-primary);
         outline-offset: 4px;
     }
-    .speech-timeline-dock-hint {
+
+    /* Where it will land if it is let go now, while it is being moved
+       (SUNET/scribe-ui#127): the same dashed brand line as the strip's own,
+       over the room it will take. Never the pointer's: it has to let the
+       drop through. Along the foot it is as tall as the docked strip is; back under the video it is as tall as the
+       strip and its legend were there, and in the page's flow, so what
+       moves out of its way is what will move for the strip. */
+    .speech-timeline-ghost {
+        box-sizing: border-box;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 2px dashed var(--color-brand-primary);
+        border-radius: 6px;
+        background-color: var(--color-bg-surface-hover);
         color: var(--color-brand-primary);
+        font-size: 0.75rem;
         font-weight: 600;
+        pointer-events: none;
+    }
+    .speech-timeline-ghost-rest {
+        width: 100%;
+    }
+    .speech-timeline-ghost-foot {
+        position: fixed;
+        /* left is set by the component, as for the strip itself. */
+        right: 0;
+        bottom: 0;
+        z-index: 899;
+        /* The strip along the foot as it measures there: its padding, the
+           strip with its ruler, the legend and a line of hint. */
+        height: calc(10rem + 22px);
+        margin: 0 0.5rem 0.5rem;
     }
 
     /* Where someone is talking, under the video. The colours are stated as
@@ -2417,9 +3941,14 @@ theme_styles = """
         --timeline-label: var(--color-text-primary);
         --timeline-void: var(--color-bg-surface-hover);
         --timeline-playhead: var(--color-text-danger);
+        /* The time marks along the top edge. Secondary text, since they are
+           text (and ticks that are read with it). */
+        --timeline-ruler: var(--color-text-secondary);
         position: relative;
         width: 100%;
-        height: 4.5rem;
+        /* What the strip always was, plus the ruler's band (RULER in
+           speech_timeline.js). */
+        height: calc(4.5rem + 16px);
         margin-top: 0.5rem;
         border-radius: 6px;
         background-color: var(--color-bg-surface-alt);
@@ -2438,8 +3967,26 @@ theme_styles = """
         min-width: 0;
     }
     .speech-timeline-wrap {
+        /* Said here rather than left to the component's own w-full class:
+           a container with inline-size containment has no width of its own
+           to offer, so in the editor's column (a flex column that aligns its
+           children to the start) a wrap that did not get that class came out
+           0 wide, and the strip and legend with it. */
+        width: 100%;
         min-width: 0;
         max-width: 100%;
+        /* The legend lays itself out by how wide the strip is, not by how
+           wide the window is: under the video and docked are very different
+           widths in the same window. Inline size only. */
+        container-type: inline-size;
+    }
+    /* Docked, the strip is placed by its two insets (left from the
+       component, right: 0), and they give it its width: a width of its own
+       would win over right and carry it off the right edge by as much as the
+       menu rail is wide, with the playhead and the tray off the centre of
+       what can be seen. */
+    .speech-timeline-wrap.speech-timeline-docked {
+        width: auto;
     }
     .body--dark .speech-timeline {
         background-color: var(--color-bg-surface-alt);
@@ -2478,24 +4025,133 @@ theme_styles = """
         font-size: 0.75rem;
         color: var(--color-text-secondary);
     }
+    /* The controls beside the key: dock and zoom. The playhead is always in
+       the middle of the strip -- it is "now", where the reader works -- so where there is room the tray sits under it, and where there
+       is not it follows the key, as it did before. Both come from the same
+       rule (see the container query below the hint): the legend is a grid of
+       1fr, auto, 1fr, whose middle column is the strip's own centre, and the
+       first column is never narrower than the key, which cannot wrap there.
+       The tray therefore moves between the two places continuously, never
+       jumping, and is never over the key. Narrower than 30rem the key and the
+       tray cannot share a row at all, and the legend is the wrapping row it
+       always was.
+
+       The same tray as the caption actions -- surface, hairline, fully
+       rounded, round 1.5rem buttons -- so the two read as one family; they
+       sit in the strip's own legend row, where they cost it no height, which
+       is what matters most docked along the foot of the page.
+
+       Out of the way until the strip is pointed at, or the keyboard is on it
+       or on one of the buttons (a button with focus is never hidden). The
+       keyboard rule uses the same body class as the caption actions and the
+       focus rings: a click on the strip focuses it too, and then the tray
+       should follow the pointer as before. Opacity only, as with the caption
+       actions:
+       the tray stays in the tab order and the accessibility tree, and its
+       place is reserved, so nothing moves when it appears. Where nothing can
+       point (hover: none) it is simply there, since there is no way to
+       reveal it. */
+    .speech-timeline-actions {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        margin-left: 0.5rem;
+        padding: 2px;
+        border: 1px solid var(--color-border-subtle);
+        border-radius: 999px;
+        background-color: var(--color-bg-surface);
+        opacity: 0;
+        transition: opacity 0.12s ease-in-out;
+    }
+    .speech-timeline-wrap:hover .speech-timeline-actions,
+    body.scribe-user-is-tabbing .speech-timeline-wrap:focus-within .speech-timeline-actions,
+    .speech-timeline-actions:focus-within {
+        opacity: 1;
+    }
+    @media (hover: none) {
+        .speech-timeline-actions {
+            opacity: 1;
+        }
+    }
+    .speech-timeline-actions-gap {
+        align-self: stretch;
+        width: 1px;
+        margin: 3px 2px;
+        background-color: var(--color-border-subtle);
+    }
+    .speech-timeline-action {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.5rem;
+        height: 1.5rem;
+        padding: 0;
+        border: 0;
+        border-radius: 50%;
+        background-color: transparent;
+        color: var(--color-text-muted);
+        cursor: pointer;
+        transition: color 0.12s ease-in-out, background-color 0.12s ease-in-out;
+    }
+    .speech-timeline-action:hover {
+        color: var(--color-brand-primary);
+        background-color: var(--color-bg-surface-alt);
+    }
+    /* A button that is on -- the dock while the strip is docked -- says so
+       with a ring as well as a colour, so it does not rest on colour alone. */
+    .speech-timeline-action-on {
+        color: var(--color-brand-primary);
+        background-color: var(--color-bg-surface-alt);
+        box-shadow: inset 0 0 0 1px var(--color-brand-primary);
+    }
+    /* At the end of its range, and stays focusable: see actions() in
+       speech_timeline.js. Dimmed, since an inactive control is not asked to
+       meet the contrast of an active one. */
+    .speech-timeline-action-off {
+        cursor: default;
+        opacity: 0.45;
+    }
+    .speech-timeline-action-off:hover {
+        color: var(--color-text-muted);
+        background-color: transparent;
+    }
     .speech-timeline-key {
         display: inline-flex;
         align-items: center;
         gap: 0.3rem;
     }
-    /* Reads as part of the key -- what the strip is and what can be done to
-       it -- so it stays with it on the left. */
+    /* On a row of its own below the key and the controls, so what the
+       controls cost in width never moves it. */
     .speech-timeline-hint {
+        flex-basis: 100%;
         color: var(--color-text-muted);
     }
-
-    /* Which minute of the recording is on the strip. A different question
-       from the key's, so it sits at the far end of the row rather than in
-       the queue behind it. */
-    .speech-timeline-range {
-        margin-left: auto;
-        color: var(--color-text-secondary);
-        font-variant-numeric: tabular-nums;
+    /* The grip and the four keys, as one item of the legend: the first
+       column of the wide layout. Where the legend wraps it is not a box at
+       all, so the items wrap on their own as they did. */
+    .speech-timeline-keyrow {
+        display: contents;
+    }
+    @container (min-width: 30rem) {
+        .speech-timeline-legend {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            column-gap: 0.75rem;
+            row-gap: 0.75rem;
+        }
+        .speech-timeline-keyrow {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            white-space: nowrap;
+        }
+        /* Equal on both sides, so the middle column's centre is the tray's. */
+        .speech-timeline-actions {
+            margin: 0 0.5rem;
+        }
+        .speech-timeline-hint {
+            grid-column: 1 / -1;
+        }
     }
 
     /* While a caption is being dragged the pointer owns it wherever it
@@ -2541,14 +4197,376 @@ theme_styles = """
         background-color: var(--color-text-danger);
     }
 
-    /* ── SRT editor controls under the video ── */
-    /* The switches on one row, what they mark under it -- grouped by what
-       each control affects, without a heading naming each group. */
+    /* ── The player's controls (utils/player_controls.js) ── */
+    /* Laid over the foot of the picture on a dark tone, the way the browser's
+       own bar is: nothing of their own to look at, the picture is the
+       player. They are white on that tone whatever the theme, because what
+       they sit on is a video and not the page. A recording with no picture
+       has nothing to lay them over, so the frame becomes a dark surface of
+       its own and they sit on that: the same rows, the same glyphs. The
+       width they have is their own container's, not the window's -- the
+       splitter can leave the video very narrow. */
+    .player-controls {
+        --player-fg: #fff;
+        --player-track: rgba(255, 255, 255, 0.55);
+        --player-surface: #101c2e;
+        container-type: inline-size;
+        color: var(--player-fg);
+    }
+    .video-frame .player-controls {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 2;
+        /* The fade above the rows, so the tone has somewhere to come from.
+           Dense under the rows and fading out above them: the position bar's
+           unfilled track is half-white, and on a white picture it needs the
+           tone behind it to hold 3:1 (measured 4.1:1 there). */
+        padding-top: 2.75rem;
+        background: linear-gradient(
+            to top,
+            rgba(0, 0, 0, 0.85) 0,
+            rgba(0, 0, 0, 0.72) 62%,
+            rgba(0, 0, 0, 0.3) 82%,
+            rgba(0, 0, 0, 0) 100%
+        );
+        transition: opacity 0.2s ease-in-out;
+    }
+    /* While it plays and nothing is being done to them they go, as the
+       browser's do. Never from the keyboard: a control with focus is there.
+       Out of reach as well as out of sight: a tap on a touch screen that
+       brought them back must not also land on the Play button it brought
+       back (the tap that wakes them goes to the picture, the next one to
+       the control), and a pointer that moves over the frame wakes them
+       before any click. */
+    .video-frame .player-controls-asleep:not(:focus-within) {
+        opacity: 0;
+        pointer-events: none;
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .video-frame .player-controls {
+            transition: none;
+        }
+    }
+    /* The preview keeps clear of them while they are up, and goes back to the
+       foot of the picture when they are not, as it does under the browser's
+       bar. Their height is fixed: two rows, whatever the width. Only the
+       foot of the frame is theirs, so a recording with no picture (and no
+       preview) is left out. */
+    .video-frame:has(.player-controls:not(.player-controls-asleep):not(.player-controls-audio))
+        .video-subtitle-overlay,
+    .video-frame:has(.player-controls-asleep:focus-within) .video-subtitle-overlay {
+        bottom: 6.25rem;
+    }
+    .video-subtitle-overlay {
+        transition: bottom 0.2s ease-in-out;
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .video-subtitle-overlay {
+            transition: none;
+        }
+    }
+    .player-bar {
+        padding: 0 0.6rem 0.4rem;
+    }
+    .player-seekrow {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        min-width: 0;
+        padding: 0 0.25rem;
+    }
+    .player-buttons {
+        display: flex;
+        align-items: center;
+        gap: 0.15rem;
+        min-width: 0;
+    }
+    .player-spacer {
+        flex: 1;
+    }
+    .player-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex: none;
+        width: 2rem;
+        height: 2rem;
+        padding: 0;
+        border: 0;
+        border-radius: 50%;
+        background-color: transparent;
+        color: var(--player-fg);
+        cursor: pointer;
+        transition: background-color 0.12s ease-in-out;
+    }
+    .player-btn:hover,
+    .player-speed-btn:hover {
+        background-color: rgba(255, 255, 255, 0.2);
+    }
+    .player-btn-main {
+        width: 2.25rem;
+        height: 2.25rem;
+    }
+    /* The page's own type (the "Uncertain words" choices beside the video
+       are 14px at weight 500), not a thin monospace: the figures keep their
+       width through tabular numerals instead. */
+    .player-time {
+        flex: none;
+        font-family: inherit;
+        font-size: 0.875rem;
+        font-weight: 500;
+        font-variant-numeric: tabular-nums;
+        color: var(--player-fg);
+        white-space: nowrap;
+    }
+    .player-volume {
+        display: flex;
+        align-items: center;
+        flex: none;
+        gap: 0.1rem;
+    }
+    .player-volume-range {
+        flex: none;
+        width: 4.5rem;
+    }
+
+    /* The two bars are native range inputs, so the keyboard, the pointer and
+       a screen reader all get what the browser already does for a slider; only
+       the look is drawn here. The filled part is a gradient up to --fill,
+       which the component sets, in WebKit and Blink, and the engine's own
+       progress part in Firefox. The unfilled track is a clear half-white on
+       the tone, not a fainter one: it is a component's boundary and has to
+       hold 3:1 against what is behind it (1.4.11), a white picture
+       included. */
+    .player-range {
+        -webkit-appearance: none;
+        appearance: none;
+        flex: 1;
+        min-width: 3rem;
+        height: 1.5rem;
+        margin: 0;
+        padding: 0;
+        background: transparent;
+        cursor: pointer;
+    }
+    .player-range:disabled {
+        cursor: default;
+        opacity: 0.55;
+    }
+    .player-range::-webkit-slider-runnable-track {
+        height: 4px;
+        border-radius: 2px;
+        background: linear-gradient(
+            to right,
+            var(--player-fg) var(--fill, 0%),
+            var(--player-track) var(--fill, 0%)
+        );
+    }
+    .player-range::-moz-range-track {
+        height: 4px;
+        border-radius: 2px;
+        background: var(--player-track);
+    }
+    .player-range::-moz-range-progress {
+        height: 4px;
+        border-radius: 2px;
+        background: var(--player-fg);
+    }
+    .player-range::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 12px;
+        height: 12px;
+        margin-top: -4px;
+        border: 0;
+        border-radius: 50%;
+        background: var(--player-fg);
+        box-shadow: 0 0 3px rgba(0, 0, 0, 0.6);
+    }
+    .player-range::-moz-range-thumb {
+        width: 12px;
+        height: 12px;
+        border: 0;
+        border-radius: 50%;
+        background: var(--player-fg);
+        box-shadow: 0 0 3px rgba(0, 0, 0, 0.6);
+    }
+
+    .player-speed {
+        position: relative;
+        flex: none;
+    }
+    .player-speed-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 2.5rem;
+        height: 2rem;
+        margin: 0 0.1rem;
+        padding: 0 0.5rem;
+        /* Just the figure, no frame: it reads as the speed and the pointer
+           and the keyboard say it is a button (a fill on hover, the ring on
+           focus, the tooltip). */
+        border: 0;
+        border-radius: 999px;
+        background-color: transparent;
+        color: var(--player-fg);
+        font-family: inherit;
+        font-size: 0.875rem;
+        font-weight: 500;
+        font-variant-numeric: tabular-nums;
+        cursor: pointer;
+    }
+    /* Open says so with a fill. */
+    .player-speed-btn-open {
+        background-color: rgba(255, 255, 255, 0.28);
+    }
+    /* Opens upward: the controls are at the foot of the picture, and there is
+       more room over it than under. */
+    .player-menu {
+        position: absolute;
+        bottom: calc(100% + 8px);
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 10;
+        min-width: 6.2rem;
+        padding: 4px;
+        overflow-y: auto;
+        border: 1px solid rgba(255, 255, 255, 0.28);
+        border-radius: 8px;
+        background-color: rgba(16, 28, 46, 0.97);
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+    }
+    .player-menu-item {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        width: 100%;
+        height: 1.9rem;
+        padding: 0 0.6rem;
+        border: 0;
+        border-radius: 6px;
+        background-color: transparent;
+        color: var(--player-fg);
+        font-family: inherit;
+        font-size: 0.875rem;
+        font-weight: 500;
+        font-variant-numeric: tabular-nums;
+        text-align: left;
+        cursor: pointer;
+    }
+    .player-menu-item:hover {
+        background-color: rgba(255, 255, 255, 0.16);
+    }
+    .player-menu-item-on {
+        background-color: rgba(255, 255, 255, 0.22);
+        font-weight: 700;
+    }
+    .player-menu-check {
+        visibility: hidden;
+    }
+    .player-menu-item-on .player-menu-check {
+        visibility: visible;
+    }
+
+    /* The ring that says where the keyboard is. The page's own is the brand
+       colour, which is nearly the colour of the tone it would be drawn on;
+       white holds there, over a picture and on the audio surface alike. Stated
+       in the same layer, and heavily enough to win against the page's rule,
+       which is !important. */
+    @layer theme {
+        .player-controls.player-controls.player-controls .player-bar *:focus-visible {
+            outline: 3px solid #fff !important;
+            outline-offset: 1px !important;
+        }
+    }
+
+    /* A recording that is sound alone has no picture to lay the controls
+       over, so the frame that would have held one becomes the player's own
+       surface: dark, with the file name where the picture was, and the same
+       rows under it. The picture and the subtitle preview over it, which has
+       nothing to be a preview of, are gone; and the frame no longer clips,
+       so the speed menu is free to open past it. */
+    .video-frame.video-frame-audio {
+        flex: none;
+        height: auto;
+        overflow: visible;
+        background-color: var(--player-surface, #101c2e);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+    }
+    .video-frame-audio video,
+    .video-frame-audio .video-subtitle-overlay {
+        display: none !important;
+    }
+    /* Down rather than up: there is nothing above the surface to open over. */
+    .video-frame-audio .player-menu {
+        bottom: auto;
+        top: calc(100% + 8px);
+    }
+    .video-frame-audio .player-controls {
+        position: static;
+        padding-top: 0.75rem;
+        background: none;
+    }
+    .player-name {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        min-width: 0;
+        margin: 0 0.85rem 0.35rem;
+        font-size: 0.85rem;
+        color: var(--player-fg);
+    }
+    .player-name span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    /* Narrow: the slider goes and the mute button stays. */
+    @container (max-width: 20rem) {
+        .player-volume-range {
+            display: none;
+        }
+    }
+
+    /* ── Editor settings (the menu the gear in the toolbar opens) ── */
+    /* The switches one to a row, the sensitivity selector under them --
+       grouped by what each control affects, without a heading naming each
+       group. */
     .editor-settings {
         display: flex;
         flex-direction: column;
+        gap: 1.25rem;
+        padding: 1rem 1.25rem;
+    }
+    .editor-settings .editor-settings-group {
         gap: 0.5rem;
-        padding: 0.75rem 0 0.25rem;
+    }
+    /* The count's reserved place sits right under the row, and the menu's own
+       bottom padding is cut to match, so the reserved height does not read
+       as a gap. */
+    .editor-settings .editor-settings-uncertain {
+        gap: 0;
+    }
+    .editor-settings {
+        padding-bottom: 0.5rem;
+    }
+    /* The flagged count's place, under the Uncertain words row. It keeps its
+       height while the marking is off (the count is hidden then), so the menu
+       is the same size either way and the count never has to find room. */
+    .editor-settings-count {
+        min-height: 1.25rem;
+        line-height: 1.25rem;
+    }
+    /* What a group is called: small and quiet, over the rows it names. */
+    .editor-settings-title {
+        font-size: 0.75rem;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        color: var(--color-text-secondary);
     }
     /* ── Theme-aware text utilities ── */
     .text-theme-primary {
@@ -3357,6 +5375,72 @@ if (!window._scribeFocusModality) {
         }
     }, true);
 }
+
+// A toast that has focus takes it with it when it goes -- by Close, or by
+// its own timeout -- and focus falls to the document body, so the next Tab
+// starts from the top of the page (WCAG 2.4.3). Remember where it was before
+// it went to the toast and put it back there afterwards.
+if (!window._scribeToastFocus) {
+    window._scribeToastFocus = true;
+    (function () {
+
+        var toastSelector = '.q-notification';
+        var lastOutsideToast = null;
+        var focusIsInToast = false;
+        var watchedToasts = null;
+
+        document.addEventListener('focusin', function (e) {
+            var target = e.target;
+            if (!target || !target.closest) return;
+
+            focusIsInToast = !!target.closest(toastSelector);
+
+            if (!focusIsInToast && target !== document.body) {
+                lastOutsideToast = target;
+            }
+        }, true);
+
+        var returnFocusFromToast = function () {
+            if (!focusIsInToast) return;
+
+            // Still on something real -- another toast, say: nothing was lost.
+            var active = document.activeElement;
+            if (active && active !== document.body && active.isConnected) return;
+
+            focusIsInToast = false;
+
+            // Only where it can be used: the place may be gone, or hidden behind
+            // a dialog that has since closed.
+            var target = lastOutsideToast;
+            if (target && target.isConnected && target.getClientRects().length) {
+                target.focus({ preventScroll: true });
+            }
+        };
+
+        // Quasar adds its container to the body when the first toast is raised,
+        // and nothing else is worth watching: only what happens inside it.
+        var watchToasts = function () {
+            var host = document.querySelector('.q-notifications');
+            if (!host || host === watchedToasts) return;
+
+            watchedToasts = host;
+            new MutationObserver(returnFocusFromToast).observe(host, {
+                childList: true,
+                subtree: true,
+            });
+        };
+
+        var startWatchingToasts = function () {
+            new MutationObserver(watchToasts).observe(document.body, {
+                childList: true,
+            });
+            watchToasts();
+        };
+
+        if (document.body) startWatchingToasts();
+        else document.addEventListener('DOMContentLoaded', startWatchingToasts);
+    })();
+}
 </script>
 """
 
@@ -3648,7 +5732,8 @@ default_styles = theme_styles + drive_styles
 chart_colors = {
     "light": {
         "bar_current": "#4F46E5",
-        "bar_previous": "#10B981",
+        # #10B981 was 2.5:1 on the white card, under 1.4.11's 3:1.
+        "bar_previous": "#059669",
         "bar_primary": "#082954",
         "bar_secondary": "#4caf50",
         "line_cpu": "#3b82f6",

@@ -18,6 +18,9 @@
 from nicegui import app, ui
 from utils.common import page_init
 from utils.cookies import COOKIES
+from utils.settings import get_settings
+
+settings = get_settings()
 
 
 def create() -> None:
@@ -45,7 +48,7 @@ def create() -> None:
             if not is_signed_in:
                 # A visitor who is not signed in has no "My files" to go
                 # back to, so say where the way back is, besides the menu.
-                ui.link("← Back to Sunet Scribe", "/").classes(
+                ui.link(f"← Back to {settings.SERVICE_NAME}", "/").classes(
                     "text-theme-primary"
                 )
 
@@ -63,7 +66,7 @@ def create() -> None:
             ).props("role=heading aria-level=1")
 
             ui.label(
-                "Sunet Scribe uses cookies only where necessary to provide "
+                f"{settings.SERVICE_NAME} uses cookies only where necessary to provide "
                 "the service -- for example to keep you signed in, "
                 "remember your preferences, and protect your uploaded "
                 "recordings. It does not use cookies for analytics, "
@@ -89,7 +92,7 @@ def create() -> None:
                     "border: 1px solid var(--color-border); border-radius: 8px;"
                     " padding: 16px 20px;"
                 ):
-                    ui.label(cookie.name).classes("text-lg font-semibold mb-1")
+                    ui.label(cookie.name).classes("text-lg font-semibold mb-1").props("role=heading aria-level=2")
                     ui.separator()
 
                     with ui.column().classes("gap-1 mt-2 mb-3"):

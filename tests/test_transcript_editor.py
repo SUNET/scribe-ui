@@ -22,6 +22,10 @@ reports back is handled here and can be tested directly.
 """
 
 
+import pathlib
+import shutil
+import subprocess
+
 import pytest
 
 from utils.caption import SRTCaption
@@ -506,6 +510,11 @@ class TestSplitFocus:
             def focus_block(self, block_id, offset=0):
                 calls.append((block_id, offset))
 
+            def set_muted(self, block_ids):
+
+                pass
+
+
             def set_blocks(self, blocks):
                 pass
 
@@ -638,6 +647,22 @@ class TestBlockShortcuts:
                 'this.report(event, "moveword", { id: at.id, direction: "next" })'
                 in keys
             )
+
+    def test_the_text_moves_report_direction_and_caret_in_both(self):
+        for keys in (self.subtitles(), self.transcription()):
+            assert 'if (event.shiftKey && event.key === "ArrowUp") {' in keys
+            assert 'if (event.shiftKey && event.key === "ArrowDown") {' in keys
+            assert keys.count('this.report(event, "movetext", {') == 2
+            assert 'direction: "previous",\n          offset: at.offset,' in keys
+            assert 'direction: "next",\n          offset: at.offset,' in keys
+
+    def test_the_text_moves_are_checked_before_the_word_moves(self):
+        """
+        The word moves only ask for the arrow, and would swallow the Shift.
+        """
+
+        for keys in (self.subtitles(), self.transcription()):
+            assert keys.index('"movetext"') < keys.index('"moveword"')
 
     def test_merge_and_delete_refuse_the_command_key_in_both(self):
         """
@@ -861,6 +886,147 @@ class TestMoveWordIsWired:
         view.move_word({"id": editor.captions[0].index, "direction": "next"})
 
         assert focused == [editor.captions[0].index]
+
+
+class TestMoveTextIsWired:
+    """
+    Ctrl/Cmd+Shift+Up/Down: the text before / after the caret goes to the
+    neighbouring caption, or the two are merged when that would leave
+    nothing behind.
+    """
+
+    def test_the_event_reaches_the_view(self):
+        import pathlib
+
+        source = pathlib.Path("utils/transcript_editor.py").read_text()
+
+        assert 'self.body.on("movetext", lambda event: self.move_text(event.args))' in source
+
+    def test_previous_passes_the_caret_offset_on(self, view, editor, monkeypatch):
+        calls = []
+        monkeypatch.setattr(
+            editor,
+            "move_text_before_cursor_to_previous",
+            lambda c, offset: calls.append((c.index, offset)) or "moved",
+        )
+        view.focus = lambda *a, **k: None
+
+        view.move_text(
+            {"id": editor.captions[1].index, "direction": "previous", "offset": 5}
+        )
+
+        assert calls == [(editor.captions[1].index, 5)]
+
+    def test_next_passes_the_caret_offset_on(self, view, editor, monkeypatch):
+        calls = []
+        monkeypatch.setattr(
+            editor,
+            "move_text_after_cursor_to_next",
+            lambda c, offset: calls.append((c.index, offset)) or "moved",
+        )
+        view.focus = lambda *a, **k: None
+
+        view.move_text(
+            {"id": editor.captions[0].index, "direction": "next", "offset": 4}
+        )
+
+        assert calls == [(editor.captions[0].index, 4)]
+
+    def test_a_move_keeps_the_caret_at_the_edge_the_text_left(
+        self, view, editor, monkeypatch
+    ):
+        focused = []
+        view.focus = lambda *a, **k: focused.append(a)
+        monkeypatch.setattr(
+            editor, "move_text_before_cursor_to_previous", lambda c, o: "moved"
+        )
+        monkeypatch.setattr(
+            editor, "move_text_after_cursor_to_next", lambda c, o: "moved"
+        )
+
+        second = editor.captions[1]
+        view.move_text({"id": second.index, "direction": "previous", "offset": 3})
+        assert focused[-1] == (second.index, 0)
+
+        first = editor.captions[0]
+        view.move_text({"id": first.index, "direction": "next", "offset": 3})
+        assert focused[-1] == (first.index, len(first.text))
+
+    def test_a_merge_with_previous_lands_at_the_seam(self, view, editor, monkeypatch):
+        focused = []
+        view.focus = lambda *a, **k: focused.append(a)
+        first, second = editor.captions[0], editor.captions[1]
+        seam = len(first.text) + 1
+        monkeypatch.setattr(
+            editor, "move_text_before_cursor_to_previous", lambda c, o: "merged"
+        )
+
+        view.move_text({"id": second.index, "direction": "previous", "offset": 99})
+
+        assert focused == [(first.index, seam)]
+
+    def test_a_merge_with_next_lands_at_the_seam(self, view, editor, monkeypatch):
+        focused = []
+        view.focus = lambda *a, **k: focused.append(a)
+        first = editor.captions[0]
+        seam = len(first.text)
+        monkeypatch.setattr(
+            editor, "move_text_after_cursor_to_next", lambda c, o: "merged"
+        )
+
+        view.move_text({"id": first.index, "direction": "next", "offset": 0})
+
+        assert focused == [(first.index, seam)]
+
+    def test_a_refusal_changes_nothing_on_screen(self, view, editor, monkeypatch):
+        calls = []
+        view.focus = lambda *a, **k: calls.append("focus")
+        view.refresh = lambda *a, **k: calls.append("refresh")
+        view.changed = lambda *a, **k: calls.append("changed")
+        monkeypatch.setattr(
+            editor, "move_text_before_cursor_to_previous", lambda c, o: ""
+        )
+
+        view.move_text({"id": editor.captions[0].index, "direction": "previous", "offset": 2})
+
+        assert calls == []
+
+    def test_a_move_refreshes_and_reports_the_change(self, view, editor, monkeypatch):
+        calls = []
+        view.focus = lambda *a, **k: calls.append("focus")
+        view.refresh = lambda *a, **k: calls.append("refresh")
+        view.changed = lambda *a, **k: calls.append("changed")
+        monkeypatch.setattr(
+            editor, "move_text_after_cursor_to_next", lambda c, o: "moved"
+        )
+
+        view.move_text({"id": editor.captions[0].index, "direction": "next", "offset": 2})
+
+        assert calls == ["refresh", "changed", "focus"]
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            None,
+            {},
+            {"id": 9999, "direction": "next", "offset": 1},
+            {"id": 0, "direction": "sideways", "offset": 1},
+            {"id": 0, "direction": "next"},
+            {"id": 0, "direction": "next", "offset": "3"},
+        ],
+    )
+    def test_bad_input_is_harmless(self, view, editor, monkeypatch, args):
+        calls = []
+        monkeypatch.setattr(
+            editor, "move_text_before_cursor_to_previous", lambda c, o: calls.append(c)
+        )
+        monkeypatch.setattr(
+            editor, "move_text_after_cursor_to_next", lambda c, o: calls.append(c)
+        )
+
+        view.move_text(args)
+
+        assert calls == []
 
 
 class TestSubtitleEnter:
@@ -1707,6 +1873,11 @@ class TestMergeFocus:
             def focus_block(self, block_id, offset=0):
                 calls.append((block_id, offset))
 
+            def set_muted(self, block_ids):
+
+                pass
+
+
             def set_blocks(self, blocks):
                 pass
 
@@ -1839,6 +2010,11 @@ class TestDeleteCaption:
         class FakeBody:
             def focus_block(self, block_id, offset=0):
                 calls.append((block_id, offset))
+
+            def set_muted(self, block_ids):
+
+                pass
+
 
             def set_blocks(self, blocks):
                 pass
@@ -2196,6 +2372,7 @@ class TestFollowVideoOverlay:
         editor.captions[1].text = "grew backwards"
         del editor.captions[0]
         view.body.set_blocks = lambda *a, **k: None
+        view.body.set_muted = lambda *a, **k: None
         view.body.set_speakers = lambda *a, **k: None
         view.refresh()
 
@@ -2742,6 +2919,28 @@ class TestSpeakerMenuIcons:
         assert "renamespeaker" in icon
 
 
+# Alt with the arrows in the text (F-65) and Quick jump, worded for the
+# format; the Timeline's keys only where there is a Timeline.
+def navigation(noun: str, timeline: bool = False) -> list:
+    jump = (
+        "Quick jump to a time or caption" if noun == "caption" else "Quick jump to a time"
+    )
+
+    return [
+        (f"Previous / next {noun}", "Alt/⌥ + ↑ / ↓"),
+        (jump, "Ctrl/⌘ + G"),
+    ] + (TIMELINE_KEYS if timeline else [])
+
+
+TIMELINE_KEYS = [
+    ("Timeline, when focused: move playhead a little", "← / →"),
+    ("Timeline: move playhead a whole strip", "Page Up / Page Down"),
+    ("Timeline: playhead to start / end", "Home / End"),
+    ("Timeline: zoom in / out", "Shift + ↑ / ↓, + / −"),
+    ("Timeline: reset zoom", "0"),
+]
+
+
 class TestTheShortcutsDialog:
     """
     The dialog is worded for whichever format is open. A reader editing
@@ -2815,18 +3014,20 @@ class TestTheShortcutsDialog:
                     ("New line", "Shift + Enter"),
                     ("Move first word to previous paragraph", "Ctrl/⌘ + ↑"),
                     ("Move last word to next paragraph", "Ctrl/⌘ + ↓"),
+                    ("Move text before cursor to previous paragraph", "Ctrl/⌘ + Shift + ↑"),
+                    ("Move text after cursor to next paragraph", "Ctrl/⌘ + Shift + ↓"),
                     ("Merge with next", "Ctrl + M"),
                     ("Delete paragraph", "Ctrl + D"),
                 ],
             ),
             (
-                "File operations",
+                "Playback",
                 [
-                    ("Save file", "Ctrl/⌘ + S"),
-                    ("Export file", "Ctrl/⌘ + E"),
-                    ("Find", "Ctrl/⌘ + F"),
+                    ("Play/Pause", "Ctrl + Space"),
+                    ("Play paragraph with context", "Ctrl + Shift + Space"),
                 ],
             ),
+            ("Navigation", navigation("paragraph")),
             (
                 "History",
                 [
@@ -2835,9 +3036,20 @@ class TestTheShortcutsDialog:
                 ],
             ),
             (
-                "Transport",
+                "Tools",
                 [
-                    ("Play/Pause", "Ctrl + Space"),
+                    ("Find", "Ctrl/⌘ + F"),
+                    ("Replace", "Ctrl + H"),
+                    ("Toggle highlight on selected text", "Ctrl + Shift + H"),
+                    ("Add or open comment", "Ctrl + Shift + K"),
+                    ("Save the comment you are writing", "Ctrl/⌘ + Enter"),
+                ],
+            ),
+            (
+                "File operations",
+                [
+                    ("Save file", "Ctrl/⌘ + S"),
+                    ("Export file", "Ctrl/⌘ + E"),
                 ],
             ),
         ]
@@ -2862,20 +3074,23 @@ class TestTheShortcutsDialog:
                     ("New line", "Shift + Enter"),
                     ("Move first word to previous caption", "Ctrl/⌘ + ↑"),
                     ("Move last word to next caption", "Ctrl/⌘ + ↓"),
+                    ("Move text before cursor to previous caption", "Ctrl/⌘ + Shift + ↑"),
+                    ("Move text after cursor to next caption", "Ctrl/⌘ + Shift + ↓"),
+                    ("Nudge start earlier / later (0.1 s)", "Ctrl + , / Ctrl + ."),
+                    ("Nudge end earlier / later (0.1 s)", "Ctrl + Shift + , / Ctrl + Shift + ."),
                     ("Merge with next", "Ctrl + M"),
                     ("Add caption after", "Ctrl/⌘ + Shift + Enter"),
                     ("Delete caption", "Ctrl + D"),
                 ],
             ),
             (
-                "File operations",
+                "Playback",
                 [
-                    ("Save file", "Ctrl/⌘ + S"),
-                    ("Export file", "Ctrl/⌘ + E"),
-                    ("Find", "Ctrl/⌘ + F"),
-                    ("Validate captions", "Ctrl + Shift + V"),
+                    ("Play/Pause", "Ctrl + Space"),
+                    ("Play caption with context", "Ctrl + Shift + Space"),
                 ],
             ),
+            ("Navigation", navigation("caption")),
             (
                 "History",
                 [
@@ -2884,9 +3099,18 @@ class TestTheShortcutsDialog:
                 ],
             ),
             (
-                "Transport",
+                "Tools",
                 [
-                    ("Play/Pause", "Ctrl + Space"),
+                    ("Find", "Ctrl/⌘ + F"),
+                    ("Replace", "Ctrl + H"),
+                    ("Validate captions", "Ctrl + Shift + V"),
+                ],
+            ),
+            (
+                "File operations",
+                [
+                    ("Save file", "Ctrl/⌘ + S"),
+                    ("Export file", "Ctrl/⌘ + E"),
                 ],
             ),
         ]
@@ -2904,8 +3128,89 @@ class TestTheShortcutsDialog:
         assert captions["Add caption after"] == "Ctrl/⌘ + Shift + Enter"
         assert captions["Validate captions"] == "Ctrl + Shift + V"
 
-        assert not any("Add " in action for action in paragraphs)
+        assert not any(action.startswith("Add caption") for action in paragraphs)
         assert not any("Validate" in action for action in paragraphs)
+
+    def test_the_groups_follow_the_work_and_the_toolbar(self):
+        for data_format in ("srt", "txt"):
+            names = [name for name, _ in self.editor(data_format).keyboard_shortcut_groups()]
+
+            assert names == [
+                "Editing", "Playback", "Navigation", "History", "Tools", "File operations"
+            ]
+
+    def test_it_is_playback_not_transport(self):
+        for data_format in ("srt", "txt"):
+            names = [name for name, _ in self.editor(data_format).keyboard_shortcut_groups()]
+
+            assert "Transport" not in names
+
+    def test_find_is_in_tools_for_both_and_validate_is_not_a_file_operation(self):
+        for data_format in ("srt", "txt"):
+            groups = dict(self.editor(data_format).keyboard_shortcut_groups())
+
+            assert ("Find", "Ctrl/⌘ + F") in groups["Tools"]
+            assert "Find" not in [a for a, _ in groups["File operations"]]
+
+        assert ("Validate captions", "Ctrl + Shift + V") in dict(
+            self.editor("srt").keyboard_shortcut_groups()
+        )["Tools"]
+
+    def test_the_nudge_rows_say_how_far(self):
+        captions = self.actions("srt")
+
+        assert "Nudge start earlier / later (0.1 s)" in captions
+        assert "Nudge end earlier / later (0.1 s)" in captions
+        assert SRTEditor.NUDGE_MILLISECONDS == 100
+
+    def test_the_comment_that_is_saved_is_listed_but_not_esc(self):
+        paragraphs = self.actions("txt")
+
+        assert paragraphs["Save the comment you are writing"] == "Ctrl/⌘ + Enter"
+        assert "Esc" not in paragraphs.values()
+
+    def timed(self, data_format: str) -> SRTEditor:
+        """
+        An editor with word timings, which is what gives subtitles a Timeline.
+        """
+
+        editor = self.editor(data_format)
+        editor.load_words({"version": 1, "words": [{"t": "Hej", "s": 0.0, "e": 0.5}]})
+
+        return editor
+
+    def navigation_of(self, editor: SRTEditor) -> list:
+        return dict(editor.keyboard_shortcut_groups())["Navigation"]
+
+    def test_the_timeline_keys_are_listed_where_there_is_a_timeline(self):
+        assert self.navigation_of(self.timed("srt")) == navigation("caption", timeline=True)
+
+    def test_not_in_a_transcription_which_has_no_timeline(self):
+        assert self.navigation_of(self.timed("txt")) == navigation("paragraph")
+        assert not any(
+            action.startswith("Timeline")
+            for action, _ in self.navigation_of(self.timed("txt"))
+        )
+
+    def test_not_in_subtitles_without_word_timings_or_with_it_switched_off(self):
+        assert self.navigation_of(self.editor("srt")) == navigation("caption")
+
+        switched_off = self.timed("srt")
+        switched_off.show_timeline = False
+        assert self.navigation_of(switched_off) == navigation("caption")
+
+    def test_quick_jump_offers_caption_numbers_in_subtitles_only(self):
+        assert ("Quick jump to a time or caption", "Ctrl/⌘ + G") in self.navigation_of(
+            self.editor("srt")
+        )
+        assert ("Quick jump to a time", "Ctrl/⌘ + G") in self.navigation_of(
+            self.editor("txt")
+        )
+
+    def test_no_row_says_block(self):
+        for data_format in ("srt", "txt"):
+            for _, rows in self.timed(data_format).keyboard_shortcut_groups():
+                assert not any("block" in action.lower() for action, _ in rows)
 
     def test_the_keys_that_both_formats_share_agree(self):
         captions = self.actions("srt")
@@ -3022,3 +3327,121 @@ class TestReviewFollowsTheCaret:
             ("scroll", 2),
             ("review", 3),
         ]
+
+
+class TestMoveWordThatMerges:
+    """
+    A caption with one word left has nowhere to put it but its neighbour, so
+    the move is a merge, and the caret goes where a merge puts it.
+    """
+
+    def test_a_merge_with_the_previous_puts_the_caret_at_the_seam(
+        self, view, editor, monkeypatch
+    ):
+        first, second = editor.captions[0], editor.captions[1]
+        second.text = "fyra"
+        seam = len(first.text) + 1
+        monkeypatch.setattr(
+            editor, "move_first_word_to_previous", lambda c: "merged"
+        )
+        focused = []
+        view.focus = lambda *a, **k: focused.append(a)
+
+        view.move_word({"id": second.index, "direction": "previous"})
+
+        assert focused == [(first.index, seam)]
+
+    def test_a_merge_with_the_next_puts_the_caret_at_the_seam(
+        self, view, editor, monkeypatch
+    ):
+        first = editor.captions[0]
+        first.text = "ett"
+        monkeypatch.setattr(editor, "move_last_word_to_next", lambda c: "merged")
+        focused = []
+        view.focus = lambda *a, **k: focused.append(a)
+
+        view.move_word({"id": first.index, "direction": "next"})
+
+        assert focused == [(first.index, len("ett"))]
+
+    def test_a_plain_move_leaves_the_caret_where_it_was(
+        self, view, editor, monkeypatch
+    ):
+        monkeypatch.setattr(editor, "move_last_word_to_next", lambda c: None)
+        focused = []
+        view.focus = lambda *a, **k: focused.append(a)
+
+        view.move_word({"id": editor.captions[0].index, "direction": "next"})
+
+        assert focused == [(editor.captions[0].index,)]
+
+    def test_there_is_no_notice_telling_the_reader_to_merge_instead(self):
+        import pathlib
+
+        assert "only word in the block" not in pathlib.Path("utils/srt.py").read_text()
+
+
+class TestWhereTheCaretIs:
+    """
+    F-65 (1.3.1): the text stays one text, and a screen reader is told where
+    in it the caret is -- the block's number and times, or its speaker -- and
+    can step from block to block, which the margin shows to the eye.
+    """
+
+    def source(self) -> str:
+        return pathlib.Path("utils/transcript_editor.js").read_text()
+
+    def body(self) -> str:
+        source = self.source()
+        start = source.index('class="transcript-body"')
+
+        return source[start : source.index("ref=\"body\"", start)]
+
+    def test_the_text_says_what_its_keys_do(self):
+        body = self.body()
+
+        assert 'aria-describedby="transcript-editor-keys"' in body
+        assert 'aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"' in body
+        assert '<span id="transcript-editor-keys" class="sr-only">{{ keysText() }}</span>' in self.source()
+
+    def test_the_live_region_is_outside_the_text(self):
+        """Inside, it would be read as part of the text, and typed into."""
+
+        source = self.source()
+        region = '<span class="sr-only" role="status" aria-live="polite" aria-atomic="true">{{ where }}</span>'
+
+        assert region in source
+        # After the contenteditable has closed: the template's blocks end
+        # with </template></div>, and the region comes after that.
+        assert source.index(region) > source.index("</template></div>")
+
+    def test_it_is_said_once_the_caret_has_come_to_rest(self):
+        source = self.source()
+        watcher = source[source.index("    caretId(id) {") :]
+        watcher = watcher[: watcher.index("\n    },")]
+
+        assert "}, 300);" in watcher
+        assert "if (this.saidFor !== id) this.sayWhere(id);" in watcher
+        # Out of the text and back: said again.
+        assert "this.saidFor = null;" in watcher
+
+    def test_alt_and_the_arrows_step_between_blocks_ahead_of_ctrl(self):
+        source = self.source()
+        alt = source.index("this.stepBlock(at.id, event.key === \"ArrowUp\" ? -1 : 1);")
+        ctrl = source.index("? this.subtitleShortcut(event, at)")
+
+        assert alt < ctrl
+        assert "event.altKey &&\n        !event.ctrlKey &&\n        !event.metaKey &&\n        !event.shiftKey" in source
+
+    @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+    def test_what_is_said_on_made_up_blocks(self):
+        """The methods themselves, run in node (tests/js/transcript_where.test.js)."""
+
+        result = subprocess.run(
+            ["node", "--test", str(pathlib.Path(__file__).resolve().parent / "js" / "transcript_where.test.js")],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+
+        assert result.returncode == 0, result.stdout + result.stderr

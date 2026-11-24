@@ -42,6 +42,8 @@ export default {
         spellcheck="false"
         :aria-label="subtitleMode ? 'Captions' : 'Transcript'"
         aria-multiline="true"
+        aria-describedby="transcript-editor-keys"
+        aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
         @input="onInput"
         @keydown="onKeydown"
         @keyup="updateCaretBlock"
@@ -86,7 +88,7 @@ export default {
             @keydown="onControlKeydown($event, block.id, 'speaker')"
           >{{ block.speaker }}</span><span v-if="!subtitleMode" class="transcript-colon">:</span></div><div
           class="transcript-cell"
-          :class="{ 'transcript-cell-active': block.id === activeId, 'transcript-cell-editing': block.id === caretId, 'transcript-cell-invalid': block.invalid, 'transcript-cell-warning': block.warning, 'transcript-cell-highlighted': block.highlighted, 'transcript-cell-reviewing': block.id === reviewId }"
+          :class="{ 'transcript-cell-active': block.id === activeId, 'transcript-cell-editing': block.id === caretId, 'transcript-cell-invalid': block.invalid, 'transcript-cell-warning': block.warning, 'transcript-cell-reviewing': block.id === reviewId, 'transcript-cell-muted': mutedIds.includes(block.id), 'transcript-cell-commenting': block.id === commentId }"
           :data-id="block.id"
         ><div
             v-if="!subtitleMode"
@@ -205,11 +207,17 @@ export default {
                 ><q-icon name="delete_outline" size="16px" /><q-tooltip>Delete caption</q-tooltip></div></div></div><div
               class="transcript-text"
               :data-id="block.id"
-            ><span v-for="(run, i) in block.runs" :key="i" :class="run.flag ? 'review-word' : (run.edit ? 'edit-word' : null)" :data-review="run.flag ? reviewLabel : null" :data-edit="editLabel" :aria-label="run.flag ? reviewLabel : (run.edit ? editLabel : null)" :data-s="run.s" :data-e="run.e">{{ run.t }}</span><br v-if="!block.runs || block.runs.length === 0"></div></div><div
+            ><span v-for="(run, i) in block.runs" :key="i" :class="runClass(run)" :role="run.hl ? 'mark' : null" :data-review="run.flag ? reviewLabel : null" :data-edit="editLabel" :aria-label="run.flag ? reviewLabel : (run.edit ? editLabel : null)" :data-comment="run.cm" :data-comment-current="isCommentOnShow(run, block) ? '' : null" :aria-description="run.cf ? 'Comment: ' + run.ct : null" :data-s="run.s" :data-e="run.e">{{ run.t }}</span><br v-if="!block.runs || block.runs.length === 0"></div></div><div
             v-else
             class="transcript-text"
             :data-id="block.id"
-          ><span v-for="(run, i) in block.runs" :key="i" :class="run.flag ? 'review-word' : (run.edit ? 'edit-word' : null)" :data-review="run.flag ? reviewLabel : null" :data-edit="editLabel" :aria-label="run.flag ? reviewLabel : (run.edit ? editLabel : null)" :data-s="run.s" :data-e="run.e">{{ run.t }}</span><br v-if="!block.runs || block.runs.length === 0"></div></div></template></div>
+          ><span v-for="(run, i) in block.runs" :key="i" :class="runClass(run)" :role="run.hl ? 'mark' : null" :data-review="run.flag ? reviewLabel : null" :data-edit="editLabel" :aria-label="run.flag ? reviewLabel : (run.edit ? editLabel : null)" :data-comment="run.cm" :data-comment-current="isCommentOnShow(run, block) ? '' : null" :aria-description="run.cf ? 'Comment: ' + run.ct : null" :data-s="run.s" :data-e="run.e">{{ run.t }}</span><br v-if="!block.runs || block.runs.length === 0"></div></div></template></div>
+
+      <!-- What the keys do and where the caret is, for a screen reader:
+           outside the contenteditable, or they would be read as part of the
+           text and could be typed into. -->
+      <span id="transcript-editor-keys" class="sr-only">{{ keysText() }}</span>
+      <span class="sr-only" role="status" aria-live="polite" aria-atomic="true">{{ where }}</span>
 
       <!-- Outside the contenteditable, or it would become editable content.
            Positioned against this component's own root rather than the
@@ -290,6 +298,22 @@ export default {
     // The caption whose validation issue the panel under the video is
     // showing (utils/validation_panel.py); -1 when none is.
     reviewId: { type: Number, default: -1 },
+    // Marked captions whose every issue is of a kind the validation panel
+    // hides: drawn with a dashed rule and no tint. A prop of its own, so a
+    // change restyles the captions without rebuilding them.
+    mutedIds: { type: Array, default: () => [] },
+    // The caption, and the comment in it, that the comments card under the
+    // video is showing (utils/comments_panel.py); -1 when none is. A comment
+    // being written has a caption but no comment yet.
+    commentId: { type: Number, default: -1 },
+    commentIndex: { type: Number, default: -1 },
+    // What the Find card has found (utils/find_panel.py): each match as
+    // { id, s, e } -- the caption and where in its text -- and which of them
+    // is the current one, or -1. Painted over the words with the browser's
+    // highlight registry, so no element is added to the text and nothing
+    // about it has to be rebuilt for a search.
+    findMarks: { type: Array, default: () => [] },
+    findCurrent: { type: Number, default: -1 },
     reviewLabel: { type: String, default: "" },
     editLabel: { type: String, default: "" },
     showEdits: { type: Boolean, default: false },
@@ -318,10 +342,30 @@ export default {
     // reader to speak, for every caption passed on the way.
     caretId(id) {
       clearTimeout(this.caretSync);
-      if (id === null) return;
+      if (id === null) {
+        // Out of the text: back in it, the block is said again.
+        this.saidFor = null;
+        return;
+      }
       this.caretSync = setTimeout(() => {
-        if (this.caretId === id) this.$emit("caretblock", { id });
+        if (this.caretId !== id) return;
+        this.$emit("caretblock", { id });
+        // And say which block it is, for whoever cannot see the margin:
+        // the number and the times, or the speaker (F-65, 1.3.1). Once the
+        // caret has come to rest, so stepping through several blocks says
+        // only the one it stops in -- and not again if it has just been
+        // said, as "First caption." is by the step that found the end.
+        if (this.saidFor !== id) this.sayWhere(id);
       }, 300);
+    },
+    // An update resends every prop, and an array arrives as a new reference
+    // each time, so these fire as often as the active word moves; paintFind
+    // does nothing when what it would draw has not changed.
+    findMarks() {
+      this.$nextTick(() => this.paintFind());
+    },
+    findCurrent() {
+      this.$nextTick(() => this.paintFind());
     },
     revision() {
       // Bumped by the server only when the blocks actually change. Watching
@@ -388,6 +432,10 @@ export default {
       this.$nextTick(() => {
         this.indexWords();
 
+        // The text was rebuilt, so the ranges the matches were painted on are
+        // gone with it.
+        this.paintFind(true);
+
         // A fresh render is the server's own account of which words have been
         // changed, worked out by diffing the text properly rather than word by
         // word, so the marks put on here in the meantime are dropped. Left in
@@ -396,6 +444,14 @@ export default {
         this.$refs.body
           ?.querySelectorAll("[data-changed]")
           .forEach((el) => el.removeAttribute("data-changed"));
+
+        // The same for a word that was highlighted here because it was typed
+        // between two highlighted ones: the server's render says which words
+        // are highlighted now.
+        this.$refs.body?.querySelectorAll("[data-highlighted]").forEach((el) => {
+          el.removeAttribute("data-highlighted");
+          el.removeAttribute("role");
+        });
 
         if (restoring) {
           const block = this.$refs.body?.querySelector(
@@ -460,6 +516,10 @@ export default {
       // Where the caret last was ({id, offset}), kept after it leaves the
       // editor so a skip link can send the reader back to it.
       lastCaret: null,
+      // What the live region last said: where the caret is (sayWhere), and
+      // the block it was said for.
+      where: "",
+      saidFor: null,
       // Roving tabindex over the gutter and cell controls (speaker, the two
       // timings, and -- subtitles only -- the five action icons): exactly
       // one control across the *entire* transcript carries a real tabindex
@@ -503,6 +563,7 @@ export default {
     this.$nextTick(() => this.indexWords());
   },
   beforeUnmount() {
+    this.clearFind();
     clearTimeout(this.caretSync);
     this.video?.removeEventListener("timeupdate", this.onTime);
     this.video?.removeEventListener("seeking", this.onTime);
@@ -510,6 +571,68 @@ export default {
     document.removeEventListener("keydown", this.onEscape, true);
   },
   methods: {
+    // Paint what the Find card found over the words: every match, and the
+    // current one over it (two highlights, drawn in styles.py). The browser's
+    // highlight registry is used rather than wrapping the matches in
+    // elements: this text is a contenteditable the reader types into, and a
+    // search must not change it or take the caret anywhere. Where the
+    // registry does not exist the caption's own marking is all there is.
+    //
+    // `force` repaints even when nothing changed -- after the text was
+    // rebuilt, when the ranges point at nodes that are gone.
+    paintFind(force = false) {
+      if (!window.CSS || !CSS.highlights || typeof Highlight === "undefined") return;
+
+      const signature = JSON.stringify([this.findMarks, this.findCurrent]);
+      if (!force && signature === this.findSignature) return;
+      this.findSignature = signature;
+
+      this.clearFind();
+      if (!this.findMarks.length) return;
+
+      const found = [];
+      const current = [];
+      const nodesOf = {};
+
+      this.findMarks.forEach((mark, at) => {
+        if (!(mark.id in nodesOf)) {
+          const block = this.$refs.body?.querySelector(
+            `.transcript-text[data-id="${mark.id}"]`
+          );
+          const nodes = [];
+          if (block) {
+            const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+            let node;
+            let from = 0;
+            while ((node = walker.nextNode())) {
+              nodes.push({ node, from, to: from + node.data.length });
+              from += node.data.length;
+            }
+          }
+          nodesOf[mark.id] = nodes;
+        }
+
+        const nodes = nodesOf[mark.id];
+        const first = nodes.find((n) => mark.s >= n.from && mark.s < n.to);
+        const last = nodes.find((n) => mark.e > n.from && mark.e <= n.to);
+        if (!first || !last) return;
+
+        const range = new Range();
+        range.setStart(first.node, mark.s - first.from);
+        range.setEnd(last.node, mark.e - last.from);
+        (at === this.findCurrent ? current : found).push(range);
+      });
+
+      if (found.length) CSS.highlights.set("find-match", new Highlight(...found));
+      if (current.length) CSS.highlights.set("find-current", new Highlight(...current));
+    },
+
+    clearFind() {
+      if (!window.CSS || !CSS.highlights) return;
+      CSS.highlights.delete("find-match");
+      CSS.highlights.delete("find-current");
+    },
+
     // The block a node sits in, walking up from wherever the caret is.
     blockOf(node) {
       let el = node instanceof Element ? node : node?.parentElement;
@@ -606,6 +729,166 @@ export default {
           return text.slice(from, to);
         })
         .join("\n");
+    },
+
+    // The classes a run is drawn with: which of the two word markings it
+    // carries (a word is never both), and whether the reader has highlighted
+    // it on top of that. The highlight is a class of its own so it can sit on
+    // a flagged or changed word without taking either marking away.
+    runClass(run) {
+      return [
+        run.flag ? "review-word" : run.edit ? "edit-word" : null,
+        run.hl ? "highlight-word" : null,
+        run.cm !== undefined ? "comment-word" : null,
+        run.cl ? "comment-end" : null,
+      ];
+    },
+
+    // Whether a run is a word of the comment the card under the video is
+    // showing. It is an attribute of its own rather than one more class so
+    // the tint can sit on top of whatever the word is, and a word of that
+    // comment is told apart from the rest of the paragraph.
+    isCommentOnShow(run, block) {
+      return (
+        run.cm !== undefined &&
+        block.id === this.commentId &&
+        run.cm === this.commentIndex
+      );
+    },
+
+    // The selection as one range per block it reaches into, each as offsets
+    // in that block's own text -- what the server needs to say which words
+    // are taken. A selection inside one block is one entry; one that reaches
+    // across blocks is the tail of the first, all of those between, and the
+    // head of the last. Empty without a selection in the text. A caret with
+    // nothing selected is a range of nothing, which the server reads as the
+    // word the caret touches.
+    highlightSpans() {
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0) return [];
+
+      const range = selection.getRangeAt(0);
+      const first = this.blockOf(range.startContainer);
+      const last = this.blockOf(range.endContainer);
+
+      if (!first || !last) return [];
+
+      const start = this.offsetIn(first, range.startContainer, range.startOffset);
+      const end = this.offsetIn(last, range.endContainer, range.endOffset);
+
+      if (first === last) {
+        return [{ id: Number(first.dataset.id), start, end }];
+      }
+
+      const blocks = Array.from(
+        this.$refs.body?.querySelectorAll(".transcript-text") ?? []
+      );
+      const from = blocks.indexOf(first);
+      const to = blocks.indexOf(last);
+
+      if (from < 0 || to < 0) return [];
+
+      return blocks.slice(from, to + 1).map((block, at) => ({
+        id: Number(block.dataset.id),
+        start: at === 0 ? start : 0,
+        end: from + at === to ? end : this.plainText(block.textContent).length,
+      }));
+    },
+
+    // The toolbar's Highlight button: the same as the key, reading the
+    // selection as it is. The button does not take the selection with it --
+    // it does not take focus on a mouse press either (see the page) -- so
+    // this finds it where the reader left it. Nothing selected sends an empty
+    // list, which the server answers with the notice.
+    highlightSelection() {
+      this.flush();
+      this.$emit("togglehighlight", { spans: this.highlightSpans() });
+    },
+
+    // The toolbar's Comment button, and the key: ask the server to open the
+    // comment on the selected words. The server decides what that means --
+    // a new comment, or the one the words already have -- and shows it in the
+    // comments panel under the video.
+    commentSelection() {
+      this.flush();
+      this.$emit("opencomment", { spans: this.highlightSpans() });
+    },
+
+    // The comment the caret is in, as the block and the comment's number in
+    // it -- what the comments panel under the video follows. Nothing for a
+    // selection, or a caret in words that have no comment.
+    commentAtCaret() {
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0 || !selection.isCollapsed) {
+        return null;
+      }
+
+      const node = selection.anchorNode;
+      const element = node && (node.nodeType === 1 ? node : node.parentElement);
+      const word = element?.closest?.("[data-comment]");
+      const block = element ? this.blockOf(element) : null;
+
+      if (!word || !block) return null;
+
+      return { id: Number(block.dataset.id), cm: Number(word.dataset.comment) };
+    },
+
+    // Tell the server when the caret comes into a different comment, so the
+    // panel can show it. Said once per comment rather than per key, and again
+    // for a click, which also opens the panel if it is shut -- an arrow key
+    // that happens to cross a commented word does not.
+    reportCommentCaret(clicked = false) {
+      const at = this.commentAtCaret();
+      const key = at ? `${at.id}:${at.cm}` : null;
+
+      if (key === this.lastCommentKey && !clicked) return;
+      this.lastCommentKey = key;
+
+      if (at) this.$emit("caretcomment", { ...at, click: clicked });
+    },
+
+    // The text node and offset a block's character offset falls at. An
+    // offset past the end gives null, for the caller to treat as "the end".
+    pointAt(block, offset) {
+      const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+      let remaining = offset;
+      let node = walker.nextNode();
+
+      while (node) {
+        const length = node.textContent.length;
+        if (remaining <= length) return { node, offset: remaining };
+        remaining -= length;
+        node = walker.nextNode();
+      }
+
+      return null;
+    },
+
+    // Select a stretch of text again after a block has been rebuilt -- the
+    // selection a highlight was applied to does not survive the redraw, and
+    // the same key undoes it only while it is still there.
+    selectRange(startId, startOffset, endId, endOffset) {
+      this.$nextTick(() => {
+        const body = this.$refs.body;
+        const first = body?.querySelector(`.transcript-text[data-id="${startId}"]`);
+        const last = body?.querySelector(`.transcript-text[data-id="${endId}"]`);
+        if (!first || !last) return;
+
+        const from = this.pointAt(first, startOffset);
+        const to = this.pointAt(last, endOffset);
+        if (!from || !to) return;
+
+        const range = document.createRange();
+        range.setStart(from.node, from.offset);
+        range.setEnd(to.node, to.offset);
+
+        // preventScroll for the reason placeCaretAt gives.
+        body.focus({ preventScroll: true });
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        this.caretId = endId;
+      });
     },
 
     // The inverse of caret()'s own offset -- used to put the caret back
@@ -945,7 +1228,39 @@ export default {
       selection.removeAllRanges();
       selection.addRange(range);
 
+      this.highlightNewWord(wrapper);
+
       return wrapper;
+    },
+
+    // A word typed between two highlighted words is highlighted too: the rule
+    // carry_highlights follows on the server, which has recorded it by the
+    // time the next render comes. That render is the problem -- set_text does
+    // not re-render the block being typed into, so until some later render
+    // the word stood there plain in the middle of a highlighted passage and
+    // only turned yellow after a reload. Done here, in the DOM, for the same
+    // reason markChanged is, and it follows the server's rule exactly: only a
+    // *new* word (this is called from splitNewWord and nowhere else), and only
+    // when the nearest word on each side is highlighted -- a word typed
+    // beside a highlight, or between a highlight and anything else, is not.
+    //
+    // An attribute rather than a class, because Vue owns the class and
+    // rewrites it whenever it patches the span; role=mark because that is
+    // what a highlighted word is told as. Both go at the next real render.
+    highlightNewWord(span) {
+      const nearestWord = (step) => {
+        for (let node = span[step]; node; node = node[step]) {
+          if (node.nodeType === 1 && !/^\s*$/.test(node.textContent)) return node;
+        }
+        return null;
+      };
+      const highlighted = (node) =>
+        !!node && (node.classList.contains("highlight-word") || node.hasAttribute("data-highlighted"));
+
+      if (highlighted(nearestWord("previousSibling")) && highlighted(nearestWord("nextSibling"))) {
+        span.setAttribute("data-highlighted", "");
+        span.setAttribute("role", "mark");
+      }
     },
 
     // Text typed straight into a block, belonging to no span at all -- what
@@ -1118,6 +1433,7 @@ export default {
       const at = this.caret();
       this.caretId = at ? at.id : null;
       if (at) this.lastCaret = { id: at.id, offset: at.offset };
+      this.reportCommentCaret();
     },
 
     // Leaving the editor sends whatever was pending and takes the editing
@@ -1720,8 +2036,63 @@ export default {
         }
       }
 
+      // Highlight the selection, or take the highlight off. Ctrl only and by
+      // physical key: Cmd+Shift+H is the browser's own Home on a Mac. Ahead
+      // of the block-scoped lists because a selection may reach across
+      // blocks, which those lists, working from the caret's block alone,
+      // cannot see. For transcriptions only, for now: subtitles are saved as
+      // plain SRT, which has nowhere to keep a highlight.
+      if (
+        !this.subtitleMode &&
+        event.ctrlKey &&
+        event.shiftKey &&
+        !event.altKey &&
+        !event.metaKey &&
+        event.code === "KeyH"
+      ) {
+        const spans = this.highlightSpans();
+        if (spans.length > 0) {
+          return this.report(event, "togglehighlight", { spans });
+        }
+      }
+
+      // Comment on the selection, or open the comment the words already
+      // have. Ctrl only and by physical key, for the reasons given for the
+      // highlight above. Transcriptions only, for now.
+      if (
+        !this.subtitleMode &&
+        event.ctrlKey &&
+        event.shiftKey &&
+        !event.altKey &&
+        !event.metaKey &&
+        event.code === "KeyK"
+      ) {
+        const spans = this.highlightSpans();
+        if (spans.length > 0) {
+          return this.report(event, "opencomment", { spans });
+        }
+      }
+
       const at = this.caret();
       if (!at) return;
+
+      // Alt (Option) with the up or down arrow: to the previous or next
+      // block (stepBlock). Plain Alt only -- Ctrl/Cmd with the arrows moves
+      // words across the boundary, below -- and ahead of everything else
+      // that reads the arrows. On a Mac, Option with the arrow keys would
+      // otherwise move to the start or end of a paragraph of the text.
+      if (
+        event.altKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.shiftKey &&
+        (event.key === "ArrowUp" || event.key === "ArrowDown")
+      ) {
+        event.preventDefault();
+        this.flush();
+        this.stepBlock(at.id, event.key === "ArrowUp" ? -1 : 1);
+        return;
+      }
 
       // The block-scoped shortcuts: one list per format, in
       // subtitleShortcut and transcriptionShortcut below. They need to know
@@ -1797,6 +2168,52 @@ export default {
         return this.report(event, "addblock", { id: at.id });
       }
 
+      // Hand everything up to the caret to the previous caption, or
+      // everything from it to the next. Ahead of the plain arrows below,
+      // which hand over one word and would otherwise swallow the Shift.
+      // The offset goes along because, unlike a word, the amount moved
+      // depends on where the caret is; the server works out the rest.
+      if (event.shiftKey && event.key === "ArrowUp") {
+        return this.report(event, "movetext", {
+          id: at.id,
+          direction: "previous",
+          offset: at.offset,
+        });
+      }
+
+      if (event.shiftKey && event.key === "ArrowDown") {
+        return this.report(event, "movetext", {
+          id: at.id,
+          direction: "next",
+          offset: at.offset,
+        });
+      }
+
+      // Nudge this caption's start (Ctrl+, / Ctrl+.) or end (Ctrl+Shift+,
+      // / Ctrl+Shift+.) a step earlier / later: < and > on a US keyboard,
+      // which is what they mean. By physical key, event.code, because
+      // Shift turns the character into ; and : on a Swedish one. Ctrl only,
+      // never Cmd -- Cmd+, opens the browser's settings on a Mac -- and no
+      // Alt, so AltGr cannot be mistaken for it. The caret goes along so
+      // it can be put back where it was after the redraw.
+      if (
+        event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey &&
+        (event.code === "Comma" || event.code === "Period")
+      ) {
+        return this.report(event, "nudge", {
+          id: at.id,
+          edge: event.shiftKey ? "end" : "start",
+          direction: event.code === "Comma" ? "earlier" : "later",
+          offset: at.offset,
+        });
+      }
+
+      if (this.playWithContextKey(event)) {
+        return this.report(event, "playcontext", { id: at.id });
+      }
+
       // Hand a word across the boundary to the caption either side. The
       // server picks the timings back up from the word data, so this is a
       // report rather than anything worked out here.
@@ -1829,6 +2246,27 @@ export default {
     transcriptionShortcut(event, at) {
       const key = event.key.toLowerCase();
 
+      // Text up to / from the caret, as in the subtitle list.
+      if (event.shiftKey && event.key === "ArrowUp") {
+        return this.report(event, "movetext", {
+          id: at.id,
+          direction: "previous",
+          offset: at.offset,
+        });
+      }
+
+      if (event.shiftKey && event.key === "ArrowDown") {
+        return this.report(event, "movetext", {
+          id: at.id,
+          direction: "next",
+          offset: at.offset,
+        });
+      }
+
+      if (this.playWithContextKey(event)) {
+        return this.report(event, "playcontext", { id: at.id });
+      }
+
       if (event.key === "ArrowUp") {
         return this.report(event, "moveword", { id: at.id, direction: "previous" });
       }
@@ -1847,6 +2285,20 @@ export default {
       }
 
       return false;
+    },
+
+    // Ctrl+Shift+Space: play this block with a few words of speech either
+    // side. Ctrl only, never Cmd -- it sits beside Ctrl+Space, play/pause,
+    // which is Ctrl only too. Plain Ctrl+Space is the page's own handler's,
+    // and is left to it: the Shift is what tells them apart.
+    playWithContextKey(event) {
+      return (
+        event.ctrlKey &&
+        event.shiftKey &&
+        !event.altKey &&
+        !event.metaKey &&
+        (event.code === "Space" || event.key === " ")
+      );
     },
 
     // Stop the browser from acting on the key, get whatever is pending to
@@ -1950,6 +2402,7 @@ export default {
       const at = this.caret();
 
       this.caretId = id;
+      this.reportCommentCaret(true);
 
       this.$emit("blockclick", {
         id,
@@ -1978,12 +2431,112 @@ export default {
         // when asked, the way stepping between validation issues shows a
         // caption; otherwise only as far as it takes to be seen.
         const cell = center ? block.closest(".transcript-cell") || block : block;
-        cell.scrollIntoView(
-          center
-            ? { block: "center", behavior: "smooth" }
-            : { block: "nearest" }
+        this.scrollWithin(
+          cell,
+          center ? { block: "center", behavior: "smooth" } : { block: "nearest" }
         );
       });
+    },
+
+    // ── where the caret is, for a screen reader (F-65) ─────────────────────
+
+    // The word for a block, as the shortcut list and the margin have it.
+    blockNoun() {
+      return this.subtitleMode ? "caption" : "paragraph";
+    },
+
+    // What the text's keys do, said with its name (aria-describedby). The
+    // editing keys are in the shortcut list; these are the ones for finding
+    // one's way, which is what cannot be seen.
+    keysText() {
+      const noun = this.blockNoun();
+      const control = this.subtitleMode ? "start time" : "speaker";
+
+      return (
+        `Alt or Option with the up or down arrow key goes to the previous ` +
+        `or next ${noun}. Tab goes to this ${noun}'s ${control}, Shift+Tab ` +
+        `back to the text.`
+      );
+    },
+
+    // A moment as it is said: 0:12.3, or 1:02:03.4 past the hour. The labels
+    // are HH:MM:SS.mmm, which is long to listen to: the same form as the
+    // Timeline's own value. Counted in whole tenths, so 9.96 s is 0:10.0 and
+    // never 0:9.10.
+    spokenTime(label) {
+      const found = /^(\d+):(\d{2}):(\d{2})[.,](\d{1,3})$/.exec(label || "");
+      if (!found) return label || "";
+
+      const seconds =
+        Number(found[1]) * 3600 +
+        Number(found[2]) * 60 +
+        Number(found[3]) +
+        Number(`0.${found[4]}`);
+      const tenths = Math.round(seconds * 10);
+      const hours = Math.floor(tenths / 36000);
+      const minutes = Math.floor((tenths % 36000) / 600);
+      const rest = tenths % 600;
+      const secs = `${String(Math.floor(rest / 10)).padStart(2, "0")}.${rest % 10}`;
+
+      return hours
+        ? `${hours}:${String(minutes).padStart(2, "0")}:${secs}`
+        : `${minutes}:${secs}`;
+    },
+
+    // Where a block is: "Caption 14, 0:12.3 to 0:15.0" -- the number and the
+    // times in the margin -- or "Paragraph 3, Anna, 1:02.0" in a
+    // transcription, whose margin has the speaker and the start.
+    whereText(block) {
+      if (!block) return "";
+
+      if (this.subtitleMode) {
+        return (
+          `Caption ${block.id}, ${this.spokenTime(block.start_label)} ` +
+          `to ${this.spokenTime(block.end_label)}`
+        );
+      }
+
+      return [`Paragraph ${block.id}`, block.speaker, this.spokenTime(block.start_label)]
+        .filter(Boolean)
+        .join(", ");
+    },
+
+    // Say where a block is, through the live region. A live region speaks
+    // when its text changes, so the same words again (the caret back in the
+    // block it left) are cleared first and put back a tick later.
+    sayWhere(id, before = "") {
+      const block = this.blocks.find((entry) => entry.id === id);
+      const text = before + this.whereText(block);
+      if (!block) return;
+
+      this.saidFor = id;
+
+      if (text !== this.where) {
+        this.where = text;
+        return;
+      }
+
+      this.where = "";
+      this.$nextTick(() => {
+        this.where = text;
+      });
+    },
+
+    // Alt+Up / Alt+Down: the caret to the start of the previous or next
+    // block, without opening or selecting anything -- the text stays one
+    // text. The caretId watcher then says where it is, once it has come to
+    // rest. At either end nothing moves, and the reader is told so.
+    stepBlock(id, step) {
+      const index = this.blocks.findIndex((entry) => entry.id === id);
+      const to = index < 0 ? null : this.blocks[index + step];
+
+      if (!to) {
+        const noun = this.blockNoun();
+        this.sayWhere(id, `${step < 0 ? "First" : "Last"} ${noun}. `);
+        return;
+      }
+
+      this.focusBlock(to.id, 0);
     },
 
     // Back to where the caret was last -- or, if it has not been in the text
@@ -2020,8 +2573,100 @@ export default {
         const cell = this.$refs.body?.querySelector(
           `.transcript-cell[data-id="${id}"]`
         );
-        if (cell) cell.scrollIntoView({ block: "center", behavior: "smooth" });
+        if (cell) this.scrollWithin(cell, { block: "center", behavior: "smooth" });
       });
+    },
+
+    // Bring an element into view by moving the transcript's own scroller
+    // first. Element.scrollIntoView() moves every scrollable ancestor, the
+    // window included, and the window can be scrolled: with the Timeline
+    // docked along the foot the page is given room for it (about 170 px), so
+    // centring a caption slid the whole page up and took the video and its
+    // controls out of view.
+    //
+    // The part of the scroller under the docked Timeline does not count as
+    // visible, so a caption is not brought to rest behind it. The transcript
+    // ends under the Timeline, though, so its last captions cannot be scrolled
+    // clear of it from inside; for those, and only for those, the window moves,
+    // by as little as it takes.
+    //
+    // `block` is "center" or "nearest", as for scrollIntoView.
+    scrollWithin(element, { block = "nearest", behavior = "auto" } = {}) {
+      const scroller = this.scrollerOf(element);
+
+      if (!scroller) {
+        element.scrollIntoView({ block, behavior });
+        return;
+      }
+
+      const view = scroller.getBoundingClientRect();
+      const at = element.getBoundingClientRect();
+      // A Timeline that is switched off keeps its element, hidden with
+      // v-show: it has no box, and its rectangle is all zeros, which would
+      // read as a dock at the very top of the page. No box, no dock.
+      const dock = document.querySelector(".speech-timeline-docked");
+      const dockTop =
+        dock && dock.getClientRects().length ? dock.getBoundingClientRect().top : Infinity;
+      const bottom = dockTop > view.top && dockTop < view.bottom ? dockTop : view.bottom;
+
+      let delta = 0;
+
+      if (block === "center") {
+        delta = at.top + at.height / 2 - (view.top + (bottom - view.top) / 2);
+      } else if (at.top < view.top && at.bottom <= bottom) {
+        // Above the top, its foot in view. Aligned the way scrollIntoView's
+        // "nearest" does it: by the edge that takes the shorter move, which
+        // for a paragraph taller than the scroller is its foot.
+        delta = Math.max(at.top - view.top, at.bottom - bottom);
+      } else if (at.bottom > bottom && at.top >= view.top) {
+        // Its head in view, the foot below.
+        delta = Math.min(at.bottom - bottom, at.top - view.top);
+      }
+      // Inside, or spanning both edges (a long paragraph the caret is in the
+      // middle of): left where it is, as "nearest" leaves it.
+
+      // What the scroller can actually do: it stops at its ends.
+      const room = scroller.scrollHeight - scroller.clientHeight;
+      const target = Math.max(0, Math.min(room, scroller.scrollTop + delta));
+      const moved = target - scroller.scrollTop;
+
+      if (Math.abs(moved) >= 1) scroller.scrollTo({ top: target, behavior });
+
+      // Still behind the Timeline once the scroller has done what it can:
+      // the window gives way by that much. It is given back as soon as a
+      // caption no longer needs it, so going up the transcript again does
+      // not leave the page where the last captions put it. What the reader
+      // scrolled the window by is not touched: only what was moved here is
+      // given back.
+      // Something taller than what is left above the Timeline cannot be
+      // cleared of it by moving the page, so it does not move it.
+      const fits = at.height <= bottom - view.top;
+      const hidden = fits ? at.bottom - moved - dockTop : 0;
+      const pageRoom =
+        document.documentElement.scrollHeight - window.innerHeight - window.scrollY;
+      const given = this.pageGiven || 0;
+      let shift = 0;
+
+      if (hidden > 0) {
+        shift = Math.max(0, Math.min(hidden, pageRoom));
+      } else if (given > 0) {
+        shift = -Math.min(given, window.scrollY, -hidden);
+      }
+
+      if (Math.abs(shift) >= 1) {
+        window.scrollBy({ top: shift, behavior });
+        this.pageGiven = Math.max(0, given + shift);
+      }
+    },
+
+    // The nearest ancestor that scrolls by itself: the area the transcript
+    // sits in. Not the window, which is never what is meant.
+    scrollerOf(element) {
+      for (let el = element.parentElement; el && el !== document.body; el = el.parentElement) {
+        const overflow = getComputedStyle(el).overflowY;
+        if (overflow === "auto" || overflow === "scroll") return el;
+      }
+      return null;
     },
 
     attachVideo() {
