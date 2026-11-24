@@ -1490,16 +1490,6 @@ theme_styles = """
         outline: 2px solid var(--color-brand-primary);
         outline-offset: 2px;
     }
-    .settings-saved {
-        display: flex;
-        align-items: center;
-        gap: 0.375rem;
-        font-size: 0.875rem;
-        color: var(--color-text-secondary);
-    }
-    .settings-saved .q-icon {
-        font-size: 1rem;
-    }
     .user-token-card {
         width: min(32rem, 100%);
         max-width: 100%;

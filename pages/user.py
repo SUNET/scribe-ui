@@ -398,7 +398,3 @@ def create() -> None:
                                     chosen["weekly_report"],
                                     lambda e: save("weekly_report", e.value),
                                 )
-
-                        with ui.element("div").classes("settings-saved"):
-                            ui.icon("check_circle").props("aria-hidden=true")
-                            ui.label("Changes are saved as you make them.")
