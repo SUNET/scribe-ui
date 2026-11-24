@@ -313,7 +313,7 @@ export default {
     // where they are, so coming back is a redraw rather than a rebuild.
     shown: { type: Boolean, default: true },
   },
-  emits: ["retimespan", "createcaption", "selectcaption", "dock"],
+  emits: ["retimespan", "createcaption", "createatplayhead", "selectcaption", "dock"],
   data() {
     return {
       position: 0,
@@ -1037,6 +1037,24 @@ export default {
       this.$emit("createcaption", { start: made.start, end: made.end });
     },
 
+    // The button under the strip: a caption where the playhead is, for a
+    // reader who cannot, or would rather not, drag one out. The same thing
+    // the drag makes, with the same answer to "how long" -- except that this
+    // gesture names a moment rather than a stretch, so the server works out
+    // the stretch (see create_at_playhead). The moment is read from the
+    // player, not from `position`, which lags it by a frame or two.
+    addAtPlayhead() {
+      const at = this.video ? this.video.currentTime : this.position;
+
+      // The recording's own length, when the player knows it: not the
+      // `duration` prop, which is how far the speech goes. Nothing is made
+      // past the end of the recording.
+      const limit =
+        this.video && isFinite(this.video.duration) ? this.video.duration : 0;
+
+      this.$emit("createatplayhead", { at, limit });
+    },
+
     // Kept inside the stretch the captions leave free -- see gapAt.
     withinGap(seconds, gap) {
       return Math.max(gap.from, Math.min(gap.to, seconds));
@@ -1634,6 +1652,14 @@ export default {
           tip: "Reset zoom",
           off: this.zoom === 1,
           run: this.zoomReset,
+        },
+        {
+          key: "add",
+          icon: "playlist_add",
+          label: "Add caption at playhead",
+          tip: "Add caption at playhead",
+          gap: true,
+          run: this.addAtPlayhead,
         },
       ];
     },

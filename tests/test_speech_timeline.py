@@ -961,6 +961,156 @@ class TestCreatingACaption:
         assert "`New caption · ${this.timecode(start)} → ${this.timecode(end)}`" in source
 
 
+class TestCreatingACaptionAtThePlayhead:
+    """
+    The button under the strip: a caption where the playhead is, for a
+    reader who cannot, or would rather not, drag one out. It names a moment
+    rather than a stretch, so the server works out the stretch -- and makes
+    the caption exactly as a drag does.
+    """
+
+    @pytest.fixture
+    def view(self, monkeypatch):
+        from utils.transcript_editor import TranscriptEditor
+
+        held = editor(
+            captions=[
+                SRTCaption(1, "00:00:00,000", "00:00:02,000", "Ett."),
+                SRTCaption(2, "00:00:06,000", "00:00:08,000", "Tva."),
+            ]
+        )
+        held.save_state_for_undo = lambda *a, **k: None
+        held.mark_as_changed = lambda *a, **k: None
+
+        told = []
+        monkeypatch.setattr(
+            "utils.transcript_editor.ui.notify",
+            lambda message, **k: told.append(message),
+        )
+
+        subject = TranscriptEditor(held)
+        subject.told = told
+        subject.focused = []
+        subject.focus = lambda block_id, offset=0, **k: subject.focused.append(block_id)
+
+        return subject
+
+    def times(self, view):
+        return [
+            (caption.index, caption.get_start_seconds(), caption.get_end_seconds())
+            for caption in view.editor.captions
+        ]
+
+    def test_it_makes_a_caption_of_the_usual_length_from_the_playhead(self, view):
+        from utils.settings import get_settings
+
+        view.create_at_playhead({"at": 3.0})
+
+        assert self.times(view)[1] == (
+            2,
+            3.0,
+            3.0 + get_settings().NEW_CAPTION_SECONDS,
+        )
+
+    def test_it_stops_at_the_next_caption(self, view):
+        view.create_at_playhead({"at": 5.5})
+
+        assert self.times(view)[1] == (2, 5.5, 6.0)
+
+    def test_after_the_last_caption_there_is_room(self, view):
+        from utils.settings import get_settings
+
+        view.create_at_playhead({"at": 9.0})
+
+        assert self.times(view)[-1] == (
+            3,
+            9.0,
+            9.0 + get_settings().NEW_CAPTION_SECONDS,
+        )
+
+    def test_it_stops_at_the_end_of_the_recording(self, view):
+        view.create_at_playhead({"at": 9.0, "limit": 9.4})
+
+        assert self.times(view)[-1] == (3, 9.0, 9.4)
+
+    def test_an_unknown_length_is_no_limit(self, view):
+        view.create_at_playhead({"at": 9.0, "limit": 0})
+
+        assert len(view.editor.captions) == 3
+
+    def test_it_starts_empty_and_takes_the_caret(self, view):
+        view.create_at_playhead({"at": 3.0})
+
+        assert view.editor.captions[1].text == ""
+        assert view.focused == [2]
+
+    def test_it_is_one_undo_step(self, view):
+        saved = []
+        view.editor.save_state_for_undo = lambda *a, **k: saved.append(True)
+
+        view.create_at_playhead({"at": 3.0})
+
+        assert len(saved) == 1
+
+    def test_inside_a_caption_nothing_is_made_and_the_reader_is_told(self, view):
+        view.create_at_playhead({"at": 7.0})
+
+        assert len(view.editor.captions) == 2
+        assert view.told == ["Caption 2 already covers this point"]
+        assert view.focused == [2], "the caret goes to the caption that is there"
+
+    def test_the_start_of_a_caption_is_inside_it_and_its_end_is_not(self, view):
+        view.create_at_playhead({"at": 6.0})
+        assert len(view.editor.captions) == 2
+
+        view.create_at_playhead({"at": 2.0})
+        assert len(view.editor.captions) == 3
+
+    def test_no_room_is_said_rather_than_made(self, view):
+        """
+        Between two captions that leave less than a sliver, or up against
+        the end of the recording: a caption too short to see is worse than
+        none.
+        """
+
+        view.editor.captions[0].end_time = "00:00:05,980"
+        view.create_at_playhead({"at": 5.98})
+
+        assert len(view.editor.captions) == 2
+        assert view.told == ["There is no room for a caption here"]
+
+    def test_at_the_very_end_of_the_recording_there_is_no_room(self, view):
+        view.create_at_playhead({"at": 9.0, "limit": 9.0})
+
+        assert len(view.editor.captions) == 2
+        assert view.told == ["There is no room for a caption here"]
+
+    @pytest.mark.parametrize(
+        "args",
+        [None, "nonsense", {}, {"at": None}, {"at": "x"}, {"at": -1.0}],
+    )
+    def test_nothing_usable_makes_nothing(self, view, args):
+        view.create_at_playhead(args)
+
+        assert len(view.editor.captions) == 2
+        assert view.told == []
+
+    def test_the_strip_asks_the_player_where_it_is(self):
+        source = pathlib.Path("utils/speech_timeline.js").read_text()
+        body = source[source.index("addAtPlayhead() {"):]
+        body = body[: body.index("\n    },")]
+
+        assert "this.video.currentTime" in body
+        assert 'this.$emit("createatplayhead"' in body
+
+    def test_it_is_wired_to_the_server(self):
+        server = pathlib.Path("utils/transcript_editor.py").read_text()
+        source = pathlib.Path("utils/speech_timeline.js").read_text()
+
+        assert '"createatplayhead"' in server
+        assert '"createatplayhead"' in source.split("emits:")[1].split("\n")[0]
+
+
 class TestDockingTheStrip:
     """
     The strip can be dragged to the foot of the page, where it spans the
@@ -1748,7 +1898,7 @@ class TestTheStripIsASlider:
 
 class TestTheTimelineControls:
     """
-    Dock and zoom, as a tray in the strip's own
+    Dock, zoom and add a caption at the playhead, as a tray in the strip's own
     legend row: the same family as the caption actions, and out of the way
     until the strip is pointed at or has focus.
     """
@@ -1775,6 +1925,7 @@ class TestTheTimelineControls:
             "zoomOut",
             "zoomIn",
             "zoomReset",
+            "add",
         ]
 
     def test_it_is_a_named_toolbar(self):
@@ -1794,20 +1945,21 @@ class TestTheTimelineControls:
         body = method(source, "    actions() {")
 
         assert ':aria-label="action.label"' in self.buttons()
-        assert body.count("label:") == 4
+        assert body.count("label:") == 5
 
         for label in (
             "Dock timeline",
             "Zoom out",
             "Zoom in",
             "Reset zoom",
+            "Add caption at playhead",
         ):
             assert f'label: "{label}"' in body
 
     def test_one_tab_stop_with_arrow_keys_between_them(self):
         """
         As in the caption actions: the strip's own controls are one stop in
-        the tab order rather than four.
+        the tab order rather than five.
         """
 
         buttons = self.buttons()
@@ -1845,6 +1997,12 @@ class TestTheTimelineControls:
 
         assert "this.$nextTick(" in body
         assert 'this.focusAction("dock")' in body
+
+    def test_adding_a_caption_is_the_same_event_as_before(self):
+        source = self.source()
+
+        assert "run: this.addAtPlayhead" in method(source, "    actions() {")
+        assert 'this.$emit("createatplayhead"' in method(source, "addAtPlayhead() {")
 
     def test_hidden_until_the_strip_is_pointed_at_or_focused(self):
         from utils.styles import theme_styles

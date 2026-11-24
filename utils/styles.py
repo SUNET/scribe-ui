@@ -4025,8 +4025,10 @@ theme_styles = """
         font-size: 0.75rem;
         color: var(--color-text-secondary);
     }
-    /* The controls beside the key: dock and zoom. The playhead is always in
-       the middle of the strip -- it is "now", where the reader works -- so where there is room the tray sits under it, and where there
+    /* The controls beside the key: dock, zoom, and adding a caption at the
+       playhead. The playhead is always in the middle of the strip -- it is
+       "now", where the reader works and where "Add caption at playhead"
+       acts -- so where there is room the tray sits under it, and where there
        is not it follows the key, as it did before. Both come from the same
        rule (see the container query below the hint): the legend is a grid of
        1fr, auto, 1fr, whose middle column is the strip's own centre, and the
